@@ -1,0 +1,8 @@
+{
+  "name": "Gestão 360",
+  "description": "Plataforma de gestão e monitoramento de controle interno para municípios.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
