@@ -1,4 +1,5 @@
 import React from 'react';
+import { supabase } from './lib/supabase';
 import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, TreePine, Calculator, Tractor, HeartHandshake, Trophy, Map, Menu, X, 
   LayoutDashboard, 
   ClipboardCheck, 
@@ -1474,22 +1475,29 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(false);
     
-    // Simulação de login
-    setTimeout(() => {
-      if (username === 'demo' && password === 'demo') {
-        onLogin();
-      } else if (username && password) {
-        onLogin(); // Aceita qualquer um para facilitar no applet
-      } else {
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: username,
+        password: password,
+      });
+
+      if (signInError) {
+        console.error("Erro no login:", signInError.message);
         setError(true);
-        setLoading(false);
+      } else if (data.session) {
+        onLogin();
       }
-    }, 800);
+    } catch (err) {
+      console.error(err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDemoMode = () => {
@@ -1526,8 +1534,8 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
             <div className="relative">
               <Users className="absolute left-5 top-1/2 -translate-y-1/2 text-neutral-400 dark:text-neutral-500" size={18} />
               <input 
-                type="text" 
-                placeholder="nome.sobrenome"
+                type="email" 
+                placeholder="seu@email.com"
                 className="w-full bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800 px-14 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 focus:border-neutral-900 dark:focus:border-white outline-none transition-all font-bold text-neutral-900 dark:text-white"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
@@ -1566,7 +1574,7 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
             </motion.p>
           )}
 
-          <button onClick={() => alert("Botão em desenvolvimento")} 
+          <button
             type="submit"
             disabled={loading}
             className="w-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xl shadow-neutral-900/20 dark:shadow-neutral-950/20 flex items-center justify-center gap-3 group"
@@ -2045,6 +2053,18 @@ const PlaceholderModule = ({ title }: { title: string }) => (
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [darkMode, setDarkMode] = React.useState(false);
+
+  React.useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAuthenticated(!!session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
   const [activeView, setActiveView] = React.useState<View>('home');
   const [selectedYear, setSelectedYear] = React.useState('2026');
   const [searchQuery, setSearchQuery] = React.useState('');
