@@ -5,8 +5,8 @@ import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, 
   ClipboardCheck, 
   Calendar, 
   BookText, 
-  ShieldAlert, 
-  Users, 
+  ShieldAlert, Shield,
+  Users,
   Settings,
   Bell,
   Search,
@@ -62,7 +62,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento';
+type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings';
 
 interface Protocol {
   id: string;
@@ -1879,6 +1879,14 @@ const CertificatesModule = () => {
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isAddingCompany, setIsAddingCompany] = React.useState(false);
 
+  React.useEffect(() => {
+    supabase.from('company_certificates').select('*').then(({ data }) => {
+      if (data && data.length > 0) {
+        setCompanies(data.map(c => ({ ...c, companyName: c.company_name } as CompanyCertificates)));
+      }
+    });
+  }, []);
+
   const getStatusInfo = (expiryDate: string) => {
     const today = new Date();
     today.setHours(0,0,0,0);
@@ -2008,9 +2016,14 @@ const CertificatesModule = () => {
           <ManageCertificatesModal 
             company={managingCompany}
             onClose={() => setManagingCompany(null)}
-            onUpdate={(updatedCompany) => {
+            onUpdate={async (updatedCompany) => {
               setCompanies(companies.map(c => c.id === updatedCompany.id ? updatedCompany : c));
               setManagingCompany(updatedCompany);
+              await supabase.from('company_certificates').update({
+                company_name: updatedCompany.companyName,
+                cnpj: updatedCompany.cnpj,
+                certificates: updatedCompany.certificates
+              }).eq('id', updatedCompany.id).catch(console.error);
             }}
           />
         )}
@@ -2020,9 +2033,15 @@ const CertificatesModule = () => {
         {isAddingCompany && (
           <NewCompanyModal 
             onClose={() => setIsAddingCompany(false)}
-            onConfirm={(comp) => {
+            onConfirm={async (comp) => {
               setCompanies([comp, ...companies]);
               setIsAddingCompany(false);
+              await supabase.from('company_certificates').insert({
+                id: comp.id,
+                company_name: comp.companyName,
+                cnpj: comp.cnpj,
+                certificates: comp.certificates
+              }).catch(console.error);
             }}
           />
         )}
@@ -2050,6 +2069,384 @@ const PlaceholderModule = ({ title }: { title: string }) => (
   </div>
 );
 
+interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  role: 'Admin' | 'Visualizador' | 'Editor';
+  status: 'Ativo' | 'Inativo';
+  lastLogin: string;
+  permissions: View[];
+}
+
+const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
+  { id: 'home', label: 'Início (Dashboard)' },
+  { id: 'controls', label: 'Controles Internos' },
+  { id: 'calendar', label: 'Calendário Oficial' },
+  { id: 'norms', label: 'Atos Normativos' },
+  { id: 'risk', label: 'Gestão de Riscos' },
+  { id: 'pntp', label: 'PNTP' },
+  { id: 'protocol', label: 'Protocolo' },
+  { id: 'contracts', label: 'Contratos e Licitações' },
+  { id: 'education', label: 'Educação' },
+  { id: 'orders', label: 'Pedidos (Obras/Veículos)' },
+  { id: 'doc_numbers', label: 'Controle de Numeração' },
+  { id: 'reports', label: 'Relatórios' },
+  { id: 'certificates', label: 'Certidões' },
+  { id: 'obras', label: 'Obras e Inf.' },
+  { id: 'admin_financas', label: 'Administração/Finanças' },
+  { id: 'saude', label: 'Saúde' },
+  { id: 'servicos_publicos', label: 'Serviços Públicos' },
+  { id: 'meio_ambiente', label: 'Meio Ambiente' },
+  { id: 'tributos', label: 'Tributos' },
+  { id: 'agricultura', label: 'Agricultura' },
+  { id: 'assistencia_social', label: 'Assistência Social' },
+  { id: 'esporte', label: 'Esporte' },
+  { id: 'planejamento', label: 'Planejamento' },
+  { id: 'settings', label: 'Configurações' }
+];
+
+const MOCK_USERS: AdminUser[] = [
+  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'admin_financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings'] },
+  { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'] },
+  { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'] }
+];
+
+const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u: AdminUser[]) => void }) => {
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [editingUser, setEditingUser] = React.useState<AdminUser | null>(null);
+  const [managingPermissionsUser, setManagingPermissionsUser] = React.useState<AdminUser | null>(null);
+  const [permissionsData, setPermissionsData] = React.useState<string[]>([]);
+  
+  const [formData, setFormData] = React.useState({
+    name: '',
+    email: '',
+    role: 'Visualizador' as AdminUser['role'],
+    status: 'Ativo' as AdminUser['status'],
+    password: '',
+    permissions: [] as View[]
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingUser) {
+      const updatedUser = { ...editingUser, ...formData };
+      setUsers(users.map(u => u.id === editingUser.id ? updatedUser : u));
+      
+      await supabase.from('admin_users').update({
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        status: updatedUser.status,
+        permissions: updatedUser.permissions
+      }).eq('id', updatedUser.id);
+    } else {
+      const newUser: AdminUser = {
+        ...formData,
+        id: Math.random().toString(36).substr(2, 9),
+        lastLogin: 'Nunca'
+      };
+      setUsers([...users, newUser]);
+      
+      await supabase.from('admin_users').insert({
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        status: newUser.status,
+        last_login: newUser.lastLogin,
+        permissions: newUser.permissions
+      });
+    }
+    setIsModalOpen(false);
+    setEditingUser(null);
+  };
+
+  const handleEdit = (u: AdminUser) => {
+    setEditingUser(u);
+    setFormData({ name: u.name, email: u.email, role: u.role, status: u.status, password: '', permissions: u.permissions || [] });
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja remover este usuário permanentemente?')) {
+      setUsers(users.filter(u => u.id !== id));
+      await supabase.from('admin_users').delete().eq('id', id);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Configurações</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Gerencie os usuários e permissões do sistema.</p>
+        </div>
+        <button 
+          onClick={() => {
+            setEditingUser(null);
+            setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [] });
+            setIsModalOpen(true);
+          }}
+          className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-neutral-900/20"
+        >
+          <span className="flex items-center gap-2"><Plus size={16} /> Novo Usuário</span>
+        </button>
+      </div>
+
+      <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Usuário</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Nível de Acesso</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Status</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Último Acesso</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {users.map(u => (
+                <tr key={u.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors">
+                  <td className="p-6">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 font-black">
+                        {u.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{u.name}</p>
+                        <p className="text-xs text-neutral-500">{u.email}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="p-6">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                      u.role === 'Admin' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' :
+                      u.role === 'Editor' ? 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400' :
+                      'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
+                    }`}>
+                      {u.role}
+                    </span>
+                  </td>
+                  <td className="p-6">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center w-max gap-1.5 ${
+                      u.status === 'Ativo' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
+                    }`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'Ativo' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      {u.status}
+                    </span>
+                  </td>
+                  <td className="p-6">
+                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{u.lastLogin}</p>
+                  </td>
+                  <td className="p-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => {
+                          setManagingPermissionsUser(u);
+                          setPermissionsData(u.permissions || []);
+                        }} 
+                        className="p-2 text-neutral-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                        title="Permissões"
+                      >
+                        <Shield size={16} />
+                      </button>
+                      <button onClick={() => handleEdit(u)} className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all">
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => handleDelete(u.id)} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+            onClick={() => setIsModalOpen(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-8"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Preencha os dados do usuário.</p>
+                </div>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nome Completo</label>
+                    <input 
+                      required
+                      type="text" 
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Email (Login)</label>
+                    <input 
+                      required
+                      type="email" 
+                      value={formData.email}
+                      onChange={e => setFormData({...formData, email: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                    />
+                  </div>
+                  {!editingUser && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Senha Temporária</label>
+                      <input 
+                        required={!editingUser}
+                        type="password" 
+                        value={formData.password}
+                        onChange={e => setFormData({...formData, password: e.target.value})}
+                        className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nível de Acesso</label>
+                      <select 
+                        value={formData.role}
+                        onChange={e => setFormData({...formData, role: e.target.value as any})}
+                        className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                      >
+                        <option value="Admin">Admin</option>
+                        <option value="Editor">Editor</option>
+                        <option value="Visualizador">Visualizador</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Status</label>
+                      <select 
+                        value={formData.status}
+                        onChange={e => setFormData({...formData, status: e.target.value as any})}
+                        className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                      >
+                        <option value="Ativo">Ativo</option>
+                        <option value="Inativo">Inativo</option>
+                      </select>
+                    </div>
+                  </div>
+                  </div>
+
+                  <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">Salvar Usuário</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {managingPermissionsUser && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+            onClick={() => setManagingPermissionsUser(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-3xl rounded-[40px] p-10 shadow-2xl space-y-8"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Permissões de Acesso</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Gerencie os módulos que <strong>{managingPermissionsUser.name}</strong> pode visualizar.</p>
+                </div>
+                <button onClick={() => setManagingPermissionsUser(null)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-6">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Módulos do Sistema</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setPermissionsData(permissionsData.length === AVAILABLE_PERMISSIONS.length ? [] : AVAILABLE_PERMISSIONS.map(p => p.id))}
+                    className="text-[10px] font-bold text-indigo-500 hover:text-indigo-600 uppercase tracking-wider"
+                  >
+                    {permissionsData.length === AVAILABLE_PERMISSIONS.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
+                  {AVAILABLE_PERMISSIONS.map(perm => (
+                    <label key={perm.id} className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 p-2 rounded-lg transition-colors">
+                      <input 
+                        type="checkbox"
+                        checked={permissionsData.includes(perm.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setPermissionsData(prev => [...prev, perm.id]);
+                          } else {
+                            setPermissionsData(prev => prev.filter(p => p !== perm.id));
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-neutral-900 bg-neutral-100 border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700"
+                      />
+                      <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{perm.label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="pt-4 flex gap-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button type="button" onClick={() => setManagingPermissionsUser(null)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button 
+                    type="button" 
+                    onClick={async () => {
+                      const updatedUser = { ...managingPermissionsUser, permissions: permissionsData as View[] };
+                      setUsers(users.map(u => u.id === managingPermissionsUser.id ? updatedUser : u));
+                      await supabase.from('admin_users').update({
+                        permissions: permissionsData
+                      }).eq('id', managingPermissionsUser.id);
+                      setManagingPermissionsUser(null);
+                    }}
+                    className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-indigo-600 text-white shadow-xl shadow-indigo-600/20 hover:scale-105 transition-all"
+                  >
+                    Salvar Permissões
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [darkMode, setDarkMode] = React.useState(false);
@@ -2066,11 +2463,36 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
   const [activeView, setActiveView] = React.useState<View>('home');
+  const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>(MOCK_USERS);
   const [selectedYear, setSelectedYear] = React.useState('2026');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [controls, setControls] = React.useState<CheckItem[]>(MOCK_CONTROLS);
   const [orders, setOrders] = React.useState<OrderItem[]>(MOCK_ORDERS);
   const [docRecords, setDocRecords] = React.useState<DocumentRecord[]>(MOCK_DOCUMENTS);
+
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const fetchGlobalData = async () => {
+      try {
+        const [{ data: users }, { data: docs }, { data: ords }, { data: ctrls }] = await Promise.all([
+          supabase.from('admin_users').select('*'),
+          supabase.from('documents').select('*'),
+          supabase.from('orders').select('*'),
+          supabase.from('controls').select('*')
+        ]);
+
+        if (users && users.length > 0) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
+        if (docs && docs.length > 0) setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
+        if (ords && ords.length > 0) setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
+        if (ctrls && ctrls.length > 0) setControls(ctrls as CheckItem[]);
+      } catch (err) {
+        console.error('Erro ao buscar dados do Supabase:', err);
+      }
+    };
+
+    fetchGlobalData();
+  }, [isAuthenticated]);
   const [protocols, setProtocols] = React.useState<Protocol[]>([
     { id: '2024001', subject: 'Solicitação de Material de Expediente', type: 'Pedido', from: 'Saúde', to: 'Administração e Finanças', status: 'Concluído', date: '2024-05-10' },
     { id: '2024002', subject: 'Manutenção de Veículos Oficiais', type: 'Memorando', from: 'Transportes', to: 'Administração e Finanças', status: 'Em Análise', date: '2024-05-12' },
@@ -2121,7 +2543,7 @@ export default function App() {
     );
   }
 
-  const addControl = (newControl: Omit<CheckItem, 'id'>) => {
+  const addControl = async (newControl: Omit<CheckItem, 'id'>) => {
     const control: CheckItem = {
       ...newControl,
       id: Math.random().toString(36).substr(2, 9)
@@ -2129,18 +2551,38 @@ export default function App() {
     setControls([control, ...controls]);
     setIsNewControlModalOpen(false);
     showToast('Controle adicionado com sucesso!');
+    
+    await supabase.from('controls').insert({
+      id: control.id,
+      task: control.task,
+      status: control.status,
+      department: control.department,
+      deadline: control.deadline,
+      notes: control.notes,
+      history: control.history || []
+    }).catch(console.error);
   };
 
-  const updateControl = (updated: CheckItem) => {
+  const updateControl = async (updated: CheckItem) => {
     setControls(controls.map(c => c.id === updated.id ? updated : c));
     setEditingControl(null);
     showToast('Alterações salvas!');
+    
+    await supabase.from('controls').update({
+      task: updated.task,
+      status: updated.status,
+      department: updated.department,
+      deadline: updated.deadline,
+      notes: updated.notes,
+      history: updated.history || []
+    }).eq('id', updated.id).catch(console.error);
   };
 
-  const deleteControl = (id: string) => {
+  const deleteControl = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este controle?')) {
       setControls(controls.filter(c => c.id !== id));
       showToast('Controle removido do sistema.');
+      await supabase.from('controls').delete().eq('id', id).catch(console.error);
     }
   };
 
@@ -2314,6 +2756,21 @@ export default function App() {
                   })}
                 </div>
               </div>
+
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setActiveView('settings')}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    activeView === 'settings' 
+                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-md' 
+                      : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white'
+                  }`}
+                  title="Configurações e Usuários"
+                >
+                  <Settings size={20} />
+                </button>
+              </div>
+
             </div>
           </div>
         </nav>
@@ -2333,33 +2790,69 @@ export default function App() {
             {activeView === 'doc_numbers' && (
               <DocumentNumbersModule
                 records={docRecords.filter(r => r.subject.toLowerCase().includes(searchQuery.toLowerCase()) || r.requester.toLowerCase().includes(searchQuery.toLowerCase()))}
-                onAdd={(newRecord) => {
+                onAdd={async (newRecord) => {
                   const currentYear = new Date().getFullYear();
                   const number = docRecords.filter(r => r.type === newRecord.type && r.year === currentYear).length + 1;
-                  setDocRecords([{ 
+                  const newDoc = { 
                     ...newRecord, 
                     id: Math.random().toString(36).substring(2, 9),
                     number,
                     year: currentYear,
                     dateCreated: new Date().toISOString().split('T')[0]
-                  }, ...docRecords]);
+                  };
+                  setDocRecords([newDoc, ...docRecords]);
                   showToast('Número gerado com sucesso!', 'success');
+                  
+                  await supabase.from('documents').insert({
+                    id: newDoc.id,
+                    type: newDoc.type,
+                    number: newDoc.number,
+                    year: newDoc.year,
+                    requester: newDoc.requester,
+                    subject: newDoc.subject,
+                    date_created: newDoc.dateCreated
+                  }).catch(console.error);
                 }}
-                onUpdate={(id, updates) => {
+                onUpdate={async (id, updates) => {
                   setDocRecords(docRecords.map(r => r.id === id ? { ...r, ...updates } : r));
                   showToast('Documento atualizado com sucesso!', 'success');
+                  
+                  await supabase.from('documents').update(updates).eq('id', id).catch(console.error);
                 }}
               />
             )}
             {activeView === 'orders' && (
               <OrdersModule 
                 orders={orders.filter(o => o.description.toLowerCase().includes(searchQuery.toLowerCase()) || o.requester.toLowerCase().includes(searchQuery.toLowerCase()))}
-                onAdd={(newOrder) => {
-                  setOrders([{ ...newOrder, id: Math.random().toString(36).substr(2, 9) } as OrderItem, ...orders]);
-                  setNotifications([{ id: Date.now(), text: `Novo pedido recebido de ${newOrder.requester}`, type: 'info', read: false }, ...notifications]);
+                onAdd={async (newOrder) => {
+                  const order = { ...newOrder, id: Math.random().toString(36).substr(2, 9) } as OrderItem;
+                  setOrders([order, ...orders]);
+                  setNotifications([{ id: Date.now(), text: `Novo pedido recebido de ${order.requester}`, type: 'info', read: false }, ...notifications]);
                   showToast('Pedido registrado com sucesso!', 'success');
+                  
+                  await supabase.from('orders').insert({
+                    id: order.id,
+                    type: order.type,
+                    description: order.description,
+                    requester: order.requester,
+                    date_requested: order.dateRequested,
+                    quotation_number: order.quotationNumber,
+                    winning_supplier: order.winningSupplier,
+                    status: order.status
+                  }).catch(console.error);
                 }}
-                onEdit={(updatedOrder) => setOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o))}
+                onEdit={async (updatedOrder) => {
+                  setOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+                  await supabase.from('orders').update({
+                    type: updatedOrder.type,
+                    description: updatedOrder.description,
+                    requester: updatedOrder.requester,
+                    date_requested: updatedOrder.dateRequested,
+                    quotation_number: updatedOrder.quotationNumber,
+                    winning_supplier: updatedOrder.winningSupplier,
+                    status: updatedOrder.status
+                  }).eq('id', updatedOrder.id).catch(console.error);
+                }}
                 setOrders={setOrders}
               />
             )}
@@ -2424,6 +2917,7 @@ export default function App() {
             {activeView === 'assistencia_social' && <PlaceholderModule title="Secretaria de Assistência Social" />}
             {activeView === 'esporte' && <PlaceholderModule title="Secretaria de Esporte" />}
             {activeView === 'planejamento' && <PlaceholderModule title="Secretaria de Planejamento" />}
+            {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} />}
           </motion.div>
         </AnimatePresence>
         </div>
@@ -2569,8 +3063,16 @@ const MOCK_CONTRACTS: Contract[] = [
 ];
 
 const ContractsModule = () => {
-  const [contracts] = React.useState<Contract[]>(MOCK_CONTRACTS);
+  const [contracts, setContracts] = React.useState<Contract[]>(MOCK_CONTRACTS);
   
+  React.useEffect(() => {
+    supabase.from('contracts').select('*').then(({ data }) => {
+      if (data && data.length > 0) {
+        setContracts(data.map(c => ({ ...c, vendorName: c.vendor_name } as Contract)));
+      }
+    });
+  }, []);
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
