@@ -1654,35 +1654,77 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   );
 };
 
-const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] }) => {
-  const [activeReport, setActiveReport] = React.useState<'patrimonio' | null>(null);
+const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | null, clearPendingReport?: () => void }) => {
+  const [activeReport, setActiveReport] = React.useState<'patrimonio' | null>(initialReport || null);
+  
+  // Filters for Patrimonio
+  const [filterDept, setFilterDept] = React.useState<string>('Todos');
+  const [filterCond, setFilterCond] = React.useState<string>('Todos');
+  const [filterSearch, setFilterSearch] = React.useState<string>('');
 
   React.useEffect(() => {
-    if (activeReport) {
-      const timer = setTimeout(() => {
-        window.print();
-      }, 500);
-      return () => clearTimeout(timer);
+    if (initialReport) {
+      setActiveReport(initialReport);
+      if (clearPendingReport) clearPendingReport();
     }
-  }, [activeReport]);
+  }, [initialReport, clearPendingReport]);
 
   if (activeReport === 'patrimonio') {
-    const servivelCount = patrimonioItems.filter(item => item.status === 'Servível').length;
+    const filteredItems = patrimonioItems.filter(item => {
+      if (filterDept !== 'Todos' && item.department !== filterDept) return false;
+      if (filterCond !== 'Todos' && item.condition !== filterCond) return false;
+      if (filterSearch && !item.objectName.toLowerCase().includes(filterSearch.toLowerCase()) && !item.code.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+      return true;
+    });
+
+    const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
+
+    const uniqueDepts = Array.from(new Set(patrimonioItems.map(i => i.department)));
 
     return (
       <div className="fixed inset-0 z-[100] bg-white print:bg-white text-black print:text-black overflow-y-auto">
         {/* Only visible on screen, hidden on print */}
-        <div className="fixed top-4 right-4 flex gap-4 print:hidden">
-          <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">
-            <Download size={16} /> Imprimir / Salvar PDF
-          </button>
-          <button onClick={() => setActiveReport(null)} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200">
-            <X size={16} /> Fechar
-          </button>
+        <div className="fixed top-0 left-0 right-0 bg-neutral-100 border-b border-neutral-200 p-4 flex gap-4 print:hidden z-10 items-center justify-between shadow-sm">
+          <div className="flex gap-4 flex-1">
+            <input 
+              type="text" 
+              placeholder="Buscar no relatório..." 
+              value={filterSearch}
+              onChange={e => setFilterSearch(e.target.value)}
+              className="px-4 py-2 rounded-lg border border-neutral-300 text-sm w-64"
+            />
+            <select 
+              value={filterDept} 
+              onChange={e => setFilterDept(e.target.value)}
+              className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
+            >
+              <option value="Todos">Todos os Departamentos</option>
+              {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <select 
+              value={filterCond} 
+              onChange={e => setFilterCond(e.target.value)}
+              className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
+            >
+              <option value="Todos">Todos os Estados</option>
+              <option value="Excelente">Excelente</option>
+              <option value="Bom">Bom</option>
+              <option value="Ruim">Ruim</option>
+              <option value="Muito Ruim">Muito Ruim</option>
+            </select>
+          </div>
+          <div className="flex gap-4">
+            <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800">
+              <Download size={16} /> Imprimir / Salvar PDF
+            </button>
+            <button onClick={() => setActiveReport(null)} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200">
+              <X size={16} /> Fechar
+            </button>
+          </div>
         </div>
 
         {/* Report Content */}
-        <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm]">
+        <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] mt-16 print:mt-0">
           <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
             <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
             <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -1691,7 +1733,7 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
           <div className="flex justify-between mb-8">
             <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
               <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens Cadastrados</p>
-              <p className="text-2xl font-black">{patrimonioItems.length}</p>
+              <p className="text-2xl font-black">{filteredItems.length}</p>
             </div>
             <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
               <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Itens Servíveis</p>
@@ -1712,7 +1754,7 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
               </tr>
             </thead>
             <tbody>
-              {patrimonioItems.map((item) => (
+              {filteredItems.map((item) => (
                 <tr key={item.id} className="border-b border-neutral-200">
                   <td className="py-3 px-2 font-mono text-xs">{item.code}</td>
                   <td className="py-3 px-2 font-bold">{item.objectName}</td>
@@ -1721,9 +1763,9 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
                   <td className="py-3 px-2 font-mono text-right">{item.year}</td>
                 </tr>
               ))}
-              {patrimonioItems.length === 0 && (
+              {filteredItems.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum item cadastrado no sistema.</td>
+                  <td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum item encontrado com os filtros atuais.</td>
                 </tr>
               )}
             </tbody>
@@ -2769,7 +2811,7 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
   );
 };
 
-const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void }) => {
+const PatrimonioModule = ({ items, onAdd, onEmitReport }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEmitReport?: () => void }) => {
   const [search, setSearch] = React.useState('');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [imageModalItem, setImageModalItem] = React.useState<PatrimonioItem | null>(null);
@@ -2793,13 +2835,24 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
           <h2 className="text-2xl font-bold dark:text-neutral-100">Controle de Patrimônio</h2>
           <p className="text-neutral-500 dark:text-neutral-400 text-sm">Gerencie os bens móveis, imóveis, equipamentos e veículos da administração.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
-        >
-          <Package size={18} />
-          Novo Item
-        </button>
+        <div className="flex gap-3">
+          {onEmitReport && (
+            <button 
+              onClick={onEmitReport}
+              className="bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-6 py-2.5 rounded-2xl text-sm font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2"
+            >
+              <Download size={18} />
+              Emitir Relatório
+            </button>
+          )}
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
+          >
+            <Package size={18} />
+            Novo Item
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-4">
@@ -3455,6 +3508,7 @@ const TemplatesModule = () => {
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [currentUser, setCurrentUser] = React.useState<AdminUser | null>(null);
+  const [pendingReport, setPendingReport] = React.useState<'patrimonio' | null>(null);
   const [darkMode, setDarkMode] = React.useState(() => {
     const saved = localStorage.getItem('gestao360-dark-mode');
     if (saved !== null) return JSON.parse(saved);
@@ -3875,6 +3929,10 @@ export default function App() {
               <PatrimonioModule 
                 items={patrimonioItems} 
                 onAdd={(item) => setPatrimonioItems([item, ...patrimonioItems])}
+                onEmitReport={() => {
+                  setPendingReport('patrimonio');
+                  setActiveView('reports');
+                }}
               />
             )}
             {activeView === 'orders' && (
@@ -3961,7 +4019,7 @@ export default function App() {
             )}
             {activeView === 'contracts' && <ContractsModule />}
             {activeView === 'education' && <EducationModule />}
-            {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} />}
+            {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} />}
             {activeView === 'certificates' && <CertificatesModule />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
