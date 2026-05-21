@@ -249,6 +249,26 @@ const getComplianceDataForYear = (year: string) => {
   ];
 };
 
+const LogoCompass = ({ size = 32, className = '' }: { size?: number, className?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    <defs>
+      <linearGradient id="compass-gradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#10B981" />
+        <stop offset="1" stopColor="#06B6D4" />
+      </linearGradient>
+      <linearGradient id="needle-gradient" x1="12" y1="6" x2="12" y2="12" gradientUnits="userSpaceOnUse">
+        <stop stopColor="#34D399" />
+        <stop offset="1" stopColor="#22D3EE" />
+      </linearGradient>
+    </defs>
+    <circle cx="12" cy="12" r="10" stroke="url(#compass-gradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M12 4V5M12 19V20M4 12H5M19 12H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="opacity-30" />
+    <path d="M12 12L15 6L12 10.5V12Z" fill="url(#needle-gradient)" />
+    <path d="M12 12L9 18L12 13.5V12Z" fill="currentColor" className="opacity-50" />
+    <circle cx="12" cy="12" r="2" fill="currentColor" />
+  </svg>
+);
+
 const NAVBAR_CATEGORIES = [
   {
     id: 'painel',
@@ -1546,11 +1566,11 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
         className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-[48px] p-12 shadow-2xl shadow-neutral-200/50 dark:shadow-neutral-950/50 border border-neutral-100 dark:border-neutral-800 relative z-10"
       >
         <div className="text-center space-y-4 mb-10">
-          <div className="bg-neutral-900 dark:bg-emerald-500 text-emerald-400 dark:text-emerald-950 p-3 rounded-2xl rotate-3 shadow-xl shadow-neutral-900/10 flex items-center justify-center mx-auto w-16 h-16">
-            <Compass size={32} />
+          <div className="bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white p-3 rounded-[1.25rem] shadow-[0_0_40px_-10px_rgba(16,185,129,0.3)] border border-neutral-100 dark:border-neutral-800 flex items-center justify-center mx-auto w-20 h-20 transition-all hover:scale-110 duration-500">
+            <LogoCompass size={44} />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
+            <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic mt-2">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-widest mt-1">Sistemas de Compliance & Protocolo</p>
           </div>
         </div>
@@ -3576,9 +3596,9 @@ export default function App() {
           <div className="max-w-[1400px] mx-auto px-6">
             <div className="flex items-center justify-between h-20">
               <div className="flex items-center gap-10">
-                <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveView('home')}>
-                  <div className="bg-neutral-900 dark:bg-emerald-500 text-emerald-400 dark:text-emerald-950 p-2 rounded-xl rotate-3 hover:rotate-0 transition-transform shadow-lg shadow-neutral-900/10">
-                    <Compass size={20} />
+                <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setActiveView('home')}>
+                  <div className="bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white p-2 rounded-xl border border-neutral-100 dark:border-neutral-800 shadow-sm group-hover:scale-110 transition-transform flex items-center justify-center">
+                    <LogoCompass size={24} />
                   </div>
                   <div>
                     <h1 className="text-xl font-black tracking-tight leading-none italic dark:text-white">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
@@ -3764,7 +3784,7 @@ export default function App() {
             {activeView === 'home' && (
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-10 z-0">
                 <div className="flex items-center scale-75 md:scale-100 min-w-max">
-                  <Compass size={140} className="text-neutral-900 dark:text-white mr-8" />
+                  <LogoCompass size={160} className="text-neutral-900 dark:text-white mr-8" />
                   <h1 className="text-[140px] font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">Gestão <span className="font-normal">360</span></h1>
                 </div>
               </div>
