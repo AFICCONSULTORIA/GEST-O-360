@@ -2261,13 +2261,17 @@ const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
 
 const CertificatesModule = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [companies, setCompanies] = React.useState<CompanyCertificates[]>(MOCK_COMPANIES);
+  const [companies, setCompanies] = React.useState<CompanyCertificates[]>([]);
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isAddingCompany, setIsAddingCompany] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   React.useEffect(() => {
-    supabase.from('company_certificates').select('*').then(({ data }) => {
-      if (data && data.length > 0) {
+    supabase.from('company_certificates').select('*').then(({ data, error }) => {
+      setIsLoading(false);
+      if (error) {
+        console.error("Erro ao buscar empresas:", error);
+      } else if (data) {
         setCompanies(data.map(c => ({ ...c, companyName: c.company_name } as CompanyCertificates)));
       }
     });
@@ -2385,10 +2389,19 @@ const CertificatesModule = () => {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && (
+              {isLoading ? (
                  <tr>
                    <td colSpan={7} className="py-10 text-center text-sm font-medium text-neutral-500">
-                     Nenhuma empresa encontrada.
+                     <div className="animate-pulse flex flex-col items-center justify-center gap-2">
+                       <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-neutral-900 dark:border-t-white rounded-full animate-spin"></div>
+                       <span>Carregando empresas...</span>
+                     </div>
+                   </td>
+                 </tr>
+              ) : filtered.length === 0 && (
+                 <tr>
+                   <td colSpan={7} className="py-10 text-center text-sm font-medium text-neutral-500">
+                     Nenhuma empresa cadastrada.
                    </td>
                  </tr>
               )}
