@@ -1553,7 +1553,7 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F9F8] dark:bg-neutral-950 flex items-center justify-center p-4 transition-colors">
+    <div className="min-h-[100dvh] bg-[#F9F9F8] dark:bg-neutral-950 grid place-items-center p-4 py-8 transition-colors overflow-y-auto overflow-x-hidden">
       {/* Background Shapes */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className={`absolute top-[-10%] left-[-10%] w-[40%] h-[40%] ${darkMode ? 'bg-sky-900/20' : 'bg-sky-100/50'} rounded-full blur-3xl animate-pulse`} />
@@ -1563,7 +1563,7 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-[48px] p-12 shadow-2xl shadow-neutral-200/50 dark:shadow-neutral-950/50 border border-neutral-100 dark:border-neutral-800 relative z-10"
+        className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-[32px] sm:rounded-[48px] p-8 sm:p-12 shadow-2xl shadow-neutral-200/50 dark:shadow-neutral-950/50 border border-neutral-100 dark:border-neutral-800 relative z-10 my-auto"
       >
         <div className="text-center space-y-4 mb-10">
           <div className="bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white p-3 rounded-[1.25rem] shadow-[0_0_40px_-10px_rgba(16,185,129,0.3)] border border-neutral-100 dark:border-neutral-800 flex items-center justify-center mx-auto w-20 h-20 transition-all hover:scale-110 duration-500">
