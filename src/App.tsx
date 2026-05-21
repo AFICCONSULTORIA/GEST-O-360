@@ -1672,19 +1672,19 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
   return (
     <div className="fixed inset-0 z-[100] bg-white print:bg-white text-black print:text-black overflow-y-auto">
       {/* Only visible on screen, hidden on print */}
-      <div className="fixed top-0 left-0 right-0 bg-neutral-100 border-b border-neutral-200 p-4 flex gap-4 print:hidden z-10 items-center justify-between shadow-sm">
-        <div className="flex gap-4 flex-1">
+      <div className="sticky top-0 bg-neutral-100 border-b border-neutral-200 p-4 flex flex-col md:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-sm">
+        <div className="flex flex-wrap gap-4 flex-1 w-full">
           <input 
             type="text" 
             placeholder="Buscar no relatório..." 
             value={filterSearch}
             onChange={e => setFilterSearch(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm w-64"
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm flex-1 min-w-[200px]"
           />
           <select 
             value={filterDept} 
             onChange={e => setFilterDept(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm flex-1 min-w-[150px]"
           >
             <option value="Todos">Todos os Departamentos</option>
             {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
@@ -1692,7 +1692,7 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
           <select 
             value={filterCond} 
             onChange={e => setFilterCond(e.target.value)}
-            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm flex-1 min-w-[150px]"
           >
             <option value="Todos">Todos os Estados</option>
             <option value="Excelente">Excelente</option>
@@ -1701,9 +1701,9 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
             <option value="Muito Ruim">Muito Ruim</option>
           </select>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-4 w-full md:w-auto justify-end">
           <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800">
-            <Download size={16} /> Imprimir / Salvar PDF
+            <Download size={16} /> <span className="hidden sm:inline">Imprimir / Salvar PDF</span><span className="sm:hidden">Imprimir</span>
           </button>
           <button onClick={onClose} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200">
             <X size={16} /> Fechar
@@ -1712,7 +1712,7 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
       </div>
 
       {/* Report Content */}
-      <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] mt-16 print:mt-0">
+      <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] print:p-0 print:m-0">
         <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
           <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
           <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
