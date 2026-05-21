@@ -155,7 +155,7 @@ export interface PatrimonioItem {
   code: string;
   objectName: string;
   location: string;
-  status: 'Servível' | 'Inservível';
+  status: 'Servível' | 'Inservível' | 'Ocioso' | 'Em Manutenção' | 'Baixado';
   condition: 'Excelente' | 'Bom' | 'Ruim' | 'Muito Ruim';
   department: string;
   year: number;
@@ -3190,6 +3190,9 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
                     >
                       <option value="Servível">Servível</option>
                       <option value="Inservível">Inservível</option>
+                      <option value="Ocioso">Ocioso</option>
+                      <option value="Em Manutenção">Em Manutenção</option>
+                      <option value="Baixado">Baixado</option>
                     </select>
                   </div>
                   <div>
