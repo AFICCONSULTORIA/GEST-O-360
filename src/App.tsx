@@ -1667,7 +1667,7 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
   }, [activeReport]);
 
   if (activeReport === 'patrimonio') {
-    const totalValue = patrimonioItems.reduce((acc, item) => acc + item.valor, 0);
+    const servivelCount = patrimonioItems.filter(item => item.status === 'Servível').length;
 
     return (
       <div className="fixed inset-0 z-[100] bg-white print:bg-white text-black print:text-black overflow-y-auto">
@@ -1694,9 +1694,9 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
               <p className="text-2xl font-black">{patrimonioItems.length}</p>
             </div>
             <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Valor Total do Patrimônio</p>
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Itens Servíveis</p>
               <p className="text-2xl font-black">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}
+                {servivelCount}
               </p>
             </div>
           </div>
@@ -1704,21 +1704,21 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
           <table className="w-full text-left text-sm border-collapse">
             <thead>
               <tr className="border-b-2 border-neutral-800">
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Tombamento</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Descrição</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Categoria</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Código</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Objeto</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Departamento</th>
                 <th className="py-3 px-2 font-black uppercase tracking-widest">Estado</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Valor</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Ano</th>
               </tr>
             </thead>
             <tbody>
               {patrimonioItems.map((item) => (
                 <tr key={item.id} className="border-b border-neutral-200">
-                  <td className="py-3 px-2 font-mono text-xs">{item.tombamento}</td>
-                  <td className="py-3 px-2 font-bold">{item.descricao}</td>
-                  <td className="py-3 px-2 text-neutral-600">{item.categoria}</td>
-                  <td className="py-3 px-2 text-neutral-600">{item.estadoConservacao}</td>
-                  <td className="py-3 px-2 font-mono text-right">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}</td>
+                  <td className="py-3 px-2 font-mono text-xs">{item.code}</td>
+                  <td className="py-3 px-2 font-bold">{item.objectName}</td>
+                  <td className="py-3 px-2 text-neutral-600">{item.department}</td>
+                  <td className="py-3 px-2 text-neutral-600">{item.condition}</td>
+                  <td className="py-3 px-2 font-mono text-right">{item.year}</td>
                 </tr>
               ))}
               {patrimonioItems.length === 0 && (
@@ -1769,9 +1769,9 @@ const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] 
               <span className="font-mono font-bold dark:text-white">{patrimonioItems.length}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">Valor Total</span>
+              <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">Servíveis</span>
               <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(patrimonioItems.reduce((acc, item) => acc + item.valor, 0))}
+                {patrimonioItems.filter(item => item.status === 'Servível').length}
               </span>
             </div>
           </div>
