@@ -3906,7 +3906,9 @@ export default function App() {
                 {/* Desktop Navigation */}
                 <div className="hidden lg:flex items-center gap-2">
                   {NAVBAR_CATEGORIES.map((category) => {
-                    const isActiveCategory = category.items.some(i => i.id === activeView);
+                    const allowedItems = category.items.filter(item => currentUser?.permissions?.includes(item.id as View) || currentUser?.role === 'Super Admin');
+                    if (allowedItems.length === 0) return null;
+                    const isActiveCategory = allowedItems.some(i => i.id === activeView);
                     
                     return (
                       <div key={category.id} className="relative">
@@ -3936,7 +3938,7 @@ export default function App() {
                           >
                             <div className="pt-2">
                               <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-100 dark:border-neutral-800 shadow-xl overflow-hidden relative z-40 p-2">
-                                {category.items.map((item) => (
+                                {allowedItems.map((item) => (
                                   <button
                                     key={item.id}
                                     onClick={() => {
@@ -4037,13 +4039,17 @@ export default function App() {
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-6">
-                    {NAVBAR_CATEGORIES.map((category) => (
+                    {NAVBAR_CATEGORIES.map((category) => {
+                      const allowedItems = category.items.filter(item => currentUser?.permissions?.includes(item.id as View) || currentUser?.role === 'Super Admin');
+                      if (allowedItems.length === 0) return null;
+
+                      return (
                       <div key={category.id} className="space-y-2">
                         <h3 className="px-3 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 flex items-center gap-2">
                           <category.icon size={12} /> {category.label}
                         </h3>
                         <div className="space-y-1">
-                          {category.items.map((item) => (
+                          {allowedItems.map((item) => (
                             <button
                               key={item.id}
                               onClick={() => {
@@ -4062,7 +4068,7 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </motion.div>
               </>
