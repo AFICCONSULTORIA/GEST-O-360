@@ -1654,6 +1654,92 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   );
 };
 
+const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: PatrimonioItem[], filters?: { dept?: string, cond?: string, search?: string } }) => {
+  const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
+  
+  return (
+    <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+      <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
+        <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
+        <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+        
+        {/* Active Filters Display */}
+        {filters && (filters.dept !== 'Todos' || filters.cond !== 'Todos' || filters.search) && (
+          <div className="mt-4 flex flex-wrap justify-center gap-3 print:hidden">
+            {filters.dept && filters.dept !== 'Todos' && (
+              <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                Departamento: {filters.dept}
+              </span>
+            )}
+            {filters.cond && filters.cond !== 'Todos' && (
+              <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                Estado: {filters.cond}
+              </span>
+            )}
+            {filters.search && (
+              <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                Busca: "{filters.search}"
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between mb-8">
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens Listados</p>
+          <p className="text-2xl font-black">{filteredItems.length}</p>
+        </div>
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Itens Servíveis</p>
+          <p className="text-2xl font-black">
+            {servivelCount}
+          </p>
+        </div>
+      </div>
+
+      <table className="w-full text-left text-sm border-collapse">
+        <thead>
+          <tr className="border-b-2 border-neutral-800">
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Código</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Objeto</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Departamento</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Estado</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Ano</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredItems.map((item) => (
+            <tr key={item.id} className="border-b border-neutral-200">
+              <td className="py-3 px-2 font-mono text-xs">{item.code}</td>
+              <td className="py-3 px-2 font-bold">{item.objectName}</td>
+              <td className="py-3 px-2 text-neutral-600">{item.department}</td>
+              <td className="py-3 px-2 text-neutral-600">{item.condition}</td>
+              <td className="py-3 px-2 font-mono text-right">{item.year}</td>
+            </tr>
+          ))}
+          {filteredItems.length === 0 && (
+            <tr>
+              <td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum item encontrado com os filtros atuais.</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+
+      <div className="mt-20 pt-8 border-t border-neutral-200 flex justify-around text-center">
+        <div>
+          <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
+          <p className="text-xs font-bold uppercase tracking-widest">Responsável pelo Patrimônio</p>
+        </div>
+        <div>
+          <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
+          <p className="text-xs font-bold uppercase tracking-widest">Gestor da Unidade</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: PatrimonioItem[], onClose: () => void }) => {
   const [filterDept, setFilterDept] = React.useState<string>('Todos');
   const [filterCond, setFilterCond] = React.useState<string>('Todos');
@@ -1666,7 +1752,6 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
     return true;
   });
 
-  const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
   const uniqueDepts = Array.from(new Set(patrimonioItems.map(i => i.department)));
 
   return (
@@ -1711,86 +1796,10 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
         </div>
       </div>
 
-      {/* Report Content */}
-      <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] print:p-0 print:m-0">
-        <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
-          <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
-          <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
-          
-          {/* Active Filters Display */}
-          {(filterDept !== 'Todos' || filterCond !== 'Todos' || filterSearch) && (
-            <div className="mt-4 flex flex-wrap justify-center gap-3">
-              {filterDept !== 'Todos' && (
-                <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
-                  Departamento: {filterDept}
-                </span>
-              )}
-              {filterCond !== 'Todos' && (
-                <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
-                  Estado: {filterCond}
-                </span>
-              )}
-              {filterSearch && (
-                <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
-                  Busca: "{filterSearch}"
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="flex justify-between mb-8">
-          <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
-            <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens Cadastrados</p>
-            <p className="text-2xl font-black">{filteredItems.length}</p>
-          </div>
-          <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
-            <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Itens Servíveis</p>
-            <p className="text-2xl font-black">
-              {servivelCount}
-            </p>
-          </div>
-        </div>
-
-        <table className="w-full text-left text-sm border-collapse">
-          <thead>
-            <tr className="border-b-2 border-neutral-800">
-              <th className="py-3 px-2 font-black uppercase tracking-widest">Código</th>
-              <th className="py-3 px-2 font-black uppercase tracking-widest">Objeto</th>
-              <th className="py-3 px-2 font-black uppercase tracking-widest">Departamento</th>
-              <th className="py-3 px-2 font-black uppercase tracking-widest">Estado</th>
-              <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Ano</th>
-            </tr>
-          </thead>
-            <tbody>
-              {filteredItems.map((item) => (
-                <tr key={item.id} className="border-b border-neutral-200">
-                  <td className="py-3 px-2 font-mono text-xs">{item.code}</td>
-                  <td className="py-3 px-2 font-bold">{item.objectName}</td>
-                  <td className="py-3 px-2 text-neutral-600">{item.department}</td>
-                  <td className="py-3 px-2 text-neutral-600">{item.condition}</td>
-                  <td className="py-3 px-2 font-mono text-right">{item.year}</td>
-                </tr>
-              ))}
-              {filteredItems.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum item encontrado com os filtros atuais.</td>
-                </tr>
-              )}
-            </tbody>
-        </table>
-
-        <div className="mt-20 pt-8 border-t border-neutral-200 flex justify-around text-center">
-          <div>
-            <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
-            <p className="text-xs font-bold uppercase tracking-widest">Responsável pelo Patrimônio</p>
-          </div>
-          <div>
-            <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
-            <p className="text-xs font-bold uppercase tracking-widest">Gestor da Unidade</p>
-          </div>
-        </div>
-      </div>
+      <PatrimonioPrintLayout 
+        filteredItems={filteredItems} 
+        filters={{ dept: filterDept, cond: filterCond, search: filterSearch }} 
+      />
     </div>
   );
 };
@@ -2837,7 +2846,6 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
 const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void }) => {
   const [search, setSearch] = React.useState('');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
-  const [isPrinting, setIsPrinting] = React.useState(false);
   const [imageModalItem, setImageModalItem] = React.useState<PatrimonioItem | null>(null);
   const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
     itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: ''
@@ -2853,7 +2861,8 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
   );
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 relative">
+    <>
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 relative print:hidden">
       <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div>
           <h2 className="text-2xl font-bold dark:text-neutral-100">Controle de Patrimônio</h2>
@@ -2861,7 +2870,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
         </div>
         <div className="flex gap-3">
           <button 
-            onClick={() => setIsPrinting(true)}
+            onClick={() => window.print()}
             className="bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-6 py-2.5 rounded-2xl text-sm font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2"
           >
             <Download size={18} />
@@ -2876,8 +2885,6 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
           </button>
         </div>
       </div>
-
-      {isPrinting && <PatrimonioPrintView patrimonioItems={items} onClose={() => setIsPrinting(false)} />}
 
       <div className="flex gap-4">
         <div className="relative flex-1">
@@ -3273,6 +3280,11 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
         )}
       </AnimatePresence>
     </div>
+    
+    <div className="hidden print:block absolute top-0 left-0 w-full bg-white z-[9999] min-h-screen pb-10">
+      <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ search: search }} />
+    </div>
+    </>
   );
 };
 
@@ -3699,7 +3711,7 @@ export default function App() {
 
   return (
     <div className={darkMode ? 'dark' : ''}>
-      <div className="min-h-screen bg-[#F9F9F8] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex transition-colors duration-500">
+      <div className="min-h-screen bg-[#F9F9F8] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex transition-colors duration-500 print:bg-white">
       {/* New Control Modal */}
       <AnimatePresence>
         {isNewControlModalOpen && (
@@ -3727,7 +3739,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm print:hidden"
             onClick={() => setViewingControl(null)}
           >
             <motion.div 
@@ -3903,8 +3915,8 @@ export default function App() {
           </div>
         </nav>
 
-        <div className="flex-1 overflow-y-auto w-full relative z-10 custom-scrollbar">
-          <main className="min-h-full p-6 lg:p-10 pb-20">
+        <div className="flex-1 overflow-y-auto w-full relative z-10 custom-scrollbar print:overflow-visible print:h-auto">
+          <main className="min-h-full p-6 lg:p-10 pb-20 print:p-0 print:pb-0">
             <div className="max-w-[1400px] mx-auto w-full">
             {/* View Content */}
             <AnimatePresence mode="wait">
