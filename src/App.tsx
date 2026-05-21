@@ -2449,8 +2449,8 @@ const CertificatesModule = () => {
                 certificates: comp.certificates
               });
               if (error) {
-                showToast("Erro ao cadastrar empresa. Certifique-se de ter criado a tabela company_certificates.", "error");
-                console.error(error);
+                showToast(`Erro do Banco: ${error.message} (Código: ${error.code})`, "error");
+                console.error("Supabase Insert Error:", error);
               } else {
                 showToast("Empresa cadastrada com sucesso!", "success");
               }
