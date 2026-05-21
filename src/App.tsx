@@ -2951,7 +2951,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
                           multiple
                           className="hidden"
                           onChange={(e) => {
-                            const files = Array.from(e.target.files || []);
+                            const files = Array.from(e.target.files || []) as File[];
                             if (!files.length) return;
                             
                             const currentImages = formData.imageUrls || [];
