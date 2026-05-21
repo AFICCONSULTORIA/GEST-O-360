@@ -1890,6 +1890,7 @@ interface CompanyCertificates {
     [key in 'Trabalhista' | 'Federal' | 'Estadual' | 'Municipal' | 'FGTS']: {
       issueDate: string;
       expiryDate: string;
+      fileUrl?: string;
     } | null;
   };
 }
@@ -1927,6 +1928,83 @@ const MOCK_COMPANIES: CompanyCertificates[] = [
   }
 ];
 
+const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, onClose: () => void, onConfirm: (expiryDate: string, file: File | null) => void }) => {
+  const [expiryDate, setExpiryDate] = React.useState('');
+  const [file, setFile] = React.useState<File | null>(null);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-8"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="text-center space-y-2">
+          <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-neutral-100 dark:border-neutral-700">
+            <FileText size={32} className="text-neutral-400 dark:text-neutral-500" />
+          </div>
+          <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Anexar Certidão</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">{title}</p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-2">Data de Vencimento</label>
+            <input 
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white outline-none dark:text-white"
+            />
+          </div>
+          
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-2xl p-6 text-center hover:border-neutral-900 dark:hover:border-white transition-colors cursor-pointer"
+          >
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              onChange={e => e.target.files && setFile(e.target.files[0])}
+            />
+            <Download size={24} className="mx-auto mb-2 text-neutral-400" />
+            <p className="text-sm font-bold text-neutral-900 dark:text-white">
+              {file ? file.name : "Clique para selecionar o arquivo"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-4">
+          <button 
+            disabled={!expiryDate || isUploading}
+            onClick={async () => {
+              setIsUploading(true);
+              await onConfirm(expiryDate, file);
+              setIsUploading(false);
+            }}
+            className="flex-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-4 rounded-[20px] font-black uppercase tracking-widest text-xs disabled:opacity-50 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all"
+          >
+            {isUploading ? 'Enviando...' : 'Salvar Certidão'}
+          </button>
+          <button 
+            onClick={onClose}
+            className="px-8 py-4 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 rounded-[20px] font-bold text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+          >
+            Cancelar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: CompanyCertificates, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void }) => {
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
 
@@ -1934,17 +2012,26 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
 
   if (uploadingCert) {
     return (
-      <AttachmentModal 
-        title={`Anexar ${uploadingCert}`}
+      <CertificateUploadModal 
+        title={uploadingCert}
         onClose={() => setUploadingCert(null)}
-        onConfirm={() => {
-          const dt = new Date();
-          const issue = dt.toISOString().split('T')[0];
-          dt.setFullYear(dt.getFullYear() + 1);
-          const expiry = dt.toISOString().split('T')[0];
+        onConfirm={async (expiryDate, file) => {
+          let fileUrl = undefined;
+          if (file) {
+             const filename = `${company.id}-${uploadingCert}-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+             const { error } = await supabase.storage.from('certidoes').upload(filename, file);
+             if (error) {
+               console.error(error);
+               alert("Erro ao salvar arquivo. Certifique-se de que o bucket 'certidoes' público existe no Supabase. A certidão será salva sem o arquivo.");
+             } else {
+               const { data: publicUrlData } = supabase.storage.from('certidoes').getPublicUrl(filename);
+               fileUrl = publicUrlData.publicUrl;
+             }
+          }
+          const issue = new Date().toISOString().split('T')[0];
           
           const updated = { ...company };
-          updated.certificates = { ...updated.certificates, [uploadingCert]: { issueDate: issue, expiryDate: expiry } };
+          updated.certificates = { ...updated.certificates, [uploadingCert]: { issueDate: issue, expiryDate: expiryDate, fileUrl } };
           onUpdate(updated);
           setUploadingCert(null);
         }}
@@ -2000,12 +2087,15 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
                 
                 <div className="flex gap-2">
                   {isPresent && (
-                    <button 
-                      onClick={() => alert(`Imprimindo via da certidão ${certType}...`)}
+                    <a 
+                      href={cert.fileUrl || '#'} 
+                      target={cert.fileUrl ? "_blank" : undefined} 
+                      rel="noreferrer"
+                      onClick={(e) => { if (!cert.fileUrl) { e.preventDefault(); alert('Esta certidão foi salva sem um arquivo anexado.'); } }}
                       className="px-4 py-2 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold hover:text-neutral-900 dark:hover:text-white transition-all shadow-sm flex items-center gap-2"
                     >
                       <Download size={14} /> Via
-                    </button>
+                    </a>
                   )}
                   <button 
                     onClick={() => setUploadingCert(certType)}
