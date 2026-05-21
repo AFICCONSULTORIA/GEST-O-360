@@ -1654,7 +1654,96 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   );
 };
 
-const ReportsModule = () => {
+const ReportsModule = ({ patrimonioItems }: { patrimonioItems: PatrimonioItem[] }) => {
+  const [activeReport, setActiveReport] = React.useState<'patrimonio' | null>(null);
+
+  React.useEffect(() => {
+    if (activeReport) {
+      const timer = setTimeout(() => {
+        window.print();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeReport]);
+
+  if (activeReport === 'patrimonio') {
+    const totalValue = patrimonioItems.reduce((acc, item) => acc + item.valor, 0);
+
+    return (
+      <div className="fixed inset-0 z-[100] bg-white print:bg-white text-black print:text-black overflow-y-auto">
+        {/* Only visible on screen, hidden on print */}
+        <div className="fixed top-4 right-4 flex gap-4 print:hidden">
+          <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2">
+            <Download size={16} /> Imprimir / Salvar PDF
+          </button>
+          <button onClick={() => setActiveReport(null)} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200">
+            <X size={16} /> Fechar
+          </button>
+        </div>
+
+        {/* Report Content */}
+        <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm]">
+          <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
+            <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
+            <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+          </div>
+
+          <div className="flex justify-between mb-8">
+            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens Cadastrados</p>
+              <p className="text-2xl font-black">{patrimonioItems.length}</p>
+            </div>
+            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
+              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Valor Total do Patrimônio</p>
+              <p className="text-2xl font-black">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}
+              </p>
+            </div>
+          </div>
+
+          <table className="w-full text-left text-sm border-collapse">
+            <thead>
+              <tr className="border-b-2 border-neutral-800">
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Tombamento</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Descrição</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Categoria</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest">Estado</th>
+                <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {patrimonioItems.map((item) => (
+                <tr key={item.id} className="border-b border-neutral-200">
+                  <td className="py-3 px-2 font-mono text-xs">{item.tombamento}</td>
+                  <td className="py-3 px-2 font-bold">{item.descricao}</td>
+                  <td className="py-3 px-2 text-neutral-600">{item.categoria}</td>
+                  <td className="py-3 px-2 text-neutral-600">{item.estadoConservacao}</td>
+                  <td className="py-3 px-2 font-mono text-right">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.valor)}</td>
+                </tr>
+              ))}
+              {patrimonioItems.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum item cadastrado no sistema.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          <div className="mt-20 pt-8 border-t border-neutral-200 flex justify-around text-center">
+            <div>
+              <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
+              <p className="text-xs font-bold uppercase tracking-widest">Responsável pelo Patrimônio</p>
+            </div>
+            <div>
+              <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
+              <p className="text-xs font-bold uppercase tracking-widest">Gestor da Unidade</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
@@ -1662,24 +1751,46 @@ const ReportsModule = () => {
           <h2 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Relatórios <span className="text-neutral-400 font-normal">Inteligentes</span></h2>
           <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Central de emissão de relatórios personalizados e automatizados.</p>
         </div>
-        <div className="flex gap-3">
-          <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2">
-            <Plus size={16} /> Novo Relatório
-          </button>
-        </div>
       </div>
 
-      <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm p-8 flex flex-col items-center justify-center text-center min-h-[400px]">
-        <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-6 text-neutral-300 dark:text-neutral-600">
-          <PieChartIcon size={40} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Card: Patrimônio */}
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-emerald-500/30 transition-colors shadow-sm hover:shadow-md">
+          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center mb-4">
+            <Package size={24} />
+          </div>
+          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Controle Patrimonial</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
+            Relatório completo com a relação de todos os bens cadastrados, seus valores, estado de conservação e número de tombamento.
+          </p>
+          <div className="bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-xl mb-6">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">Itens</span>
+              <span className="font-mono font-bold dark:text-white">{patrimonioItems.length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold uppercase tracking-widest text-neutral-500">Valor Total</span>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(patrimonioItems.reduce((acc, item) => acc + item.valor, 0))}
+              </span>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveReport('patrimonio')}
+            className="w-full py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2"
+          >
+            <Download size={16} /> Emitir Relatório
+          </button>
         </div>
-        <h3 className="text-xl font-bold text-neutral-900 dark:text-neutral-100 mb-2">Módulo em Desenvolvimento</h3>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md">
-          A central de relatórios está sendo construída. Futuramente você poderá emitir relatórios e dashboards consolidados de todas as secretarias e departamentos, parametrizados dinamicamente.
-        </p>
-        <button onClick={() => alert("Botão em desenvolvimento")} className="mt-8 px-8 py-3 bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all">
-          Notificar Lançamento
-        </button>
+
+        {/* Placeholder for future reports */}
+        <div className="bg-neutral-50 dark:bg-neutral-800/20 rounded-3xl border border-dashed border-neutral-200 dark:border-neutral-800 p-6 flex flex-col items-center justify-center text-center min-h-[300px]">
+          <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-800 text-neutral-400 rounded-xl flex items-center justify-center mb-4">
+            <Plus size={24} />
+          </div>
+          <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest">Em Breve</p>
+          <p className="text-xs text-neutral-500 mt-2">Novos relatórios automatizados serão adicionados aqui.</p>
+        </div>
       </div>
     </div>
   );
@@ -3850,7 +3961,7 @@ export default function App() {
             )}
             {activeView === 'contracts' && <ContractsModule />}
             {activeView === 'education' && <EducationModule />}
-            {activeView === 'reports' && <ReportsModule />}
+            {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} />}
             {activeView === 'certificates' && <CertificatesModule />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
