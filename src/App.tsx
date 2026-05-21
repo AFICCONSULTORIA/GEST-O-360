@@ -2405,11 +2405,17 @@ const CertificatesModule = () => {
             onUpdate={async (updatedCompany) => {
               setCompanies(companies.map(c => c.id === updatedCompany.id ? updatedCompany : c));
               setManagingCompany(updatedCompany);
-              await supabase.from('company_certificates').update({
+              const { error } = await supabase.from('company_certificates').update({
                 company_name: updatedCompany.companyName,
                 cnpj: updatedCompany.cnpj,
                 certificates: updatedCompany.certificates
-              }).eq('id', updatedCompany.id).then(({ error }) => { if (error) console.error(error) });
+              }).eq('id', updatedCompany.id);
+              if (error) {
+                showToast("Erro ao salvar certidões no banco de dados.", "error");
+                console.error(error);
+              } else {
+                showToast("Certidão salva com sucesso!", "success");
+              }
             }}
           />
         )}
@@ -2422,12 +2428,18 @@ const CertificatesModule = () => {
             onConfirm={async (comp) => {
               setCompanies([comp, ...companies]);
               setIsAddingCompany(false);
-              await supabase.from('company_certificates').insert({
+              const { error } = await supabase.from('company_certificates').insert({
                 id: comp.id,
                 company_name: comp.companyName,
                 cnpj: comp.cnpj,
                 certificates: comp.certificates
-              }).then(({ error }) => { if (error) console.error(error) });
+              });
+              if (error) {
+                showToast("Erro ao cadastrar empresa. Certifique-se de ter criado a tabela company_certificates.", "error");
+                console.error(error);
+              } else {
+                showToast("Empresa cadastrada com sucesso!", "success");
+              }
             }}
           />
         )}
