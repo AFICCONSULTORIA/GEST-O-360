@@ -2379,13 +2379,32 @@ const CertificatesModule = () => {
                     <td className="px-4 py-4">{renderCertBadge(comp.certificates.Municipal)}</td>
                     <td className="px-4 py-4">{renderCertBadge(comp.certificates.FGTS)}</td>
                     <td className="px-4 py-4 text-right align-middle">
-                      <button 
-                        onClick={() => setManagingCompany(comp)}
-                        className="p-2 text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all" 
-                        title="Gerenciar Certidões"
-                      >
-                        <ExternalLink size={18} />
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button 
+                          onClick={async () => {
+                            if(confirm("Tem certeza que deseja excluir esta empresa? Todas as certidões atreladas a ela serão perdidas.")) {
+                               const { error } = await supabase.from('company_certificates').delete().eq('id', comp.id);
+                               if (error) {
+                                 showToast(`Erro ao excluir: ${error.message}`, "error");
+                               } else {
+                                 setCompanies(companies.filter(c => c.id !== comp.id));
+                                 showToast("Empresa excluída com sucesso!", "success");
+                               }
+                            }
+                          }}
+                          className="p-2 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all" 
+                          title="Excluir Empresa"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => setManagingCompany(comp)}
+                          className="p-2 text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all" 
+                          title="Gerenciar Certidões"
+                        >
+                          <ExternalLink size={18} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -2647,8 +2666,14 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
 
   const handleInstDelete = async (id: string) => {
     if (confirm('Tem certeza que deseja remover esta instituição?')) {
-      setInstitutions(institutions.filter(i => i.id !== id));
-      await supabase.from('institutions').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) });
+      const { error } = await supabase.from('institutions').delete().eq('id', id);
+      if (error) {
+        showToast(`Erro ao excluir instituição: ${error.message}`, 'error');
+        console.error(error);
+      } else {
+        setInstitutions(institutions.filter(i => i.id !== id));
+        showToast('Instituição removida com sucesso!', 'success');
+      }
     }
   };
 
