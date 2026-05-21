@@ -1547,10 +1547,6 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
     }
   };
 
-  const handleDemoMode = () => {
-    setLoading(true);
-    setTimeout(onLogin, 500);
-  };
 
   return (
     <div className="min-h-[100dvh] bg-[#F9F9F8] dark:bg-neutral-950 grid place-items-center p-4 py-8 transition-colors overflow-y-auto overflow-x-hidden">
@@ -1638,13 +1634,7 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
         </form>
 
         <div className="mt-8 pt-8 border-t border-neutral-50 dark:border-neutral-800 space-y-4">
-          <button 
-            onClick={handleDemoMode}
-            className="w-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-all border border-emerald-100 dark:border-emerald-500/20 flex items-center justify-center gap-2"
-          >
-            <TrendingUp size={16} />
-            Modo de Demonstração
-          </button>
+
           <p className="text-[10px] text-neutral-400 font-bold text-center uppercase tracking-widest">
             Acesso Restrito ao Setor de Controladoria
           </p>
