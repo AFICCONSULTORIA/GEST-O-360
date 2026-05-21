@@ -45,7 +45,9 @@ import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, 
   Moon,
   ShoppingCart,
   PieChart as PieChartIcon,
-  FileCheck
+  FileCheck,
+  LogOut,
+  Truck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -62,7 +64,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings';
+type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates';
 
 interface Protocol {
   id: string;
@@ -145,6 +147,29 @@ const MOCK_ORDERS: OrderItem[] = [
     dateRequested: '2024-05-18',
     status: 'em_cotacao'
   }
+];
+
+export interface PatrimonioItem {
+  id: string;
+  itemType: 'Geral' | 'Veículo';
+  code: string;
+  objectName: string;
+  location: string;
+  status: 'Servível' | 'Inservível';
+  condition: 'Excelente' | 'Bom' | 'Ruim' | 'Muito Ruim';
+  department: string;
+  year: number;
+  imageUrls?: string[];
+  plate?: string;
+  chassis?: string;
+  model?: string;
+}
+
+const MOCK_PATRIMONIO: PatrimonioItem[] = [
+  { id: 'pat1', itemType: 'Geral', code: '001/2026', objectName: 'Mesa de Escritório Executiva', location: 'Gabinete do Prefeito', status: 'Servível', condition: 'Bom', department: 'Gabinete', year: 2023, imageUrls: ['https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&q=80&w=300'] },
+  { id: 'pat2', itemType: 'Geral', code: '002/2026', objectName: 'Notebook Dell Latitude', location: 'Sala TI', status: 'Servível', condition: 'Excelente', department: 'Administração', year: 2025, imageUrls: ['https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&q=80&w=300'] },
+  { id: 'pat3', itemType: 'Veículo', code: '003/2026', objectName: 'Ambulância Fiat Fiorino', location: 'Garagem Central', status: 'Inservível', condition: 'Muito Ruim', department: 'Saúde', year: 2015, plate: 'ABC-1234', chassis: '9BD123456789', model: 'Fiat Fiorino 1.4', imageUrls: ['https://images.unsplash.com/photo-1587560699334-bea93391dcef?auto=format&fit=crop&q=80&w=300'] },
+  { id: 'pat4', itemType: 'Geral', code: '004/2026', objectName: 'Cadeira Giratória', location: 'Recepção', status: 'Servível', condition: 'Ruim', department: 'Assistência Social', year: 2018, imageUrls: ['https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&q=80&w=300'] }
 ];
 
 const MOCK_CONTROLS: CheckItem[] = [
@@ -255,6 +280,8 @@ const NAVBAR_CATEGORIES = [
       { id: 'orders', label: 'Pedidos', icon: ShoppingCart },
       { id: 'contracts', label: 'Licitações & Contratos', icon: Target },
       { id: 'reports', label: 'Relatórios', icon: PieChartIcon },
+      { id: 'patrimonio', label: 'Patrimônio', icon: Package },
+      { id: 'templates', label: 'Modelos', icon: FileBadge },
     ]
   },
   {
@@ -2023,7 +2050,7 @@ const CertificatesModule = () => {
                 company_name: updatedCompany.companyName,
                 cnpj: updatedCompany.cnpj,
                 certificates: updatedCompany.certificates
-              }).eq('id', updatedCompany.id).catch(console.error);
+              }).eq('id', updatedCompany.id).then(({ error }) => { if (error) console.error(error) });
             }}
           />
         )}
@@ -2041,7 +2068,7 @@ const CertificatesModule = () => {
                 company_name: comp.companyName,
                 cnpj: comp.cnpj,
                 certificates: comp.certificates
-              }).catch(console.error);
+              }).then(({ error }) => { if (error) console.error(error) });
             }}
           />
         )}
@@ -2069,14 +2096,20 @@ const PlaceholderModule = ({ title }: { title: string }) => (
   </div>
 );
 
+export interface Institution {
+  id: string;
+  name: string;
+}
+
 interface AdminUser {
   id: string;
   name: string;
   email: string;
-  role: 'Admin' | 'Visualizador' | 'Editor';
+  role: 'Super Admin' | 'Admin' | 'Visualizador' | 'Editor';
   status: 'Ativo' | 'Inativo';
   lastLogin: string;
   permissions: View[];
+  institution_id?: string;
 }
 
 const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
@@ -2106,13 +2139,20 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'settings', label: 'Configurações' }
 ];
 
-const MOCK_USERS: AdminUser[] = [
-  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'admin_financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings'] },
-  { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'] },
-  { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'] }
+const MOCK_INSTITUTIONS: Institution[] = [
+  { id: 'inst_1', name: 'Prefeitura Municipal' },
+  { id: 'inst_2', name: 'Câmara Municipal' },
+  { id: 'inst_3', name: 'Secretaria de Saúde' }
 ];
 
-const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u: AdminUser[]) => void }) => {
+const MOCK_USERS: AdminUser[] = [
+  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'admin_financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio'], institution_id: 'inst_1' },
+  { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'], institution_id: 'inst_1' },
+  { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'], institution_id: 'inst_2' }
+];
+
+const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { users: AdminUser[], setUsers: (u: AdminUser[]) => void, institutions: Institution[], setInstitutions: (i: Institution[]) => void }) => {
+  const [activeTab, setActiveTab] = React.useState<'users' | 'institutions'>('users');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<AdminUser | null>(null);
   const [managingPermissionsUser, setManagingPermissionsUser] = React.useState<AdminUser | null>(null);
@@ -2124,7 +2164,8 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
     role: 'Visualizador' as AdminUser['role'],
     status: 'Ativo' as AdminUser['status'],
     password: '',
-    permissions: [] as View[]
+    permissions: [] as View[],
+    institution_id: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2138,7 +2179,8 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
         email: updatedUser.email,
         role: updatedUser.role,
         status: updatedUser.status,
-        permissions: updatedUser.permissions
+        permissions: updatedUser.permissions,
+        institution_id: updatedUser.institution_id || null
       }).eq('id', updatedUser.id);
     } else {
       const newUser: AdminUser = {
@@ -2155,7 +2197,8 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
         role: newUser.role,
         status: newUser.status,
         last_login: newUser.lastLogin,
-        permissions: newUser.permissions
+        permissions: newUser.permissions,
+        institution_id: newUser.institution_id || null
       });
     }
     setIsModalOpen(false);
@@ -2164,7 +2207,7 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
 
   const handleEdit = (u: AdminUser) => {
     setEditingUser(u);
-    setFormData({ name: u.name, email: u.email, role: u.role, status: u.status, password: '', permissions: u.permissions || [] });
+    setFormData({ name: u.name, email: u.email, role: u.role, status: u.status, password: '', permissions: u.permissions || [], institution_id: u.institution_id || '' });
     setIsModalOpen(true);
   };
 
@@ -2175,25 +2218,75 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
     }
   };
 
+  const [isInstModalOpen, setIsInstModalOpen] = React.useState(false);
+  const [editingInstitution, setEditingInstitution] = React.useState<Institution | null>(null);
+  const [instFormData, setInstFormData] = React.useState({ name: '' });
+
+  const handleInstSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingInstitution) {
+      const updated = { ...editingInstitution, ...instFormData };
+      setInstitutions(institutions.map(i => i.id === editingInstitution.id ? updated : i));
+      await supabase.from('institutions').update({ name: updated.name }).eq('id', updated.id).then(({ error }) => { if (error) console.error(error) });
+    } else {
+      const newInst: Institution = {
+        ...instFormData,
+        id: Math.random().toString(36).substr(2, 9)
+      };
+      setInstitutions([...institutions, newInst]);
+      await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name }).then(({ error }) => { if (error) console.error(error) });
+    }
+    setIsInstModalOpen(false);
+    setEditingInstitution(null);
+  };
+
+  const handleInstDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja remover esta instituição?')) {
+      setInstitutions(institutions.filter(i => i.id !== id));
+      await supabase.from('institutions').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) });
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Configurações</h2>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Gerencie os usuários e permissões do sistema.</p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Gerencie os usuários, instituições e permissões.</p>
+        </div>
+        <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl">
+          <button 
+            onClick={() => setActiveTab('users')}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'users' ? 'bg-white dark:bg-neutral-900 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+          >
+            Usuários
+          </button>
+          <button 
+            onClick={() => setActiveTab('institutions')}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'institutions' ? 'bg-white dark:bg-neutral-900 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+          >
+            Instituições
+          </button>
         </div>
         <button 
           onClick={() => {
-            setEditingUser(null);
-            setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [] });
-            setIsModalOpen(true);
+            if (activeTab === 'users') {
+              setEditingUser(null);
+              setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [], institution_id: '' });
+              setIsModalOpen(true);
+            } else {
+              setEditingInstitution(null);
+              setInstFormData({ name: '' });
+              setIsInstModalOpen(true);
+            }
           }}
           className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-neutral-900/20"
         >
-          <span className="flex items-center gap-2"><Plus size={16} /> Novo Usuário</span>
+          <span className="flex items-center gap-2"><Plus size={16} /> {activeTab === 'users' ? 'Novo Usuário' : 'Nova Instituição'}</span>
         </button>
       </div>
 
+      {activeTab === 'users' && (
       <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
@@ -2266,6 +2359,90 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
           </table>
         </div>
       </div>
+      )}
+
+      {activeTab === 'institutions' && (
+      <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Instituição</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {institutions.map(inst => (
+                <tr key={inst.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors">
+                  <td className="p-6">
+                    <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{inst.name}</p>
+                  </td>
+                  <td className="p-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => { setEditingInstitution(inst); setInstFormData({ name: inst.name }); setIsInstModalOpen(true); }} className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all">
+                        <Edit2 size={16} />
+                      </button>
+                      <button onClick={() => handleInstDelete(inst.id)} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
+
+      <AnimatePresence>
+        {isInstModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+            onClick={() => setIsInstModalOpen(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-8"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{editingInstitution ? 'Editar Instituição' : 'Nova Instituição'}</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Preencha o nome da instituição.</p>
+                </div>
+                <button onClick={() => setIsInstModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleInstSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nome da Instituição</label>
+                    <input 
+                      required
+                      type="text" 
+                      value={instFormData.name}
+                      onChange={e => setInstFormData({ name: e.target.value })}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                    />
+                  </div>
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsInstModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">Salvar Instituição</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isModalOpen && (
@@ -2327,6 +2504,19 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
                       />
                     </div>
                   )}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Instituição</label>
+                    <select 
+                      value={formData.institution_id}
+                      onChange={e => setFormData({...formData, institution_id: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                    >
+                      <option value="">Sem Instituição</option>
+                      {institutions.map(inst => (
+                        <option key={inst.id} value={inst.id}>{inst.name}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nível de Acesso</label>
@@ -2335,6 +2525,7 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
                         onChange={e => setFormData({...formData, role: e.target.value as any})}
                         className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
                       >
+                        <option value="Super Admin">Super Admin (Global)</option>
                         <option value="Admin">Admin</option>
                         <option value="Editor">Editor</option>
                         <option value="Visualizador">Visualizador</option>
@@ -2447,23 +2638,721 @@ const SettingsModule = ({ users, setUsers }: { users: AdminUser[], setUsers: (u:
   );
 };
 
+const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void }) => {
+  const [search, setSearch] = React.useState('');
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [imageModalItem, setImageModalItem] = React.useState<PatrimonioItem | null>(null);
+  const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
+    itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: ''
+  });
+  
+  const filteredItems = items.filter(i => 
+    i.objectName.toLowerCase().includes(search.toLowerCase()) || 
+    i.code.toLowerCase().includes(search.toLowerCase()) ||
+    i.department.toLowerCase().includes(search.toLowerCase()) ||
+    i.location.toLowerCase().includes(search.toLowerCase()) ||
+    (i.plate && i.plate.toLowerCase().includes(search.toLowerCase())) ||
+    (i.model && i.model.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  return (
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 relative">
+      <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+        <div>
+          <h2 className="text-2xl font-bold dark:text-neutral-100">Controle de Patrimônio</h2>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm">Gerencie os bens móveis, imóveis, equipamentos e veículos da administração.</p>
+        </div>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
+        >
+          <Package size={18} />
+          Novo Item
+        </button>
+      </div>
+
+      <div className="flex gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={20} />
+          <input 
+            type="text" 
+            placeholder="Buscar por nome, categoria ou localização..." 
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition-all dark:text-white"
+          />
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50">
+              <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Código / Objeto</th>
+              <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Local / Secretaria</th>
+              <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Condição</th>
+              <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest text-right">Status / Ano</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800">
+            {filteredItems.map(item => (
+              <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors">
+                <td className="px-8 py-5 flex items-center gap-4">
+                  {item.imageUrls && item.imageUrls.length > 0 ? (
+                    <div className="relative cursor-pointer hover:scale-105 transition-transform" onClick={() => setImageModalItem(item)}>
+                      <img 
+                        src={item.imageUrls[0]} 
+                        alt={item.objectName} 
+                        className="w-12 h-12 rounded-xl object-cover border border-neutral-200 dark:border-neutral-700 shadow-sm" 
+                      />
+                      {item.imageUrls.length > 1 && (
+                        <div className="absolute -bottom-1 -right-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[9px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white dark:border-neutral-900">
+                          +{item.imageUrls.length - 1}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center text-neutral-400">
+                      <Package size={20} />
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-mono text-xs text-neutral-500">{item.code}</p>
+                    <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{item.objectName}</p>
+                    {item.itemType === 'Veículo' && (
+                      <div className="flex gap-2 mt-1.5">
+                        <span className="text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700">Placa: {item.plate}</span>
+                        <span className="text-[10px] bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-0.5 rounded border border-neutral-200 dark:border-neutral-700">Modelo: {item.model}</span>
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td className="px-8 py-5">
+                  <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{item.location}</p>
+                  <p className="text-xs text-neutral-500">{item.department}</p>
+                </td>
+                <td className="px-8 py-5">
+                  <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${
+                    item.condition === 'Excelente' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' :
+                    item.condition === 'Bom' ? 'bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-400' :
+                    item.condition === 'Ruim' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' :
+                    'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400'
+                  }`}>
+                    {item.condition}
+                  </span>
+                </td>
+                <td className="px-8 py-5 text-right flex flex-col items-end gap-1">
+                  <span className={`text-[10px] uppercase font-bold px-3 py-1 rounded-full ${
+                    item.status === 'Servível' ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700' :
+                    'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30'
+                  }`}>
+                    {item.status}
+                  </span>
+                  <span className="text-xs font-mono text-neutral-400">Ano: {item.year}</span>
+                </td>
+              </tr>
+            ))}
+            {filteredItems.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-8 py-10 text-center text-neutral-500">Nenhum item encontrado.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <AnimatePresence>
+        {isModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+            onClick={() => setIsModalOpen(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-3xl rounded-[40px] p-10 shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Novo Item de Patrimônio</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Cadastre um novo bem para o controle da administração.</p>
+                </div>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  onAdd({
+                    ...formData,
+                    id: Math.random().toString(36).substr(2, 9)
+                  } as PatrimonioItem);
+                  setIsModalOpen(false);
+                  setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });
+                }}
+                className="space-y-6"
+              >
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Tipo de Bem</label>
+                  <div className="flex gap-4 mt-2">
+                    <label className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border-2 cursor-pointer transition-all ${formData.itemType === 'Geral' ? 'border-neutral-900 dark:border-white bg-neutral-900 dark:bg-white text-white dark:text-neutral-900' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 text-neutral-600 dark:text-neutral-400'}`}>
+                      <input type="radio" name="itemType" className="hidden" checked={formData.itemType === 'Geral'} onChange={() => setFormData({...formData, itemType: 'Geral'})} />
+                      <Package size={16} />
+                      <span className="text-sm font-bold">Patrimônio Geral</span>
+                    </label>
+                    <label className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl border-2 cursor-pointer transition-all ${formData.itemType === 'Veículo' ? 'border-neutral-900 dark:border-white bg-neutral-900 dark:bg-white text-white dark:text-neutral-900' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 text-neutral-600 dark:text-neutral-400'}`}>
+                      <input type="radio" name="itemType" className="hidden" checked={formData.itemType === 'Veículo'} onChange={() => setFormData({...formData, itemType: 'Veículo'})} />
+                      <Truck size={16} />
+                      <span className="text-sm font-bold">Veículo da Frota</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Código do Item</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="Ex: 015/2026"
+                      value={formData.code}
+                      onChange={e => setFormData({...formData, code: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Objeto</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="Ex: Cadeira Giratória / Ambulância"
+                      value={formData.objectName}
+                      onChange={e => setFormData({...formData, objectName: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                {formData.itemType === 'Veículo' && (
+                  <div className="grid grid-cols-3 gap-6 bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500 ml-1">Placa</label>
+                      <input 
+                        required={formData.itemType === 'Veículo'}
+                        type="text"
+                        placeholder="Ex: ABC-1234"
+                        value={formData.plate}
+                        onChange={e => setFormData({...formData, plate: e.target.value})}
+                        className="w-full mt-1 bg-white dark:bg-neutral-900 border border-indigo-100 dark:border-indigo-900/50 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white transition-all uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500 ml-1">Modelo</label>
+                      <input 
+                        required={formData.itemType === 'Veículo'}
+                        type="text"
+                        placeholder="Ex: Fiat Ducato"
+                        value={formData.model}
+                        onChange={e => setFormData({...formData, model: e.target.value})}
+                        className="w-full mt-1 bg-white dark:bg-neutral-900 border border-indigo-100 dark:border-indigo-900/50 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500 ml-1">Chassi</label>
+                      <input 
+                        required={formData.itemType === 'Veículo'}
+                        type="text"
+                        placeholder="Ex: 9BD..."
+                        value={formData.chassis}
+                        onChange={e => setFormData({...formData, chassis: e.target.value})}
+                        className="w-full mt-1 bg-white dark:bg-neutral-900 border border-indigo-100 dark:border-indigo-900/50 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-indigo-500/10 dark:text-white transition-all uppercase"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Secretaria</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="Ex: Administração"
+                      value={formData.department}
+                      onChange={e => setFormData({...formData, department: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Localização Específica</label>
+                    <input 
+                      required
+                      type="text"
+                      placeholder="Ex: Sala de Reuniões"
+                      value={formData.location}
+                      onChange={e => setFormData({...formData, location: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Status</label>
+                    <select 
+                      value={formData.status}
+                      onChange={e => setFormData({...formData, status: e.target.value as any})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    >
+                      <option value="Servível">Servível</option>
+                      <option value="Inservível">Inservível</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Condição</label>
+                    <select 
+                      value={formData.condition}
+                      onChange={e => setFormData({...formData, condition: e.target.value as any})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    >
+                      <option value="Excelente">Excelente</option>
+                      <option value="Bom">Bom</option>
+                      <option value="Ruim">Ruim</option>
+                      <option value="Muito Ruim">Muito Ruim</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Ano</label>
+                    <input 
+                      required
+                      type="number"
+                      value={formData.year}
+                      onChange={e => setFormData({...formData, year: Number(e.target.value)})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1 mb-1 block">Fotos do Item (Até 5)</label>
+                  <div className="flex flex-col gap-4">
+                    {(formData.imageUrls?.length || 0) < 5 && (
+                      <label className="cursor-pointer bg-neutral-50 dark:bg-neutral-800 border border-dashed border-neutral-300 dark:border-neutral-600 rounded-2xl px-5 py-4 flex flex-col items-center justify-center gap-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors">
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => {
+                            const files = Array.from(e.target.files || []);
+                            if (!files.length) return;
+                            
+                            const currentImages = formData.imageUrls || [];
+                            const remainingSlots = 5 - currentImages.length;
+                            const filesToProcess = files.slice(0, remainingSlots);
+                            
+                            if (files.length > remainingSlots) {
+                              alert(`Você só pode adicionar mais ${remainingSlots} foto(s). O limite é 5.`);
+                            }
+
+                            const newImageUrls: string[] = [];
+                            let processed = 0;
+
+                            filesToProcess.forEach(file => {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                newImageUrls.push(reader.result as string);
+                                processed++;
+                                if (processed === filesToProcess.length) {
+                                  setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...newImageUrls] }));
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            });
+                          }}
+                        />
+                        <Package size={24} className="text-neutral-400" />
+                        <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Clique para selecionar até 5 imagens</span>
+                      </label>
+                    )}
+                    {formData.imageUrls && formData.imageUrls.length > 0 && (
+                      <div className="flex gap-3 overflow-x-auto pb-2">
+                        {formData.imageUrls.map((url, idx) => (
+                          <div key={idx} className="relative w-24 h-24 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-700 shadow-sm shrink-0">
+                            <img src={url} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                const newUrls = [...formData.imageUrls!];
+                                newUrls.splice(idx, 1);
+                                setFormData({ ...formData, imageUrls: newUrls });
+                              }}
+                              className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">
+                    Salvar Item
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {imageModalItem && imageModalItem.imageUrls && imageModalItem.imageUrls.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/90 backdrop-blur-md"
+            onClick={() => setImageModalItem(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative w-full max-w-6xl flex flex-col items-center justify-center gap-6"
+              onClick={e => e.stopPropagation()}
+            >
+              <button 
+                onClick={() => setImageModalItem(null)} 
+                className="absolute -top-12 right-0 p-2 text-white/50 hover:text-white bg-black/20 hover:bg-black/40 rounded-full transition-all z-10"
+              >
+                <X size={24} />
+              </button>
+              
+              <div className="flex overflow-x-auto snap-x snap-mandatory w-full gap-6 pb-4 items-center hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {imageModalItem.imageUrls.map((url, idx) => (
+                  <div key={idx} className="snap-center shrink-0 w-full md:w-auto flex justify-center items-center">
+                    <img 
+                      src={url} 
+                      alt={`${imageModalItem.objectName} - Foto ${idx + 1}`} 
+                      className="max-w-full max-h-[80vh] object-contain rounded-2xl shadow-2xl"
+                    />
+                  </div>
+                ))}
+              </div>
+              
+              {imageModalItem.imageUrls.length > 1 && (
+                <div className="flex gap-2 mt-4">
+                  {imageModalItem.imageUrls.map((_, idx) => (
+                    <div key={idx} className="w-2 h-2 rounded-full bg-white/50" />
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export interface DocumentTemplate {
+  id: string;
+  title: string;
+  description: string;
+  category: 'RH' | 'Licitações' | 'Contratos' | 'Ofícios' | 'Geral';
+  format: 'Word' | 'Excel' | 'PDF' | 'PowerPoint' | 'Outro';
+  fileUrl: string;
+  updatedAt: string;
+}
+
+const MOCK_TEMPLATES: DocumentTemplate[] = [
+  { id: 'tpl1', title: 'Ofício Padrão - Notificação', description: 'Modelo oficial para notificação de empresas e fornecedores.', category: 'Ofícios', format: 'Word', fileUrl: '#', updatedAt: '2025-10-15' },
+  { id: 'tpl2', title: 'Planilha de Custos Unitários', description: 'Planilha padrão para estimativa de custos em processos licitatórios.', category: 'Licitações', format: 'Excel', fileUrl: '#', updatedAt: '2025-11-20' },
+  { id: 'tpl3', title: 'Minuta de Contrato Administrativo', description: 'Estrutura base para contratos de prestação de serviços.', category: 'Contratos', format: 'Word', fileUrl: '#', updatedAt: '2026-01-05' },
+  { id: 'tpl4', title: 'Ficha de Avaliação de Desempenho', description: 'Formulário anual para avaliação de servidores.', category: 'RH', format: 'PDF', fileUrl: '#', updatedAt: '2026-02-10' },
+  { id: 'tpl5', title: 'Apresentação Institucional', description: 'Slides padrão com a identidade visual da prefeitura.', category: 'Geral', format: 'PowerPoint', fileUrl: '#', updatedAt: '2026-03-01' }
+];
+
+const TemplatesModule = () => {
+  const [search, setSearch] = React.useState('');
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [templates, setTemplates] = React.useState<DocumentTemplate[]>(MOCK_TEMPLATES);
+  const [formData, setFormData] = React.useState<Partial<DocumentTemplate>>({
+    title: '', description: '', category: 'Geral', format: 'Word', fileUrl: ''
+  });
+
+  const filteredTemplates = templates.filter(t => 
+    t.title.toLowerCase().includes(search.toLowerCase()) || 
+    t.description.toLowerCase().includes(search.toLowerCase()) ||
+    t.category.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const getFormatIcon = (format: string) => {
+    switch (format) {
+      case 'Word': return <FileText size={32} className="text-blue-500" />;
+      case 'Excel': return <FileText size={32} className="text-emerald-500" />;
+      case 'PDF': return <FileText size={32} className="text-rose-500" />;
+      case 'PowerPoint': return <FileText size={32} className="text-orange-500" />;
+      default: return <FileText size={32} className="text-neutral-500" />;
+    }
+  };
+
+  const getFormatBadge = (format: string) => {
+    switch (format) {
+      case 'Word': return 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 border-blue-200 dark:border-blue-500/30';
+      case 'Excel': return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30';
+      case 'PDF': return 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400 border-rose-200 dark:border-rose-500/30';
+      case 'PowerPoint': return 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400 border-orange-200 dark:border-orange-500/30';
+      default: return 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700';
+    }
+  };
+
+  const handleDownload = (template: DocumentTemplate) => {
+    if (template.fileUrl.startsWith('data:')) {
+      const a = document.createElement('a');
+      a.href = template.fileUrl;
+      let ext = '.pdf';
+      if (template.format === 'Word') ext = '.docx';
+      else if (template.format === 'Excel') ext = '.xlsx';
+      else if (template.format === 'PowerPoint') ext = '.pptx';
+      a.download = `${template.title}${ext}`;
+      a.click();
+    } else {
+      window.open(template.fileUrl, '_blank');
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="bg-neutral-100 dark:bg-neutral-800 p-4 rounded-2xl">
+            <FileBadge size={32} className="text-neutral-900 dark:text-white" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">Modelos de Documentos</h2>
+            <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400">Acesse e gerencie templates oficiais da administração.</p>
+          </div>
+        </div>
+        
+        <div className="flex w-full md:w-auto gap-4">
+          <div className="relative flex-1 md:w-80">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={20} />
+            <input 
+              type="text" 
+              placeholder="Buscar modelos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 pl-12 pr-4 py-3 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+            />
+          </div>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 px-6 py-3 rounded-2xl font-bold text-sm hover:scale-105 transition-all shadow-xl shadow-neutral-900/10 dark:shadow-white/10 shrink-0"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Novo Modelo</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {filteredTemplates.map(template => (
+          <div key={template.id} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm hover:shadow-lg hover:border-neutral-200 dark:hover:border-neutral-700 transition-all group flex flex-col h-full cursor-pointer" onClick={() => handleDownload(template)}>
+            <div className="flex justify-between items-start mb-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800 p-3 rounded-2xl group-hover:scale-110 transition-transform">
+                {getFormatIcon(template.format)}
+              </div>
+              <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg border ${getFormatBadge(template.format)}`}>
+                {template.format}
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2 line-clamp-2">{template.title}</h3>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 line-clamp-3 flex-1">{template.description}</p>
+            
+            <div className="flex items-center justify-between mt-auto pt-4 border-t border-neutral-100 dark:border-neutral-800">
+              <span className="text-xs font-bold text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">{template.category}</span>
+              <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+                <Clock size={12} />
+                <span>{new Date(template.updatedAt).toLocaleDateString('pt-BR')}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <AnimatePresence>
+        {isModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/50 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="bg-white dark:bg-neutral-900 rounded-[2rem] p-8 max-w-xl w-full shadow-2xl border border-neutral-100 dark:border-neutral-800 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex justify-between items-start mb-8">
+                <div>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Novo Modelo</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Adicione um novo documento padrão à biblioteca.</p>
+                </div>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setTemplates([{
+                    ...formData,
+                    id: Math.random().toString(36).substr(2, 9),
+                    updatedAt: new Date().toISOString()
+                  } as DocumentTemplate, ...templates]);
+                  setIsModalOpen(false);
+                  setFormData({ title: '', description: '', category: 'Geral', format: 'Word', fileUrl: '' });
+                }}
+                className="space-y-6"
+              >
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Título do Modelo</label>
+                  <input 
+                    required
+                    type="text"
+                    placeholder="Ex: Ofício de Resposta Padrão"
+                    value={formData.title}
+                    onChange={e => setFormData({...formData, title: e.target.value})}
+                    className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Descrição Breve</label>
+                  <textarea 
+                    required
+                    rows={3}
+                    placeholder="Descreva quando e como este modelo deve ser usado..."
+                    value={formData.description}
+                    onChange={e => setFormData({...formData, description: e.target.value})}
+                    className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all resize-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Categoria</label>
+                    <select 
+                      value={formData.category}
+                      onChange={e => setFormData({...formData, category: e.target.value as any})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    >
+                      <option value="Geral">Geral</option>
+                      <option value="RH">RH</option>
+                      <option value="Licitações">Licitações</option>
+                      <option value="Contratos">Contratos</option>
+                      <option value="Ofícios">Ofícios</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Formato</label>
+                    <select 
+                      value={formData.format}
+                      onChange={e => setFormData({...formData, format: e.target.value as any})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                    >
+                      <option value="Word">Word</option>
+                      <option value="Excel">Excel</option>
+                      <option value="PDF">PDF</option>
+                      <option value="PowerPoint">PowerPoint</option>
+                      <option value="Outro">Outro</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Upload do Arquivo</label>
+                  <input 
+                    required
+                    type="file"
+                    accept=".doc,.docx,.xls,.xlsx,.pdf,.ppt,.pptx"
+                    onChange={e => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setFormData({...formData, fileUrl: reader.result as string});
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-neutral-900 file:text-white hover:file:bg-neutral-800 dark:file:bg-white dark:file:text-neutral-900 dark:hover:file:bg-neutral-100 cursor-pointer"
+                  />
+                </div>
+
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">
+                    Adicionar Modelo
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
+  const [currentUser, setCurrentUser] = React.useState<AdminUser | null>(null);
   const [darkMode, setDarkMode] = React.useState(false);
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setIsAuthenticated(!!session);
+      if (session?.user?.email) {
+        supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
+          if (data) setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
+        });
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsAuthenticated(!!session);
+      if (session?.user?.email) {
+        supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
+          if (data) setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
+        });
+      } else {
+        setCurrentUser(null);
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
   const [activeView, setActiveView] = React.useState<View>('home');
+  const [patrimonioItems, setPatrimonioItems] = React.useState<PatrimonioItem[]>(MOCK_PATRIMONIO);
   const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>(MOCK_USERS);
+  const [institutions, setInstitutions] = React.useState<Institution[]>(MOCK_INSTITUTIONS);
   const [selectedYear, setSelectedYear] = React.useState('2026');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [controls, setControls] = React.useState<CheckItem[]>(MOCK_CONTROLS);
@@ -2560,7 +3449,7 @@ export default function App() {
       deadline: control.deadline,
       notes: control.notes,
       history: control.history || []
-    }).catch(console.error);
+    }).then(({ error }) => { if (error) console.error(error) });
   };
 
   const updateControl = async (updated: CheckItem) => {
@@ -2575,14 +3464,14 @@ export default function App() {
       deadline: updated.deadline,
       notes: updated.notes,
       history: updated.history || []
-    }).eq('id', updated.id).catch(console.error);
+    }).eq('id', updated.id).then(({ error }) => { if (error) console.error(error) });
   };
 
   const deleteControl = async (id: string) => {
     if (confirm('Tem certeza que deseja excluir este controle?')) {
       setControls(controls.filter(c => c.id !== id));
       showToast('Controle removido do sistema.');
-      await supabase.from('controls').delete().eq('id', id).catch(console.error);
+      await supabase.from('controls').delete().eq('id', id).then(({ error }) => { if (error) console.error(error) });
     }
   };
 
@@ -2769,6 +3658,16 @@ export default function App() {
                 >
                   <Settings size={20} />
                 </button>
+                <button 
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setIsAuthenticated(false);
+                  }}
+                  className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
+                  title="Sair"
+                >
+                  <LogOut size={20} />
+                </button>
               </div>
 
             </div>
@@ -2811,14 +3710,20 @@ export default function App() {
                     requester: newDoc.requester,
                     subject: newDoc.subject,
                     date_created: newDoc.dateCreated
-                  }).catch(console.error);
+                  }).then(({ error }) => { if (error) console.error(error) });
                 }}
                 onUpdate={async (id, updates) => {
                   setDocRecords(docRecords.map(r => r.id === id ? { ...r, ...updates } : r));
                   showToast('Documento atualizado com sucesso!', 'success');
                   
-                  await supabase.from('documents').update(updates).eq('id', id).catch(console.error);
+                  await supabase.from('documents').update(updates).eq('id', id).then(({ error }) => { if (error) console.error(error) });
                 }}
+              />
+            )}
+            {activeView === 'patrimonio' && (
+              <PatrimonioModule 
+                items={patrimonioItems} 
+                onAdd={(item) => setPatrimonioItems([item, ...patrimonioItems])}
               />
             )}
             {activeView === 'orders' && (
@@ -2839,7 +3744,7 @@ export default function App() {
                     quotation_number: order.quotationNumber,
                     winning_supplier: order.winningSupplier,
                     status: order.status
-                  }).catch(console.error);
+                  }).then(({ error }) => { if (error) console.error(error) });
                 }}
                 onEdit={async (updatedOrder) => {
                   setOrders(orders.map(o => o.id === updatedOrder.id ? updatedOrder : o));
@@ -2851,7 +3756,7 @@ export default function App() {
                     quotation_number: updatedOrder.quotationNumber,
                     winning_supplier: updatedOrder.winningSupplier,
                     status: updatedOrder.status
-                  }).eq('id', updatedOrder.id).catch(console.error);
+                  }).eq('id', updatedOrder.id).then(({ error }) => { if (error) console.error(error) });
                 }}
                 setOrders={setOrders}
               />
@@ -2917,7 +3822,8 @@ export default function App() {
             {activeView === 'assistencia_social' && <PlaceholderModule title="Secretaria de Assistência Social" />}
             {activeView === 'esporte' && <PlaceholderModule title="Secretaria de Esporte" />}
             {activeView === 'planejamento' && <PlaceholderModule title="Secretaria de Planejamento" />}
-            {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} />}
+            {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} />}
+            {activeView === 'templates' && <TemplatesModule />}
           </motion.div>
         </AnimatePresence>
         </div>
