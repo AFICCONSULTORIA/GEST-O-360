@@ -1728,6 +1728,27 @@ const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: {
           <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
             <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
             <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+            
+            {/* Active Filters Display */}
+            {(filterDept !== 'Todos' || filterCond !== 'Todos' || filterSearch) && (
+              <div className="mt-4 flex flex-wrap justify-center gap-3">
+                {filterDept !== 'Todos' && (
+                  <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                    Departamento: {filterDept}
+                  </span>
+                )}
+                {filterCond !== 'Todos' && (
+                  <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                    Estado: {filterCond}
+                  </span>
+                )}
+                {filterSearch && (
+                  <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                    Busca: "{filterSearch}"
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="flex justify-between mb-8">
