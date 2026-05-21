@@ -62,6 +62,61 @@ import {
   Pie, 
   Cell 
 } from 'recharts';
+// --- Toast System ---
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+export interface ToastMsg { id: number; message: string; type: ToastType; }
+
+const toastEmitter = {
+  listeners: [] as ((toast: ToastMsg) => void)[],
+  emit(message: string, type: ToastType = 'info') {
+    const toast = { id: Date.now(), message, type };
+    this.listeners.forEach(l => l(toast));
+  },
+  subscribe(listener: (toast: ToastMsg) => void) {
+    this.listeners.push(listener);
+    return () => { this.listeners = this.listeners.filter(l => l !== listener); };
+  }
+};
+
+export const showToast = (message: string, type: ToastType = 'info') => toastEmitter.emit(message, type);
+
+const ToastContainer = () => {
+  const [toasts, setToasts] = React.useState<ToastMsg[]>([]);
+
+  React.useEffect(() => {
+    const unsub = toastEmitter.subscribe(toast => {
+      setToasts(prev => [...prev, toast]);
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toast.id)), 4000);
+    });
+    return unsub;
+  }, []);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-[99999] flex flex-col gap-2 pointer-events-none">
+      <AnimatePresence>
+        {toasts.map(t => (
+          <motion.div 
+            key={t.id} 
+            initial={{ opacity: 0, y: 20, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }} 
+            className={`pointer-events-auto flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border backdrop-blur-md ${
+              t.type === 'error' ? 'bg-rose-50/90 border-rose-100 text-rose-800 dark:bg-rose-950/90 dark:border-rose-900/50 dark:text-rose-200' :
+              t.type === 'success' ? 'bg-emerald-50/90 border-emerald-100 text-emerald-800 dark:bg-emerald-950/90 dark:border-emerald-900/50 dark:text-emerald-200' :
+              t.type === 'warning' ? 'bg-amber-50/90 border-amber-100 text-amber-800 dark:bg-amber-950/90 dark:border-amber-900/50 dark:text-amber-200' :
+              'bg-white/90 border-neutral-100 text-neutral-800 dark:bg-neutral-900/90 dark:border-neutral-800 dark:text-neutral-200'
+            }`}
+          >
+             {t.type === 'error' && <XCircle size={24} className="text-rose-500" />}
+             {t.type === 'success' && <CheckCircle2 size={24} className="text-emerald-500" />}
+             {t.type === 'info' && <Info size={24} className="text-blue-500" />}
+             {t.type === 'warning' && <AlertTriangle size={24} className="text-amber-500" />}
+             <span className="text-sm font-bold flex-1">{t.message}</span>
+             <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="ml-3 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"><X size={16} /></button>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 // --- Types ---
 type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates';
@@ -613,13 +668,13 @@ const RiskModule = () => {
             </div>
             <div className="pt-8 flex gap-4">
               <button 
-                onClick={() => alert("Botão em desenvolvimento")}
+                onClick={() => showToast('Botão em desenvolvimento', 'warning')}
                 className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 hover:text-white transition-colors flex items-center gap-2"
               >
                 <Download size={12} /> Exportar PDF
               </button>
               <button 
-                onClick={() => alert("Botão em desenvolvimento")}
+                onClick={() => showToast('Botão em desenvolvimento', 'warning')}
                 className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 hover:text-white transition-colors"
               >
                 Notificar Controlador
@@ -789,11 +844,11 @@ const PNTPModule = ({ selectedYear }: { selectedYear: string }) => {
   const [viewingEvidence, setViewingEvidence] = React.useState<PNTPItem | null>(null);
 
   const handleExport = (categoryName: string) => {
-    alert("Botão em desenvolvimento");
+    showToast('Botão em desenvolvimento', 'warning');
   };
 
   const exportEvidence = (itemName: string) => {
-    alert("Botão em desenvolvimento");
+    showToast('Botão em desenvolvimento', 'warning');
   };
 
   const getStatusColor = (status: PNTPItem['status']) => {
@@ -858,7 +913,7 @@ const PNTPModule = ({ selectedYear }: { selectedYear: string }) => {
                       </div>
                     </div>
                     <button 
-                      onClick={() => alert("Botão em desenvolvimento")}
+                      onClick={() => showToast('Botão em desenvolvimento', 'warning')}
                       className="text-[10px] font-black uppercase tracking-widest text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-3 py-1 rounded-full hover:bg-sky-600 hover:text-white dark:hover:bg-sky-400 dark:hover:text-neutral-900 transition-all"
                     >
                       {doc.type === 'URL' ? 'Acessar' : 'Download'}
@@ -1203,7 +1258,7 @@ const DocumentNumbersModule = ({ records, onAdd, onUpdate }: { records: Document
                   <td className="px-6 py-4 text-center">
                     {record.attachment ? (
                       <button 
-                        onClick={() => alert("Botão em desenvolvimento")}
+                        onClick={() => showToast('Botão em desenvolvimento', 'warning')}
                         className="text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 justify-center w-full"
                       >
                         <FileText size={14} />
@@ -2022,7 +2077,7 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
              const { error } = await supabase.storage.from('certidoes').upload(filename, file);
              if (error) {
                console.error(error);
-               alert("Erro ao salvar arquivo. Certifique-se de que o bucket 'certidoes' público existe no Supabase. A certidão será salva sem o arquivo.");
+               showToast('Erro ao salvar arquivo. Bucket ausente ou sem permissões.', 'error');
              } else {
                const { data: publicUrlData } = supabase.storage.from('certidoes').getPublicUrl(filename);
                fileUrl = publicUrlData.publicUrl;
@@ -2091,7 +2146,7 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
                       href={cert.fileUrl || '#'} 
                       target={cert.fileUrl ? "_blank" : undefined} 
                       rel="noreferrer"
-                      onClick={(e) => { if (!cert.fileUrl) { e.preventDefault(); alert('Esta certidão foi salva sem um arquivo anexado.'); } }}
+                      onClick={(e) => { if (!cert.fileUrl) { e.preventDefault(); showToast('Esta certidão foi salva sem um arquivo anexado.', 'warning'); } }}
                       className="px-4 py-2 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold hover:text-neutral-900 dark:hover:text-white transition-all shadow-sm flex items-center gap-2"
                     >
                       <Download size={14} /> Via
@@ -2393,7 +2448,7 @@ const PlaceholderModule = ({ title }: { title: string }) => (
       <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md">
         Este módulo está em desenvolvimento. Em breve, ferramentas específicas para esta secretaria estarão disponíveis.
       </p>
-      <button onClick={() => alert('Botão em desenvolvimento')} className="mt-8 px-8 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xl shadow-neutral-900/10">
+      <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="mt-8 px-8 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-xl shadow-neutral-900/10">
         Notificar Lançamento
       </button>
     </div>
@@ -2488,7 +2543,7 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
       }).eq('id', updatedUser.id);
       
       if (error) {
-        alert("Erro ao salvar nível de acesso no banco de dados: " + error.message);
+        showToast('Erro ao salvar nível de acesso no banco de dados: ' + error.message, 'error');
         console.error("Update error:", error);
       }
     } else {
@@ -2497,7 +2552,7 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
       try {
         const { data, error } = await signUpNewUser(formData.email, formData.password);
         if (error) {
-          alert("Erro ao criar usuário no Supabase: " + error.message);
+          showToast('Erro ao criar usuário no Supabase: ' + error.message, 'error');
           return;
         }
         if (data.user) {
@@ -2945,7 +3000,7 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
                       setUsers(users.map(u => u.id === managingPermissionsUser.id ? updatedUser : u));
                       const { error } = await supabase.from('admin_users').update({ permissions: permissionsData }).eq('id', managingPermissionsUser.id);
                       if (error) {
-                        alert("Erro ao salvar permissões no banco de dados: " + error.message);
+                        showToast('Erro ao salvar permissões no banco de dados: ' + error.message, 'error');
                         console.error("Update permissions error:", error);
                       }
                       setManagingPermissionsUser(null);
@@ -3343,7 +3398,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
                             const filesToProcess = files.slice(0, remainingSlots);
                             
                             if (files.length > remainingSlots) {
-                              alert(`Você só pode adicionar mais ${remainingSlots} foto(s). O limite é 5.`);
+                              showToast(`Você só pode adicionar mais ${remainingSlots} foto(s). O limite é 5.`, 'warning');
                             }
 
                             const newImageUrls: string[] = [];
@@ -3811,7 +3866,6 @@ export default function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [expandedCategory, setExpandedCategory] = React.useState<string | null>(null);
-  const [toast, setToast] = React.useState<{ message: string, type: 'success' | 'error' } | null>(null);
   const [notifications, setNotifications] = React.useState([
     { id: 1, text: 'Prazo do RREO vencendo em 15 dias', type: 'warning', read: false },
     { id: 2, text: 'Novo protocolo recebido da Secretaria de Saúde', type: 'info', read: false },
@@ -3825,11 +3879,6 @@ export default function App() {
   ]);
   const [isNewControlModalOpen, setIsNewControlModalOpen] = React.useState(false);
   const [attachingFor, setAttachingFor] = React.useState<number | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 3000);
-  };
 
   if (!isAuthenticated) {
     return (
@@ -4339,21 +4388,7 @@ export default function App() {
     </div>
 
       {/* Toasts */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div 
-            initial={{ opacity: 0, y: 50, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: 50, x: '-50%' }}
-            className={`fixed bottom-10 left-1/2 z-[100] px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md border ${
-              toast.type === 'success' ? 'bg-emerald-900/90 text-emerald-400 border-emerald-500/20' : 'bg-rose-900/90 text-rose-400 border-rose-500/20'
-            }`}
-          >
-            <CheckCircle2 size={18} />
-            <span className="text-sm font-bold uppercase tracking-widest">{toast.message}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ToastContainer />
       
       {/* Protocol Detail Modal */}
       <AnimatePresence>
@@ -4495,10 +4530,10 @@ const ContractsModule = () => {
           <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Fiscalização proativa e monitoramento da Lei 14.133/21.</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest border border-neutral-100 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
+          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest border border-neutral-100 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
             <Download size={16} /> Relatórios Lupa
           </button>
-          <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2">
+          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2">
             <ShieldAlert size={16} /> Auditoria Rápida
           </button>
         </div>
@@ -4577,10 +4612,10 @@ const ContractsModule = () => {
                 </td>
                 <td className="px-8 py-6 text-right">
                   <div className="flex justify-end gap-2">
-                    <button onClick={() => alert("Botão em desenvolvimento")} className="p-2.5 bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl hover:bg-neutral-900 dark:hover:bg-white hover:text-white dark:hover:text-neutral-950 transition-all shadow-sm">
+                    <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="p-2.5 bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl hover:bg-neutral-900 dark:hover:bg-white hover:text-white dark:hover:text-neutral-950 transition-all shadow-sm">
                       <Target size={14} />
                     </button>
-                    <button onClick={() => alert("Botão em desenvolvimento")} className="p-2.5 bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all shadow-sm">
+                    <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="p-2.5 bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-all shadow-sm">
                       <FileText size={14} />
                     </button>
                   </div>
@@ -4605,7 +4640,7 @@ const ContractsModule = () => {
           <p className="text-neutral-400 text-sm leading-relaxed font-bold">
             Nossa IA cruza automaticamente valores de empenhos com tabelas de referência de mercado (SINAPI/FIPE) para detectar variações atípicas em tempo real.
           </p>
-          <button onClick={() => alert("Botão em desenvolvimento")} className="bg-white text-neutral-900 px-8 py-4 rounded-[24px] text-xs font-black uppercase tracking-[0.2em] transform hover:-translate-y-1 transition-all shadow-xl shadow-black/50">
+          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-white text-neutral-900 px-8 py-4 rounded-[24px] text-xs font-black uppercase tracking-[0.2em] transform hover:-translate-y-1 transition-all shadow-xl shadow-black/50">
             Rodar Diagnóstico Lupa 360
           </button>
         </div>
@@ -4693,7 +4728,7 @@ const EducationModule = () => {
                 <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
                   <div className="px-8 py-6 border-b border-neutral-50 dark:border-neutral-800 flex justify-between items-center bg-neutral-50/50 dark:bg-neutral-800/50">
                     <h3 className="text-sm font-black text-neutral-900 dark:text-neutral-100 uppercase tracking-widest">Unidades Escolares & Conformidade</h3>
-                    <button onClick={() => alert("Botão em desenvolvimento")} className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest hover:underline">Ver Mapa de Unidades</button>
+                    <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest hover:underline">Ver Mapa de Unidades</button>
                   </div>
                   <div className="divide-y divide-neutral-50 dark:divide-neutral-800">
                     {schools.map((school) => (
@@ -4718,7 +4753,7 @@ const EducationModule = () => {
                                school.compliance >= 80 ? 'text-amber-500' : 'text-rose-500'
                             }`}>{school.compliance}%</p>
                           </div>
-                          <button onClick={() => alert("Botão em desenvolvimento")} className="p-2 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-900 dark:hover:bg-white hover:text-white dark:hover:text-neutral-950 rounded-xl transition-all border border-neutral-100 dark:border-neutral-700">
+                          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="p-2 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-900 dark:hover:bg-white hover:text-white dark:hover:text-neutral-950 rounded-xl transition-all border border-neutral-100 dark:border-neutral-700">
                             <ChevronRight size={16} />
                           </button>
                         </div>
@@ -4737,10 +4772,10 @@ const EducationModule = () => {
                       <p className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest mt-1">Acompanhamento e Validação de Dados</p>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => alert("Botão em desenvolvimento")} className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-500/20">
+                      <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border border-emerald-100 dark:border-emerald-500/20">
                         Exportar Educacenso
                       </button>
-                      <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                      <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
                         Validar Lote
                       </button>
                     </div>
@@ -4808,7 +4843,7 @@ const EducationModule = () => {
                     <p className="text-sm font-bold">Revisão de rotas do transporte escolar em atraso.</p>
                   </div>
                 </div>
-                <button onClick={() => alert("Botão em desenvolvimento")} className="w-full mt-8 bg-white text-neutral-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-all">
+                <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="w-full mt-8 bg-white text-neutral-900 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-200 transition-all">
                   Gerar Plano de Ação
                 </button>
               </div>
@@ -4850,10 +4885,10 @@ const EducationModule = () => {
                   <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mt-1">Dados Atualizados PNATE / SIGET</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-50 text-neutral-900 border border-neutral-100 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-100 transition-all">
+                  <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-50 text-neutral-900 border border-neutral-100 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-neutral-100 transition-all">
                     Relatório de KM
                   </button>
-                  <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
+                  <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest">
                     Nova Vistoria
                   </button>
                 </div>
@@ -4907,7 +4942,7 @@ const EducationModule = () => {
                           <p className="text-xs font-black text-neutral-900">{v.distance} <span className="text-[9px] text-neutral-400 uppercase">Km</span></p>
                         </td>
                         <td className="py-4 text-right">
-                          <button onClick={() => alert("Botão em desenvolvimento")} className="p-2 text-neutral-300 hover:text-neutral-900 transition-colors">
+                          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="p-2 text-neutral-300 hover:text-neutral-900 transition-colors">
                             <ChevronRight size={14} />
                           </button>
                         </td>
@@ -4975,7 +5010,7 @@ const EducationModule = () => {
             <div className="bg-white rounded-3xl border border-neutral-100 p-8">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-lg font-black italic">Segurança <span className="text-neutral-400 font-normal">Alimentar (PNAE)</span></h3>
-                <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest italic">Novo Cardápio</button>
+                <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest italic">Novo Cardápio</button>
               </div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-4">
@@ -5020,7 +5055,7 @@ const EducationModule = () => {
                     <h3 className="text-lg font-black italic">Conselhos e <span className="text-neutral-400 font-normal">Controle Social</span></h3>
                     <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest mt-1">Gestão de Membros e Documentos Oficiais</p>
                   </div>
-                  <button onClick={() => alert("Botão em desenvolvimento")} className="bg-emerald-600 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-2">
+                  <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-emerald-600 text-white px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-2">
                     <Users2 size={14} /> Novo Conselho
                   </button>
                 </div>
@@ -5056,10 +5091,10 @@ const EducationModule = () => {
                           <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">{council.desc}</p>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => alert("Botão em desenvolvimento")} className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
+                          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2">
                             <Plus size={14} /> Membro
                           </button>
-                          <button onClick={() => alert("Botão em desenvolvimento")} className="bg-white border border-neutral-100 text-neutral-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-sm hover:bg-neutral-50">
+                          <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-white border border-neutral-100 text-neutral-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-sm hover:bg-neutral-50">
                             <Upload size={14} /> Documento
                           </button>
                         </div>
@@ -5070,7 +5105,7 @@ const EducationModule = () => {
                         <div className="bg-neutral-50 border border-neutral-100 rounded-2xl p-6">
                           <div className="flex justify-between items-center mb-4">
                             <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Membros do Colegiado ({council.members.length})</h5>
-                            <button onClick={() => alert("Botão em desenvolvimento")} className="text-[9px] font-black text-emerald-600 uppercase hover:underline">Ver Todos</button>
+                            <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="text-[9px] font-black text-emerald-600 uppercase hover:underline">Ver Todos</button>
                           </div>
                           <div className="space-y-3">
                             {council.members.map((member, i) => (
@@ -5098,7 +5133,7 @@ const EducationModule = () => {
                         <div className="bg-neutral-50 border border-neutral-100 rounded-2xl p-6">
                           <div className="flex justify-between items-center mb-4">
                             <h5 className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Repositório de Documentos</h5>
-                            <button onClick={() => alert("Botão em desenvolvimento")} className="text-[9px] font-black text-sky-600 uppercase hover:underline">Ir para Arquivo</button>
+                            <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="text-[9px] font-black text-sky-600 uppercase hover:underline">Ir para Arquivo</button>
                           </div>
                           <div className="grid grid-cols-1 gap-2">
                              {council.docs.map((doc, i) => (
@@ -5139,7 +5174,7 @@ const EducationModule = () => {
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 font-bold leading-relaxed mb-6">Acompanhamento das 20 metas do PME e monitoramento de metas em execução no exercício 2024.</p>
                   <div className="flex justify-between items-center">
                      <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 italic">68% Alcançado</span>
-                     <button onClick={() => alert("Botão em desenvolvimento")} className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">Visualizar Plano →</button>
+                     <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">Visualizar Plano →</button>
                   </div>
                </div>
 
@@ -5153,7 +5188,7 @@ const EducationModule = () => {
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 font-bold leading-relaxed mb-6">Geração automática de planilhas para validação no SIOPE e monitoramento da aplicação mínima.</p>
                   <div className="flex justify-between items-center">
                      <span className="text-xs font-black text-sky-600 dark:text-sky-400 italic">Próximo Prazo: 30/05</span>
-                     <button onClick={() => alert("Botão em desenvolvimento")} className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">Ver Histórico →</button>
+                     <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">Ver Histórico →</button>
                   </div>
                </div>
 
@@ -5167,7 +5202,7 @@ const EducationModule = () => {
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 font-bold leading-relaxed mb-6">Monitoramento da vigência e atualização dos PPPs de todas as unidades escolares do município.</p>
                   <div className="flex justify-between items-center">
                      <span className="text-xs font-black text-amber-600 dark:text-amber-400 italic">84% Atualizados</span>
-                     <button onClick={() => alert("Botão em desenvolvimento")} className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">Gerenciar PPPs →</button>
+                     <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-neutral-100 transition-colors">Gerenciar PPPs →</button>
                   </div>
                </div>
              </div>
@@ -5180,8 +5215,8 @@ const EducationModule = () => {
                   <h3 className="text-3xl font-black tracking-tight italic">Relatório Geral de <span className="text-emerald-900 font-normal underline underline-offset-8">Transparência Ativa</span></h3>
                   <p className="text-emerald-50 text-sm font-bold opacity-80 leading-relaxed">Consolidação de dados para o Portal da Transparência, incluindo Quadro de Lotação (QDP), Gastos com Merenda e Transporte por Unidade.</p>
                   <div className="flex gap-4">
-                    <button onClick={() => alert("Botão em desenvolvimento")} className="bg-white text-emerald-600 px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:-translate-y-1 transition-all">Baixar PDF Consolidado</button>
-                    <button onClick={() => alert("Botão em desenvolvimento")} className="bg-emerald-700/50 text-white border border-emerald-500/50 px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-700 transition-all">Enviar para Auditoria</button>
+                    <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-white text-emerald-600 px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl hover:-translate-y-1 transition-all">Baixar PDF Consolidado</button>
+                    <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-emerald-700/50 text-white border border-emerald-500/50 px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-emerald-700 transition-all">Enviar para Auditoria</button>
                   </div>
                 </div>
              </div>
@@ -5379,7 +5414,7 @@ const CalendarModule = ({ obligations, onAttach }: { obligations: any[], onAttac
               <div className="pt-4 flex gap-3">
                 <button 
                   onClick={() => {
-                    alert("Botão em desenvolvimento");
+                    showToast('Botão em desenvolvimento', 'warning');
                     setAlertConfigFor(null);
                   }}
                   className="flex-1 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-lg shadow-neutral-900/10 dark:shadow-neutral-950/10"
@@ -5956,7 +5991,7 @@ const NormsModule = () => {
                 <p className="text-neutral-500 dark:text-neutral-400 mt-2">{norms.find(n => n.id === selectedNorm)?.summary}</p>
               </div>
               <button 
-                onClick={() => alert("Botão em desenvolvimento")}
+                onClick={() => showToast('Botão em desenvolvimento', 'warning')}
                 className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-900 dark:hover:bg-white hover:text-white dark:hover:text-neutral-950 transition-all group shadow-sm"
               >
                 <Download size={20} className="text-neutral-600 dark:text-neutral-400 group-hover:text-white dark:group-hover:text-neutral-950" />
