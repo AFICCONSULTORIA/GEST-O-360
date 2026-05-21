@@ -3344,7 +3344,20 @@ const TemplatesModule = () => {
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [currentUser, setCurrentUser] = React.useState<AdminUser | null>(null);
-  const [darkMode, setDarkMode] = React.useState(false);
+  const [darkMode, setDarkMode] = React.useState(() => {
+    const saved = localStorage.getItem('gestao360-dark-mode');
+    if (saved !== null) return JSON.parse(saved);
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('gestao360-dark-mode', JSON.stringify(darkMode));
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -3667,6 +3680,13 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => setDarkMode(!darkMode)}
+                  className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+                  title={darkMode ? "Mudar para Modo Claro" : "Mudar para Modo Escuro"}
+                >
+                  {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+                </button>
                 <button 
                   onClick={() => setActiveView('settings')}
                   className={`p-2.5 rounded-xl transition-all ${
