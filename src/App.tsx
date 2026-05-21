@@ -1654,7 +1654,7 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   );
 };
 
-const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: PatrimonioItem[], filters?: { dept?: string, cond?: string, search?: string } }) => {
+const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: PatrimonioItem[], filters?: { dept?: string, cond?: string, search?: string, status?: string } }) => {
   const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
   
   return (
@@ -1664,7 +1664,7 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
         
         {/* Active Filters Display */}
-        {filters && (filters.dept !== 'Todos' || filters.cond !== 'Todos' || filters.search) && (
+        {filters && (filters.dept !== 'Todos' || filters.cond !== 'Todos' || filters.status !== 'Todos' || filters.search) && (
           <div className="mt-4 flex flex-wrap justify-center gap-3 print:hidden">
             {filters.dept && filters.dept !== 'Todos' && (
               <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
@@ -1674,6 +1674,11 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
             {filters.cond && filters.cond !== 'Todos' && (
               <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
                 Estado: {filters.cond}
+              </span>
+            )}
+            {filters.status && filters.status !== 'Todos' && (
+              <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                Status: {filters.status}
               </span>
             )}
             {filters.search && (
@@ -1743,11 +1748,13 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
 const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: PatrimonioItem[], onClose: () => void }) => {
   const [filterDept, setFilterDept] = React.useState<string>('Todos');
   const [filterCond, setFilterCond] = React.useState<string>('Todos');
+  const [filterStatus, setFilterStatus] = React.useState<string>('Todos');
   const [filterSearch, setFilterSearch] = React.useState<string>('');
 
   const filteredItems = patrimonioItems.filter(item => {
     if (filterDept !== 'Todos' && item.department !== filterDept) return false;
     if (filterCond !== 'Todos' && item.condition !== filterCond) return false;
+    if (filterStatus !== 'Todos' && item.status !== filterStatus) return false;
     if (filterSearch && !item.objectName.toLowerCase().includes(filterSearch.toLowerCase()) && !item.code.toLowerCase().includes(filterSearch.toLowerCase())) return false;
     return true;
   });
@@ -1785,6 +1792,18 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
             <option value="Ruim">Ruim</option>
             <option value="Muito Ruim">Muito Ruim</option>
           </select>
+          <select 
+            value={filterStatus} 
+            onChange={e => setFilterStatus(e.target.value)}
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm flex-1 min-w-[120px]"
+          >
+            <option value="Todos">Todos os Status</option>
+            <option value="Servível">Servível</option>
+            <option value="Inservível">Inservível</option>
+            <option value="Ocioso">Ocioso</option>
+            <option value="Em Manutenção">Em Manutenção</option>
+            <option value="Baixado">Baixado</option>
+          </select>
         </div>
         <div className="flex gap-4 w-full md:w-auto justify-end">
           <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800">
@@ -1798,7 +1817,7 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
 
       <PatrimonioPrintLayout 
         filteredItems={filteredItems} 
-        filters={{ dept: filterDept, cond: filterCond, search: filterSearch }} 
+        filters={{ dept: filterDept, cond: filterCond, status: filterStatus, search: filterSearch }} 
       />
     </div>
   );
@@ -2847,6 +2866,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
+  const [filterStatus, setFilterStatus] = React.useState('Todos');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [imageModalItem, setImageModalItem] = React.useState<PatrimonioItem | null>(null);
   const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
@@ -2856,6 +2876,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
   const filteredItems = items.filter(i => {
     if (filterDept !== 'Todos' && i.department !== filterDept) return false;
     if (filterCond !== 'Todos' && i.condition !== filterCond) return false;
+    if (filterStatus !== 'Todos' && i.status !== filterStatus) return false;
     if (search) {
       const s = search.toLowerCase();
       if (!i.objectName.toLowerCase().includes(s) && 
@@ -2925,6 +2946,18 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
           <option value="Bom">Bom</option>
           <option value="Ruim">Ruim</option>
           <option value="Muito Ruim">Muito Ruim</option>
+        </select>
+        <select 
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value)}
+          className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm min-w-[150px] outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition-all dark:text-white"
+        >
+          <option value="Todos">Todos os Status</option>
+          <option value="Servível">Servível</option>
+          <option value="Inservível">Inservível</option>
+          <option value="Ocioso">Ocioso</option>
+          <option value="Em Manutenção">Em Manutenção</option>
+          <option value="Baixado">Baixado</option>
         </select>
       </div>
 
@@ -3311,7 +3344,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
     </div>
     
     <div className="hidden print:block absolute top-0 left-0 w-full bg-white z-[9999] min-h-screen pb-10">
-      <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ search: search, dept: filterDept, cond: filterCond }} />
+      <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ search: search, dept: filterDept, cond: filterCond, status: filterStatus }} />
     </div>
     </>
   );
