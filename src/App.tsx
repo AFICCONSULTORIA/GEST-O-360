@@ -5,7 +5,7 @@ import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, 
   ClipboardCheck, 
   Calendar, 
   BookText, 
-  ShieldAlert, Shield,
+  ShieldAlert, Shield, Compass,
   Users,
   Settings,
   Bell,
@@ -1546,8 +1546,8 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
         className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-[48px] p-12 shadow-2xl shadow-neutral-200/50 dark:shadow-neutral-950/50 border border-neutral-100 dark:border-neutral-800 relative z-10"
       >
         <div className="text-center space-y-4 mb-10">
-          <div className="w-16 h-16 bg-neutral-900 dark:bg-neutral-800 rounded-[24px] flex items-center justify-center mx-auto text-emerald-400 rotate-3 hover:rotate-0 transition-transform duration-500 shadow-xl">
-            <ShieldAlert size={32} />
+          <div className="bg-neutral-900 dark:bg-emerald-500 text-emerald-400 dark:text-emerald-950 p-3 rounded-2xl rotate-3 shadow-xl shadow-neutral-900/10 flex items-center justify-center mx-auto w-16 h-16">
+            <Compass size={32} />
           </div>
           <div>
             <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
@@ -3578,7 +3578,7 @@ export default function App() {
               <div className="flex items-center gap-10">
                 <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveView('home')}>
                   <div className="bg-neutral-900 dark:bg-emerald-500 text-emerald-400 dark:text-emerald-950 p-2 rounded-xl rotate-3 hover:rotate-0 transition-transform shadow-lg shadow-neutral-900/10">
-                    <ShieldAlert size={20} />
+                    <Compass size={20} />
                   </div>
                   <div>
                     <h1 className="text-xl font-black tracking-tight leading-none italic dark:text-white">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
@@ -3764,7 +3764,7 @@ export default function App() {
             {activeView === 'home' && (
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-10 z-0">
                 <div className="flex items-center scale-75 md:scale-100 min-w-max">
-                  <ShieldAlert size={140} className="text-neutral-900 dark:text-white mr-8" />
+                  <Compass size={140} className="text-neutral-900 dark:text-white mr-8" />
                   <h1 className="text-[140px] font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">Gestão <span className="font-normal">360</span></h1>
                 </div>
               </div>
