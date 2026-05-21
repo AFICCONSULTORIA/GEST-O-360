@@ -2073,7 +2073,8 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
         onConfirm={async (expiryDate, file) => {
           let fileUrl = undefined;
           if (file) {
-             const filename = `${company.id}-${uploadingCert}-${Date.now()}-${file.name.replace(/\s+/g, '_')}`;
+             const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
+             const filename = `${company.id}-${uploadingCert}-${Date.now()}-${safeName}`;
              const { error } = await supabase.storage.from('certidoes').upload(filename, file);
              if (error) {
                console.error(error);
