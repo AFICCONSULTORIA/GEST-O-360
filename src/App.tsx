@@ -2478,7 +2478,7 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
       const updatedUser = { ...editingUser, ...formData };
       setUsers(users.map(u => u.id === editingUser.id ? updatedUser : u));
       
-      await supabase.from('admin_users').update({
+      const { error } = await supabase.from('admin_users').update({
         name: updatedUser.name,
         email: updatedUser.email,
         role: updatedUser.role,
@@ -2486,6 +2486,11 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
         permissions: updatedUser.permissions,
         institution_id: updatedUser.institution_id || null
       }).eq('id', updatedUser.id);
+      
+      if (error) {
+        alert("Erro ao salvar nível de acesso no banco de dados: " + error.message);
+        console.error("Update error:", error);
+      }
     } else {
       let finalUserId = Math.random().toString(36).substr(2, 9);
       
@@ -2938,9 +2943,11 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
                     onClick={async () => {
                       const updatedUser = { ...managingPermissionsUser, permissions: permissionsData as View[] };
                       setUsers(users.map(u => u.id === managingPermissionsUser.id ? updatedUser : u));
-                      await supabase.from('admin_users').update({
-                        permissions: permissionsData
-                      }).eq('id', managingPermissionsUser.id);
+                      const { error } = await supabase.from('admin_users').update({ permissions: permissionsData }).eq('id', managingPermissionsUser.id);
+                      if (error) {
+                        alert("Erro ao salvar permissões no banco de dados: " + error.message);
+                        console.error("Update permissions error:", error);
+                      }
                       setManagingPermissionsUser(null);
                     }}
                     className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-indigo-600 text-white shadow-xl shadow-indigo-600/20 hover:scale-105 transition-all"
