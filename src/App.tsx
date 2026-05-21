@@ -2513,7 +2513,7 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
       {activeTab === 'users' && (
       <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full text-left border-collapse min-w-[800px]">
             <thead>
               <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Usuário</th>
@@ -2962,9 +2962,10 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
       </div>
 
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-800/50">
               <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Código / Objeto</th>
               <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Local / Secretaria</th>
               <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Condição</th>
@@ -3035,7 +3036,8 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
               </tr>
             )}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -3692,6 +3694,7 @@ export default function App() {
   const [editingProtocol, setEditingProtocol] = React.useState<Protocol | null>(null);
   const [viewingProtocol, setViewingProtocol] = React.useState<Protocol | null>(null);
   const [isNewProtocolModalOpen, setIsNewProtocolModalOpen] = React.useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [expandedCategory, setExpandedCategory] = React.useState<string | null>(null);
@@ -3884,6 +3887,7 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Desktop Navigation */}
                 <div className="hidden lg:flex items-center gap-2">
                   {NAVBAR_CATEGORIES.map((category) => {
                     const isActiveCategory = category.items.some(i => i.id === activeView);
@@ -3945,7 +3949,15 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4">
+                {/* Hamburger Button for Mobile */}
+                <button 
+                  onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                  className="lg:hidden p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+                  title="Menu"
+                >
+                  <Menu size={20} />
+                </button>
                 <button 
                   onClick={() => setDarkMode(!darkMode)}
                   className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
@@ -3978,6 +3990,68 @@ export default function App() {
 
             </div>
           </div>
+
+          {/* Mobile Navigation Drawer */}
+          <AnimatePresence>
+            {isMobileMenuOpen && (
+              <>
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-40 lg:hidden print:hidden"
+                />
+                <motion.div 
+                  initial={{ x: '-100%' }}
+                  animate={{ x: 0 }}
+                  exit={{ x: '-100%' }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                  className="fixed top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-neutral-900 z-50 shadow-2xl flex flex-col lg:hidden print:hidden"
+                >
+                  <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="bg-emerald-500 text-white p-2 rounded-xl">
+                        <LogoCompass size={20} />
+                      </div>
+                      <h2 className="text-lg font-black italic dark:text-white">Gestão <span className="text-neutral-400 font-normal">360</span></h2>
+                    </div>
+                    <button onClick={() => setIsMobileMenuOpen(false)} className="text-neutral-400 hover:text-neutral-900 dark:hover:text-white">
+                      <X size={20} />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                    {NAVBAR_CATEGORIES.map((category) => (
+                      <div key={category.id} className="space-y-2">
+                        <h3 className="px-3 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 flex items-center gap-2">
+                          <category.icon size={12} /> {category.label}
+                        </h3>
+                        <div className="space-y-1">
+                          {category.items.map((item) => (
+                            <button
+                              key={item.id}
+                              onClick={() => {
+                                setActiveView(item.id as View);
+                                setIsMobileMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-all ${
+                                activeView === item.id 
+                                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' 
+                                  : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white'
+                              }`}
+                            >
+                              <item.icon size={16} />
+                              {item.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
         </nav>
 
         <div className="flex-1 overflow-y-auto w-full relative z-10 custom-scrollbar print:overflow-visible print:h-auto">
@@ -4319,8 +4393,9 @@ const ContractsModule = () => {
       </div>
 
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
             <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
               <th className="px-8 py-5 text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Nº Contrato</th>
               <th className="px-8 py-5 text-[10px] font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-widest">Objeto / Empresa</th>
@@ -4385,7 +4460,8 @@ const ContractsModule = () => {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
 
       <div className="bg-neutral-900 p-12 rounded-[48px] relative overflow-hidden shadow-2xl shadow-neutral-900/20">
