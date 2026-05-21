@@ -1654,126 +1654,114 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
   );
 };
 
-const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | null, clearPendingReport?: () => void }) => {
-  const [activeReport, setActiveReport] = React.useState<'patrimonio' | null>(initialReport || null);
-  
-  // Filters for Patrimonio
+const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: PatrimonioItem[], onClose: () => void }) => {
   const [filterDept, setFilterDept] = React.useState<string>('Todos');
   const [filterCond, setFilterCond] = React.useState<string>('Todos');
   const [filterSearch, setFilterSearch] = React.useState<string>('');
 
-  React.useEffect(() => {
-    if (initialReport) {
-      setActiveReport(initialReport);
-      if (clearPendingReport) clearPendingReport();
-    }
-  }, [initialReport, clearPendingReport]);
+  const filteredItems = patrimonioItems.filter(item => {
+    if (filterDept !== 'Todos' && item.department !== filterDept) return false;
+    if (filterCond !== 'Todos' && item.condition !== filterCond) return false;
+    if (filterSearch && !item.objectName.toLowerCase().includes(filterSearch.toLowerCase()) && !item.code.toLowerCase().includes(filterSearch.toLowerCase())) return false;
+    return true;
+  });
 
-  if (activeReport === 'patrimonio') {
-    const filteredItems = patrimonioItems.filter(item => {
-      if (filterDept !== 'Todos' && item.department !== filterDept) return false;
-      if (filterCond !== 'Todos' && item.condition !== filterCond) return false;
-      if (filterSearch && !item.objectName.toLowerCase().includes(filterSearch.toLowerCase()) && !item.code.toLowerCase().includes(filterSearch.toLowerCase())) return false;
-      return true;
-    });
+  const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
+  const uniqueDepts = Array.from(new Set(patrimonioItems.map(i => i.department)));
 
-    const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
+  return (
+    <div className="fixed inset-0 z-[100] bg-white print:bg-white text-black print:text-black overflow-y-auto">
+      {/* Only visible on screen, hidden on print */}
+      <div className="fixed top-0 left-0 right-0 bg-neutral-100 border-b border-neutral-200 p-4 flex gap-4 print:hidden z-10 items-center justify-between shadow-sm">
+        <div className="flex gap-4 flex-1">
+          <input 
+            type="text" 
+            placeholder="Buscar no relatório..." 
+            value={filterSearch}
+            onChange={e => setFilterSearch(e.target.value)}
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm w-64"
+          />
+          <select 
+            value={filterDept} 
+            onChange={e => setFilterDept(e.target.value)}
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
+          >
+            <option value="Todos">Todos os Departamentos</option>
+            {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select 
+            value={filterCond} 
+            onChange={e => setFilterCond(e.target.value)}
+            className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
+          >
+            <option value="Todos">Todos os Estados</option>
+            <option value="Excelente">Excelente</option>
+            <option value="Bom">Bom</option>
+            <option value="Ruim">Ruim</option>
+            <option value="Muito Ruim">Muito Ruim</option>
+          </select>
+        </div>
+        <div className="flex gap-4">
+          <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800">
+            <Download size={16} /> Imprimir / Salvar PDF
+          </button>
+          <button onClick={onClose} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200">
+            <X size={16} /> Fechar
+          </button>
+        </div>
+      </div>
 
-    const uniqueDepts = Array.from(new Set(patrimonioItems.map(i => i.department)));
+      {/* Report Content */}
+      <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] mt-16 print:mt-0">
+        <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
+          <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
+          <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+          
+          {/* Active Filters Display */}
+          {(filterDept !== 'Todos' || filterCond !== 'Todos' || filterSearch) && (
+            <div className="mt-4 flex flex-wrap justify-center gap-3">
+              {filterDept !== 'Todos' && (
+                <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                  Departamento: {filterDept}
+                </span>
+              )}
+              {filterCond !== 'Todos' && (
+                <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                  Estado: {filterCond}
+                </span>
+              )}
+              {filterSearch && (
+                <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
+                  Busca: "{filterSearch}"
+                </span>
+              )}
+            </div>
+          )}
+        </div>
 
-    return (
-      <div className="fixed inset-0 z-[100] bg-white print:bg-white text-black print:text-black overflow-y-auto">
-        {/* Only visible on screen, hidden on print */}
-        <div className="fixed top-0 left-0 right-0 bg-neutral-100 border-b border-neutral-200 p-4 flex gap-4 print:hidden z-10 items-center justify-between shadow-sm">
-          <div className="flex gap-4 flex-1">
-            <input 
-              type="text" 
-              placeholder="Buscar no relatório..." 
-              value={filterSearch}
-              onChange={e => setFilterSearch(e.target.value)}
-              className="px-4 py-2 rounded-lg border border-neutral-300 text-sm w-64"
-            />
-            <select 
-              value={filterDept} 
-              onChange={e => setFilterDept(e.target.value)}
-              className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
-            >
-              <option value="Todos">Todos os Departamentos</option>
-              {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <select 
-              value={filterCond} 
-              onChange={e => setFilterCond(e.target.value)}
-              className="px-4 py-2 rounded-lg border border-neutral-300 text-sm"
-            >
-              <option value="Todos">Todos os Estados</option>
-              <option value="Excelente">Excelente</option>
-              <option value="Bom">Bom</option>
-              <option value="Ruim">Ruim</option>
-              <option value="Muito Ruim">Muito Ruim</option>
-            </select>
+        <div className="flex justify-between mb-8">
+          <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
+            <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens Cadastrados</p>
+            <p className="text-2xl font-black">{filteredItems.length}</p>
           </div>
-          <div className="flex gap-4">
-            <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800">
-              <Download size={16} /> Imprimir / Salvar PDF
-            </button>
-            <button onClick={() => setActiveReport(null)} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200">
-              <X size={16} /> Fechar
-            </button>
+          <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
+            <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Itens Servíveis</p>
+            <p className="text-2xl font-black">
+              {servivelCount}
+            </p>
           </div>
         </div>
 
-        {/* Report Content */}
-        <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] mt-16 print:mt-0">
-          <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
-            <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
-            <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
-            
-            {/* Active Filters Display */}
-            {(filterDept !== 'Todos' || filterCond !== 'Todos' || filterSearch) && (
-              <div className="mt-4 flex flex-wrap justify-center gap-3">
-                {filterDept !== 'Todos' && (
-                  <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
-                    Departamento: {filterDept}
-                  </span>
-                )}
-                {filterCond !== 'Todos' && (
-                  <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
-                    Estado: {filterCond}
-                  </span>
-                )}
-                {filterSearch && (
-                  <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">
-                    Busca: "{filterSearch}"
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="flex justify-between mb-8">
-            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens Cadastrados</p>
-              <p className="text-2xl font-black">{filteredItems.length}</p>
-            </div>
-            <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 w-[48%]">
-              <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Itens Servíveis</p>
-              <p className="text-2xl font-black">
-                {servivelCount}
-              </p>
-            </div>
-          </div>
-
-          <table className="w-full text-left text-sm border-collapse">
-            <thead>
-              <tr className="border-b-2 border-neutral-800">
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Código</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Objeto</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Departamento</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest">Estado</th>
-                <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Ano</th>
-              </tr>
-            </thead>
+        <table className="w-full text-left text-sm border-collapse">
+          <thead>
+            <tr className="border-b-2 border-neutral-800">
+              <th className="py-3 px-2 font-black uppercase tracking-widest">Código</th>
+              <th className="py-3 px-2 font-black uppercase tracking-widest">Objeto</th>
+              <th className="py-3 px-2 font-black uppercase tracking-widest">Departamento</th>
+              <th className="py-3 px-2 font-black uppercase tracking-widest">Estado</th>
+              <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Ano</th>
+            </tr>
+          </thead>
             <tbody>
               {filteredItems.map((item) => (
                 <tr key={item.id} className="border-b border-neutral-200">
@@ -1790,21 +1778,35 @@ const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: {
                 </tr>
               )}
             </tbody>
-          </table>
+        </table>
 
-          <div className="mt-20 pt-8 border-t border-neutral-200 flex justify-around text-center">
-            <div>
-              <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
-              <p className="text-xs font-bold uppercase tracking-widest">Responsável pelo Patrimônio</p>
-            </div>
-            <div>
-              <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
-              <p className="text-xs font-bold uppercase tracking-widest">Gestor da Unidade</p>
-            </div>
+        <div className="mt-20 pt-8 border-t border-neutral-200 flex justify-around text-center">
+          <div>
+            <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
+            <p className="text-xs font-bold uppercase tracking-widest">Responsável pelo Patrimônio</p>
+          </div>
+          <div>
+            <div className="w-48 border-b border-neutral-400 mx-auto mb-2"></div>
+            <p className="text-xs font-bold uppercase tracking-widest">Gestor da Unidade</p>
           </div>
         </div>
       </div>
-    );
+    </div>
+  );
+};
+
+const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | null, clearPendingReport?: () => void }) => {
+  const [activeReport, setActiveReport] = React.useState<'patrimonio' | null>(initialReport || null);
+
+  React.useEffect(() => {
+    if (initialReport) {
+      setActiveReport(initialReport);
+      if (clearPendingReport) clearPendingReport();
+    }
+  }, [initialReport, clearPendingReport]);
+
+  if (activeReport === 'patrimonio') {
+    return <PatrimonioPrintView patrimonioItems={patrimonioItems} onClose={() => setActiveReport(null)} />;
   }
 
   return (
@@ -2832,9 +2834,10 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
   );
 };
 
-const PatrimonioModule = ({ items, onAdd, onEmitReport }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEmitReport?: () => void }) => {
+const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void }) => {
   const [search, setSearch] = React.useState('');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
+  const [isPrinting, setIsPrinting] = React.useState(false);
   const [imageModalItem, setImageModalItem] = React.useState<PatrimonioItem | null>(null);
   const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
     itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: ''
@@ -2857,15 +2860,13 @@ const PatrimonioModule = ({ items, onAdd, onEmitReport }: { items: PatrimonioIte
           <p className="text-neutral-500 dark:text-neutral-400 text-sm">Gerencie os bens móveis, imóveis, equipamentos e veículos da administração.</p>
         </div>
         <div className="flex gap-3">
-          {onEmitReport && (
-            <button 
-              onClick={onEmitReport}
-              className="bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-6 py-2.5 rounded-2xl text-sm font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2"
-            >
-              <Download size={18} />
-              Emitir Relatório
-            </button>
-          )}
+          <button 
+            onClick={() => setIsPrinting(true)}
+            className="bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-6 py-2.5 rounded-2xl text-sm font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2"
+          >
+            <Download size={18} />
+            Emitir Relatório
+          </button>
           <button 
             onClick={() => setIsModalOpen(true)}
             className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
@@ -2875,6 +2876,8 @@ const PatrimonioModule = ({ items, onAdd, onEmitReport }: { items: PatrimonioIte
           </button>
         </div>
       </div>
+
+      {isPrinting && <PatrimonioPrintView patrimonioItems={items} onClose={() => setIsPrinting(false)} />}
 
       <div className="flex gap-4">
         <div className="relative flex-1">
@@ -3950,10 +3953,6 @@ export default function App() {
               <PatrimonioModule 
                 items={patrimonioItems} 
                 onAdd={(item) => setPatrimonioItems([item, ...patrimonioItems])}
-                onEmitReport={() => {
-                  setPendingReport('patrimonio');
-                  setActiveView('reports');
-                }}
               />
             )}
             {activeView === 'orders' && (
