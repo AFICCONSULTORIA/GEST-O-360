@@ -1,5 +1,5 @@
 import React from 'react';
-import { supabase } from './lib/supabase';
+import { supabase, signUpNewUser } from './lib/supabase';
 import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, TreePine, Calculator, Tractor, HeartHandshake, Trophy, Map, Menu, X, 
   LayoutDashboard, 
   ClipboardCheck, 
@@ -2397,9 +2397,24 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
         institution_id: updatedUser.institution_id || null
       }).eq('id', updatedUser.id);
     } else {
+      let finalUserId = Math.random().toString(36).substr(2, 9);
+      
+      try {
+        const { data, error } = await signUpNewUser(formData.email, formData.password);
+        if (error) {
+          alert("Erro ao criar usuário no Supabase: " + error.message);
+          return;
+        }
+        if (data.user) {
+          finalUserId = data.user.id;
+        }
+      } catch (err) {
+        console.error("Erro no signUp:", err);
+      }
+
       const newUser: AdminUser = {
         ...formData,
-        id: Math.random().toString(36).substr(2, 9),
+        id: finalUserId,
         lastLogin: 'Nunca'
       };
       setUsers([...users, newUser]);
