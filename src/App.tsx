@@ -6,7 +6,7 @@ import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, 
   Calendar, 
   BookText, 
   ShieldAlert, Shield, Compass,
-  Users,
+  Users, UserCircle,
   Settings,
   Bell,
   Search,
@@ -3968,6 +3968,15 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2 sm:gap-4">
+                {currentUser && (
+                  <div className="hidden sm:flex items-center gap-2 mr-2 px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 rounded-full border border-neutral-100 dark:border-neutral-700">
+                    <UserCircle size={16} className="text-neutral-500 dark:text-neutral-400" />
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-bold leading-none text-neutral-900 dark:text-white truncate max-w-[120px]">{currentUser.name || currentUser.email}</span>
+                      <span className="text-[9px] leading-none text-neutral-500 dark:text-neutral-400 mt-0.5">{currentUser.role}</span>
+                    </div>
+                  </div>
+                )}
                 {/* Hamburger Button for Mobile */}
                 <button 
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
