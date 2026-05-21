@@ -2845,20 +2845,30 @@ const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { us
 
 const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void }) => {
   const [search, setSearch] = React.useState('');
+  const [filterDept, setFilterDept] = React.useState('Todos');
+  const [filterCond, setFilterCond] = React.useState('Todos');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [imageModalItem, setImageModalItem] = React.useState<PatrimonioItem | null>(null);
   const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
     itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: ''
   });
   
-  const filteredItems = items.filter(i => 
-    i.objectName.toLowerCase().includes(search.toLowerCase()) || 
-    i.code.toLowerCase().includes(search.toLowerCase()) ||
-    i.department.toLowerCase().includes(search.toLowerCase()) ||
-    i.location.toLowerCase().includes(search.toLowerCase()) ||
-    (i.plate && i.plate.toLowerCase().includes(search.toLowerCase())) ||
-    (i.model && i.model.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filteredItems = items.filter(i => {
+    if (filterDept !== 'Todos' && i.department !== filterDept) return false;
+    if (filterCond !== 'Todos' && i.condition !== filterCond) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      if (!i.objectName.toLowerCase().includes(s) && 
+          !i.code.toLowerCase().includes(s) &&
+          !i.department.toLowerCase().includes(s) &&
+          !i.location.toLowerCase().includes(s) &&
+          !(i.plate && i.plate.toLowerCase().includes(s)) &&
+          !(i.model && i.model.toLowerCase().includes(s))) return false;
+    }
+    return true;
+  });
+
+  const uniqueDepts = Array.from(new Set(items.map(i => i.department)));
 
   return (
     <>
@@ -2886,7 +2896,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={20} />
           <input 
@@ -2897,6 +2907,25 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
             className="w-full pl-12 pr-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition-all dark:text-white"
           />
         </div>
+        <select 
+          value={filterDept}
+          onChange={e => setFilterDept(e.target.value)}
+          className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm min-w-[200px] outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition-all dark:text-white"
+        >
+          <option value="Todos">Todos os Departamentos</option>
+          {uniqueDepts.map(d => <option key={d} value={d}>{d}</option>)}
+        </select>
+        <select 
+          value={filterCond}
+          onChange={e => setFilterCond(e.target.value)}
+          className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm min-w-[200px] outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition-all dark:text-white"
+        >
+          <option value="Todos">Todos os Estados</option>
+          <option value="Excelente">Excelente</option>
+          <option value="Bom">Bom</option>
+          <option value="Ruim">Ruim</option>
+          <option value="Muito Ruim">Muito Ruim</option>
+        </select>
       </div>
 
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
@@ -3282,7 +3311,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
     </div>
     
     <div className="hidden print:block absolute top-0 left-0 w-full bg-white z-[9999] min-h-screen pb-10">
-      <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ search: search }} />
+      <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ search: search, dept: filterDept, cond: filterCond }} />
     </div>
     </>
   );
