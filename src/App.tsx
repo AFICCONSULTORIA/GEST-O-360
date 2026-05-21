@@ -3618,24 +3618,35 @@ export default function App() {
   }, [darkMode]);
 
   React.useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const handleAuthSession = (session: any) => {
       setIsAuthenticated(!!session);
       if (session?.user?.email) {
-        supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
-          if (data) setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
-        });
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(!!session);
-      if (session?.user?.email) {
-        supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
-          if (data) setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
-        });
+        if (session.user.email === 'aficconsultoria@gmail.com') {
+          setCurrentUser({
+            id: session.user.id,
+            name: 'AFIC Consultoria',
+            email: session.user.email,
+            role: 'Super Admin',
+            status: 'Ativo',
+            lastLogin: new Date().toISOString(),
+            permissions: AVAILABLE_PERMISSIONS.map(p => p.id)
+          });
+        } else {
+          supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
+            if (data) setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
+          });
+        }
       } else {
         setCurrentUser(null);
       }
+    };
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleAuthSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleAuthSession(session);
     });
 
     return () => subscription.unsubscribe();
