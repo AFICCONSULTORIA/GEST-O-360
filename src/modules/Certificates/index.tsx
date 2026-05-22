@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText
+  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -84,18 +84,10 @@ const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, 
   );
 };
 
-const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: CompanyCertificates, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void }) => {
+const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate }: { company: CompanyCertificates, certLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void }) => {
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
 
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'] as const;
-  
-  const certLinks = {
-    'Trabalhista': 'https://www.tst.jus.br/certidao1',
-    'Federal': 'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
-    'FGTS': 'https://consultacrf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
-    'Estadual': '', // Varia por estado
-    'Municipal': '' // Varia por município
-  };
 
   if (uploadingCert) {
     return (
@@ -313,12 +305,77 @@ const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
   );
 };
 
+const ConfigLinksModal = ({ currentLinks, onClose, onSave }: { currentLinks: Record<string, string>, onClose: () => void, onSave: (links: Record<string, string>) => void }) => {
+  const [links, setLinks] = React.useState(currentLinks);
+  const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'];
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center">
+           <div>
+             <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 flex items-center gap-2"><LinkIcon size={24} /> Configurar Links</h3>
+             <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold mt-1">Links para emissão rápida de certidões.</p>
+           </div>
+           <button onClick={onClose} className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-2xl hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors">
+              <XCircle size={20} className="text-neutral-500" />
+           </button>
+        </div>
+
+        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+          {certTypes.map(type => (
+            <div key={type}>
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 uppercase tracking-widest">{type}</label>
+              <input 
+                type="url" 
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none text-neutral-900 dark:text-neutral-100"
+                value={links[type] || ''}
+                onChange={e => setLinks({ ...links, [type]: e.target.value })}
+                placeholder={`https://link-para-certidao-${type.toLowerCase()}.com.br`}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="pt-2 flex gap-4">
+          <button 
+            onClick={() => onSave(links)}
+            className="flex-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all text-center"
+          >
+            Salvar Links
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 export const CertificatesModule = () => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [companies, setCompanies] = React.useState<CompanyCertificates[]>([]);
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isAddingCompany, setIsAddingCompany] = React.useState(false);
+  const [isConfiguringLinks, setIsConfiguringLinks] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
+
+  const [certLinks, setCertLinks] = React.useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('@gestao360:certLinks');
+    return saved ? JSON.parse(saved) : {
+      'Trabalhista': 'https://www.tst.jus.br/certidao1',
+      'Federal': 'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
+      'FGTS': 'https://consultacrf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
+      'Estadual': '',
+      'Municipal': ''
+    };
+  });
 
   React.useEffect(() => {
     supabase.from('company_certificates').select('*').then(({ data, error }) => {
@@ -379,9 +436,14 @@ export const CertificatesModule = () => {
             <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Gerenciamento de certidões e prazos de validade por fornecedor.</p>
           </div>
         </div>
-        <button onClick={() => setIsAddingCompany(true)} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10">
-          <Plus size={16} /> Nova Empresa
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={() => setIsConfiguringLinks(true)} className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
+            <Settings size={16} /> Links
+          </button>
+          <button onClick={() => setIsAddingCompany(true)} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10">
+            <Plus size={16} /> Nova Empresa
+          </button>
+        </div>
       </div>
 
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden p-6 md:p-8 space-y-6">
@@ -487,6 +549,7 @@ export const CertificatesModule = () => {
         {managingCompany && (
           <ManageCertificatesModal 
             company={managingCompany}
+            certLinks={certLinks}
             onClose={() => setManagingCompany(null)}
             onUpdate={async (updatedCompany) => {
               setCompanies(companies.map(c => c.id === updatedCompany.id ? updatedCompany : c));
@@ -526,6 +589,21 @@ export const CertificatesModule = () => {
               } else {
                 showToast("Empresa cadastrada com sucesso!", "success");
               }
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isConfiguringLinks && (
+          <ConfigLinksModal 
+            currentLinks={certLinks}
+            onClose={() => setIsConfiguringLinks(false)}
+            onSave={(links) => {
+              setCertLinks(links);
+              localStorage.setItem('@gestao360:certLinks', JSON.stringify(links));
+              setIsConfiguringLinks(false);
+              showToast("Links configurados com sucesso!", "success");
             }}
           />
         )}
