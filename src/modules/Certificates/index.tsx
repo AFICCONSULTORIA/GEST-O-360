@@ -88,6 +88,14 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
 
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'] as const;
+  
+  const certLinks = {
+    'Trabalhista': 'https://www.tst.jus.br/certidao1',
+    'Federal': 'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
+    'FGTS': 'https://consultacrf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
+    'Estadual': '', // Varia por estado
+    'Municipal': '' // Varia por município
+  };
 
   if (uploadingCert) {
     return (
@@ -156,7 +164,14 @@ const ManageCertificatesModal = ({ company, onClose, onUpdate }: { company: Comp
                      <FileBadge size={18} className="text-neutral-400" />
                    </div>
                    <div>
-                     <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{certType}</p>
+                     <div className="flex items-center gap-2">
+                       <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{certType}</p>
+                       {certLinks[certType] && (
+                         <a href={certLinks[certType]} target="_blank" rel="noreferrer" title={`Emitir Certidão ${certType}`} className="text-[10px] bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 px-2 py-0.5 rounded border border-transparent transition-all flex items-center gap-1">
+                           <ExternalLink size={10} /> Emitir
+                         </a>
+                       )}
+                     </div>
                      {isPresent ? (
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">Válida até {new Date(cert.expiryDate).toLocaleDateString('pt-BR')}</p>
                      ) : (
