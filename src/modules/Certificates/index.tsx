@@ -369,11 +369,11 @@ export const CertificatesModule = () => {
   const [certLinks, setCertLinks] = React.useState<Record<string, string>>(() => {
     const saved = localStorage.getItem('@gestao360:certLinks');
     return saved ? JSON.parse(saved) : {
-      'Trabalhista': 'https://www.tst.jus.br/certidao1',
-      'Federal': 'https://solucoes.receita.fazenda.gov.br/Servicos/certidaointernet/PJ/Emitir',
-      'FGTS': 'https://consultacrf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf',
-      'Estadual': '',
-      'Municipal': ''
+      'Trabalhista': 'https://cndt-certidao.tst.jus.br/inicio.faces',
+      'Federal': 'https://servicos.receitafederal.gov.br/servico/certidoes/#/home',
+      'Estadual': 'https://www.sefaz.mt.gov.br/cnd/certidao/servlet/ServletRotdAberto?origem=60',
+      'Municipal': 'http://45.161.37.1:8080/servicosweb/home.jsf',
+      'FGTS': 'https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf'
     };
   });
 
