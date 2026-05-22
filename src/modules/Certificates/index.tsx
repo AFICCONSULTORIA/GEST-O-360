@@ -367,7 +367,7 @@ export const CertificatesModule = () => {
   const [isLoading, setIsLoading] = React.useState(true);
 
   const [certLinks, setCertLinks] = React.useState<Record<string, string>>(() => {
-    const saved = localStorage.getItem('@gestao360:certLinks');
+    const saved = localStorage.getItem('@gestao360:certLinks_v2');
     return saved ? JSON.parse(saved) : {
       'Trabalhista': 'https://cndt-certidao.tst.jus.br/inicio.faces',
       'Federal': 'https://servicos.receitafederal.gov.br/servico/certidoes/#/home',
@@ -601,7 +601,7 @@ export const CertificatesModule = () => {
             onClose={() => setIsConfiguringLinks(false)}
             onSave={(links) => {
               setCertLinks(links);
-              localStorage.setItem('@gestao360:certLinks', JSON.stringify(links));
+              localStorage.setItem('@gestao360:certLinks_v2', JSON.stringify(links));
               setIsConfiguringLinks(false);
               showToast("Links configurados com sucesso!", "success");
             }}
