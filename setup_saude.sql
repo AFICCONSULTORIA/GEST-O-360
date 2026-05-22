@@ -10,6 +10,7 @@ CREATE TABLE appointments (
   is_pregnant BOOLEAN DEFAULT false,
   is_urgent BOOLEAN DEFAULT false,
   specialty TEXT NOT NULL,
+  referral_details TEXT,
   appointment_date DATE NOT NULL,
   status TEXT NOT NULL, -- 'Agendado', 'Atendido', 'Cancelado', 'Faltou'
   notes TEXT,

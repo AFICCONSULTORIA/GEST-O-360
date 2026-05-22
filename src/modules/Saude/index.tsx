@@ -13,6 +13,7 @@ export interface Appointment {
   is_pregnant: boolean;
   is_urgent: boolean;
   specialty: string;
+  referral_details?: string;
   appointment_date: string;
   status: 'Agendado' | 'Atendido' | 'Cancelado' | 'Faltou';
   notes?: string;
@@ -29,6 +30,22 @@ const COMMON_SPECIALTIES = [
   'Psicologia',
   'Enfermagem'
 ];
+
+const formatCPF = (value: string) => {
+  let v = value.replace(/\D/g, '').substring(0, 11);
+  v = v.replace(/(\d{3})(\d)/, '$1.$2');
+  v = v.replace(/(\d{3})(\d)/, '$1.$2');
+  v = v.replace(/(\d{3})(\d)/, '$1-$2');
+  return v;
+};
+
+const formatSUS = (value: string) => {
+  let v = value.replace(/\D/g, '').substring(0, 15);
+  v = v.replace(/(\d{3})(\d)/, '$1 $2');
+  v = v.replace(/(\d{4})(\d)/, '$1 $2');
+  v = v.replace(/(\d{4})(\d)/, '$1 $2');
+  return v;
+};
 
 export const SaudeModule = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -211,6 +228,15 @@ export const SaudeModule = () => {
                 </span>
               </div>
             </div>
+            {apt.referral_details && (
+              <div className="mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-3 rounded-xl flex items-start gap-2">
+                <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700/70 dark:text-amber-500/70">Encaminhamento</p>
+                  <p className="text-xs font-bold text-amber-900 dark:text-amber-300">{apt.referral_details}</p>
+                </div>
+              </div>
+            )}
             {apt.notes && (
               <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 pt-3">
                 <span className="font-bold">Obs:</span> {apt.notes}
@@ -248,6 +274,7 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
     is_pregnant: false,
     is_urgent: false,
     specialty: COMMON_SPECIALTIES[0],
+    referral_details: '',
     appointment_date: '',
     notes: ''
   });
@@ -260,6 +287,7 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
     const newAppointment = {
       id: Math.random().toString(36).substring(2, 10),
       ...formData,
+      referral_details: formData.specialty === 'Clínico Geral' ? null : formData.referral_details,
       status: 'Agendado'
     };
 
@@ -312,7 +340,7 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">CPF *</label>
               <input 
                 type="text" required
-                value={formData.patient_cpf} onChange={e => setFormData({...formData, patient_cpf: e.target.value})}
+                value={formData.patient_cpf} onChange={e => setFormData({...formData, patient_cpf: formatCPF(e.target.value)})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
                 placeholder="000.000.000-00"
               />
@@ -322,7 +350,7 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Cartão do SUS *</label>
               <input 
                 type="text" required
-                value={formData.patient_sus} onChange={e => setFormData({...formData, patient_sus: e.target.value})}
+                value={formData.patient_sus} onChange={e => setFormData({...formData, patient_sus: formatSUS(e.target.value)})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
                 placeholder="000 0000 0000 0000"
               />
@@ -384,7 +412,19 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
               </select>
             </div>
 
-            <div className="space-y-2">
+            {formData.specialty !== 'Clínico Geral' && (
+              <div className="space-y-2 md:col-span-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4 rounded-2xl animate-in fade-in">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-800/70 dark:text-amber-500 ml-1">Médico Solicitante / CRM / Nº da Guia *</label>
+                <input 
+                  type="text" required
+                  value={formData.referral_details} onChange={e => setFormData({...formData, referral_details: e.target.value})}
+                  className="w-full bg-white dark:bg-neutral-950 border border-amber-200 dark:border-amber-800 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-amber-500/10 outline-none transition-all dark:text-white"
+                  placeholder="Ex: Dr. Carlos CRM: 12345"
+                />
+              </div>
+            )}
+
+            <div className="space-y-2 md:col-span-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Data da Consulta *</label>
               <input 
                 type="date" required
