@@ -312,7 +312,6 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-            onClick={() => setIsInstModalOpen(false)}
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
@@ -361,7 +360,6 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-            onClick={() => setIsModalOpen(false)}
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
@@ -472,7 +470,6 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-            onClick={() => setManagingPermissionsUser(null)}
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}

@@ -750,13 +750,11 @@ interface CompanyCertificates {
   id: string;
   companyName: string;
   cnpj: string;
-  certificates: {
-    [key in 'Trabalhista' | 'Federal' | 'Estadual' | 'Municipal' | 'FGTS']: {
-      issueDate: string;
-      expiryDate: string;
-      fileUrl?: string;
-    } | null;
-  };
+  certificates: Record<'Trabalhista' | 'Federal' | 'Estadual' | 'Municipal' | 'FGTS', {
+    issueDate: string;
+    expiryDate: string;
+    fileUrl?: string;
+  } | null>;
 }
 
 const MOCK_COMPANIES: CompanyCertificates[] = [
@@ -923,7 +921,13 @@ export default function App() {
           });
         } else {
           supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
-            if (data) setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
+            if (data) {
+              setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
+              if (data.last_login === 'Nunca') {
+                setIsChangingPassword(true);
+                setForcePasswordChange(true);
+              }
+            }
           });
         }
       } else {
@@ -997,6 +1001,32 @@ export default function App() {
   ]);
   const [isNewControlModalOpen, setIsNewControlModalOpen] = React.useState(false);
   const [attachingFor, setAttachingFor] = React.useState<number | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = React.useState(false);
+  const [forcePasswordChange, setForcePasswordChange] = React.useState(false);
+  const [recentViews, setRecentViews] = React.useState<View[]>([]);
+
+  // Carrega os acessos recentes quando o usuário logar
+  React.useEffect(() => {
+    if (currentUser?.id) {
+      const saved = localStorage.getItem(`gestao360-recent-views-${currentUser.id}`);
+      if (saved) {
+        setRecentViews(JSON.parse(saved));
+      } else {
+        setRecentViews([]);
+      }
+    }
+  }, [currentUser?.id]);
+
+  // Salva o acesso recente sempre que mudar de view (atrelado ao usuário)
+  React.useEffect(() => {
+    if (activeView !== 'home' && currentUser?.id) {
+      setRecentViews(prev => {
+        const updated = [activeView, ...prev.filter(v => v !== activeView)].slice(0, 8);
+        localStorage.setItem(`gestao360-recent-views-${currentUser.id}`, JSON.stringify(updated));
+        return updated;
+      });
+    }
+  }, [activeView, currentUser?.id]);
 
   const isPublicPortal = window.location.pathname === '/agendamento';
 
@@ -1106,7 +1136,6 @@ export default function App() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm print:hidden"
-            onClick={() => setViewingControl(null)}
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
@@ -1165,6 +1194,26 @@ export default function App() {
             onConfirm={() => {
               setObligations(obligations.map(o => o.id === attachingFor ? {...o, status: 'completed'} : o));
               setAttachingFor(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Change Password Modal */}
+      <AnimatePresence>
+        {isChangingPassword && (
+          <ChangePasswordModal 
+            forceChange={forcePasswordChange}
+            onClose={() => !forcePasswordChange && setIsChangingPassword(false)}
+            onSuccess={async () => {
+              if (forcePasswordChange && currentUser) {
+                const now = new Date().toLocaleString('pt-BR');
+                await supabase.from('admin_users').update({ last_login: now }).eq('id', currentUser.id);
+                setCurrentUser({ ...currentUser, lastLogin: now } as AdminUser);
+                setAdminUsers(adminUsers.map(u => u.id === currentUser.id ? { ...u, lastLogin: now } : u));
+                setForcePasswordChange(false);
+              }
+              setIsChangingPassword(false);
             }}
           />
         )}
@@ -1251,13 +1300,17 @@ export default function App() {
 
               <div className="flex items-center gap-2 sm:gap-4">
                 {currentUser && (
-                  <div className="hidden sm:flex items-center gap-2 mr-2 px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 rounded-full border border-neutral-100 dark:border-neutral-700">
+                  <button 
+                    onClick={() => { setIsChangingPassword(true); setForcePasswordChange(false); }}
+                    className="hidden sm:flex items-center gap-2 mr-2 px-3 py-1.5 bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-full border border-neutral-100 dark:border-neutral-700 transition-colors text-left"
+                    title="Alterar Senha"
+                  >
                     <UserCircle size={16} className="text-neutral-500 dark:text-neutral-400" />
-                    <div className="flex flex-col">
+                    <div className="flex flex-col text-left">
                       <span className="text-[11px] font-bold leading-none text-neutral-900 dark:text-white truncate max-w-[120px]">{currentUser.name || currentUser.email}</span>
                       <span className="text-[9px] leading-none text-neutral-500 dark:text-neutral-400 mt-0.5">{currentUser.role}</span>
                     </div>
-                  </div>
+                  </button>
                 )}
                 {/* Hamburger Button for Mobile */}
                 <button 
@@ -1455,8 +1508,65 @@ export default function App() {
               />
             )}
             {activeView === 'home' && (
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none opacity-[0.03] dark:opacity-10 z-0">
-                <div className="flex items-center scale-75 md:scale-100 min-w-max">
+              <div className="w-full max-w-[1400px] mx-auto px-6 py-12 relative z-10 animate-in fade-in duration-500">
+                <div className="mb-10">
+                  <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
+                    {recentViews.length > 0 ? 'Acessados Recentemente' : 'Acesso Rápido'}
+                  </h2>
+                  <p className="text-neutral-500 dark:text-neutral-400 mt-2">
+                    {recentViews.length > 0 ? 'Suas ferramentas mais utilizadas recentemente.' : 'Selecione um módulo para começar.'}
+                  </p>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
+                  {(() => {
+                    // Flatten all allowed items
+                    const allAllowedItems = NAVBAR_CATEGORIES.flatMap(category => 
+                      category.items
+                        .filter(item => currentUser?.permissions?.includes(item.id as View) || currentUser?.role === 'Super Admin')
+                        .map(item => ({ ...item, categoryLabel: category.label }))
+                    );
+
+                    // If no recent views, show all allowed items
+                    let itemsToDisplay = allAllowedItems;
+                    
+                    if (recentViews.length > 0) {
+                      // Map recentViews to items, maintaining order
+                      itemsToDisplay = recentViews
+                        .map(viewId => allAllowedItems.find(item => item.id === viewId))
+                        .filter((item): item is typeof allAllowedItems[0] => item !== undefined);
+                        
+                      // If recent views somehow yielded no allowed items, fallback to all allowed
+                      if (itemsToDisplay.length === 0) {
+                        itemsToDisplay = allAllowedItems;
+                      }
+                    }
+
+                    return itemsToDisplay.map(item => (
+                      <button
+                        key={item.id}
+                        onClick={() => setActiveView(item.id as View)}
+                        className="group flex flex-col text-left p-6 bg-white dark:bg-neutral-900 rounded-[32px] shadow-sm border border-neutral-100 dark:border-neutral-800 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
+                      >
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-neutral-50 dark:bg-neutral-800/50 rounded-bl-[100px] -z-10 transition-transform duration-500 group-hover:scale-110" />
+                        
+                        <div className="w-14 h-14 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mb-6 text-neutral-500 dark:text-neutral-400 group-hover:bg-neutral-900 group-hover:text-white dark:group-hover:bg-white dark:group-hover:text-neutral-900 transition-colors shadow-inner">
+                          <item.icon size={24} />
+                        </div>
+                        
+                        <h3 className="text-lg font-black text-neutral-900 dark:text-white mb-1 group-hover:text-neutral-700 dark:group-hover:text-neutral-200 transition-colors">
+                          {item.label}
+                        </h3>
+                        <p className="text-[11px] font-bold uppercase tracking-widest text-neutral-400">
+                          {item.categoryLabel}
+                        </p>
+                      </button>
+                    ));
+                  })()}
+                </div>
+                
+                {/* Minimal watermark background */}
+                <div className="fixed bottom-0 right-0 p-12 pointer-events-none opacity-[0.06] dark:opacity-10 z-0 flex items-center scale-50 origin-bottom-right">
                   <LogoCompass size={160} className="text-neutral-900 dark:text-white mr-8" />
                   <h1 className="text-[140px] font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">Gestão <span className="font-normal">360</span></h1>
                 </div>
@@ -1569,7 +1679,6 @@ const NewControlModal = ({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-      onClick={onClose}
     >
       <motion.div 
         initial={{ scale: 0.9, y: 20 }}
@@ -1679,7 +1788,6 @@ const AttachmentModal = ({ title, onClose, onConfirm }: { title: string, onClose
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
     className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-    onClick={onClose}
   >
     <motion.div 
       initial={{ scale: 0.9, y: 20 }}
@@ -1730,7 +1838,6 @@ const HistoryModal = ({ item, onClose }: { item: CheckItem, onClose: () => void 
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
     className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-    onClick={onClose}
   >
     <motion.div 
       initial={{ scale: 0.9, y: 20 }}
@@ -1796,6 +1903,105 @@ const HistoryModal = ({ item, onClose }: { item: CheckItem, onClose: () => void 
     </motion.div>
   </motion.div>
 );
+
+const ChangePasswordModal = ({ forceChange, onClose, onSuccess }: { forceChange: boolean, onClose: () => void, onSuccess: () => void }) => {
+  const [password, setPassword] = React.useState('');
+  const [confirmPassword, setConfirmPassword] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (password !== confirmPassword) {
+      setError('As senhas não coincidem.');
+      return;
+    }
+    if (password.length < 6) {
+      setError('A senha deve ter no mínimo 6 caracteres.');
+      return;
+    }
+    setLoading(true);
+    const { error: authError } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    
+    if (authError) {
+      setError('Erro ao atualizar senha: ' + authError.message);
+    } else {
+      showToast('Senha atualizada com sucesso!', 'success');
+      onSuccess();
+    }
+  };
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+      {...(!forceChange ? { onClick: onClose } : {})}
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl space-y-6 relative"
+        onClick={e => e.stopPropagation()}
+      >
+        {!forceChange && (
+          <button onClick={onClose} className="absolute top-6 right-6 p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+            <X size={20} />
+          </button>
+        )}
+        <div className="text-center space-y-2">
+          <div className="w-16 h-16 bg-sky-50 dark:bg-sky-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-sky-100 dark:border-sky-500/20 text-sky-500">
+            <Lock size={24} />
+          </div>
+          <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">
+            {forceChange ? 'Defina sua Senha' : 'Alterar Senha'}
+          </h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
+            {forceChange ? 'Como este é seu primeiro acesso, por favor defina uma senha segura para continuar.' : 'Insira sua nova senha abaixo.'}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400 p-3 rounded-2xl text-[13px] font-bold flex items-center gap-2">
+              <AlertCircle size={16} className="shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Nova Senha</label>
+            <input 
+              type="password" required
+              value={password} onChange={e => setPassword(e.target.value)}
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm focus:ring-4 focus:ring-sky-500/10 outline-none transition-all dark:text-white"
+            />
+            <p className="text-[10px] font-bold text-neutral-400 ml-1">A senha deve conter no mínimo 6 caracteres.</p>
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Confirmar Nova Senha</label>
+            <input 
+              type="password" required
+              value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm focus:ring-4 focus:ring-sky-500/10 outline-none transition-all dark:text-white"
+            />
+          </div>
+          <div className="pt-2">
+            <button 
+              type="submit" disabled={loading}
+              className="w-full py-4 bg-sky-600 text-white rounded-[24px] font-black uppercase tracking-widest text-xs hover:bg-sky-700 transition-all shadow-xl shadow-sky-600/20 disabled:opacity-50"
+            >
+              {loading ? 'Salvando...' : forceChange ? 'Definir Senha e Acessar' : 'Atualizar Senha'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 // --- Protocol Module ---
 

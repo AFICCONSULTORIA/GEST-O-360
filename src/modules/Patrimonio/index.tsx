@@ -201,7 +201,6 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-            onClick={() => setIsModalOpen(false)}
           >
             <motion.div 
               initial={{ scale: 0.9, y: 20 }}
@@ -461,7 +460,6 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/90 backdrop-blur-md"
-            onClick={() => setImageModalItem(null)}
           >
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}

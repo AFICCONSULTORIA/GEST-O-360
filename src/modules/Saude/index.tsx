@@ -319,7 +319,6 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
     <motion.div 
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-      onClick={onClose}
     >
       <motion.div 
         initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
