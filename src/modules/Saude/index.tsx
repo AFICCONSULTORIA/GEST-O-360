@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 
@@ -100,6 +100,17 @@ export const SaudeModule = () => {
     } else {
       setAppointments(appointments.map(a => a.id === id ? { ...a, status: newStatus as any } : a));
       showToast('Status atualizado!', 'success');
+    }
+  };
+
+  const deleteAppointment = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir este agendamento permanentemente?')) return;
+    const { error } = await supabase.from('appointments').delete().eq('id', id);
+    if (error) {
+      showToast('Erro ao excluir agendamento', 'error');
+    } else {
+      setAppointments(appointments.filter(a => a.id !== id));
+      showToast('Agendamento excluído com sucesso!', 'success');
     }
   };
 
@@ -206,6 +217,7 @@ export const SaudeModule = () => {
                 ) : (
                   <button onClick={() => updateStatus(apt.id, 'Agendado')} className="p-1.5 text-neutral-600 bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700" title="Desfazer ação (Reverter para Agendado)"><RotateCcw size={16} /></button>
                 )}
+                <button onClick={() => deleteAppointment(apt.id)} className="p-1.5 text-red-600 bg-red-50 dark:bg-red-500/10 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 ml-1" title="Excluir Permanentemente"><Trash2 size={16} /></button>
               </div>
             </div>
 
