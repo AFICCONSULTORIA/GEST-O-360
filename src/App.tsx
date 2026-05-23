@@ -1327,17 +1327,19 @@ export default function App() {
                 >
                   {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
-                <button 
-                  onClick={() => setActiveView('settings')}
-                  className={`p-2.5 rounded-xl transition-all ${
-                    activeView === 'settings' 
-                      ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-md' 
-                      : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white'
-                  }`}
-                  title="Configurações e Usuários"
-                >
-                  <Settings size={20} />
-                </button>
+                {(currentUser?.permissions?.includes('settings') || currentUser?.role === 'Super Admin') && (
+                  <button 
+                    onClick={() => setActiveView('settings')}
+                    className={`p-2.5 rounded-xl transition-all ${
+                      activeView === 'settings' 
+                        ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-md' 
+                        : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white'
+                    }`}
+                    title="Configurações e Usuários"
+                  >
+                    <Settings size={20} />
+                  </button>
+                )}
                 <button 
                   onClick={async () => {
                     await supabase.auth.signOut();
