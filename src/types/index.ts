@@ -1,5 +1,13 @@
 export type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates';
 
+export interface ProtocolHistoryEntry {
+  date: string;
+  user: string;
+  action: string;
+  previousStatus?: string;
+  newStatus: string;
+}
+
 export interface Protocol {
   id: string;
   subject: string;
@@ -9,6 +17,7 @@ export interface Protocol {
   status: 'Pendente' | 'Recebido' | 'Em Análise' | 'Concluído';
   date: string;
   attachment?: string;
+  history?: ProtocolHistoryEntry[];
 }
 
 export interface HistoryEntry {
@@ -121,16 +130,7 @@ export interface AdminUser {
   institution_id?: string;
 }
 
-export interface Protocol {
-  id: string;
-  subject: string;
-  type: 'Memorando' | 'Ofício' | 'Pedido';
-  from: string;
-  to: string;
-  status: 'Pendente' | 'Recebido' | 'Em Análise' | 'Concluído';
-  date: string;
-  attachment?: string;
-}
+
 
 export interface DocumentTemplate {
   id: string;

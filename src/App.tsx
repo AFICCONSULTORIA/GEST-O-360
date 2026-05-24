@@ -1596,7 +1596,7 @@ export default function App() {
               />
             )}
             {activeView === 'norms' && <NormsModule />}
-            {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} />}
+            {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} />}
             {activeView === 'contracts' && <ContractsModule />}
             {activeView === 'education' && <EducationModule />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} />}
