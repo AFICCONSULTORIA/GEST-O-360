@@ -18,7 +18,7 @@ export interface Appointment {
   referral_details?: string;
   appointment_date: string;
   appointment_time?: string;
-  status: 'Agendado' | 'Atendido' | 'Cancelado' | 'Faltou';
+  status: 'Aguardando Regulação' | 'Agendado' | 'Atendido' | 'Cancelado' | 'Faltou';
   notes?: string;
   created_at?: string;
 }
