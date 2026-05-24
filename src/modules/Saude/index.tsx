@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw, Trash2 } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw, Trash2, Phone, MessageCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 
@@ -9,6 +9,7 @@ export interface Appointment {
   patient_name: string;
   patient_cpf: string;
   patient_sus: string;
+  patient_phone?: string;
   patient_birth_date: string;
   is_pregnant: boolean;
   is_urgent: boolean;
@@ -44,6 +45,20 @@ const formatSUS = (value: string) => {
   v = v.replace(/(\d{3})(\d)/, '$1 $2');
   v = v.replace(/(\d{4})(\d)/, '$1 $2');
   v = v.replace(/(\d{4})(\d)/, '$1 $2');
+  return v;
+};
+
+const formatPhone = (value: string) => {
+  let v = value.replace(/\D/g, '').substring(0, 11);
+  if (v.length > 10) {
+    v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
+  } else if (v.length > 5) {
+    v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+  } else if (v.length > 2) {
+    v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+  } else {
+    v = v.replace(/^(\d*)/, '($1');
+  }
   return v;
 };
 
@@ -91,6 +106,25 @@ export const SaudeModule = () => {
 
   useEffect(() => {
     loadAppointments();
+
+    const channel = supabase
+      .channel('appointments-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'appointments'
+        },
+        () => {
+          loadAppointments();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const updateStatus = async (id: string, newStatus: string) => {
@@ -112,6 +146,19 @@ export const SaudeModule = () => {
       setAppointments(appointments.filter(a => a.id !== id));
       showToast('Agendamento excluído com sucesso!', 'success');
     }
+  };
+
+  const getWhatsAppLink = (apt: Appointment) => {
+    if (!apt.patient_phone) return '#';
+    const phone = apt.patient_phone.replace(/\D/g, '');
+    
+    let text = `Olá, ${apt.patient_name}! Somos da Secretaria de Saúde.\n\nInformamos que o seu agendamento para *${apt.specialty}* foi realizado com sucesso!\n\nEm breve entraremos em contato para informar o horário e o dia da sua consulta.`;
+    
+    if (apt.specialty !== 'Clínico Geral') {
+      text += `\n\nPara agilizarmos o seu atendimento, por favor, nos envie uma foto ou o arquivo em PDF do seu encaminhamento médico por aqui mesmo.`;
+    }
+    
+    return `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;
   };
 
   const filtered = appointments.filter(a => {
@@ -225,6 +272,11 @@ export const SaudeModule = () => {
             <div className="flex flex-col gap-1 text-sm text-neutral-500 dark:text-neutral-400 mb-4">
               <div className="flex items-center gap-2"><FileText size={14} /> <span className="font-mono text-xs">CPF: {apt.patient_cpf}</span></div>
               <div className="flex items-center gap-2"><FileText size={14} /> <span className="font-mono text-xs">SUS: {apt.patient_sus}</span></div>
+              {apt.patient_phone ? (
+                <div className="flex items-center gap-2"><Phone size={14} /> <span className="font-mono text-xs">Tel: {apt.patient_phone}</span></div>
+              ) : (
+                <div className="flex items-center gap-2 opacity-50"><Phone size={14} /> <span className="text-xs italic">Sem telefone registrado</span></div>
+              )}
               <div className="flex items-center gap-2"><Calendar size={14} /> <span className="text-xs">Nasc: {apt.patient_birth_date.split('-').reverse().join('/')}</span></div>
             </div>
 
@@ -254,6 +306,19 @@ export const SaudeModule = () => {
                 <span className="font-bold">Obs:</span> {apt.notes}
               </p>
             )}
+
+            {apt.patient_phone && (
+              <div className="mt-4 flex justify-end">
+                <a 
+                  href={getWhatsAppLink(apt)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-xs font-black uppercase tracking-widest bg-[#25D366]/10 text-[#25D366] dark:bg-[#25D366]/20 dark:text-[#25D366] px-4 py-2.5 rounded-xl hover:bg-[#25D366]/20 dark:hover:bg-[#25D366]/30 transition-all shadow-sm border border-[#25D366]/20"
+                >
+                  <MessageCircle size={16} /> WhatsApp
+                </a>
+              </div>
+            )}
           </div>
         )})}
 
@@ -282,6 +347,7 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
     patient_name: '',
     patient_cpf: '',
     patient_sus: '',
+    patient_phone: '',
     patient_birth_date: '',
     is_pregnant: false,
     is_urgent: false,
@@ -364,6 +430,16 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
                 value={formData.patient_sus} onChange={e => setFormData({...formData, patient_sus: formatSUS(e.target.value)})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
                 placeholder="000 0000 0000 0000"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Telefone / WhatsApp *</label>
+              <input 
+                type="text" required
+                value={formData.patient_phone} onChange={e => setFormData({...formData, patient_phone: formatPhone(e.target.value)})}
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
+                placeholder="(00) 00000-0000"
               />
             </div>
 

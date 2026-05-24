@@ -30,6 +30,20 @@ const formatSUS = (value: string) => {
   return v;
 };
 
+const formatPhone = (value: string) => {
+  let v = value.replace(/\D/g, '').substring(0, 11);
+  if (v.length > 10) {
+    v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
+  } else if (v.length > 5) {
+    v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
+  } else if (v.length > 2) {
+    v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+  } else {
+    v = v.replace(/^(\d*)/, '($1');
+  }
+  return v;
+};
+
 // Simple date formatter
 const formatDate = (dateString: string) => {
   if (!dateString) return '';
@@ -45,6 +59,7 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
     patient_name: '',
     patient_cpf: '',
     patient_sus: '',
+    patient_phone: '',
     patient_birth_date: '',
     is_pregnant: false,
     specialty: COMMON_SPECIALTIES[0],
@@ -150,7 +165,7 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
           <button 
             onClick={() => {
               setSuccess(false);
-              setFormData({...formData, patient_name: '', patient_cpf: '', patient_sus: '', notes: ''});
+              setFormData({...formData, patient_name: '', patient_cpf: '', patient_sus: '', patient_phone: '', notes: ''});
               setActiveTab('acompanhar');
             }}
             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/30"
@@ -250,6 +265,16 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
                       value={formData.patient_sus} onChange={e => setFormData({...formData, patient_sus: formatSUS(e.target.value)})}
                       className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-6 py-4 rounded-2xl text-base focus:ring-4 focus:ring-emerald-500/20 outline-none transition-all dark:text-white font-mono"
                       placeholder="000 0000 0000 0000"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-neutral-500 ml-2">Telefone / WhatsApp *</label>
+                    <input 
+                      type="text" required
+                      value={formData.patient_phone} onChange={e => setFormData({...formData, patient_phone: formatPhone(e.target.value)})}
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-6 py-4 rounded-2xl text-base focus:ring-4 focus:ring-emerald-500/20 outline-none transition-all dark:text-white font-mono"
+                      placeholder="(00) 00000-0000"
                     />
                   </div>
 

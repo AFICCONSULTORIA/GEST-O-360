@@ -16,7 +16,6 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
   const [isNewModalOpen, setIsNewModalOpen] = React.useState(false);
   const [editingProtocol, setEditingProtocol] = React.useState<Protocol | null>(null);
   const [viewingHistoryProtocol, setViewingHistoryProtocol] = React.useState<Protocol | null>(null);
-  const [updatingStatusProtocol, setUpdatingStatusProtocol] = React.useState<Protocol | null>(null);
   const [viewingProtocol, setViewingProtocol] = React.useState<Protocol | null>(null);
 
   const loadData = async () => {
@@ -39,6 +38,30 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
     loadData();
   }, []);
 
+  const handleReceive = async (protocol: Protocol) => {
+    if (protocol.status === 'Recebido') return;
+
+    const newHistory = [...(protocol.history || []), {
+      date: new Date().toISOString(),
+      user: protocol.to,
+      action: 'Alteração de Status',
+      previousStatus: protocol.status,
+      newStatus: 'Recebido'
+    }];
+
+    const { error } = await supabase.from('protocols').update({
+      status: 'Recebido',
+      history: newHistory
+    }).eq('id', protocol.id);
+
+    if (error) {
+      showToast('Erro ao receber protocolo: ' + error.message, 'error');
+    } else {
+      showToast('Protocolo recebido com sucesso!', 'success');
+      loadData();
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (confirm("Tem certeza que deseja excluir este protocolo?")) {
       const { error } = await supabase.from('protocols').delete().eq('id', id);
@@ -52,10 +75,13 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
   };
 
   const filtered = protocols.filter(p => {
-    const matchDept = filterDept === 'Todas' || p.from === filterDept;
+    const matchDept = filterDept === 'Todas' || p.from === filterDept || p.to === filterDept;
     const matchStatus = filterStatus === 'Todos' || p.status === filterStatus;
     const matchType = filterType === 'Todos' || p.type === filterType;
-    const matchSearch = p.subject.toLowerCase().includes(searchQuery.toLowerCase()) || p.from.toLowerCase().includes(searchQuery.toLowerCase()) || p.id.includes(searchQuery);
+    const matchSearch = p.subject.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        p.from.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        p.to.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                        p.id.includes(searchQuery);
     return matchDept && matchStatus && matchType && matchSearch;
   });
 
@@ -80,6 +106,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
               ))}
               {institutions.length === 0 && (
                 <>
+                  <option value="Administração e Finanças">Administração e Finanças</option>
                   <option value="Saúde">Saúde</option>
                   <option value="Obras">Obras</option>
                   <option value="Educação">Educação</option>
@@ -100,8 +127,6 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
               <option value="Todos">Todos</option>
               <option value="Pendente">Pendente</option>
               <option value="Recebido">Recebido</option>
-              <option value="Em Análise">Em Análise</option>
-              <option value="Concluído">Concluído</option>
             </select>
           </div>
 
@@ -185,13 +210,15 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
                 {p.status}
               </div>
               <div className="flex items-center gap-2">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setUpdatingStatusProtocol(p); }}
-                  className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-neutral-400"
-                  title="Dar Andamento"
-                >
-                  <CheckCircle2 size={18} />
-                </button>
+                {p.status !== 'Recebido' && p.status !== 'Concluído' && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleReceive(p); }}
+                    className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-neutral-400"
+                    title="Marcar como Recebido"
+                  >
+                    <CheckCircle2 size={18} />
+                  </button>
+                )}
                 <button 
                   onClick={(e) => { e.stopPropagation(); setViewingHistoryProtocol(p); }}
                   className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-sky-50 dark:hover:bg-sky-500/10 hover:text-sky-600 dark:hover:text-sky-400 transition-colors text-neutral-400"
@@ -237,16 +264,6 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
           <ProtocolHistoryModal 
             protocol={viewingHistoryProtocol}
             onClose={() => setViewingHistoryProtocol(null)}
-          />
-        )}
-        {updatingStatusProtocol && (
-          <UpdateStatusModal 
-            protocol={updatingStatusProtocol}
-            onClose={() => setUpdatingStatusProtocol(null)}
-            onSuccess={() => {
-              loadData();
-              setUpdatingStatusProtocol(null);
-            }}
           />
         )}
         {viewingProtocol && (
@@ -298,6 +315,11 @@ export const NewProtocolModal = ({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleSubmit = async () => {
+    if (!file && !initialData?.attachment) {
+      showToast('É obrigatório anexar um documento digitalizado para protocolar.', 'error');
+      return;
+    }
+    
     setIsUploading(true);
     let attachmentUrl = initialData?.attachment || null;
 
@@ -565,92 +587,6 @@ export const ProtocolHistoryModal = ({ protocol, onClose }: { protocol: Protocol
             </div>
           )}
         </div>
-      </motion.div>
-    </motion.div>
-  );
-};
-
-export const UpdateStatusModal = ({ protocol, onClose, onSuccess }: { protocol: Protocol, onClose: () => void, onSuccess: () => void }) => {
-  const [status, setStatus] = React.useState(protocol.status);
-  const [isUpdating, setIsUpdating] = React.useState(false);
-
-  const handleUpdate = async () => {
-    setIsUpdating(true);
-    
-    if (status === protocol.status) {
-      onClose();
-      return;
-    }
-
-    const newHistory = [...(protocol.history || []), {
-      date: new Date().toISOString(),
-      user: protocol.to,
-      action: 'Alteração de Status',
-      previousStatus: protocol.status,
-      newStatus: status
-    }];
-
-    const { error } = await supabase.from('protocols').update({
-      status,
-      history: newHistory
-    }).eq('id', protocol.id);
-
-    setIsUpdating(false);
-
-    if (error) {
-      showToast('Erro ao atualizar status: ' + error.message, 'error');
-    } else {
-      showToast('Status atualizado com sucesso!', 'success');
-      onSuccess();
-    }
-  };
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <motion.div 
-        initial={{ scale: 0.9, y: 20 }}
-        animate={{ scale: 1, y: 0 }}
-        exit={{ scale: 0.9, y: 20 }}
-        className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-[40px] p-10 shadow-2xl space-y-8"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-start">
-          <div className="space-y-1">
-            <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Dar Andamento</h3>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium">Protocolo #{protocol.id.slice(-3)}</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-400">
-            <CircleOff size={24} />
-          </button>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Novo Status</label>
-          <select 
-            value={status}
-            onChange={(e) => setStatus(e.target.value as any)}
-            className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all dark:text-neutral-100 font-bold"
-          >
-            <option value="Pendente">Pendente</option>
-            <option value="Recebido">Recebido</option>
-            <option value="Em Análise">Em Análise</option>
-            <option value="Concluído">Concluído</option>
-          </select>
-        </div>
-
-        <button 
-          onClick={handleUpdate}
-          disabled={isUpdating || status === protocol.status}
-          className="w-full bg-emerald-500 text-white py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-xs hover:bg-emerald-600 transition-all disabled:opacity-50 shadow-xl shadow-emerald-500/20"
-        >
-          {isUpdating ? 'Atualizando...' : 'Confirmar'}
-        </button>
       </motion.div>
     </motion.div>
   );
