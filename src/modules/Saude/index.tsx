@@ -155,17 +155,17 @@ export const SaudeModule = () => {
     if (!apt.patient_phone) return '#';
     const phone = apt.patient_phone.replace(/\D/g, '');
     
-    let text = `Olá, ${apt.patient_name}! Somos da Secretaria de Saúde.\n\nInformamos que o seu agendamento para *${apt.specialty}* foi realizado com sucesso!`;
+    let text = '';
     
     if (apt.appointment_time) {
       const dataStr = apt.appointment_date.split('-').reverse().join('/');
-      text += `\n\nSua consulta está confirmada para o dia *${dataStr}* às *${apt.appointment_time}*.\nPor favor, confirme sua presença.`;
+      text = `Sua consulta para *${apt.specialty}* está confirmada para o dia *${dataStr}* às *${apt.appointment_time}*.\nPor favor, confirme sua presença.`;
     } else {
-      text += `\n\nEm breve entraremos em contato para informar o horário e o dia da sua consulta.`;
-    }
-
-    if (apt.specialty !== 'Clínico Geral') {
-      text += `\n\nPara agilizarmos o seu atendimento, por favor, nos envie uma foto ou o arquivo em PDF do seu encaminhamento médico por aqui mesmo.`;
+      text = `Olá, ${apt.patient_name}! Somos da Secretaria de Saúde.\n\nInformamos que a sua solicitação de consulta para *${apt.specialty}* foi recebida com sucesso!\n\nEm breve entraremos em contato para informar o horário e o dia da sua consulta.`;
+      
+      if (apt.specialty !== 'Clínico Geral') {
+        text += `\n\nPara agilizarmos o seu atendimento, por favor, nos envie uma foto ou o arquivo em PDF do seu encaminhamento médico por aqui mesmo.`;
+      }
     }
     
     return `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;

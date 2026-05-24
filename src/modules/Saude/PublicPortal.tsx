@@ -458,17 +458,35 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
                                 <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest border ${getStatusColor(req.status)}`}>
                                   {req.status}
                                 </span>
-                                <span className="text-xs font-bold text-neutral-400 dark:text-neutral-500 flex items-center gap-1">
-                                  <Clock size={12} /> {formatDate(req.appointment_date)} {req.appointment_time ? `às ${req.appointment_time}` : ''}
+                                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+                                  Protocolo: <span className="font-mono">{req.id}</span>
                                 </span>
                               </div>
                               <h5 className="text-lg font-black text-neutral-900 dark:text-white">{req.specialty}</h5>
                               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">Paciente: {req.patient_name}</p>
                             </div>
                             
-                            <div className="bg-neutral-50 dark:bg-neutral-900 p-4 rounded-2xl min-w-[200px] shrink-0 border border-neutral-100 dark:border-neutral-800">
-                              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-1">Nº do Protocolo</p>
-                              <p className="text-lg font-mono font-bold text-neutral-900 dark:text-white tracking-widest">{req.id}</p>
+                            <div className={`p-4 rounded-2xl min-w-[200px] shrink-0 border ${req.appointment_time ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/50' : 'bg-neutral-50 dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800'}`}>
+                              <p className={`text-[10px] font-black uppercase tracking-widest mb-2 ${req.appointment_time ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-400'}`}>
+                                Data da Consulta
+                              </p>
+                              {req.appointment_time ? (
+                                <div className="space-y-1">
+                                  <p className="text-xl font-black text-emerald-700 dark:text-emerald-300 tracking-tight flex items-center gap-2">
+                                    <Calendar size={18} /> {formatDate(req.appointment_date)}
+                                  </p>
+                                  <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
+                                    <Clock size={16} /> {req.appointment_time}
+                                  </p>
+                                </div>
+                              ) : (
+                                <div>
+                                  <p className="text-lg font-bold text-neutral-900 dark:text-white tracking-tight flex items-center gap-2">
+                                    <Calendar size={18} /> {formatDate(req.appointment_date)}
+                                  </p>
+                                  <p className="text-xs font-bold text-amber-500 mt-1">Horário a definir</p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
