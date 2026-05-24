@@ -10,12 +10,14 @@ export interface Appointment {
   patient_cpf: string;
   patient_sus: string;
   patient_phone?: string;
+  whatsapp_sent?: boolean;
   patient_birth_date: string;
   is_pregnant: boolean;
   is_urgent: boolean;
   specialty: string;
   referral_details?: string;
   appointment_date: string;
+  appointment_time?: string;
   status: 'Agendado' | 'Atendido' | 'Cancelado' | 'Faltou';
   notes?: string;
   created_at?: string;
@@ -68,6 +70,7 @@ export const SaudeModule = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSpecialty, setFilterSpecialty] = useState('Todas');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
 
   const loadAppointments = async () => {
     setIsLoading(true);
@@ -97,11 +100,11 @@ export const SaudeModule = () => {
   };
 
   const getPriorityLevel = (apt: Appointment) => {
-    if (apt.is_urgent) return -1; // Urgência Máxima
+    if (apt.is_urgent) return -1;
     const age = getAge(apt.patient_birth_date);
-    if (age >= 80) return 0; // Especial
-    if (age >= 60 || apt.is_pregnant) return 1; // Prioridade
-    return 2; // Normal
+    if (age >= 80) return 0;
+    if (age >= 60 || apt.is_pregnant) return 1;
+    return 2;
   };
 
   useEffect(() => {
@@ -152,13 +155,43 @@ export const SaudeModule = () => {
     if (!apt.patient_phone) return '#';
     const phone = apt.patient_phone.replace(/\D/g, '');
     
-    let text = `Olá, ${apt.patient_name}! Somos da Secretaria de Saúde.\n\nInformamos que o seu agendamento para *${apt.specialty}* foi realizado com sucesso!\n\nEm breve entraremos em contato para informar o horário e o dia da sua consulta.`;
+    let text = `Olá, ${apt.patient_name}! Somos da Secretaria de Saúde.\n\nInformamos que o seu agendamento para *${apt.specialty}* foi realizado com sucesso!`;
     
+    if (apt.appointment_time) {
+      const dataStr = apt.appointment_date.split('-').reverse().join('/');
+      text += `\n\nSua consulta está confirmada para o dia *${dataStr}* às *${apt.appointment_time}*.\nPor favor, confirme sua presença.`;
+    } else {
+      text += `\n\nEm breve entraremos em contato para informar o horário e o dia da sua consulta.`;
+    }
+
     if (apt.specialty !== 'Clínico Geral') {
       text += `\n\nPara agilizarmos o seu atendimento, por favor, nos envie uma foto ou o arquivo em PDF do seu encaminhamento médico por aqui mesmo.`;
     }
     
     return `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;
+  };
+
+  const handleWhatsAppClick = async (apt: Appointment) => {
+    window.open(getWhatsAppLink(apt), '_blank', 'noopener,noreferrer');
+    if (!apt.whatsapp_sent) {
+      setAppointments(appointments.map(a => a.id === apt.id ? { ...a, whatsapp_sent: true } : a));
+      await supabase.from('appointments').update({ whatsapp_sent: true }).eq('id', apt.id);
+    }
+  };
+
+  const handleSaveDateTime = async (aptId: string, newDate: string, newTime: string) => {
+    const { error } = await supabase.from('appointments').update({ 
+      appointment_date: newDate, 
+      appointment_time: newTime,
+      status: 'Agendado' 
+    }).eq('id', aptId);
+    
+    if (error) {
+      showToast('Erro ao salvar data e horário.', 'error');
+    } else {
+      showToast('Agendamento confirmado com sucesso!', 'success');
+      setSelectedAppointment(null);
+    }
   };
 
   const filtered = appointments.filter(a => {
@@ -168,11 +201,9 @@ export const SaudeModule = () => {
     const matchSpecialty = filterSpecialty === 'Todas' || a.specialty === filterSpecialty;
     return matchSearch && matchSpecialty;
   }).sort((a, b) => {
-    // Sort by priority first (0 = Especial, 1 = Prioridade, 2 = Normal)
     const pA = getPriorityLevel(a);
     const pB = getPriorityLevel(b);
     if (pA !== pB) return pA - pB;
-    // Then sort by date
     return new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime();
   });
 
@@ -225,7 +256,7 @@ export const SaudeModule = () => {
           const isUrgent = priority === -1;
           
           return (
-          <div key={apt.id} className={`bg-white dark:bg-neutral-900 rounded-3xl p-6 border ${
+          <div key={apt.id} onClick={() => setSelectedAppointment(apt)} className={`bg-white dark:bg-neutral-900 rounded-[32px] p-8 border cursor-pointer ${
             isUrgent ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-[pulse_2s_ease-in-out_infinite]' : 'border-neutral-100 dark:border-neutral-800 hover:shadow-md'
           } transition-all relative overflow-hidden group`}>
             <div className={`absolute top-0 left-0 w-1.5 h-full ${
@@ -257,14 +288,14 @@ export const SaudeModule = () => {
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 {apt.status === 'Agendado' ? (
                   <>
-                    <button onClick={() => updateStatus(apt.id, 'Atendido')} className="p-1.5 text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100" title="Marcar como Atendido"><CheckCircle2 size={16} /></button>
-                    <button onClick={() => updateStatus(apt.id, 'Faltou')} className="p-1.5 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100" title="Marcar como Falta"><AlertCircle size={16} /></button>
-                    <button onClick={() => updateStatus(apt.id, 'Cancelado')} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100" title="Cancelar"><XCircle size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Atendido'); }} className="p-1.5 text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100" title="Marcar como Atendido"><CheckCircle2 size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Faltou'); }} className="p-1.5 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100" title="Marcar como Falta"><AlertCircle size={16} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Cancelado'); }} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100" title="Cancelar"><XCircle size={16} /></button>
                   </>
                 ) : (
-                  <button onClick={() => updateStatus(apt.id, 'Agendado')} className="p-1.5 text-neutral-600 bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700" title="Desfazer ação (Reverter para Agendado)"><RotateCcw size={16} /></button>
+                  <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Agendado'); }} className="p-1.5 text-neutral-600 bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700" title="Desfazer ação (Reverter para Agendado)"><RotateCcw size={16} /></button>
                 )}
-                <button onClick={() => deleteAppointment(apt.id)} className="p-1.5 text-red-600 bg-red-50 dark:bg-red-500/10 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 ml-1" title="Excluir Permanentemente"><Trash2 size={16} /></button>
+                <button onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }} className="p-1.5 text-red-600 bg-red-50 dark:bg-red-500/10 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 ml-1" title="Excluir Permanentemente"><Trash2 size={16} /></button>
               </div>
             </div>
 
@@ -308,15 +339,24 @@ export const SaudeModule = () => {
             )}
 
             {apt.patient_phone && (
-              <div className="mt-4 flex justify-end">
-                <a 
-                  href={getWhatsAppLink(apt)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-xs font-black uppercase tracking-widest bg-[#25D366]/10 text-[#25D366] dark:bg-[#25D366]/20 dark:text-[#25D366] px-4 py-2.5 rounded-xl hover:bg-[#25D366]/20 dark:hover:bg-[#25D366]/30 transition-all shadow-sm border border-[#25D366]/20"
+              <div className="mt-4 flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800 pt-4">
+                {apt.whatsapp_sent ? (
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 size={14} /> Mensagem Enviada
+                  </div>
+                ) : (
+                  <div></div>
+                )}
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleWhatsAppClick(apt); }}
+                  className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all shadow-sm border ${
+                    apt.whatsapp_sent 
+                      ? 'bg-neutral-100 text-neutral-500 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700' 
+                      : 'bg-[#25D366]/10 text-[#25D366] border-[#25D366]/20 hover:bg-[#25D366]/20 dark:bg-[#25D366]/20 dark:text-[#25D366] dark:hover:bg-[#25D366]/30'
+                  }`}
                 >
-                  <MessageCircle size={16} /> WhatsApp
-                </a>
+                  <MessageCircle size={16} /> {apt.whatsapp_sent ? 'Reenviar' : 'WhatsApp'}
+                </button>
               </div>
             )}
           </div>
@@ -337,7 +377,162 @@ export const SaudeModule = () => {
             onSuccess={() => { loadAppointments(); setIsModalOpen(false); }}
           />
         )}
+        {selectedAppointment && (
+          <AppointmentDetailsModal
+            apt={selectedAppointment}
+            onClose={() => setSelectedAppointment(null)}
+            onSave={(d, t) => handleSaveDateTime(selectedAppointment.id, d, t)}
+          />
+        )}
       </AnimatePresence>
+    </div>
+  );
+};
+
+const AppointmentDetailsModal = ({ apt, onClose, onSave }: { apt: Appointment, onClose: () => void, onSave: (d: string, t: string) => void }) => {
+  const [editDate, setEditDate] = useState(apt.appointment_date);
+  const [editTime, setEditTime] = useState(apt.appointment_time || '');
+  const isEditable = apt.status === 'Aguardando Regulação' || apt.status === 'Agendado';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800"
+      >
+        <div className="p-8 pb-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
+          <div>
+            <h2 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-white">Detalhes do Agendamento</h2>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">ID: {apt.id}</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-500 dark:text-neutral-400">
+            <XCircle size={24} />
+          </button>
+        </div>
+
+        <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Paciente</p>
+              <p className="font-bold text-neutral-900 dark:text-white">{apt.patient_name}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Especialidade</p>
+              <div className="flex items-center gap-2">
+                <User size={16} className="text-emerald-500" />
+                <p className="font-bold text-neutral-900 dark:text-white">{apt.specialty}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Status do Agendamento</p>
+              <p className="font-bold text-neutral-900 dark:text-white">{apt.status}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Data de Nascimento</p>
+              <p className="font-bold text-neutral-900 dark:text-white">{apt.patient_birth_date.split('-').reverse().join('/')}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">CPF</p>
+              <p className="font-mono text-neutral-900 dark:text-white">{apt.patient_cpf}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Cartão do SUS</p>
+              <p className="font-mono text-neutral-900 dark:text-white">{apt.patient_sus}</p>
+            </div>
+            {apt.patient_phone && (
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Telefone / WhatsApp</p>
+                <div className="flex items-center gap-2">
+                  <Phone size={14} className="text-neutral-500" />
+                  <p className="font-mono text-neutral-900 dark:text-white">{apt.patient_phone}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="md:col-span-2 bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-4">Definição de Data e Horário</p>
+            {isEditable ? (
+              <div className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="flex-1 w-full space-y-1">
+                  <label className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Data da Consulta</label>
+                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white" />
+                </div>
+                <div className="flex-1 w-full space-y-1">
+                  <label className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Horário</label>
+                  <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white" />
+                </div>
+                <button onClick={() => onSave(editDate, editTime)} className="w-full md:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-emerald-500/20">
+                  Confirmar Agendamento
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-8">
+                <div>
+                  <p className="text-xs text-neutral-500 mb-1">Data</p>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={16} className="text-sky-500" />
+                    <p className="font-bold text-neutral-900 dark:text-white">{apt.appointment_date.split('-').reverse().join('/')}</p>
+                  </div>
+                </div>
+                {apt.appointment_time && (
+                  <div>
+                    <p className="text-xs text-neutral-500 mb-1">Horário</p>
+                    <div className="flex items-center gap-2">
+                      <Clock size={16} className="text-emerald-500" />
+                      <p className="font-bold text-neutral-900 dark:text-white">{apt.appointment_time}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {(apt.is_pregnant || apt.is_urgent) && (
+            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6 flex gap-4">
+              {apt.is_pregnant && (
+                <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 text-xs font-bold uppercase tracking-widest border border-amber-200 dark:border-amber-500/30">
+                  Gestante
+                </span>
+              )}
+              {apt.is_urgent && (
+                <span className="px-3 py-1 rounded-full bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 text-xs font-bold uppercase tracking-widest border border-red-200 dark:border-red-500/30">
+                  Urgência Médica
+                </span>
+              )}
+            </div>
+          )}
+
+          {apt.referral_details && (
+            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6">
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-2">Detalhes do Encaminhamento</p>
+              <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-300">{apt.referral_details}</p>
+              </div>
+            </div>
+          )}
+
+          {apt.notes && (
+            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6">
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-2">Observações / Sintomas / Motivo</p>
+              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{apt.notes}</p>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="p-8 pt-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
+          <button 
+            onClick={onClose}
+            className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-xl font-bold text-sm hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors shadow-lg shadow-neutral-900/20"
+          >
+            Fechar Janela
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 };

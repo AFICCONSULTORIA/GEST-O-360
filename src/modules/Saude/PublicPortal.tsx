@@ -459,7 +459,7 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
                                   {req.status}
                                 </span>
                                 <span className="text-xs font-bold text-neutral-400 dark:text-neutral-500 flex items-center gap-1">
-                                  <Clock size={12} /> {formatDate(req.appointment_date)}
+                                  <Clock size={12} /> {formatDate(req.appointment_date)} {req.appointment_time ? `às ${req.appointment_time}` : ''}
                                 </span>
                               </div>
                               <h5 className="text-lg font-black text-neutral-900 dark:text-white">{req.specialty}</h5>
