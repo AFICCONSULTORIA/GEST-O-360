@@ -14,6 +14,8 @@ import { PatrimonioModule } from './modules/Patrimonio';
 import { TemplatesModule } from './modules/Templates';
 import { SaudeModule } from './modules/Saude';
 import { PublicSaudePortal } from './modules/Saude/PublicPortal';
+import { ServicosPublicosModule } from './modules/ServicosPublicos';
+import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
 import { ContractsModule } from './modules/Contracts';
 import { EducationModule } from './modules/Education';
 import { CalendarModule } from './modules/Calendar';
@@ -1029,6 +1031,7 @@ export default function App() {
   }, [activeView, currentUser?.id]);
 
   const isPublicPortal = window.location.pathname === '/agendamento';
+  const isServicosPublicosPortal = window.location.pathname === '/servicos';
 
   if (isPublicPortal) {
     return (
@@ -1042,6 +1045,22 @@ export default function App() {
            </button>
          </div>
          <PublicSaudePortal darkMode={darkMode} />
+      </div>
+    );
+  }
+
+  if (isServicosPublicosPortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+         <div className="absolute top-10 right-10 z-50">
+           <button 
+             onClick={() => setDarkMode(!darkMode)}
+             className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+           >
+             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+           </button>
+         </div>
+         <PublicServicosPortal darkMode={darkMode} />
       </div>
     );
   }
@@ -1434,40 +1453,7 @@ export default function App() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {activeView === 'doc_numbers' && (
-              <DocumentNumbersModule
-                records={docRecords.filter(r => r.subject.toLowerCase().includes(searchQuery.toLowerCase()) || r.requester.toLowerCase().includes(searchQuery.toLowerCase()))}
-                onAdd={async (newRecord) => {
-                  const currentYear = new Date().getFullYear();
-                  const number = docRecords.filter(r => r.type === newRecord.type && r.year === currentYear).length + 1;
-                  const newDoc = { 
-                    ...newRecord, 
-                    id: Math.random().toString(36).substring(2, 9),
-                    number,
-                    year: currentYear,
-                    dateCreated: new Date().toISOString().split('T')[0]
-                  };
-                  setDocRecords([newDoc, ...docRecords]);
-                  showToast('Número gerado com sucesso!', 'success');
-                  
-                  await supabase.from('documents').insert({
-                    id: newDoc.id,
-                    type: newDoc.type,
-                    number: newDoc.number,
-                    year: newDoc.year,
-                    requester: newDoc.requester,
-                    subject: newDoc.subject,
-                    date_created: newDoc.dateCreated
-                  }).then(({ error }) => { if (error) console.error(error) });
-                }}
-                onUpdate={async (id, updates) => {
-                  setDocRecords(docRecords.map(r => r.id === id ? { ...r, ...updates } : r));
-                  showToast('Documento atualizado com sucesso!', 'success');
-                  
-                  await supabase.from('documents').update(updates).eq('id', id).then(({ error }) => { if (error) console.error(error) });
-                }}
-              />
-            )}
+
             {activeView === 'patrimonio' && (
               <PatrimonioModule 
                 items={patrimonioItems} 
@@ -1599,12 +1585,13 @@ export default function App() {
             {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} />}
             {activeView === 'contracts' && <ContractsModule />}
             {activeView === 'education' && <EducationModule />}
+            {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} />}
             {activeView === 'certificates' && <CertificatesModule />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
             {activeView === 'saude' && <SaudeModule />}
-            {activeView === 'servicos_publicos' && <PlaceholderModule title="Secretaria de Serviços Públicos" />}
+            {activeView === 'servicos_publicos' && <ServicosPublicosModule />}
             {activeView === 'meio_ambiente' && <PlaceholderModule title="Secretaria de Meio Ambiente" />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}
             {activeView === 'agricultura' && <PlaceholderModule title="Secretaria de Agricultura" />}

@@ -15,51 +15,162 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
 } = LucideIcons;
 
-const DocumentNumbersModule = ({ records, onAdd, onUpdate }: { records: DocumentRecord[], onAdd: (o: Omit<DocumentRecord, 'id' | 'number' | 'year' | 'dateCreated'>) => void, onUpdate: (id: string, updates: Partial<DocumentRecord>) => void }) => {
+const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null }) => {
+  const [records, setRecords] = React.useState<DocumentRecord[]>([]);
+  const [loading, setLoading] = React.useState(true);
   const [isAdding, setIsAdding] = React.useState(false);
+  const [isGenerating, setIsGenerating] = React.useState(false);
   const [formData, setFormData] = React.useState({
     type: 'Ofício' as DocType,
     requester: '',
     subject: '',
+    customNumber: ''
   });
 
   const [typeFilter, setTypeFilter] = React.useState('Todos');
+  const [recordToDelete, setRecordToDelete] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    fetchRecords();
+  }, []);
+
+  const fetchRecords = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('document_records').select('*').order('created_at', { ascending: false });
+    if (data && !error) {
+      // Postgres returns lowercased 'datecreated' or 'created_at'. Map it to 'dateCreated' for the UI.
+      const mappedData = data.map(item => ({
+        ...item,
+        dateCreated: item.created_at || item.datecreated
+      }));
+      setRecords(mappedData as DocumentRecord[]);
+    } else if (error) {
+      console.error("Fetch records error:", error);
+    }
+    setLoading(false);
+  };
 
   const filteredRecords = React.useMemo(() => {
     return records.filter(r => typeFilter === 'Todos' || r.type === typeFilter);
   }, [records, typeFilter]);
 
-  const handleAdd = () => {
+  const handleDelete = async () => {
+    if (!recordToDelete) return;
+    
+    const { error } = await supabase.from('document_records').delete().eq('id', recordToDelete);
+    if (!error) {
+      showToast('Documento excluído com sucesso.', 'success');
+      setRecordToDelete(null);
+      fetchRecords();
+    } else {
+      showToast('Erro ao excluir documento. Verifique as permissões do banco.', 'error');
+      console.error(error);
+    }
+  };
+
+  const handleUpload = async (recordId: string, file: File) => {
+    showToast('Enviando arquivo...', 'info');
+    
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${recordId}-${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage.from('document_attachments').upload(fileName, file);
+    
+    if (uploadError) {
+      showToast('Erro no upload. O bucket "document_attachments" existe?', 'error');
+      console.error(uploadError);
+      return;
+    }
+    
+    const { data } = supabase.storage.from('document_attachments').getPublicUrl(fileName);
+    
+    const { error: updateError } = await supabase.from('document_records').update({ attachment: data.publicUrl }).eq('id', recordId);
+    
+    if (!updateError) {
+      showToast('Anexo salvo com sucesso!', 'success');
+      fetchRecords();
+    } else {
+      showToast('Erro ao vincular anexo.', 'error');
+      console.error(updateError);
+    }
+  };
+
+  const handleAdd = async () => {
     if (!formData.requester || !formData.subject) return;
-    onAdd(formData);
-    setIsAdding(false);
-    setFormData({ type: 'Ofício', requester: '', subject: '' });
+    setIsGenerating(true);
+    
+    const currentYear = new Date().getFullYear();
+    
+    // Find max number for this type and year
+    const { data: maxData } = await supabase
+      .from('document_records')
+      .select('number')
+      .eq('type', formData.type)
+      .eq('year', currentYear)
+      .order('number', { ascending: false })
+      .limit(1);
+      
+    let newNumber = 1;
+    if (formData.customNumber && !isNaN(Number(formData.customNumber))) {
+      newNumber = Number(formData.customNumber);
+    } else if (maxData && maxData.length > 0) {
+      newNumber = maxData[0].number + 1;
+    }
+    
+    const newDoc = {
+      type: formData.type,
+      number: newNumber,
+      year: currentYear,
+      requester: formData.requester,
+      subject: formData.subject
+    };
+    
+    const { error } = await supabase.from('document_records').insert(newDoc);
+    
+    if (error) {
+      showToast('Erro ao gerar número. Tente novamente.', 'error');
+      console.error(error);
+    } else {
+      showToast(`${formData.type} ${String(newNumber).padStart(3, '0')}/${currentYear} gerado!`, 'success');
+      setIsAdding(false);
+      setFormData({ type: 'Ofício', requester: '', subject: '', customNumber: '' });
+      fetchRecords();
+    }
+    setIsGenerating(false);
+  };
+
+  const handleUpdate = async (id: string, updates: Partial<DocumentRecord>) => {
+    const { error } = await supabase.from('document_records').update(updates).eq('id', id);
+    if (!error) {
+      showToast('Anexo salvo com sucesso!', 'success');
+      fetchRecords();
+    } else {
+      showToast('Erro ao salvar anexo.', 'error');
+    }
   };
 
   return (
-    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 pb-20">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div>
-          <h2 className="text-2xl font-bold dark:text-neutral-100">Controle de Numeração</h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm">Geração de números sequenciais para Ofícios, Decretos e Memorandos.</p>
+          <h2 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">Controle de Numeração</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Geração automática de números oficiais</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex gap-2 w-full sm:w-auto">
           <select
-            className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-2xl text-sm outline-none dark:text-neutral-100 min-w-[150px]"
+            className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-2xl text-sm font-bold outline-none flex-1 sm:flex-none dark:text-neutral-100"
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
           >
             <option value="Todos">Todos os Tipos</option>
             <option value="Ofício">Ofício</option>
             <option value="Decreto">Decreto</option>
-            <option value="Memorando">Memorando</option>
-            <option value="Portaria">Portaria</option>
           </select>
           <button 
             onClick={() => setIsAdding(true)}
             className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2"
           >
-            <Plus size={16} /> Gerar Número
+            <Plus size={16} /> Gerar
           </button>
         </div>
       </div>
@@ -77,8 +188,6 @@ const DocumentNumbersModule = ({ records, onAdd, onUpdate }: { records: Document
               >
                 <option value="Ofício">Ofício</option>
                 <option value="Decreto">Decreto</option>
-                <option value="Memorando">Memorando</option>
-                <option value="Portaria">Portaria</option>
               </select>
             </div>
             <div className="space-y-1">
@@ -99,87 +208,138 @@ const DocumentNumbersModule = ({ records, onAdd, onUpdate }: { records: Document
                 placeholder="Assunto tratado no documento..."
               />
             </div>
+            <div className="col-span-2 space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Número Inicial (Opcional - para forçar um pulo na sequência)</label>
+              <input
+                type="number"
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                value={formData.customNumber}
+                onChange={e => setFormData({ ...formData, customNumber: e.target.value })}
+                placeholder="Ex: 90 (Se deixado em branco, seguirá a numeração automática)"
+              />
+            </div>
           </div>
           <div className="flex justify-end gap-2">
             <button onClick={() => setIsAdding(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:text-neutral-400 transition-colors">Cancelar</button>
-            <button onClick={handleAdd} disabled={!formData.requester || !formData.subject} className="px-6 py-3 rounded-xl text-xs font-bold bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 disabled:opacity-50 transition-opacity">Gerar Documento</button>
+            <button onClick={handleAdd} disabled={!formData.requester || !formData.subject || isGenerating} className="px-6 py-3 rounded-xl text-xs font-bold bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 disabled:opacity-50 transition-opacity flex items-center gap-2">
+              {isGenerating ? 'Gerando...' : 'Gerar Documento'}
+            </button>
           </div>
         </div>
       )}
 
-      <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-neutral-50 dark:bg-neutral-800/50 text-[10px] uppercase font-black tracking-widest text-neutral-400 dark:text-neutral-500">
-                <th className="px-6 py-4">Documento</th>
-                <th className="px-6 py-4">Tipo</th>
-                <th className="px-6 py-4">Assunto</th>
-                <th className="px-6 py-4">Solicitante</th>
-                <th className="px-6 py-4 text-center">Data</th>
-                <th className="px-6 py-4 text-center">Anexo</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 text-sm">
-              {filteredRecords.map((record) => (
-                <tr key={record.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <span className="font-mono text-neutral-900 dark:text-neutral-100 font-medium">
-                      {record.type.toUpperCase()}&nbsp;<span className="font-bold text-sky-600 dark:text-sky-400">{String(record.number).padStart(3, '0')}/{record.year}</span>
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-3 py-1 rounded-full text-xs font-medium">
-                      {record.type}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-neutral-700 dark:text-neutral-300">
-                    {record.subject}
-                  </td>
-                  <td className="px-6 py-4 text-neutral-600 dark:text-neutral-400">
-                    {record.requester}
-                  </td>
-                  <td className="px-6 py-4 text-center text-neutral-500 dark:text-neutral-500">
-                    {record.dateCreated}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    {record.attachment ? (
-                      <button 
-                        onClick={() => showToast('Botão em desenvolvimento', 'warning')}
-                        className="text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-1 justify-center w-full"
-                      >
-                        <FileText size={14} />
-                        <span className="text-xs font-bold truncate max-w-[80px]" title={record.attachment}>{record.attachment}</span>
-                      </button>
-                    ) : (
-                      <label className="text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 cursor-pointer flex items-center justify-center gap-1 transition-colors">
-                        <Upload size={14} />
-                        <span className="text-xs font-bold">Anexar</span>
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files[0]) {
-                              onUpdate(record.id, { attachment: e.target.files[0].name });
-                            }
-                          }}
-                        />
-                      </label>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {filteredRecords.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-neutral-400 dark:text-neutral-500 text-sm font-bold">
-                    Nenhum documento encontrado.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {loading ? (
+        <div className="flex justify-center py-20">
+          <p className="text-neutral-400 dark:text-neutral-500 font-bold">Carregando registros...</p>
         </div>
-      </div>
+      ) : filteredRecords.length === 0 ? (
+        <div className="flex justify-center py-20">
+          <p className="text-neutral-400 dark:text-neutral-500 font-bold">Nenhum documento encontrado.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filteredRecords.map((record) => (
+            <div key={record.id} className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col group">
+              <div className="flex justify-between items-start mb-4">
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 px-3 py-1.5 rounded-xl border border-neutral-100 dark:border-neutral-700">
+                  <span className="font-mono text-neutral-900 dark:text-neutral-100 text-sm font-medium">
+                    {record.type.toUpperCase()}&nbsp;<span className="font-black text-sky-600 dark:text-sky-400">{String(record.number).padStart(3, '0')}/{record.year}</span>
+                  </span>
+                </div>
+                <div className="text-[10px] uppercase font-black tracking-widest text-neutral-400 dark:text-neutral-500">
+                  {new Date(record.dateCreated).toLocaleDateString('pt-BR')}
+                </div>
+              </div>
+              
+              <div className="flex-1">
+                <h4 className="font-bold text-neutral-800 dark:text-neutral-200 mb-3 line-clamp-2 leading-relaxed" title={record.subject}>
+                  {record.subject}
+                </h4>
+                <div className="flex items-center gap-2 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-widest">
+                  <Users size={12} className="text-neutral-400" />
+                  <span className="truncate" title={record.requester}>{record.requester}</span>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
+                <div className="flex-1">
+                  {record.attachment && record.attachment.startsWith('http') ? (
+                    <a 
+                      href={record.attachment}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sky-600 dark:text-sky-400 hover:text-sky-700 flex items-center gap-2 w-full transition-colors"
+                    >
+                      <FileText size={16} />
+                      <span className="text-xs font-bold truncate max-w-[150px]">Visualizar Anexo</span>
+                    </a>
+                  ) : (
+                    <label className="text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 cursor-pointer flex items-center gap-2 transition-colors inline-flex">
+                      <Upload size={16} />
+                      <span className="text-xs font-bold">Anexar Arquivo</span>
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleUpload(record.id, e.target.files[0]);
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {['Super Admin', 'Admin'].includes(currentUser?.role || '') && (
+                  <button 
+                    onClick={() => setRecordToDelete(record.id)}
+                    className="p-2 text-neutral-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
+                    title="Excluir Documento"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {recordToDelete && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-neutral-900 rounded-[32px] w-full max-w-sm p-8 shadow-2xl flex flex-col items-center text-center"
+            >
+              <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 rounded-full flex items-center justify-center mb-6 text-rose-500">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-black text-neutral-900 dark:text-white mb-2">Excluir Documento?</h3>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-8">
+                Esta ação não pode ser desfeita. O número do documento ficará permanentemente vago.
+              </p>
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setRecordToDelete(null)}
+                  className="flex-1 px-4 py-3 font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleDelete}
+                  className="flex-1 px-4 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-rose-500/20 transition-all"
+                >
+                  Excluir
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
