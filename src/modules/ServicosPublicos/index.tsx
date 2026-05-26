@@ -283,6 +283,19 @@ export function ServicosPublicosModule() {
                     </div>
                   </div>
                 </div>
+
+                {viewingDemanda.endereco && (
+                  <div className="rounded-2xl overflow-hidden border border-neutral-100 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800">
+                    <iframe
+                      width="100%"
+                      height="200"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      allowFullScreen
+                      src={`https://www.google.com/maps?q=${encodeURIComponent(viewingDemanda.endereco)}&output=embed`}
+                    ></iframe>
+                  </div>
+                )}
               </div>
 
               <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6">
