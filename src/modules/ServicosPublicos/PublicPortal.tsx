@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
-import { ChevronRight, Wrench, Lightbulb, TreePine, Trash2, Truck, CheckCircle2, UserCircle, Phone, MapPin, AlignLeft, Info, Camera, Send, ArrowLeft } from 'lucide-react';
+import { ChevronRight, Wrench, Lightbulb, TreePine, Trash2, Truck, CheckCircle2, UserCircle, Phone, MapPin, AlignLeft, Info, Camera, Send, ArrowLeft, Home } from 'lucide-react';
 
 type CategoriaDemanda = 'Iluminação' | 'Poda de Árvore' | 'Tapa buraco' | 'Remoção de Entulho' | 'Coleta de Lixo';
 
@@ -106,8 +106,15 @@ export function PublicServicosPortal({ darkMode }: { darkMode: boolean }) {
                 <h1 className="text-xl font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">Gestão <span className="font-normal opacity-50">360</span></h1>
               </div>
             </div>
-            <div className="text-right">
+            <div className="flex items-center gap-3">
               <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 rounded-full">Portal do Cidadão</span>
+              <a
+                href="/"
+                className="p-2.5 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-400 hover:text-neutral-700 dark:hover:text-white shadow-sm hover:shadow-md transition-all"
+                title="Voltar à Página Inicial"
+              >
+                <Home size={16} />
+              </a>
             </div>
           </div>
         </motion.header>

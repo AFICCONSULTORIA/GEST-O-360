@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { HeartPulse, Calendar, CheckCircle2, AlertTriangle, FileText, XCircle, Search, Clock, Activity, CalendarCheck2 } from 'lucide-react';
+import { HeartPulse, Calendar, CheckCircle2, AlertTriangle, FileText, XCircle, Search, Clock, Activity, CalendarCheck2, Home } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 const COMMON_SPECIALTIES = [
@@ -180,6 +180,18 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
   return (
     <div className={`min-h-screen py-12 px-4 flex flex-col items-center font-sans ${darkMode ? 'bg-neutral-950 text-white' : 'bg-neutral-50 text-neutral-900'}`}>
       
+      {/* Botão Voltar */}
+      <div className="w-full max-w-3xl flex justify-end mb-4">
+        <a
+          href="/"
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all ${darkMode ? 'bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700' : 'bg-white text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100'} border ${darkMode ? 'border-neutral-700' : 'border-neutral-200'} shadow-sm`}
+          title="Voltar à Página Inicial"
+        >
+          <Home size={14} />
+          Página Inicial
+        </a>
+      </div>
+
       {/* Banner de Urgência */}
       <div className="w-full max-w-3xl bg-rose-50 dark:bg-rose-900/10 border border-rose-200 dark:border-rose-900/30 rounded-2xl p-4 mb-8 flex items-start gap-4 shadow-sm">
         <AlertTriangle className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" size={24} />

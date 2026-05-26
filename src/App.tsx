@@ -67,7 +67,12 @@ import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, 
   PieChart as PieChartIcon,
   FileCheck,
   LogOut,
-  Truck
+  Truck,
+  ArrowRight,
+  Check,
+  Sparkles,
+  Activity,
+  Send
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -614,6 +619,648 @@ export const RADAR_DATA: PNTPCategory[] = [
 
 // --- Protocols ---
 
+const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v: boolean) => void }) => {
+  const [activeTab, setActiveTab] = React.useState<'compliance' | 'gestao' | 'secretarias'>('compliance');
+
+  const tabContent = {
+    compliance: {
+      title: "Governança, Integridade & Compliance",
+      description: "Garanta a conformidade jurídica do seu município com ferramentas automáticas de auditoria, análise preventiva de riscos e alinhamento com as regras do Tribunal de Contas (TCE) e a Nova Lei de Licitações.",
+      features: [
+        { title: "Controles Internos", desc: "Checklists automatizados baseados em cronogramas oficiais para auditoria preventiva de todos os atos da gestão.", icon: ClipboardCheck },
+        { title: "Normativas", desc: "Repositório unificado e catalogado de leis, decretos, portarias e atos oficiais municipais.", icon: BookText },
+        { title: "Análise de Risco", desc: "Matrizes de risco inteligentes para identificar inconformidades fiscais e administrativas antes que gerem multas.", icon: ShieldAlert },
+        { title: "Radar PNTP", desc: "Integração e envio automático de contratações públicas para o Portal Nacional de Contratações Públicas.", icon: Globe }
+      ]
+    },
+    gestao: {
+      title: "Gestão Integrada & Eficiência Sem Papel",
+      description: "Aumente a produtividade das equipes municipais e reduza custos de custeio administrativo. Substitua processos manuais por trâmites digitais ágeis, controlados e rastreáveis.",
+      features: [
+        { title: "Protocolo Digital", desc: "Abertura, acompanhamento, despacho e arquivamento de processos 100% eletrônicos e sem papel.", icon: FileText },
+        { title: "Licitações & Contratos", desc: "Controle de prazos de vigência, aditivos, garantias e conformidade imediata com a nova Lei 14.133.", icon: Target },
+        { title: "Patrimônio & Frotas", desc: "Tombamento de bens móveis e controle de manutenção de frotas com diários de bordo digitais.", icon: Package },
+        { title: "Banco de Certidões", desc: "Armazenamento unificado com monitoramento automático e alertas de expiração de certidões estaduais e federais.", icon: FileCheck }
+      ]
+    },
+    secretarias: {
+      title: "Módulos Inteligentes para as Secretarias",
+      description: "Sistemas desenhados sob medida para as especificidades das áreas finalísticas, promovendo a integração de dados e facilitando o trabalho diário dos servidores municipais.",
+      features: [
+        { title: "Saúde Integrada", desc: "Central de regulação de agendamentos e controle da frota de ambulâncias e TFD (Tratamento Fora do Domicílio).", icon: HeartPulse },
+        { title: "Educação Pública", desc: "Controle de transporte escolar, merendas, controle de estoque de escolas e acompanhamento pedagógico.", icon: GraduationCap },
+        { title: "Viação e Obras", desc: "Gestão de pedidos de insumos (brita, cimento, asfalto), controle de maquinário e relatórios de vistorias.", icon: HardHat },
+        { title: "Administração & Finanças", desc: "Gráficos de receitas, projeção de despesas municipais e alertas automáticos sobre limites legais da LRF.", icon: Briefcase }
+      ]
+    }
+  };
+
+  const scrollToSolutions = () => {
+    document.getElementById('solucoes')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  return (
+    <div className={`min-h-[100dvh] ${darkMode ? 'dark' : ''} font-sans selection:bg-emerald-500/20`}>
+      <div className="bg-[#F8F8F7] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 min-h-[100dvh] flex flex-col relative transition-colors duration-500 overflow-x-hidden">
+        {/* Background Decorative Gradients */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="absolute top-[-10%] left-[-10%] w-[60%] h-[50%] bg-emerald-100/40 dark:bg-emerald-900/5 rounded-full blur-[120px] transition-colors duration-500" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[60%] h-[50%] bg-sky-100/40 dark:bg-sky-900/5 rounded-full blur-[120px] transition-colors duration-500" />
+          <div className="absolute top-[40%] left-[20%] w-[40%] h-[40%] bg-violet-100/20 dark:bg-violet-900/5 rounded-full blur-[120px] transition-colors duration-500" />
+        </div>
+
+        {/* Header */}
+        <header className="relative z-10 max-w-[1400px] w-full mx-auto px-6 sm:px-12 py-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-2xl shadow-xl shadow-neutral-200/50 dark:shadow-none border border-neutral-100 dark:border-neutral-800 flex items-center justify-center">
+              <LogoCompass size={28} />
+            </div>
+            <span className="text-xl font-black text-neutral-900 dark:text-white tracking-tight italic">
+              Gestão <span className="text-neutral-400 font-normal">360</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-md border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-105 transition-all"
+              title={darkMode ? "Mudar para Modo Claro" : "Mudar para Modo Escuro"}
+            >
+              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <a
+              href="/admin"
+              className="hidden sm:flex items-center gap-2 px-5 py-3 bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs uppercase tracking-widest rounded-2xl hover:scale-[1.02] hover:shadow-lg transition-all"
+            >
+              <Lock size={12} />
+              Acesso Servidor
+            </a>
+          </div>
+        </header>
+
+        {/* Hero Section */}
+        <main className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-6 sm:px-12 pt-12 pb-24 space-y-24">
+          <section className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+            {/* Left side: Copy and CTAs */}
+            <div className="lg:col-span-7 space-y-8 text-left">
+              <motion.div
+                initial={{ opacity: 0, y: 25 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6 }}
+                className="space-y-6"
+              >
+                <div className="inline-flex items-center gap-2.5 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-emerald-700 dark:text-emerald-400 text-xs font-black uppercase tracking-widest">
+                  <Sparkles size={12} className="animate-pulse" />
+                  Conformidade PNTP e Nova Lei de Licitações (14.133)
+                </div>
+
+                <h1 className="text-4xl sm:text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-[1.05] max-w-2xl">
+                  Transforme a Gestão do seu Município com Inteligência de{" "}
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500">
+                    360°
+                  </span>
+                </h1>
+
+                <p className="text-base sm:text-lg text-neutral-500 dark:text-neutral-400 leading-relaxed max-w-xl">
+                  Plataforma completa de governança, compliance e transparência integrada. Modernize as secretarias, simplifique o trabalho dos servidores e ofereça serviços digitais de excelência para a população.
+                </p>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0, y: 25 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.15 }}
+                className="flex flex-col sm:flex-row gap-4"
+              >
+                <button
+                  onClick={scrollToSolutions}
+                  className="px-8 py-4.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:scale-[1.02] shadow-xl shadow-emerald-500/15 hover:shadow-emerald-500/25 transition-all text-center"
+                >
+                  Conhecer Soluções
+                </button>
+                <a
+                  href="/servicos"
+                  className="px-8 py-4.5 bg-white dark:bg-neutral-900 text-neutral-800 dark:text-white border border-neutral-200 dark:border-neutral-800 font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all text-center flex items-center justify-center gap-2"
+                >
+                  Portal do Cidadão
+                  <ArrowRight size={14} />
+                </a>
+              </motion.div>
+
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="grid grid-cols-3 gap-6 pt-4 max-w-lg border-t border-neutral-200/60 dark:border-neutral-800/60"
+              >
+                {[
+                  { value: "100%", label: "Sem Papel" },
+                  { value: "0", label: "Apontamentos TCE" },
+                  { value: "+40%", label: "Mais Eficiência" }
+                ].map((stat, i) => (
+                  <div key={i} className="space-y-0.5">
+                    <p className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">{stat.value}</p>
+                    <p className="text-[10px] font-black uppercase text-neutral-400 dark:text-neutral-500 tracking-wider">{stat.label}</p>
+                  </div>
+                ))}
+              </motion.div>
+            </div>
+
+            {/* Right side: Simulated Premium Executive Dashboard */}
+            <div className="lg:col-span-5 relative">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+                className="w-full bg-white dark:bg-neutral-900/90 backdrop-blur-md rounded-[36px] border border-neutral-200/80 dark:border-neutral-800/80 shadow-2xl p-6 sm:p-8 space-y-6 relative overflow-hidden"
+              >
+                {/* Dashboard top decorations */}
+                <div className="flex items-center justify-between pb-4 border-b border-neutral-100 dark:border-neutral-800/60">
+                  <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 bg-red-400 rounded-full" />
+                    <span className="w-3 h-3 bg-yellow-400 rounded-full" />
+                    <span className="w-3 h-3 bg-green-400 rounded-full" />
+                  </div>
+                  <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
+                    Painel Executivo
+                  </span>
+                </div>
+
+                {/* Dashboard statistics row */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Índice Compliance</span>
+                    <div className="flex items-baseline gap-2 mt-1.5">
+                      <span className="text-2xl font-black text-neutral-900 dark:text-white">94.8%</span>
+                      <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1 py-0.5 rounded">+2.4%</span>
+                    </div>
+                    {/* Animated visual indicator bar */}
+                    <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full w-[94.8%]" />
+                    </div>
+                  </div>
+
+                  <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Processos Digitais</span>
+                    <div className="flex items-baseline gap-2 mt-1.5">
+                      <span className="text-2xl font-black text-neutral-900 dark:text-white">12.480</span>
+                      <span className="text-[9px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-1 py-0.5 rounded">100% sem papel</span>
+                    </div>
+                    <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
+                      <div className="bg-gradient-to-r from-sky-500 to-teal-500 h-full rounded-full w-full" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Simulated Chart representing compliance progress */}
+                <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Histórico de Governança (6 meses)</span>
+                    <span className="text-[9px] font-bold text-neutral-400">TCE</span>
+                  </div>
+                  <div className="flex justify-between items-end h-28 pt-2">
+                    {[
+                      { month: "Dez", val: 55, h: "h-[55%]" },
+                      { month: "Jan", val: 68, h: "h-[68%]" },
+                      { month: "Fev", val: 78, h: "h-[78%]" },
+                      { month: "Mar", val: 84, h: "h-[84%]" },
+                      { month: "Abr", val: 90, h: "h-[90%]" },
+                      { month: "Mai", val: 95, h: "h-[95%]" }
+                    ].map((bar, i) => (
+                      <div key={i} className="flex flex-col items-center gap-1.5 w-[12%] group cursor-pointer">
+                        <div className="w-full bg-neutral-100 dark:bg-neutral-800/60 rounded-lg h-24 flex items-end overflow-hidden">
+                          <div className={`w-full ${bar.h} bg-neutral-950 dark:bg-neutral-300 group-hover:bg-emerald-500 dark:group-hover:bg-emerald-400 rounded-t-md transition-all duration-300 relative`}>
+                            <div className="absolute top-[-24px] left-1/2 -translate-x-1/2 bg-neutral-900 text-white text-[8px] font-bold px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                              {bar.val}%
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[8px] font-bold text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">{bar.month}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Dashboard recent notifications list */}
+                <div className="space-y-3">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500 block mb-1">Últimas Ações do Sistema</span>
+                  <div className="space-y-2">
+                    {[
+                      { icon: Shield, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10", title: "Matriz de Risco atualizada", sub: "Gabinete do Prefeito • há 10m" },
+                      { icon: Globe, color: "text-sky-500 bg-sky-50 dark:bg-sky-500/10", title: "Licitação enviada ao Radar PNTP", sub: "Departamento de Compras • há 1h" }
+                    ].map((notify, i) => (
+                      <div key={i} className="flex items-center gap-3 p-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 rounded-xl transition-colors">
+                        <div className={`p-2 rounded-lg ${notify.color} shrink-0`}>
+                          <notify.icon size={12} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold text-neutral-800 dark:text-neutral-200 truncate">{notify.title}</p>
+                          <p className="text-[9px] text-neutral-400 dark:text-neutral-500">{notify.sub}</p>
+                        </div>
+                        <Check className="text-emerald-500 shrink-0" size={12} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Decorative side badge */}
+              <div className="absolute top-1/2 right-[-20px] -translate-y-1/2 w-24 h-24 bg-gradient-to-tr from-sky-400 to-indigo-400 rounded-full blur-2xl opacity-30 pointer-events-none" />
+            </div>
+          </section>
+
+          {/* Interactive Showcase Tabs Section */}
+          <section id="solucoes" className="space-y-12 scroll-mt-24">
+            <div className="text-center space-y-4 max-w-2xl mx-auto">
+              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3.5 py-1.5 rounded-full">
+                Módulos e Recursos
+              </span>
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white leading-tight">
+                Tudo o que o Gestão 360 oferece ao seu Município
+              </h2>
+              <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Uma solução unificada com ferramentas desenhadas especificamente para garantir segurança legal, otimização operacional e modernização das secretarias.
+              </p>
+            </div>
+
+            {/* Pillar Tab Selectors */}
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-2 p-1.5 bg-neutral-100/80 dark:bg-neutral-900/60 backdrop-blur border border-neutral-200/50 dark:border-neutral-800/50 rounded-2xl sm:rounded-3xl max-w-2xl mx-auto">
+              {[
+                { id: "compliance", label: "Compliance & Riscos", icon: Shield },
+                { id: "gestao", label: "Gestão & Eficiência", icon: FileText },
+                { id: "secretarias", label: "Secretarias Inteligentes", icon: Users2 }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`w-full sm:w-auto flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl sm:rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${
+                    activeTab === tab.id
+                      ? "bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-md shadow-neutral-200/50 dark:shadow-none font-bold"
+                      : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
+                  }`}
+                >
+                  <tab.icon size={14} className={activeTab === tab.id ? "text-emerald-500" : ""} />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Tab Contents Showcase */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.35 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-4"
+              >
+                {/* Left Side: Summary text */}
+                <div className="lg:col-span-5 space-y-6 text-left">
+                  <h3 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
+                    {tabContent[activeTab].title}
+                  </h3>
+                  <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                    {tabContent[activeTab].description}
+                  </p>
+                  <div className="pt-4">
+                    <button 
+                      onClick={scrollToSolutions}
+                      className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 hover:scale-102 transition-all"
+                    >
+                      Ver detalhes técnicos de implantação
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Side: Features Grid */}
+                <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  {tabContent[activeTab].features.map((feat, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800/80 rounded-3xl p-6 text-left hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group overflow-hidden relative"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-3xl" />
+                      <div className="relative space-y-4">
+                        <div className="w-10 h-10 bg-neutral-50 dark:bg-neutral-800 rounded-xl flex items-center justify-center group-hover:scale-110 group-hover:bg-emerald-500/10 transition-all duration-300">
+                          <feat.icon size={18} className="text-neutral-600 dark:text-neutral-400 group-hover:text-emerald-500" />
+                        </div>
+                        <h4 className="text-base font-black text-neutral-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                          {feat.title}
+                        </h4>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                          {feat.desc}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </AnimatePresence>
+          </section>
+
+          {/* Benefits Grid (ROI and Legal Security) */}
+          <section className="bg-neutral-900 text-white rounded-[48px] p-8 sm:p-16 relative overflow-hidden shadow-2xl">
+            {/* Background elements inside cards */}
+            <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-96 h-96 bg-sky-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+            <div className="relative z-10 space-y-12">
+              <div className="text-center space-y-4 max-w-xl mx-auto">
+                <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3.5 py-1.5 rounded-full">
+                  Benefícios Reais
+                </span>
+                <h3 className="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
+                  Por que implantar o Gestão 360 na sua Prefeitura?
+                </h3>
+                <p className="text-xs sm:text-sm text-neutral-400 leading-relaxed">
+                  Os impactos práticos da modernização digital refletem diretamente no orçamento público e na segurança jurídica do prefeito.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[
+                  {
+                    title: "Economia Financeira e de Recursos (ROI)",
+                    desc: "Redução drástica nas despesas de custeio administrativo (papel, toner, armazenamento e envio físico) estimando um retorno de investimento de até 40% nas operações diárias.",
+                    icon: TrendingDown,
+                    badge: "Retorno Rápido"
+                  },
+                  {
+                    title: "Segurança Jurídica Absoluta para o Gestor",
+                    desc: "O sistema blinda legalmente a prefeitura e secretários por meio de alertas constantes de prazos do TCE, controle estrito de limites legais da LRF e matriz de risco preventivo.",
+                    icon: Shield,
+                    badge: "100% Seguro"
+                  },
+                  {
+                    title: "Transparência Pública Ativa",
+                    desc: "Cidadãos integrados a portais abertos que geram acompanhamento de chamados públicos em tempo real, melhorando a imagem institucional e a nota nos índices nacionais de transparência.",
+                    icon: Globe,
+                    badge: "Acesso Cidadão"
+                  },
+                  {
+                    title: "Decisão Estratégica Baseada em Dados",
+                    desc: "Centraliza informações fundamentais em gráficos analíticos dinâmicos, permitindo que prefeitos planejem orçamentos com rapidez e segurança e auditem secretarias de forma autônoma.",
+                    icon: Activity,
+                    badge: "Gestão Ágil"
+                  }
+                ].map((benefit, i) => (
+                  <div key={i} className="bg-neutral-800/40 border border-neutral-800 rounded-3xl p-6 sm:p-8 space-y-4 text-left flex flex-col justify-between hover:bg-neutral-800/60 transition-colors duration-300">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="w-10 h-10 bg-emerald-500/10 text-emerald-400 rounded-xl flex items-center justify-center shrink-0">
+                          <benefit.icon size={18} />
+                        </div>
+                        <span className="text-[8px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded">
+                          {benefit.badge}
+                        </span>
+                      </div>
+                      <h4 className="text-lg font-black text-white">{benefit.title}</h4>
+                      <p className="text-xs sm:text-sm text-neutral-400 leading-relaxed font-medium">{benefit.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* Citizen Portals Section */}
+          <section className="space-y-12">
+            <div className="text-center space-y-4 max-w-2xl mx-auto">
+              <span className="text-[10px] font-black uppercase tracking-widest text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-3.5 py-1.5 rounded-full">
+                Serviço de Utilidade Pública
+              </span>
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white">
+                Portais Oficiais para a População
+              </h2>
+              <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Se você é morador do município, utilize os nossos portais integrados públicos para fazer suas solicitações de atendimento e agendar consultas de saúde.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+              {/* Public Portal Servicos */}
+              <div className="group bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800/80 rounded-[36px] p-8 text-left hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1 transition-all duration-300 overflow-hidden relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[36px]" />
+                <div className="relative space-y-6 flex flex-col h-full justify-between">
+                  <div className="space-y-4">
+                    <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                      <Globe size={22} className="text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="text-xl font-black text-neutral-900 dark:text-white">Portal de Serviços & Ouvidoria</h3>
+                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                      Solicite reparo de vias públicas, podas de árvores, iluminação, retire certidões e abra chamados gerais de ouvidoria de forma 100% digital. Acompanhe o trâmite pelo celular.
+                    </p>
+                  </div>
+                  <a
+                    href="/servicos"
+                    className="px-6 py-4 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all w-full text-center mt-4"
+                  >
+                    Acessar Serviços do Cidadão
+                    <ArrowRight size={14} />
+                  </a>
+                </div>
+              </div>
+
+              {/* Public Portal Saude */}
+              <div className="group bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800/80 rounded-[36px] p-8 text-left hover:shadow-2xl hover:shadow-sky-500/5 hover:-translate-y-1 transition-all duration-300 overflow-hidden relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-sky-50/50 to-transparent dark:from-sky-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[36px]" />
+                <div className="relative space-y-6 flex flex-col h-full justify-between">
+                  <div className="space-y-4">
+                    <div className="w-12 h-12 bg-sky-50 dark:bg-sky-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                      <Calendar size={22} className="text-sky-600 dark:text-sky-400" />
+                    </div>
+                    <h3 className="text-xl font-black text-neutral-900 dark:text-white">Portal da Saúde & Agendamentos</h3>
+                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                      Agende suas consultas básicas de saúde nos postos municipais, solicite transporte de pacientes para exames e outros tratamentos e acompanhe o cronograma de exames de forma transparente.
+                    </p>
+                  </div>
+                  <a
+                    href="/agendamento"
+                    className="px-6 py-4 bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all w-full text-center mt-4"
+                  >
+                    Agendar Serviços de Saúde
+                    <ArrowRight size={14} />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Institutional Integration CTA Section */}
+          <section className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-[40px] p-8 sm:p-12 text-center max-w-4xl mx-auto shadow-2xl relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
+            <div className="relative z-10 space-y-6 max-w-xl mx-auto">
+              <h3 className="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
+                Deseja modernizar a gestão do seu município?
+              </h3>
+              <p className="text-xs sm:text-sm text-emerald-100 leading-relaxed">
+                Integre a sua prefeitura, câmara municipal ou autarquia à plataforma Gestão 360. Oferecemos implantação acelerada, treinamento técnico presencial para servidores e suporte técnico consultivo contínuo.
+              </p>
+              <div className="pt-4 flex flex-col sm:flex-row justify-center gap-4">
+                <a
+                  href="https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20agendar%20uma%20demonstra%C3%A7%C3%A3o%20do%20sistema%20Gest%C3%A3o%20360%20para%20o%20meu%20munic%C3%ADpio."
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-8 py-4 bg-white text-emerald-800 font-black text-xs uppercase tracking-widest rounded-2xl hover:scale-[1.02] shadow-lg hover:shadow-xl transition-all text-center flex items-center justify-center gap-2"
+                >
+                  <Send size={12} />
+                  Agendar Demonstração
+                </a>
+                <a
+                  href="https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20tirar%20d%C3%BAvidas%20sobre%20o%20sistema%20Gest%C3%A3o%20360." 
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-white border border-emerald-400/20 font-black text-xs uppercase tracking-widest rounded-2xl hover:scale-[1.02] transition-all text-center"
+                >
+                  Falar no WhatsApp
+                </a>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        {/* Footer */}
+        <footer className="relative z-10 bg-white dark:bg-neutral-900 border-t border-neutral-100 dark:border-neutral-800/80 transition-colors">
+          <div className="max-w-[1400px] w-full mx-auto px-6 sm:px-12 py-8 flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px] font-black uppercase text-neutral-400 dark:text-neutral-500 tracking-widest">
+            <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
+              <span>Gestão 360 · Governança, Integridade e Compliance</span>
+              <span className="hidden sm:inline text-neutral-300">•</span>
+              <span className="text-[9px] font-bold text-neutral-400/80">Desenvolvido para Prefeituras Municipais</span>
+            </div>
+            <a
+              href="/admin"
+              className="flex items-center gap-1.5 text-neutral-300 dark:text-neutral-800 hover:text-neutral-500 dark:hover:text-neutral-500 transition-colors duration-300"
+              title="Área do servidor"
+            >
+              <Lock size={10} />
+              <span>Acesso Restrito</span>
+            </a>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v: boolean) => void }) => (
+  <div className={`min-h-[100dvh] ${darkMode ? 'dark' : ''}`}>
+    <div className="min-h-[100dvh] bg-[#F4F4F2] dark:bg-neutral-950 flex flex-col overflow-hidden relative transition-colors duration-300">
+      {/* Gradients de fundo */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-15%] left-[-10%] w-[50%] h-[50%] bg-emerald-100/60 dark:bg-emerald-900/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-15%] right-[-10%] w-[50%] h-[50%] bg-sky-100/60 dark:bg-sky-900/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[30%] h-[30%] bg-violet-100/30 dark:bg-violet-900/5 rounded-full blur-3xl" />
+      </div>
+
+      {/* Header */}
+      <header className="relative z-10 flex items-center justify-between px-8 py-6">
+        <div className="flex items-center gap-3">
+          <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-2xl shadow-lg border border-neutral-100 dark:border-neutral-800">
+            <LogoCompass size={28} />
+          </div>
+          <span className="text-xl font-black text-neutral-900 dark:text-white tracking-tight italic">
+            Gestão <span className="text-neutral-400 font-normal">360</span>
+          </span>
+        </div>
+        <button
+          onClick={() => setDarkMode(!darkMode)}
+          className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-md border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+        >
+          {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+      </header>
+
+      {/* Hero */}
+      <main className="relative z-10 flex-1 flex flex-col items-center justify-center px-6 py-16 text-center">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+          className="space-y-6 max-w-2xl mx-auto"
+        >
+          <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-full text-emerald-700 dark:text-emerald-400 text-xs font-black uppercase tracking-widest">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            Sistema Online
+          </div>
+
+          <h1 className="text-5xl md:text-7xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
+            Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-sky-500">360°</span>
+          </h1>
+
+          <p className="text-lg text-neutral-500 dark:text-neutral-400 max-w-lg mx-auto leading-relaxed">
+            Plataforma de compliance, transparência e gestão municipal integrada.
+          </p>
+        </motion.div>
+
+        {/* Cards de Acesso */}
+        <motion.div
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
+          className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-xl"
+        >
+          {/* Card Serviços Públicos */}
+          <a
+            href="/servicos"
+            className="group relative bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-7 text-left hover:shadow-2xl hover:shadow-emerald-500/10 hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/80 to-transparent dark:from-emerald-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[32px]" />
+            <div className="relative">
+              <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
+                <Globe size={22} className="text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <h2 className="text-lg font-black text-neutral-900 dark:text-white mb-2">Serviços Públicos</h2>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Abra chamados e acompanhe suas demandas municipais.
+              </p>
+              <div className="mt-5 flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-black uppercase tracking-widest">
+                Acessar
+                <ChevronRight size={13} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </a>
+
+          {/* Card Agendamento */}
+          <a
+            href="/agendamento"
+            className="group relative bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-7 text-left hover:shadow-2xl hover:shadow-sky-500/10 hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-sky-50/80 to-transparent dark:from-sky-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[32px]" />
+            <div className="relative">
+              <div className="w-12 h-12 bg-sky-50 dark:bg-sky-500/10 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
+                <Calendar size={22} className="text-sky-600 dark:text-sky-400" />
+              </div>
+              <h2 className="text-lg font-black text-neutral-900 dark:text-white mb-2">Agendamento</h2>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Agende consultas e serviços de saúde com facilidade.
+              </p>
+              <div className="mt-5 flex items-center gap-2 text-sky-600 dark:text-sky-400 text-xs font-black uppercase tracking-widest">
+                Agendar
+                <ChevronRight size={13} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </a>
+        </motion.div>
+      </main>
+
+      {/* Footer discreto com link de acesso restrito */}
+      <footer className="relative z-10 flex items-center justify-between px-8 py-5 text-[10px] text-neutral-400 dark:text-neutral-700 font-bold uppercase tracking-widest">
+        <span>Gestão 360 · Sistemas de Compliance Municipal</span>
+        <a
+          href="/admin"
+          className="flex items-center gap-1.5 text-neutral-300 dark:text-neutral-800 hover:text-neutral-500 dark:hover:text-neutral-500 transition-colors duration-300"
+          title="Área restrita"
+        >
+          <Lock size={10} />
+          <span>servidor</span>
+        </a>
+      </footer>
+    </div>
+  </div>
+);
+
 const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }) => {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -1030,8 +1677,22 @@ export default function App() {
     }
   }, [activeView, currentUser?.id]);
 
-  const isPublicPortal = window.location.pathname === '/agendamento';
-  const isServicosPublicosPortal = window.location.pathname === '/servicos';
+  const currentPath = window.location.pathname;
+  const isPublicPortal = currentPath === '/agendamento';
+  const isServicosPublicosPortal = currentPath === '/servicos';
+  const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
+  const isLandingPage = currentPath === '/';
+  const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
+
+  // Rota de apresentação e vendas
+  if (isSalesPage) {
+    return <SalesLandingPage darkMode={darkMode} setDarkMode={setDarkMode} />;
+  }
+
+  // Página inicial — landing pública simplificada para cidadãos
+  if (isLandingPage) {
+    return <LandingPage darkMode={darkMode} setDarkMode={setDarkMode} />;
+  }
 
   if (isPublicPortal) {
     return (
@@ -1063,6 +1724,12 @@ export default function App() {
          <PublicServicosPortal darkMode={darkMode} />
       </div>
     );
+  }
+
+  // Qualquer rota que não seja /admin redireciona para a landing
+  if (!isAdminRoute) {
+    window.location.replace('/');
+    return null;
   }
 
   if (!isAuthenticated) {
@@ -1359,10 +2026,18 @@ export default function App() {
                     <Settings size={20} />
                   </button>
                 )}
+                <a
+                  href="/"
+                  className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+                  title="Voltar à Página Inicial"
+                >
+                  <Home size={20} />
+                </a>
                 <button 
                   onClick={async () => {
                     await supabase.auth.signOut();
                     setIsAuthenticated(false);
+                    window.location.href = '/';
                   }}
                   className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
                   title="Sair"
