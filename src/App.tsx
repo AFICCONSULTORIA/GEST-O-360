@@ -1307,6 +1307,13 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-[32px] sm:rounded-[48px] p-8 sm:p-12 shadow-2xl shadow-neutral-200/50 dark:shadow-neutral-950/50 border border-neutral-100 dark:border-neutral-800 relative z-10 my-auto"
       >
+        <a
+          href="/"
+          className="absolute top-6 right-6 p-2.5 rounded-xl transition-all text-neutral-400 hover:bg-neutral-50 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+          title="Voltar à Página Inicial"
+        >
+          <Home size={18} />
+        </a>
         <div className="text-center space-y-4 mb-10">
           <div className="bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white p-3 rounded-[1.25rem] shadow-[0_0_40px_-10px_rgba(16,185,129,0.3)] border border-neutral-100 dark:border-neutral-800 flex items-center justify-center mx-auto w-20 h-20 transition-all hover:scale-110 duration-500">
             <LogoCompass size={44} />
