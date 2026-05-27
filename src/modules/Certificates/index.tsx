@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings
+  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -546,6 +546,24 @@ export const CertificatesModule = () => {
                           title="Excluir Empresa"
                         >
                           <Trash2 size={18} />
+                        </button>
+                        <button 
+                          onClick={async () => {
+                            const newName = window.prompt("Editar nome da empresa / fornecedor:", comp.companyName);
+                            if (newName && newName.trim() !== "" && newName !== comp.companyName) {
+                              const { error } = await supabase.from('company_certificates').update({ company_name: newName.trim() }).eq('id', comp.id);
+                              if (error) {
+                                showToast(`Erro ao editar: ${error.message}`, "error");
+                              } else {
+                                setCompanies(companies.map(c => c.id === comp.id ? { ...c, companyName: newName.trim() } : c));
+                                showToast("Nome da empresa atualizado!", "success");
+                              }
+                            }
+                          }}
+                          className="p-2 text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl transition-all" 
+                          title="Editar Nome"
+                        >
+                          <Edit2 size={18} />
                         </button>
                         <button 
                           onClick={() => setManagingCompany(comp)}
