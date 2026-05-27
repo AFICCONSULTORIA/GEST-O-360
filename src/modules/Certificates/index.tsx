@@ -212,8 +212,15 @@ const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate }: { co
   );
 };
 
-const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfirm: (comp: CompanyCertificates) => void }) => {
-  const [formData, setFormData] = React.useState({ companyName: '', cnpj: '', cpf: '', useCpf: false });
+const CompanyFormModal = ({ onClose, onConfirm, initialData }: { onClose: () => void, onConfirm: (comp: CompanyCertificates) => void, initialData?: CompanyCertificates }) => {
+  const isEditing = !!initialData;
+  const initialUseCpf = initialData?.cnpj.length === 14;
+  const [formData, setFormData] = React.useState({ 
+    companyName: initialData?.companyName || '', 
+    cnpj: initialUseCpf ? '' : (initialData?.cnpj || ''), 
+    cpf: initialUseCpf ? (initialData?.cnpj || '') : '', 
+    useCpf: initialUseCpf 
+  });
 
   const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, '');
@@ -263,8 +270,8 @@ const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
       >
         <div className="flex justify-between items-center">
            <div>
-             <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Nova Empresa</h3>
-             <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold mt-1">Cadastrar novo fornecedor.</p>
+             <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{isEditing ? 'Editar Empresa' : 'Nova Empresa'}</h3>
+             <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold mt-1">{isEditing ? 'Atualizar os dados do fornecedor.' : 'Cadastrar novo fornecedor.'}</p>
            </div>
            <button onClick={onClose} className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-2xl hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors">
               <XCircle size={20} className="text-neutral-500" />
@@ -324,16 +331,16 @@ const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
               const doc = formData.useCpf ? formData.cpf : formData.cnpj;
               if (formData.companyName && doc) {
                 onConfirm({
-                  id: Date.now().toString(),
+                  id: initialData ? initialData.id : Date.now().toString(),
                   companyName: formData.companyName,
                   cnpj: doc,
-                  certificates: { Trabalhista: null, Federal: null, Estadual: null, Municipal: null, FGTS: null }
+                  certificates: initialData ? initialData.certificates : { Trabalhista: null, Federal: null, Estadual: null, Municipal: null, FGTS: null }
                 });
               }
             }}
             className="flex-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all text-center"
           >
-            Cadastrar
+            {isEditing ? 'Salvar Alterações' : 'Cadastrar'}
           </button>
         </div>
       </motion.div>
@@ -398,6 +405,7 @@ export const CertificatesModule = () => {
   const [companies, setCompanies] = React.useState<CompanyCertificates[]>([]);
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isAddingCompany, setIsAddingCompany] = React.useState(false);
+  const [editingCompany, setEditingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isConfiguringLinks, setIsConfiguringLinks] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
 
@@ -548,20 +556,9 @@ export const CertificatesModule = () => {
                           <Trash2 size={18} />
                         </button>
                         <button 
-                          onClick={async () => {
-                            const newName = window.prompt("Editar nome da empresa / fornecedor:", comp.companyName);
-                            if (newName && newName.trim() !== "" && newName !== comp.companyName) {
-                              const { error } = await supabase.from('company_certificates').update({ company_name: newName.trim() }).eq('id', comp.id);
-                              if (error) {
-                                showToast(`Erro ao editar: ${error.message}`, "error");
-                              } else {
-                                setCompanies(companies.map(c => c.id === comp.id ? { ...c, companyName: newName.trim() } : c));
-                                showToast("Nome da empresa atualizado!", "success");
-                              }
-                            }
-                          }}
+                          onClick={() => setEditingCompany(comp)}
                           className="p-2 text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl transition-all" 
-                          title="Editar Nome"
+                          title="Editar Empresa"
                         >
                           <Edit2 size={18} />
                         </button>
@@ -625,7 +622,7 @@ export const CertificatesModule = () => {
 
       <AnimatePresence>
         {isAddingCompany && (
-          <NewCompanyModal 
+          <CompanyFormModal 
             onClose={() => setIsAddingCompany(false)}
             onConfirm={async (comp) => {
               setCompanies([comp, ...companies]);
@@ -641,6 +638,25 @@ export const CertificatesModule = () => {
                 console.error("Supabase Insert Error:", error);
               } else {
                 showToast("Empresa cadastrada com sucesso!", "success");
+              }
+            }}
+          />
+        )}
+        {editingCompany && (
+          <CompanyFormModal 
+            initialData={editingCompany}
+            onClose={() => setEditingCompany(null)}
+            onConfirm={async (comp) => {
+              setEditingCompany(null);
+              const { error } = await supabase.from('company_certificates').update({
+                company_name: comp.companyName,
+                cnpj: comp.cnpj
+              }).eq('id', comp.id);
+              if (error) {
+                showToast(`Erro ao editar: ${error.message}`, "error");
+              } else {
+                setCompanies(companies.map(c => c.id === comp.id ? { ...c, companyName: comp.companyName, cnpj: comp.cnpj } : c));
+                showToast("Empresa atualizada com sucesso!", "success");
               }
             }}
           />
