@@ -16,7 +16,7 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
 } = LucideIcons;
 
-const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void }) => {
+const PatrimonioModule = ({ items, onAdd, onDelete, canDelete }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
@@ -124,6 +124,7 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
               <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Local / Secretaria</th>
               <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest">Condição</th>
               <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest text-right">Status / Ano</th>
+              {canDelete && <th className="px-8 py-5 text-[11px] font-bold text-neutral-400 uppercase tracking-widest text-right">Ações</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800">
@@ -182,11 +183,26 @@ const PatrimonioModule = ({ items, onAdd }: { items: PatrimonioItem[], onAdd: (i
                   </span>
                   <span className="text-xs font-mono text-neutral-400">Ano: {item.year}</span>
                 </td>
+                {canDelete && (
+                  <td className="px-8 py-5 text-right">
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Tem certeza que deseja excluir este item?')) {
+                          onDelete?.(item.id);
+                        }
+                      }}
+                      className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
+                      title="Excluir item"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
             {filteredItems.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-8 py-10 text-center text-neutral-500">Nenhum item encontrado.</td>
+                <td colSpan={canDelete ? 5 : 4} className="px-8 py-10 text-center text-neutral-500">Nenhum item encontrado.</td>
               </tr>
             )}
           </tbody>

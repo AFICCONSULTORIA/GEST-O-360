@@ -2141,6 +2141,18 @@ export default function App() {
             {activeView === 'patrimonio' && (
               <PatrimonioModule 
                 items={patrimonioItems} 
+                canDelete={currentUser?.role === 'Super Admin'}
+                onDelete={async (id) => {
+                  try {
+                    const { error } = await supabase.from('patrimonio').delete().eq('id', id);
+                    if (error) throw error;
+                    setPatrimonioItems(patrimonioItems.filter(p => p.id !== id));
+                    showToast('Item excluído com sucesso', 'success');
+                  } catch (error) {
+                    console.error('Erro ao excluir patrimônio:', error);
+                    showToast('Erro ao excluir item', 'error');
+                  }
+                }}
                 onAdd={async (item) => {
                   const dbItem = {
                     item_type: item.itemType,
