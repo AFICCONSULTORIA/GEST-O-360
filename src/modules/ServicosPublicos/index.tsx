@@ -33,11 +33,53 @@ const STATUS_COLORS = {
   'Concluído': 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
 };
 
+const DeleteConfirmationModal = ({ onClose, onConfirm }: { onClose: () => void, onConfirm: () => void }) => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/80 backdrop-blur-sm"
+    >
+      <motion.div 
+        initial={{ scale: 0.95, opacity: 0, y: 10 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 10 }}
+        className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-[32px] p-8 shadow-2xl flex flex-col items-center text-center space-y-6 border border-neutral-100 dark:border-neutral-800"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center mb-2">
+          <Trash2 size={32} />
+        </div>
+        <div>
+          <h3 className="text-xl font-black text-neutral-900 dark:text-neutral-100 mb-2">Excluir Chamado</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">Tem certeza? Esta ação não pode ser desfeita e removerá todos os dados deste chamado.</p>
+        </div>
+        <div className="flex gap-3 w-full pt-2">
+          <button 
+            onClick={onClose}
+            className="flex-1 py-3.5 px-4 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-2xl font-bold text-sm hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all"
+          >
+            Cancelar
+          </button>
+          <button 
+            onClick={onConfirm}
+            className="flex-1 py-3.5 px-4 bg-rose-500 text-white rounded-2xl font-bold text-sm hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20"
+          >
+            Excluir
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 export function ServicosPublicosModule() {
   const [demands, setDemands] = React.useState<Demanda[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [selectedStatus, setSelectedStatus] = React.useState<Demanda['status'] | 'Todos'>('Todos');
   const [viewingDemanda, setViewingDemanda] = React.useState<Demanda | null>(null);
+  const [deletingDemandaId, setDeletingDemandaId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     fetchDemands();
@@ -197,6 +239,16 @@ export function ServicosPublicosModule() {
                       {demanda.data_solicitacao}
                     </div>
                     <ChevronRight size={16} className="text-neutral-300 group-hover:text-neutral-600 dark:group-hover:text-white transition-colors" />
+                    <button 
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        setDeletingDemandaId(demanda.id);
+                      }}
+                      className="p-1.5 ml-2 hover:bg-rose-50 dark:hover:bg-rose-500/10 text-neutral-300 hover:text-rose-500 rounded-lg transition-colors"
+                      title="Excluir Chamado"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
                 </div>
               );
@@ -212,7 +264,27 @@ export function ServicosPublicosModule() {
         </div>
       </div>
 
-      {/* View Demanda Modal */}
+      {/* Modals */}
+      <AnimatePresence>
+        {deletingDemandaId && (
+          <DeleteConfirmationModal 
+            onClose={() => setDeletingDemandaId(null)}
+            onConfirm={async () => {
+              const id = deletingDemandaId;
+              setDeletingDemandaId(null);
+              const { error } = await supabase.from('servicos_publicos_demandas').delete().eq('id', id);
+              if (error) {
+                showToast(`Erro ao excluir: ${error.message}`, 'error');
+              } else {
+                setDemands(demands.filter(d => d.id !== id));
+                if (viewingDemanda?.id === id) setViewingDemanda(null);
+                showToast('Chamado excluído com sucesso!', 'success');
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {viewingDemanda && (
           <motion.div 
@@ -240,9 +312,20 @@ export function ServicosPublicosModule() {
                   </div>
                   <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{viewingDemanda.categoria}</h3>
                 </div>
-                <button onClick={() => setViewingDemanda(null)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-400">
-                  <CircleOff size={24} />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={async () => {
+                      setDeletingDemandaId(viewingDemanda.id);
+                    }}
+                    className="p-2 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400 rounded-full transition-colors text-neutral-400"
+                    title="Excluir Chamado"
+                  >
+                    <Trash2 size={24} />
+                  </button>
+                  <button onClick={() => setViewingDemanda(null)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-400">
+                    <CircleOff size={24} />
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-6 pr-2 scrollbar-thin">
