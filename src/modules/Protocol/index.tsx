@@ -1,9 +1,37 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check } from 'lucide-react';
 import { Protocol } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
+
+export const getAttachmentsArray = (attachment?: string): { name: string, url: string }[] => {
+  if (!attachment) return [];
+  if (attachment.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(attachment);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item: any) => {
+          if (typeof item === 'string') {
+            const decoded = decodeURIComponent(item);
+            const parts = decoded.split('/');
+            const fullName = parts[parts.length - 1];
+            const cleanName = fullName.replace(/^protocol-\d+-/, '');
+            return { name: cleanName, url: item };
+          }
+          return item;
+        });
+      }
+    } catch (e) {
+      console.error("Error parsing attachments:", e);
+    }
+  }
+  const decoded = decodeURIComponent(attachment);
+  const parts = decoded.split('/');
+  const fullName = parts[parts.length - 1];
+  const cleanName = fullName.replace(/^protocol-\d+-/, '');
+  return [{ name: cleanName, url: attachment }];
+};
 
 export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?: string, currentUser?: any }) => {
   const [protocols, setProtocols] = React.useState<Protocol[]>([]);
@@ -156,95 +184,134 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
         </div>
       </div>
 
-      <div className="grid gap-4">
-        {isLoading ? (
-          <div className="py-10 text-center text-sm font-medium text-neutral-500 flex flex-col items-center">
-            <div className="w-8 h-8 border-4 border-neutral-200 dark:border-neutral-700 border-t-neutral-900 dark:border-t-white rounded-full animate-spin mb-4"></div>
-            Carregando protocolos...
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="py-10 text-center text-sm font-medium text-neutral-500">
-            Nenhum protocolo encontrado.
-          </div>
-        ) : filtered.map((p, i) => (
-          <motion.div 
-            key={p.id}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.05 }}
-            onClick={() => setViewingProtocol(p)}
-            className="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex items-center justify-between group hover:border-neutral-300 dark:hover:border-neutral-700 transition-all shadow-sm cursor-pointer"
-          >
-            <div className="flex items-center gap-6">
-               <div className="w-12 h-12 bg-neutral-900 dark:bg-neutral-800 text-emerald-400 rounded-xl flex items-center justify-center font-black text-xs">
-                 #{p.id.slice(-3)}
-               </div>
-               <div>
-                 <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded">
-                      {p.type}
-                    </span>
-                    <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500">
-                      {new Date(p.date).toLocaleDateString('pt-BR')}
-                    </span>
-                    {p.attachment && (
-                      <a href={p.attachment} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] font-bold text-sky-500 flex items-center gap-1 hover:underline">
-                        <Download size={12} /> Anexo
-                      </a>
-                    )}
-                 </div>
-                 <h4 className="font-bold text-neutral-900 dark:text-neutral-100">{p.subject}</h4>
-                 <p className="text-[10px] text-neutral-400 dark:text-neutral-500 font-bold uppercase tracking-widest mt-1">
-                   DE: {p.from} <span className="mx-2">→</span> PARA: {p.to}
-                 </p>
-               </div>
-            </div>
-            
-            <div className="flex items-center gap-6">
-              <div className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                p.status === 'Concluído' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 
-                p.status === 'Em Análise' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' : 
-                p.status === 'Recebido' ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400' : 
-                'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400'
-              }`}>
-                {p.status}
+      {isLoading ? (
+        <div className="py-10 text-center text-sm font-medium text-neutral-500 flex flex-col items-center">
+          <div className="w-8 h-8 border-4 border-neutral-200 dark:border-neutral-700 border-t-neutral-900 dark:border-t-white rounded-full animate-spin mb-4"></div>
+          Carregando protocolos...
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="py-10 text-center text-sm font-medium text-neutral-500">
+          Nenhum protocolo encontrado.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {filtered.map((p, i) => (
+            <div 
+              key={p.id}
+              onClick={() => setViewingProtocol(p)}
+              className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer relative"
+            >
+              {/* Card Header: Type/ID on Left, Status on Right */}
+              <div className="flex justify-between items-start mb-4 gap-2">
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 px-3 py-1.5 rounded-xl border border-neutral-100 dark:border-neutral-700">
+                  <span className="font-mono text-neutral-900 dark:text-neutral-100 text-sm font-medium">
+                    {p.type.toUpperCase()}&nbsp;<span className="font-black text-emerald-600 dark:text-emerald-400">#{p.id.slice(-3)}</span>
+                  </span>
+                </div>
+                <div className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest leading-none ${
+                  p.status === 'Concluído' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 
+                  p.status === 'Em Análise' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' : 
+                  p.status === 'Recebido' ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400' : 
+                  'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400'
+                }`}>
+                  {p.status}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {p.status !== 'Recebido' && p.status !== 'Concluído' && (
+
+              {/* Card Body: Subject (title), and Departments Routing */}
+              <div className="flex-1 space-y-3">
+                <h4 className="font-bold text-neutral-800 dark:text-neutral-200 line-clamp-2 leading-relaxed" title={p.subject}>
+                  {p.subject}
+                </h4>
+                <div className="bg-neutral-50 dark:bg-neutral-800/30 p-3 rounded-2xl border border-neutral-100 dark:border-neutral-800/40 text-[10px] text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-neutral-400 dark:text-neutral-500 w-10 shrink-0">DE:</span>
+                    <span className="text-neutral-800 dark:text-neutral-300 truncate" title={p.from}>{p.from}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-neutral-400 dark:text-neutral-500 w-10 shrink-0">PARA:</span>
+                    <span className="text-neutral-800 dark:text-neutral-300 truncate" title={p.to}>{p.to}</span>
+                  </div>
+                </div>
+                
+                {/* Date indicator */}
+                <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-bold uppercase tracking-widest pl-1">
+                  Criado em: {new Date(p.date).toLocaleDateString('pt-BR')}
+                </div>
+              </div>
+
+              {/* Card Footer: Attachment on Left, Actions on Right */}
+              <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-between items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  {p.attachment ? (
+                    (() => {
+                      const atts = getAttachmentsArray(p.attachment);
+                      if (atts.length > 1) {
+                        return (
+                          <div className="text-sky-600 dark:text-sky-400 flex items-center gap-1.5 w-full select-none">
+                            <FileText size={16} className="shrink-0" />
+                            <span className="text-xs font-bold truncate">Anexos ({atts.length})</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <a 
+                          href={atts[0]?.url} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          onClick={(e) => e.stopPropagation()} 
+                          className="text-sky-600 dark:text-sky-400 hover:text-sky-700 flex items-center gap-1.5 transition-colors group/link w-full"
+                        >
+                          <FileText size={16} className="shrink-0" />
+                          <span className="text-xs font-bold truncate group-hover/link:underline">Ver Anexo</span>
+                        </a>
+                      );
+                    })()
+                  ) : (
+                    <div className="text-neutral-400 dark:text-neutral-600 flex items-center gap-1.5 text-xs font-bold select-none">
+                      <EyeOff size={16} className="shrink-0" />
+                      <span className="truncate">Sem Anexo</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 shrink-0">
+                  {p.status !== 'Recebido' && p.status !== 'Concluído' && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleReceive(p); }}
+                      className="p-2 rounded-xl text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
+                      title="Marcar como Recebido"
+                    >
+                      <CheckCircle2 size={16} />
+                    </button>
+                  )}
                   <button 
-                    onClick={(e) => { e.stopPropagation(); handleReceive(p); }}
-                    className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors text-neutral-400"
-                    title="Marcar como Recebido"
+                    onClick={(e) => { e.stopPropagation(); setViewingHistoryProtocol(p); }}
+                    className="p-2 rounded-xl text-neutral-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors"
+                    title="Ver Histórico"
                   >
-                    <CheckCircle2 size={18} />
+                    <Clock size={16} />
                   </button>
-                )}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setViewingHistoryProtocol(p); }}
-                  className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-sky-50 dark:hover:bg-sky-500/10 hover:text-sky-600 dark:hover:text-sky-400 transition-colors text-neutral-400"
-                  title="Ver Histórico"
-                >
-                  <Clock size={18} />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setEditingProtocol(p); }}
-                  className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-amber-50 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 transition-colors text-neutral-400"
-                  title="Editar"
-                >
-                  <Edit2 size={18} />
-                </button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                  className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors text-neutral-400"
-                  title="Excluir"
-                >
-                  <Trash2 size={18} />
-                </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setEditingProtocol(p); }}
+                    className="p-2 rounded-xl text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors"
+                    title="Editar"
+                  >
+                    <Edit2 size={16} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                    className="p-2 rounded-xl text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                    title="Excluir"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             </div>
-          </motion.div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
       
       <AnimatePresence>
         {(isNewModalOpen || editingProtocol) && (
@@ -282,7 +349,7 @@ export const NewProtocolModal = ({
   onSuccess,
   initialData,
   institutions = [],
-  title = "Novo Protocolo SMAF",
+  title = "Novo Processo Digital (SMAF)",
   currentUser
 }: { 
   onClose: () => void, 
@@ -296,99 +363,122 @@ export const NewProtocolModal = ({
     ? institutions.find(i => i.id === currentUser.institution_id)?.name || 'Saúde'
     : 'Saúde';
 
-  const [formData, setFormData] = React.useState(initialData ? {
-    subject: initialData.subject,
-    type: initialData.type as 'Memorando' | 'Ofício' | 'Pedido',
-    from: initialData.from,
-    to: initialData.to,
-    status: initialData.status,
-  } : {
-    subject: '',
-    type: 'Memorando' as 'Memorando' | 'Ofício' | 'Pedido',
-    from: defaultFrom,
-    to: 'Administração e Finanças',
-    status: 'Pendente',
+  const [formData, setFormData] = React.useState({
+    subject: initialData ? initialData.subject : '',
+    from: initialData ? initialData.from : defaultFrom,
+    to: initialData ? initialData.to : 'Administração e Finanças',
+    status: initialData ? initialData.status : 'Pendente',
   });
 
-  const [file, setFile] = React.useState<File | null>(null);
+  // Multiselect Types state
+  const [selectedTypes, setSelectedTypes] = React.useState<string[]>(
+    initialData?.type ? (initialData.type.split(', ') as any[]) : ['Memorando']
+  );
+
+  // New selected files to upload
+  const [files, setFiles] = React.useState<File[]>([]);
+  // Existing attachments (for edit mode)
+  const [existingAttachments, setExistingAttachments] = React.useState<{ name: string, url: string }[]>(
+    initialData?.attachment ? getAttachmentsArray(initialData.attachment) : []
+  );
+
   const [isUploading, setIsUploading] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
+  const toggleType = (type: string) => {
+    if (selectedTypes.includes(type)) {
+      if (selectedTypes.length > 1) {
+        setSelectedTypes(selectedTypes.filter(t => t !== type));
+      } else {
+        showToast("Pelo menos um tipo de documento deve ser selecionado.", "warning");
+      }
+    } else {
+      setSelectedTypes([...selectedTypes, type]);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!file && !initialData?.attachment) {
-      showToast('É obrigatório anexar um documento digitalizado para protocolar.', 'error');
+    if (files.length === 0 && existingAttachments.length === 0) {
+      showToast('É obrigatório anexar pelo menos um documento digitalizado.', 'error');
       return;
     }
     
     setIsUploading(true);
-    let attachmentUrl = initialData?.attachment || null;
-
-    if (file) {
-      const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
-      const filename = `protocol-${Date.now()}-${safeName}`;
-      const { error: uploadError } = await supabase.storage.from('protocolos').upload(filename, file);
-      
-      if (uploadError) {
-        showToast('Erro ao enviar arquivo anexado: ' + uploadError.message, 'error');
-        setIsUploading(false);
-        return;
-      }
-      const { data: publicUrlData } = supabase.storage.from('protocolos').getPublicUrl(filename);
-      attachmentUrl = publicUrlData.publicUrl;
-    }
-
-    let newHistory = initialData?.history || [];
     
-    if (initialData) {
-      if (initialData.status !== formData.status) {
-        newHistory = [...newHistory, {
+    try {
+      // Upload new files
+      const uploadPromises = files.map(async (f) => {
+        const safeName = f.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
+        const filename = `protocol-${Date.now()}-${safeName}`;
+        const { error: uploadError } = await supabase.storage.from('protocolos').upload(filename, f);
+        
+        if (uploadError) {
+          throw new Error('Erro ao enviar arquivo: ' + f.name);
+        }
+        
+        const { data: publicUrlData } = supabase.storage.from('protocolos').getPublicUrl(filename);
+        return { name: f.name, url: publicUrlData.publicUrl };
+      });
+      
+      const uploaded = await Promise.all(uploadPromises);
+      const allAttachments = [...existingAttachments, ...uploaded];
+      const attachmentValue = JSON.stringify(allAttachments);
+
+      let newHistory = initialData?.history || [];
+      
+      if (initialData) {
+        if (initialData.status !== formData.status) {
+          newHistory = [...newHistory, {
+            date: new Date().toISOString(),
+            user: formData.to,
+            action: 'Alteração de Status',
+            previousStatus: initialData.status,
+            newStatus: formData.status
+          }];
+        }
+      } else {
+        newHistory = [{
           date: new Date().toISOString(),
-          user: formData.to, // Quem muda o status é quem recebeu (destino)
-          action: 'Alteração de Status',
-          previousStatus: initialData.status,
+          user: formData.from,
+          action: 'Criação',
           newStatus: formData.status
         }];
       }
-    } else {
-      newHistory = [{
-        date: new Date().toISOString(),
-        user: formData.from, // Quem cria é o remetente
-        action: 'Criação',
-        newStatus: formData.status
-      }];
-    }
 
-    const payload = {
-      subject: formData.subject,
-      type: formData.type,
-      from: formData.from,
-      to: formData.to,
-      status: formData.status,
-      attachment: attachmentUrl,
-      history: newHistory
-    };
+      const payload = {
+        subject: formData.subject,
+        type: selectedTypes.join(', '), // Comma separated types
+        from: formData.from,
+        to: formData.to,
+        status: formData.status,
+        attachment: attachmentValue, // JSON stringified array of attachments
+        history: newHistory
+      };
 
-    if (initialData) {
-      const { error } = await supabase.from('protocols').update(payload).eq('id', initialData.id);
-      if (error) {
-        showToast('Erro ao atualizar: ' + error.message, 'error');
+      if (initialData) {
+        const { error } = await supabase.from('protocols').update(payload).eq('id', initialData.id);
+        if (error) {
+          showToast('Erro ao atualizar: ' + error.message, 'error');
+        } else {
+          showToast('Processo atualizado com sucesso!', 'success');
+          onSuccess();
+        }
       } else {
-        showToast('Protocolo atualizado!', 'success');
-        onSuccess();
+        const generatedId = `2024${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        const { error } = await supabase.from('protocols').insert({
+          id: generatedId,
+          ...payload,
+          date: new Date().toISOString().split('T')[0]
+        });
+        if (error) {
+          showToast('Erro ao criar processo: ' + error.message, 'error');
+        } else {
+          showToast('Processo cadastrado com sucesso!', 'success');
+          onSuccess();
+        }
       }
-    } else {
-      const generatedId = `2024${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
-      const { error } = await supabase.from('protocols').insert({
-        id: generatedId,
-        ...payload,
-        date: new Date().toISOString().split('T')[0]
-      });
-      if (error) {
-        showToast('Erro ao criar protocolo: ' + error.message, 'error');
-      } else {
-        showToast('Protocolo cadastrado!', 'success');
-        onSuccess();
-      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao salvar o processo.', 'error');
     }
     setIsUploading(false);
   };
@@ -404,34 +494,52 @@ export const NewProtocolModal = ({
         initial={{ scale: 0.9, y: 20 }}
         animate={{ scale: 1, y: 0 }}
         exit={{ scale: 0.9, y: 20 }}
-        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[40px] p-10 shadow-2xl space-y-8"
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[40px] p-10 shadow-2xl space-y-6 max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex justify-between items-start">
           <div className="space-y-1">
-            <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">{initialData ? 'Editar Protocolo' : title}</h3>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium">Protocolo eletrônico de ofícios, memorandos e pedidos.</p>
+            <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">
+              {initialData ? 'Editar Processo' : title}
+            </h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+              Crie processos reunindo múltiplos documentos (memorandos, ofícios, pedidos) e arquivos anexados.
+            </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-400">
             <CircleOff size={24} />
           </button>
         </div>
 
-        <div className="space-y-6">
+        <div className="flex-1 overflow-y-auto pr-1 space-y-6 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-700">
+          {/* Document Types Checkbox Selection */}
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Tipo de Documento</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Tipos de Documentos Inclusos (Selecione vários se desejar)</label>
             <div className="flex gap-2">
-              {['Memorando', 'Ofício', 'Pedido'].map(type => (
-                <button
-                  key={type}
-                  onClick={() => setFormData({...formData, type: type as any})}
-                  className={`flex-1 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                    formData.type === type ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950' : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700'
-                  }`}
-                >
-                  {type}
-                </button>
-              ))}
+              {['Memorando', 'Ofício', 'Pedido'].map(type => {
+                const isSelected = selectedTypes.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => toggleType(type)}
+                    className={`flex-1 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border ${
+                      isSelected 
+                        ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-white dark:border-white dark:text-neutral-950 shadow-md' 
+                        : 'bg-neutral-50 border-neutral-100 dark:bg-neutral-850 dark:border-neutral-800 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-all ${
+                      isSelected 
+                        ? 'border-emerald-400 bg-emerald-500 text-white' 
+                        : 'border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900'
+                    }`}>
+                      {isSelected && <Check size={10} strokeWidth={4} />}
+                    </div>
+                    {type}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -483,43 +591,97 @@ export const NewProtocolModal = ({
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Assunto / Título</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Assunto / Título do Processo</label>
             <input 
               type="text" 
-              placeholder="Ex: Aquisição de Toners para Impressoras"
+              placeholder="Ex: Aquisição de Insumos Hospitalares e Pedido de Equipamentos"
               className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 focus:border-neutral-900 dark:focus:border-white outline-none transition-all dark:text-neutral-100"
               value={formData.subject}
               onChange={e => setFormData({...formData, subject: e.target.value})}
             />
           </div>
 
+          {/* Files List Display */}
+          {(existingAttachments.length > 0 || files.length > 0) && (
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Documentos Anexados ({existingAttachments.length + files.length})</label>
+              <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                {/* Existing attachments */}
+                {existingAttachments.map((att, idx) => (
+                  <div key={`existing-${idx}`} className="flex items-center justify-between p-3.5 bg-neutral-50 dark:bg-neutral-850 rounded-2xl border border-neutral-100 dark:border-neutral-800/60">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileText size={16} className="text-sky-500 shrink-0" />
+                      <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 truncate" title={att.name}>{att.name}</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setExistingAttachments(existingAttachments.filter((_, i) => i !== idx))}
+                      className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-rose-500 rounded-xl transition-colors"
+                      title="Remover arquivo"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                
+                {/* New files to upload */}
+                {files.map((f, idx) => (
+                  <div key={`new-${idx}`} className="flex items-center justify-between p-3.5 bg-neutral-50 dark:bg-neutral-850 rounded-2xl border border-neutral-100 dark:border-neutral-800/60 animate-in slide-in-from-bottom-2 duration-300">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileText size={16} className="text-emerald-500 shrink-0" />
+                      <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 truncate" title={f.name}>{f.name}</span>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded shrink-0">Novo</span>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => setFiles(files.filter((_, i) => i !== idx))}
+                      className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-400 hover:text-rose-500 rounded-xl transition-colors"
+                      title="Remover arquivo"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Dotted Upload Dropzone */}
           <div 
             onClick={() => fileInputRef.current?.click()}
-            className="p-8 border-2 border-dashed border-neutral-200 dark:border-neutral-700 rounded-3xl text-center space-y-2 group hover:border-neutral-900/40 dark:hover:border-white/40 transition-all cursor-pointer"
+            className="p-6 border-2 border-dashed border-neutral-200 dark:border-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500 rounded-3xl text-center space-y-2 group transition-all cursor-pointer"
           >
-             <input 
-               type="file" 
-               ref={fileInputRef} 
-               className="hidden" 
-               onChange={e => e.target.files && setFile(e.target.files[0])}
-             />
-             <div className="w-10 h-10 bg-neutral-50 dark:bg-neutral-800 rounded-xl flex items-center justify-center mx-auto text-neutral-400 group-hover:bg-neutral-900 group-hover:text-white dark:group-hover:bg-white dark:group-hover:text-neutral-900 transition-all">
-               <Download size={18} />
-             </div>
-             <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase">
-               {file ? file.name : (initialData?.attachment ? "Substituir Anexo Existente" : "Anexar Documento Digitalizado")}
-             </p>
-             <p className="text-[9px] text-neutral-400 dark:text-neutral-500 font-bold uppercase tracking-widest">Apenas arquivos assinados (PDF, JPG, PNG)</p>
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              className="hidden" 
+              multiple
+              onChange={e => {
+                if (e.target.files) {
+                  const selected = Array.from(e.target.files);
+                  setFiles(prev => [...prev, ...selected]);
+                }
+              }}
+            />
+            <div className="w-10 h-10 bg-neutral-50 dark:bg-neutral-800 rounded-xl flex items-center justify-center mx-auto text-neutral-400 group-hover:bg-neutral-900 group-hover:text-white dark:group-hover:bg-white dark:group-hover:text-neutral-900 transition-all">
+              <Download size={18} />
+            </div>
+            <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100 uppercase">
+              Selecionar Arquivos do Processo
+            </p>
+            <p className="text-[9px] text-neutral-400 dark:text-neutral-500 font-bold uppercase tracking-widest">
+              Suporta múltiplos arquivos assinados (PDF, JPG, PNG)
+            </p>
           </div>
         </div>
 
-        <div className="pt-4 flex gap-4">
+        <div className="pt-2">
           <button 
             onClick={handleSubmit}
             disabled={!formData.subject || isUploading}
-            className="flex-1 bg-neutral-900 dark:bg-white text-emerald-400 dark:text-emerald-600 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all disabled:opacity-50 shadow-xl shadow-neutral-900/20 dark:shadow-black/40"
+            className="w-full bg-neutral-900 dark:bg-white text-emerald-400 dark:text-emerald-600 py-5 rounded-[24px] font-black uppercase tracking-[0.2em] text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all disabled:opacity-50 shadow-xl shadow-neutral-900/20 dark:shadow-black/40"
           >
-            {isUploading ? 'Enviando...' : (initialData ? 'Atualizar Protocolo' : 'Protocolar Documento')}
+            {isUploading ? 'Enviando Arquivos...' : (initialData ? 'Salvar Processo' : 'Protocolar Processo')}
           </button>
         </div>
       </motion.div>
@@ -658,34 +820,45 @@ export const ViewProtocolModal = ({ protocol, onClose }: { protocol: Protocol, o
           </div>
 
           <div className="space-y-2 pt-4 border-t border-neutral-100 dark:border-neutral-800">
-            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Anexo</span>
-            {protocol.attachment ? (
-              <a 
-                href={protocol.attachment} 
-                target="_blank" 
-                rel="noreferrer"
-                className="flex items-center gap-4 p-4 rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors border border-sky-100 dark:border-sky-500/20 group"
-              >
-                <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm text-sky-500">
-                  <FileText size={20} />
+            <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Anexos</span>
+            {(() => {
+              const atts = getAttachmentsArray(protocol.attachment);
+              if (atts.length === 0) {
+                return (
+                  <div className="flex items-center gap-4 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border border-neutral-100 dark:border-neutral-700">
+                    <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm">
+                      <EyeOff size={20} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">Sem anexo</p>
+                      <p className="text-xs opacity-70">Este protocolo não possui arquivos digitalizados</p>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
+                  {atts.map((att, idx) => (
+                    <a 
+                      key={idx}
+                      href={att.url} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="flex items-center gap-4 p-4 rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors border border-sky-100 dark:border-sky-500/20 group"
+                    >
+                      <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm text-sky-500 shrink-0">
+                        <FileText size={20} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm truncate" title={att.name}>{att.name}</p>
+                        <p className="text-xs opacity-70">Clique para visualizar ou baixar o arquivo</p>
+                      </div>
+                      <Download size={20} className="opacity-50 group-hover:opacity-100 transition-opacity shrink-0" />
+                    </a>
+                  ))}
                 </div>
-                <div className="flex-1">
-                  <p className="font-bold text-sm">Documento Anexado</p>
-                  <p className="text-xs opacity-70">Clique para visualizar ou baixar o arquivo</p>
-                </div>
-                <Download size={20} className="opacity-50 group-hover:opacity-100 transition-opacity" />
-              </a>
-            ) : (
-              <div className="flex items-center gap-4 p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border border-neutral-100 dark:border-neutral-700">
-                <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm">
-                  <EyeOff size={20} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold text-sm">Sem anexo</p>
-                  <p className="text-xs opacity-70">Este protocolo não possui arquivos digitalizados</p>
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         </div>
       </motion.div>
