@@ -4,6 +4,8 @@ import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye
 import { Protocol } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
+import { hasPermission } from '../../lib/permissions';
+
 
 export const getAttachmentsArray = (attachment?: string): { name: string, url: string, role?: string }[] => {
   if (!attachment) return [];
@@ -34,6 +36,9 @@ export const getAttachmentsArray = (attachment?: string): { name: string, url: s
 };
 
 export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?: string, currentUser?: any }) => {
+  const canEdit = hasPermission(currentUser, 'protocol', 'edit');
+  const canAdmin = hasPermission(currentUser, 'protocol', 'admin');
+  
   const [protocols, setProtocols] = React.useState<Protocol[]>([]);
   const [institutions, setInstitutions] = React.useState<{id: string, name: string}[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -166,15 +171,17 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
             </select>
           </div>
 
-          <div className="lg:ml-4 flex items-end h-full pt-5">
-            <button 
-              onClick={() => setIsNewModalOpen(true)}
-              className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 hover:shadow-xl transition-all whitespace-nowrap"
-            >
-              <FileText size={18} />
-              Novo Documento
-            </button>
-          </div>
+          {canEdit && (
+            <div className="lg:ml-4 flex items-end h-full pt-5">
+              <button 
+                onClick={() => setIsNewModalOpen(true)}
+                className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 hover:shadow-xl transition-all whitespace-nowrap"
+              >
+                <FileText size={18} />
+                Novo Documento
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -316,7 +323,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
-                  {p.status !== 'Recebido' && p.status !== 'Concluído' && (
+                  {p.status !== 'Recebido' && p.status !== 'Concluído' && canEdit && (
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleReceive(p); }}
                       className="p-2 rounded-xl text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
@@ -332,20 +339,24 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
                   >
                     <Clock size={16} />
                   </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setEditingProtocol(p); }}
-                    className="p-2 rounded-xl text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors"
-                    title="Editar"
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
-                    className="p-2 rounded-xl text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
-                    title="Excluir"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {canEdit && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setEditingProtocol(p); }}
+                      className="p-2 rounded-xl text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors"
+                      title="Editar"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                  )}
+                  {canAdmin && (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); handleDelete(p.id); }}
+                      className="p-2 rounded-xl text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
+                      title="Excluir"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

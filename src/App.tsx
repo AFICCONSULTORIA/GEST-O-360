@@ -4,6 +4,8 @@ import { ToastContainer, showToast } from './components/ui/Toast';
 import { CertificatesModule } from './modules/Certificates';
 import { SettingsModule } from './modules/Settings';
 import { ProtocolModule } from './modules/Protocol';
+import { hasPermission } from './lib/permissions';
+
 import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
 import { ControlsModule } from './modules/Controls';
 import { RiskModule } from './modules/Risk';
@@ -16,6 +18,7 @@ import { SaudeModule } from './modules/Saude';
 import { PublicSaudePortal } from './modules/Saude/PublicPortal';
 import { ServicosPublicosModule } from './modules/ServicosPublicos';
 import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
+import { CamaraModule } from './modules/Camara';
 import { ContractsModule } from './modules/Contracts';
 import { EducationModule } from './modules/Education';
 import { CalendarModule } from './modules/Calendar';
@@ -23,6 +26,7 @@ import { NormsModule } from './modules/Norms';
 import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, TreePine, Calculator, Tractor, HeartHandshake, Trophy, Map, Menu, X, 
   LayoutDashboard, 
   ClipboardCheck, 
+  Landmark,
   Calendar, 
   BookText, 
   ShieldAlert, Shield, Compass,
@@ -89,7 +93,7 @@ import {
 } from 'recharts';
 
 // --- Types ---
-type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates';
+type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara';
 
 interface Protocol {
   id: string;
@@ -340,6 +344,14 @@ const NAVBAR_CATEGORIES = [
       { id: 'assistencia_social', label: 'Assistência Social', icon: HeartHandshake },
       { id: 'esporte', label: 'Esporte', icon: Trophy },
       { id: 'planejamento', label: 'Planejamento', icon: Map },
+    ]
+  },
+  {
+    id: 'legislativo',
+    label: 'Poder Legislativo',
+    icon: Landmark,
+    items: [
+      { id: 'camara', label: 'Câmara 360', icon: Landmark },
     ]
   }
 ];
@@ -1501,6 +1513,7 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'assistencia_social', label: 'Assistência Social' },
   { id: 'esporte', label: 'Esporte' },
   { id: 'planejamento', label: 'Planejamento' },
+  { id: 'camara', label: 'Câmara Municipal' },
   { id: 'settings', label: 'Configurações' }
 ];
 
@@ -1511,7 +1524,7 @@ const MOCK_INSTITUTIONS: Institution[] = [
 ];
 
 const MOCK_USERS: AdminUser[] = [
-  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'admin_financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio'], institution_id: 'inst_1' },
+  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'admin_financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara'], institution_id: 'inst_1' },
   { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'], institution_id: 'inst_1' },
   { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'], institution_id: 'inst_2' }
 ];
@@ -1932,7 +1945,7 @@ export default function App() {
                 {/* Desktop Navigation */}
                 <div className="hidden lg:flex items-center gap-2">
                   {NAVBAR_CATEGORIES.map((category) => {
-                    const allowedItems = category.items.filter(item => currentUser?.permissions?.includes(item.id as View) || currentUser?.role === 'Super Admin');
+                    const allowedItems = category.items.filter(item => hasPermission(currentUser, item.id as View, 'view'));
                     if (allowedItems.length === 0) return null;
                     const isActiveCategory = allowedItems.some(i => i.id === activeView);
                     
@@ -2022,7 +2035,7 @@ export default function App() {
                 >
                   {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                 </button>
-                {(currentUser?.permissions?.includes('settings') || currentUser?.role === 'Super Admin') && (
+                {hasPermission(currentUser, 'settings', 'view') && (
                   <button 
                     onClick={() => setActiveView('settings')}
                     className={`p-2.5 rounded-xl transition-all ${
@@ -2089,7 +2102,7 @@ export default function App() {
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-6">
                     {NAVBAR_CATEGORIES.map((category) => {
-                      const allowedItems = category.items.filter(item => currentUser?.permissions?.includes(item.id as View) || currentUser?.role === 'Super Admin');
+                      const allowedItems = category.items.filter(item => hasPermission(currentUser, item.id as View, 'view'));
                       if (allowedItems.length === 0) return null;
 
                       return (
@@ -2141,7 +2154,9 @@ export default function App() {
             {activeView === 'patrimonio' && (
               <PatrimonioModule 
                 items={patrimonioItems} 
-                canDelete={currentUser?.role === 'Super Admin'}
+                canDelete={hasPermission(currentUser, 'patrimonio', 'admin')}
+                canEdit={hasPermission(currentUser, 'patrimonio', 'edit')}
+
                 onDelete={async (id) => {
                   try {
                     const { error } = await supabase.from('patrimonio').delete().eq('id', id);
@@ -2238,7 +2253,7 @@ export default function App() {
                     // Flatten all allowed items
                     const allAllowedItems = NAVBAR_CATEGORIES.flatMap(category => 
                       category.items
-                        .filter(item => currentUser?.permissions?.includes(item.id as View) || currentUser?.role === 'Super Admin')
+                        .filter(item => hasPermission(currentUser, item.id as View, 'view'))
                         .map(item => ({ ...item, categoryLabel: category.label }))
                     );
 
@@ -2314,7 +2329,7 @@ export default function App() {
             {activeView === 'education' && <EducationModule />}
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} />}
-            {activeView === 'certificates' && <CertificatesModule />}
+            {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
             {activeView === 'saude' && <SaudeModule />}
@@ -2325,6 +2340,7 @@ export default function App() {
             {activeView === 'assistencia_social' && <PlaceholderModule title="Secretaria de Assistência Social" />}
             {activeView === 'esporte' && <PlaceholderModule title="Secretaria de Esporte" />}
             {activeView === 'planejamento' && <PlaceholderModule title="Secretaria de Planejamento" />}
+            {activeView === 'camara' && <CamaraModule />}
             {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} />}
             {activeView === 'templates' && <TemplatesModule />}
           </motion.div>

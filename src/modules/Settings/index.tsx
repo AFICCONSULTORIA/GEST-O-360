@@ -1,6 +1,12 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Edit2, Trash2, X, Shield } from 'lucide-react';
+import { 
+  Plus, Edit2, Trash2, X, Shield,
+  ClipboardCheck, ShieldAlert, Compass, Landmark, BookText, PieChart,
+  FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
+  BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
+  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings
+} from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { AdminUser, Institution, View } from '../../types';
@@ -31,8 +37,75 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'planejamento', label: 'Planejamento' },
   { id: 'settings', label: 'Configurações' },
   { id: 'patrimonio', label: 'Patrimônio' },
-  { id: 'templates', label: 'Modelos de Documentos' }
+  { id: 'templates', label: 'Modelos de Documentos' },
+  { id: 'camara', label: 'Câmara Municipal' }
 ];
+
+interface PermissionDef {
+  id: View;
+  label: string;
+  desc: string;
+  icon: React.ComponentType<any>;
+}
+
+const PERMISSION_GROUPS: {
+  title: string;
+  desc: string;
+  items: PermissionDef[];
+}[] = [
+  {
+    title: 'Governança & Transparência',
+    desc: 'Controle de conformidade, riscos e atividades legislativas.',
+    items: [
+      { id: 'controls', label: 'Controles Internos', desc: 'Monitoramento de procedimentos e prazos', icon: ClipboardCheck },
+      { id: 'risk', label: 'Gestão de Riscos', desc: 'Identificação e tratamento de riscos', icon: ShieldAlert },
+      { id: 'pntp', label: 'PNTP', desc: 'Evidências do PNTP e portal de transparência', icon: Compass },
+      { id: 'camara', label: 'Câmara Municipal', desc: 'Atividades legislativas, projetos de lei e indicações', icon: Landmark },
+      { id: 'norms', label: 'Atos Normativos', desc: 'Publicação de decretos, portarias e resoluções', icon: BookText },
+      { id: 'reports', label: 'Relatórios', desc: 'Relatórios e análises de desempenho municipal', icon: PieChart },
+    ]
+  },
+  {
+    title: 'Administração & Gestão',
+    desc: 'Operações administrativas fundamentais e logística.',
+    items: [
+      { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites', icon: FileText },
+      { id: 'contracts', label: 'Contratos & Licitações', desc: 'Contratos administrativos e licitações', icon: Briefcase },
+      { id: 'patrimonio', label: 'Patrimônio', desc: 'Controle de bens móveis, imóveis e frotas', icon: Package },
+      { id: 'orders', label: 'Pedidos (Obras/Veículos)', desc: 'Solicitações de veículos e materiais de obras', icon: ShoppingCart },
+      { id: 'doc_numbers', label: 'Controle de Numeração', desc: 'Reserva e emissão de numeração oficial', icon: Calculator },
+      { id: 'certificates', label: 'Banco de Certidões', desc: 'Certidões negativas de empresas e pessoas físicas', icon: FileBadge },
+      { id: 'templates', label: 'Modelos de Documentos', desc: 'Repositório de minutas e arquivos modelo', icon: BookOpen },
+      { id: 'calendar', label: 'Calendário Oficial', desc: 'Calendário de obrigações e eventos municipais', icon: Calendar },
+    ]
+  },
+  {
+    title: 'Secretarias Temáticas',
+    desc: 'Módulos operacionais de secretarias específicas.',
+    items: [
+      { id: 'admin_financas', label: 'Administração & Finanças', desc: 'Portal administrativo e financeiro', icon: Building2 },
+      { id: 'saude', label: 'Saúde', desc: 'Gestão de atendimentos, escalas e medicamentos', icon: HeartPulse },
+      { id: 'education', label: 'Educação', desc: 'Controle de matrículas, transporte e merenda', icon: GraduationCap },
+      { id: 'servicos_publicos', label: 'Serviços Públicos', desc: 'Ouvidoria de reclamações e manutenção urbana', icon: Wrench },
+      { id: 'obras', label: 'Obras e Infraestrutura', desc: 'Acompanhamento físico e financeiro de obras', icon: HardHat },
+      { id: 'meio_ambiente', label: 'Meio Ambiente', desc: 'Licenciamento ambiental e denúncias', icon: Leaf },
+      { id: 'tributos', label: 'Tributos e Arrecadação', desc: 'Acompanhamento fiscal e impostos municipais', icon: Calculator },
+      { id: 'agricultura', label: 'Agricultura', desc: 'Apoio ao produtor rural e frotas agrícolas', icon: Tractor },
+      { id: 'assistencia_social', label: 'Assistência Social', desc: 'Cadastro único e programas assistenciais', icon: HeartHandshake },
+      { id: 'esporte', label: 'Esportes e Lazer', desc: 'Eventos esportivos e praças de esportes', icon: Trophy },
+      { id: 'planejamento', label: 'Planejamento Urbano', desc: 'Plano diretor, zoneamento e diretrizes', icon: Map },
+    ]
+  },
+  {
+    title: 'Sistema',
+    desc: 'Acesso às configurações globais e tela de início.',
+    items: [
+      { id: 'home', label: 'Painel Principal (Início)', desc: 'Dashboard geral e acesso rápido', icon: Home },
+      { id: 'settings', label: 'Configurações do Sistema', desc: 'Gerenciamento de usuários e permissões', icon: Settings },
+    ]
+  }
+];
+
 
 export const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { users: AdminUser[], setUsers: (u: AdminUser[]) => void, institutions: Institution[], setInstitutions: (i: Institution[]) => void }) => {
   const [activeTab, setActiveTab] = React.useState<'users' | 'institutions'>('users');
@@ -464,63 +537,229 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
       </AnimatePresence>
 
       <AnimatePresence>
-        {managingPermissionsUser && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-neutral-900 w-full max-w-3xl rounded-[40px] p-10 shadow-2xl space-y-8"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Permissões de Acesso</h3>
-                  <p className="text-sm text-neutral-500 mt-1">Gerencie os módulos que <strong>{managingPermissionsUser.name}</strong> pode visualizar.</p>
-                </div>
-                <button onClick={() => setManagingPermissionsUser(null)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
-                  <X size={20} />
-                </button>
-              </div>
+        {managingPermissionsUser && (() => {
+          const getLevel = (moduleId: View): 'none' | 'view' | 'edit' | 'admin' => {
+            const adminPattern = `${moduleId}:admin`;
+            const editPattern = `${moduleId}:edit`;
+            const viewPattern = `${moduleId}:view`;
 
-              <div className="space-y-6">
-                <div className="flex justify-between items-center mb-3">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Módulos do Sistema</label>
-                  <button 
-                    type="button" 
-                    onClick={() => setPermissionsData(permissionsData.length === AVAILABLE_PERMISSIONS.length ? [] : AVAILABLE_PERMISSIONS.map(p => p.id))}
-                    className="text-[10px] font-bold text-indigo-500 hover:text-indigo-600 uppercase tracking-wider"
-                  >
-                    {permissionsData.length === AVAILABLE_PERMISSIONS.length ? 'Desmarcar Todos' : 'Marcar Todos'}
+            if (permissionsData.includes(adminPattern)) return 'admin';
+            if (permissionsData.includes(editPattern)) return 'edit';
+            if (permissionsData.includes(viewPattern)) return 'view';
+            
+            if (permissionsData.includes(moduleId)) {
+              const role = managingPermissionsUser.role;
+              if (role === 'Admin' || role === 'Super Admin') return 'admin';
+              if (role === 'Editor') return 'edit';
+              return 'view';
+            }
+            return 'none';
+          };
+
+          const setLevel = (moduleId: View, level: 'none' | 'view' | 'edit' | 'admin') => {
+            const filtered = permissionsData.filter(p => 
+              p !== moduleId && 
+              p !== `${moduleId}:view` && 
+              p !== `${moduleId}:edit` && 
+              p !== `${moduleId}:admin`
+            );
+            
+            if (level === 'none') {
+              setPermissionsData(filtered);
+            } else {
+              setPermissionsData([...filtered, `${moduleId}:${level}`]);
+            }
+          };
+
+          const hasAnyActive = AVAILABLE_PERMISSIONS.some(p => getLevel(p.id) !== 'none');
+
+          const handleMarkAll = () => {
+            if (hasAnyActive) {
+              setPermissionsData([]);
+            } else {
+              const defaultLvl = managingPermissionsUser.role === 'Admin' ? 'admin' : managingPermissionsUser.role === 'Editor' ? 'edit' : 'view';
+              setPermissionsData(AVAILABLE_PERMISSIONS.map(p => `${p.id}:${defaultLvl}`));
+            }
+          };
+
+          return (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-white dark:bg-neutral-900 w-full max-w-4xl rounded-[40px] p-8 md:p-10 shadow-2xl flex flex-col max-h-[90vh]"
+                onClick={e => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex justify-between items-start mb-6 shrink-0">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+                        <Shield size={20} />
+                      </div>
+                      <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight">Permissões de Acesso Granulares</h3>
+                    </div>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1.5">
+                      Configure o nível exato de acesso para <strong>{managingPermissionsUser.name}</strong> por módulo.
+                    </p>
+                  </div>
+                  <button onClick={() => setManagingPermissionsUser(null)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                    <X size={20} />
                   </button>
                 </div>
-                <div className="grid grid-cols-3 gap-4 max-h-[60vh] overflow-y-auto p-2 custom-scrollbar">
-                  {AVAILABLE_PERMISSIONS.map(perm => (
-                    <label key={perm.id} className="flex items-center gap-2 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800 p-2 rounded-lg transition-colors">
-                      <input 
-                        type="checkbox"
-                        checked={permissionsData.includes(perm.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setPermissionsData(prev => [...prev, perm.id]);
-                          } else {
-                            setPermissionsData(prev => prev.filter(p => p !== perm.id));
-                          }
-                        }}
-                        className="w-4 h-4 rounded text-neutral-900 bg-neutral-100 border-neutral-200 dark:bg-neutral-800 dark:border-neutral-700"
-                      />
-                      <span className="text-xs font-medium text-neutral-700 dark:text-neutral-300">{perm.label}</span>
-                    </label>
+
+                {/* Info Box */}
+                <div className="bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-100 dark:border-neutral-800 rounded-2xl p-4 mb-6 grid grid-cols-4 gap-4 text-xs shrink-0">
+                  <div className="space-y-1">
+                    <span className="font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-neutral-300 dark:bg-neutral-600" />
+                      Bloqueado
+                    </span>
+                    <p className="text-neutral-500 text-[10px]">Sem qualquer acesso ao módulo.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      Visualizar
+                    </span>
+                    <p className="text-neutral-500 text-[10px]">Apenas leitura e visualização de dados.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      Editar
+                    </span>
+                    <p className="text-neutral-500 text-[10px]">Leitura, cadastro e edições padrão.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                      Administrar
+                    </span>
+                    <p className="text-neutral-500 text-[10px]">Controle completo (excluir, configurar).</p>
+                  </div>
+                </div>
+
+                {/* Subheader Toolbar */}
+                <div className="flex justify-between items-center mb-3 shrink-0">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Módulos do Sistema por Categoria</label>
+                  <button 
+                    type="button" 
+                    onClick={handleMarkAll}
+                    className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 hover:underline uppercase tracking-widest"
+                  >
+                    {hasAnyActive ? 'Desmarcar Todos' : 'Marcar Todos'}
+                  </button>
+                </div>
+
+                {/* Scrollable Body */}
+                <div className="flex-1 overflow-y-auto pr-2 space-y-8 custom-scrollbar mb-6">
+                  {PERMISSION_GROUPS.map((group, groupIdx) => (
+                    <div key={groupIdx} className="space-y-4">
+                      <div className="border-b border-neutral-100 dark:border-neutral-800 pb-2">
+                        <h4 className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">{group.title}</h4>
+                        <p className="text-[10px] text-neutral-400 mt-0.5">{group.desc}</p>
+                      </div>
+                      
+                      <div className="space-y-3">
+                        {group.items.map((perm) => {
+                          const currentLevel = getLevel(perm.id);
+                          const IconComp = perm.icon;
+                          
+                          return (
+                            <div 
+                              key={perm.id} 
+                              className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 bg-neutral-50/55 dark:bg-neutral-800/20 border border-neutral-100/50 dark:border-neutral-800/50 rounded-2xl hover:border-neutral-200/80 dark:hover:border-neutral-700/80 transition-colors gap-3"
+                            >
+                              {/* Left Side Info */}
+                              <div className="flex items-center gap-3.5">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-all shrink-0 ${
+                                  currentLevel === 'none' 
+                                    ? 'bg-white dark:bg-neutral-900 text-neutral-400 border-neutral-100 dark:border-neutral-800' 
+                                    : currentLevel === 'view'
+                                    ? 'bg-blue-50 dark:bg-blue-950/20 text-blue-500 border-blue-100/50 dark:border-blue-900/50'
+                                    : currentLevel === 'edit'
+                                    ? 'bg-amber-50 dark:bg-amber-950/20 text-amber-500 border-amber-100/50 dark:border-amber-900/50'
+                                    : 'bg-indigo-50 dark:bg-indigo-950/20 text-indigo-500 border-indigo-100/50 dark:border-indigo-900/50'
+                                }`}>
+                                  <IconComp size={18} />
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">{perm.label}</p>
+                                  <p className="text-[10px] text-neutral-400 dark:text-neutral-500 mt-0.5">{perm.desc}</p>
+                                </div>
+                              </div>
+
+                              {/* Right Side Segmented Control */}
+                              <div className="flex bg-neutral-100 dark:bg-neutral-800 p-0.5 rounded-xl border border-neutral-200/20 dark:border-neutral-700/20 self-end sm:self-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setLevel(perm.id, 'none')}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    currentLevel === 'none' 
+                                      ? 'bg-white dark:bg-neutral-900 text-neutral-500 dark:text-neutral-300 shadow-sm' 
+                                      : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+                                  }`}
+                                >
+                                  Nenhum
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLevel(perm.id, 'view')}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    currentLevel === 'view' 
+                                      ? 'bg-blue-500 text-white shadow-sm shadow-blue-500/20' 
+                                      : 'text-neutral-400 hover:text-blue-500'
+                                  }`}
+                                >
+                                  Ver
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLevel(perm.id, 'edit')}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    currentLevel === 'edit' 
+                                      ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20' 
+                                      : 'text-neutral-400 hover:text-amber-500'
+                                  }`}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLevel(perm.id, 'admin')}
+                                  className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+                                    currentLevel === 'admin' 
+                                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/20' 
+                                      : 'text-neutral-400 hover:text-indigo-500'
+                                  }`}
+                                >
+                                  Admin
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ))}
                 </div>
 
-                <div className="pt-4 flex gap-3 border-t border-neutral-100 dark:border-neutral-800">
-                  <button type="button" onClick={() => setManagingPermissionsUser(null)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                {/* Footer Actions */}
+                <div className="pt-4 flex gap-3 border-t border-neutral-100 dark:border-neutral-800 shrink-0">
+                  <button 
+                    type="button" 
+                    onClick={() => setManagingPermissionsUser(null)} 
+                    className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all border border-neutral-100 dark:border-neutral-800"
+                  >
+                    Cancelar
+                  </button>
                   <button 
                     type="button" 
                     onClick={async () => {
@@ -531,20 +770,23 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
                         showToast('Erro ao salvar permissões no banco de dados: ' + error.message, 'error');
                         console.error("Update permissions error:", error);
                       } else {
-                        showToast('Permissões salvas com sucesso!', 'success');
+                        showToast('Permissões granulares salvas com sucesso!', 'success');
                       }
                       setManagingPermissionsUser(null);
                     }}
-                    className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-indigo-600 text-white shadow-xl shadow-indigo-600/20 hover:scale-105 transition-all"
+                    className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 dark:shadow-black/40 hover:scale-105 transition-all"
                   >
-                    Salvar Permissões
+                    Confirmar Permissões
                   </button>
                 </div>
-              </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
 };
+
+
+

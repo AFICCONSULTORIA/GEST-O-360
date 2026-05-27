@@ -6,6 +6,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { CompanyCertificates } from '../../types';
+import { hasPermission } from '../../lib/permissions';
+
 
 const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, onClose: () => void, onConfirm: (expiryDate: string, file: File | null) => void }) => {
   const [expiryDate, setExpiryDate] = React.useState('');
@@ -83,7 +85,7 @@ const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, 
   );
 };
 
-const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate }: { company: CompanyCertificates, certLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void }) => {
+const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate, canEdit = true }: { company: CompanyCertificates, certLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void, canEdit?: boolean }) => {
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
 
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'] as const;
@@ -172,36 +174,38 @@ const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate }: { co
                 
                 <div className="flex gap-2">
                   {isPresent && (
-                    <>
-                      <a 
-                        href={cert.fileUrl || '#'} 
-                        target={cert.fileUrl ? "_blank" : undefined} 
-                        rel="noreferrer"
-                        onClick={(e) => { if (!cert.fileUrl) { e.preventDefault(); showToast('Esta certidão foi salva sem um arquivo anexado.', 'warning'); } }}
-                        className="px-4 py-2 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold hover:text-neutral-900 dark:hover:text-white transition-all shadow-sm flex items-center gap-2"
-                      >
-                        <Download size={14} /> Via
-                      </a>
-                      <button 
-                        onClick={async () => {
-                          if (confirm(`Tem certeza que deseja excluir a certidão ${certType}?`)) {
-                            const updated = { ...company };
-                            updated.certificates = { ...updated.certificates, [certType]: null };
-                            onUpdate(updated);
-                          }
-                        }}
-                        className="px-4 py-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all shadow-sm flex items-center gap-2"
-                      >
-                        <Trash2 size={14} /> Excluir
-                      </button>
-                    </>
+                    <a 
+                      href={cert.fileUrl || '#'} 
+                      target={cert.fileUrl ? "_blank" : undefined} 
+                      rel="noreferrer"
+                      onClick={(e) => { if (!cert.fileUrl) { e.preventDefault(); showToast('Esta certidão foi salva sem um arquivo anexado.', 'warning'); } }}
+                      className="px-4 py-2 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold hover:text-neutral-900 dark:hover:text-white transition-all shadow-sm flex items-center gap-2"
+                    >
+                      <Download size={14} /> Via
+                    </a>
                   )}
-                  <button 
-                    onClick={() => setUploadingCert(certType)}
-                    className="px-4 py-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-xl text-xs font-bold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-sm flex items-center gap-2"
-                  >
-                    {isPresent ? 'Substituir' : 'Anexar'}
-                  </button>
+                  {canEdit && isPresent && (
+                    <button 
+                      onClick={async () => {
+                        if (confirm(`Tem certeza que deseja excluir a certidão ${certType}?`)) {
+                          const updated = { ...company };
+                          updated.certificates = { ...updated.certificates, [certType]: null };
+                          onUpdate(updated);
+                        }
+                      }}
+                      className="px-4 py-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 rounded-xl text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-all shadow-sm flex items-center gap-2"
+                    >
+                      <Trash2 size={14} /> Excluir
+                    </button>
+                  )}
+                  {canEdit && (
+                    <button 
+                      onClick={() => setUploadingCert(certType)}
+                      className="px-4 py-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-xl text-xs font-bold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-sm flex items-center gap-2"
+                    >
+                      {isPresent ? 'Substituir' : 'Anexar'}
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -400,7 +404,10 @@ const ConfigLinksModal = ({ currentLinks, onClose, onSave }: { currentLinks: Rec
   );
 };
 
-export const CertificatesModule = () => {
+export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
+  const canEdit = hasPermission(currentUser, 'certificates', 'edit');
+  const canAdmin = hasPermission(currentUser, 'certificates', 'admin');
+
   const [searchQuery, setSearchQuery] = React.useState('');
   const [companies, setCompanies] = React.useState<CompanyCertificates[]>([]);
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
@@ -480,12 +487,16 @@ export const CertificatesModule = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setIsConfiguringLinks(true)} className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
-            <Settings size={16} /> Links
-          </button>
-          <button onClick={() => setIsAddingCompany(true)} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10">
-            <Plus size={16} /> Nova Empresa
-          </button>
+          {canAdmin && (
+            <button onClick={() => setIsConfiguringLinks(true)} className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
+              <Settings size={16} /> Links
+            </button>
+          )}
+          {canEdit && (
+            <button onClick={() => setIsAddingCompany(true)} className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 shadow-xl shadow-neutral-900/10 dark:shadow-neutral-950/10">
+              <Plus size={16} /> Nova Empresa
+            </button>
+          )}
         </div>
       </div>
 
@@ -538,30 +549,34 @@ export const CertificatesModule = () => {
                     <td className="px-4 py-4">{renderCertBadge(comp.certificates.FGTS)}</td>
                     <td className="px-4 py-4 text-right align-middle">
                       <div className="flex items-center justify-end gap-1">
-                        <button 
-                          onClick={async () => {
-                            if(confirm("Tem certeza que deseja excluir esta empresa? Todas as certidões atreladas a ela serão perdidas.")) {
-                               const { error } = await supabase.from('company_certificates').delete().eq('id', comp.id);
-                               if (error) {
-                                 showToast(`Erro ao excluir: ${error.message}`, "error");
-                               } else {
-                                 setCompanies(companies.filter(c => c.id !== comp.id));
-                                 showToast("Empresa excluída com sucesso!", "success");
-                               }
-                            }
-                          }}
-                          className="p-2 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all" 
-                          title="Excluir Empresa"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                        <button 
-                          onClick={() => setEditingCompany(comp)}
-                          className="p-2 text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl transition-all" 
-                          title="Editar Empresa"
-                        >
-                          <Edit2 size={18} />
-                        </button>
+                        {canAdmin && (
+                          <button 
+                            onClick={async () => {
+                              if(confirm("Tem certeza que deseja excluir esta empresa? Todas as certidões atreladas a ela serão perdidas.")) {
+                                 const { error } = await supabase.from('company_certificates').delete().eq('id', comp.id);
+                                 if (error) {
+                                   showToast(`Erro ao excluir: ${error.message}`, "error");
+                                 } else {
+                                   setCompanies(companies.filter(c => c.id !== comp.id));
+                                   showToast("Empresa excluída com sucesso!", "success");
+                                 }
+                              }
+                            }}
+                            className="p-2 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all" 
+                            title="Excluir Empresa"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
+                        {canEdit && (
+                          <button 
+                            onClick={() => setEditingCompany(comp)}
+                            className="p-2 text-neutral-400 hover:text-amber-500 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl transition-all" 
+                            title="Editar Empresa"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                        )}
                         <button 
                           onClick={() => setManagingCompany(comp)}
                           className="p-2 text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all" 
@@ -600,6 +615,7 @@ export const CertificatesModule = () => {
           <ManageCertificatesModal 
             company={managingCompany}
             certLinks={certLinks}
+            canEdit={canEdit}
             onClose={() => setManagingCompany(null)}
             onUpdate={async (updatedCompany) => {
               setCompanies(companies.map(c => c.id === updatedCompany.id ? updatedCompany : c));

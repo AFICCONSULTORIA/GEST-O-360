@@ -16,7 +16,7 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
 } = LucideIcons;
 
-const PatrimonioModule = ({ items, onAdd, onDelete, canDelete }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean }) => {
+const PatrimonioModule = ({ items, onAdd, onDelete, canDelete, canEdit = true }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
@@ -61,13 +61,15 @@ const PatrimonioModule = ({ items, onAdd, onDelete, canDelete }: { items: Patrim
             <Download size={18} />
             Emitir Relatório
           </button>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
-          >
-            <Package size={18} />
-            Novo Item
-          </button>
+          {canEdit && (
+            <button 
+              onClick={() => setIsModalOpen(true)}
+              className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
+            >
+              <Package size={18} />
+              Novo Item
+            </button>
+          )}
         </div>
       </div>
 
