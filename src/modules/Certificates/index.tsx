@@ -213,7 +213,7 @@ const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate }: { co
 };
 
 const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfirm: (comp: CompanyCertificates) => void }) => {
-  const [formData, setFormData] = React.useState({ companyName: '', cnpj: '' });
+  const [formData, setFormData] = React.useState({ companyName: '', cnpj: '', cpf: '', useCpf: false });
 
   const handleCNPJChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.replace(/\D/g, '');
@@ -230,6 +230,21 @@ const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
     }
     
     setFormData({ ...formData, cnpj: value });
+  };
+
+  const handleCPFChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value.replace(/\D/g, '');
+    if (value.length > 11) value = value.slice(0, 11);
+
+    if (value.length > 9) {
+      value = value.replace(/^(\d{3})(\d{3})(\d{3})(\d{2}).*/, '$1.$2.$3-$4');
+    } else if (value.length > 6) {
+      value = value.replace(/^(\d{3})(\d{3})(\d{1,3}).*/, '$1.$2.$3');
+    } else if (value.length > 3) {
+      value = value.replace(/^(\d{3})(\d{1,3}).*/, '$1.$2');
+    }
+
+    setFormData({ ...formData, cpf: value });
   };
 
   return (
@@ -267,27 +282,51 @@ const NewCompanyModal = ({ onClose, onConfirm }: { onClose: () => void, onConfir
               placeholder="Ex: Empresa Silva Ltda"
             />
           </div>
-          <div>
-            <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">CNPJ</label>
-            <input 
-              type="text" 
-              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
-              value={formData.cnpj}
-              onChange={handleCNPJChange}
-              maxLength={18}
-              placeholder="00.000.000/0001-00"
-            />
+          <div className="flex gap-6 mb-2">
+            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 font-bold cursor-pointer">
+              <input type="radio" checked={!formData.useCpf} onChange={() => setFormData({ ...formData, useCpf: false })} className="accent-neutral-900" /> Pessoa Jurídica (CNPJ)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300 font-bold cursor-pointer">
+              <input type="radio" checked={formData.useCpf} onChange={() => setFormData({ ...formData, useCpf: true })} className="accent-neutral-900" /> Pessoa Física (CPF)
+            </label>
           </div>
+
+          {!formData.useCpf ? (
+            <div>
+              <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">CNPJ</label>
+              <input 
+                type="text" 
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
+                value={formData.cnpj}
+                onChange={handleCNPJChange}
+                maxLength={18}
+                placeholder="00.000.000/0001-00"
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-2">CPF</label>
+              <input 
+                type="text" 
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
+                value={formData.cpf}
+                onChange={handleCPFChange}
+                maxLength={14}
+                placeholder="000.000.000-00"
+              />
+            </div>
+          )}
         </div>
 
         <div className="pt-4 flex gap-4">
           <button 
             onClick={() => {
-              if (formData.companyName && formData.cnpj) {
+              const doc = formData.useCpf ? formData.cpf : formData.cnpj;
+              if (formData.companyName && doc) {
                 onConfirm({
                   id: Date.now().toString(),
                   companyName: formData.companyName,
-                  cnpj: formData.cnpj,
+                  cnpj: doc,
                   certificates: { Trabalhista: null, Federal: null, Estadual: null, Municipal: null, FGTS: null }
                 });
               }
