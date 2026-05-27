@@ -190,12 +190,7 @@ export interface PatrimonioItem {
   model?: string;
 }
 
-const MOCK_PATRIMONIO: PatrimonioItem[] = [
-  { id: 'pat1', itemType: 'Geral', code: '001/2026', objectName: 'Mesa de Escritório Executiva', location: 'Gabinete do Prefeito', status: 'Servível', condition: 'Bom', department: 'Gabinete', year: 2023, imageUrls: ['https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?auto=format&fit=crop&q=80&w=300'] },
-  { id: 'pat2', itemType: 'Geral', code: '002/2026', objectName: 'Notebook Dell Latitude', location: 'Sala TI', status: 'Servível', condition: 'Excelente', department: 'Administração', year: 2025, imageUrls: ['https://images.unsplash.com/photo-1593642632823-8f785ba67e45?auto=format&fit=crop&q=80&w=300'] },
-  { id: 'pat3', itemType: 'Veículo', code: '003/2026', objectName: 'Ambulância Fiat Fiorino', location: 'Garagem Central', status: 'Inservível', condition: 'Muito Ruim', department: 'Saúde', year: 2015, plate: 'ABC-1234', chassis: '9BD123456789', model: 'Fiat Fiorino 1.4', imageUrls: ['https://images.unsplash.com/photo-1587560699334-bea93391dcef?auto=format&fit=crop&q=80&w=300'] },
-  { id: 'pat4', itemType: 'Geral', code: '004/2026', objectName: 'Cadeira Giratória', location: 'Recepção', status: 'Servível', condition: 'Ruim', department: 'Assistência Social', year: 2018, imageUrls: ['https://images.unsplash.com/photo-1505843490538-5133c6c7d0e1?auto=format&fit=crop&q=80&w=300'] }
-];
+
 
 const MOCK_CONTROLS: CheckItem[] = [
   { 
@@ -1602,7 +1597,7 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
   const [activeView, setActiveView] = React.useState<View>('home');
-  const [patrimonioItems, setPatrimonioItems] = React.useState<PatrimonioItem[]>(MOCK_PATRIMONIO);
+  const [patrimonioItems, setPatrimonioItems] = React.useState<PatrimonioItem[]>([]);
   const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>(MOCK_USERS);
   const [institutions, setInstitutions] = React.useState<Institution[]>(MOCK_INSTITUTIONS);
   const [selectedYear, setSelectedYear] = React.useState('2026');
@@ -1616,12 +1611,13 @@ export default function App() {
 
     const fetchGlobalData = async () => {
       try {
-        const [{ data: users }, { data: docs }, { data: ords }, { data: ctrls }, { data: insts }] = await Promise.all([
+        const [{ data: users }, { data: docs }, { data: ords }, { data: ctrls }, { data: insts }, { data: pats }] = await Promise.all([
           supabase.from('admin_users').select('*'),
           supabase.from('documents').select('*'),
           supabase.from('orders').select('*'),
           supabase.from('controls').select('*'),
-          supabase.from('institutions').select('*')
+          supabase.from('institutions').select('*'),
+          supabase.from('patrimonio').select('*')
         ]);
 
         if (users && users.length > 0) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
@@ -1629,6 +1625,12 @@ export default function App() {
         if (ords && ords.length > 0) setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
         if (ctrls && ctrls.length > 0) setControls(ctrls as CheckItem[]);
         if (insts && insts.length > 0) setInstitutions(insts as Institution[]);
+        if (pats && pats.length > 0) setPatrimonioItems(pats.map(p => ({
+          ...p,
+          itemType: p.item_type,
+          objectName: p.object_name,
+          imageUrls: p.image_urls
+        } as PatrimonioItem)));
       } catch (err) {
         console.error('Erro ao buscar dados do Supabase:', err);
       }
@@ -2139,7 +2141,38 @@ export default function App() {
             {activeView === 'patrimonio' && (
               <PatrimonioModule 
                 items={patrimonioItems} 
-                onAdd={(item) => setPatrimonioItems([item, ...patrimonioItems])}
+                onAdd={async (item) => {
+                  const dbItem = {
+                    item_type: item.itemType,
+                    code: item.code,
+                    object_name: item.objectName,
+                    location: item.location,
+                    status: item.status,
+                    condition: item.condition,
+                    department: item.department,
+                    year: item.year,
+                    image_urls: item.imageUrls,
+                    plate: item.plate,
+                    chassis: item.chassis,
+                    model: item.model
+                  };
+                  try {
+                    const { data, error } = await supabase.from('patrimonio').insert([dbItem]).select().single();
+                    if (error) throw error;
+                    if (data) {
+                      setPatrimonioItems([{
+                        ...data,
+                        itemType: data.item_type,
+                        objectName: data.object_name,
+                        imageUrls: data.image_urls
+                      } as PatrimonioItem, ...patrimonioItems]);
+                      showToast('Item de patrimônio salvo com sucesso', 'success');
+                    }
+                  } catch (error) {
+                    console.error('Erro ao salvar patrimônio:', error);
+                    showToast('Erro ao salvar item', 'error');
+                  }
+                }}
               />
             )}
             {activeView === 'orders' && (
