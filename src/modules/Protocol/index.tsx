@@ -416,13 +416,15 @@ export const NewProtocolModal = ({
   currentUser?: any
 }) => {
   const defaultFrom = currentUser?.institution_id 
-    ? institutions.find(i => i.id === currentUser.institution_id)?.name || 'Saúde'
-    : 'Saúde';
+    ? institutions.find(i => i.id === currentUser.institution_id)?.name || (institutions.length > 0 ? institutions[0].name : 'Saúde')
+    : (institutions.length > 0 ? institutions[0].name : 'Saúde');
+
+  const defaultTo = institutions.find(i => i.name.includes('Administração') || i.name.includes('Finanças'))?.name || 'Administração e Finanças';
 
   const [formData, setFormData] = React.useState({
     subject: initialData ? initialData.subject : '',
     from: initialData ? initialData.from : defaultFrom,
-    to: initialData ? initialData.to : 'Administração e Finanças',
+    to: initialData ? initialData.to : defaultTo,
     status: initialData ? initialData.status : 'Pendente',
   });
 
