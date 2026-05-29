@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw, Trash2, Phone, MessageCircle } from 'lucide-react';
+import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw, Trash2, Phone, MessageCircle, LayoutGrid, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
+import { FarmaciaModule } from './Farmacia';
 
 export interface Appointment {
   id: string;
@@ -64,7 +65,7 @@ const formatPhone = (value: string) => {
   return v;
 };
 
-export const SaudeModule = () => {
+const AgendamentosModule = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -738,5 +739,50 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
         </form>
       </motion.div>
     </motion.div>
+  );
+};
+
+export const SaudeModule = () => {
+  const [activeTab, setActiveTab] = useState<'agendamentos' | 'farmacia'>('agendamentos');
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex gap-2 w-fit">
+        <button
+          onClick={() => setActiveTab('agendamentos')}
+          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            activeTab === 'agendamentos'
+              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <LayoutGrid size={18} />
+          Agendamentos
+        </button>
+        <button
+          onClick={() => setActiveTab('farmacia')}
+          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+            activeTab === 'farmacia'
+              ? 'bg-sky-50 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <Package size={18} />
+          Farmácia SUS
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.2 }}
+        >
+          {activeTab === 'agendamentos' ? <AgendamentosModule /> : <FarmaciaModule />}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 };

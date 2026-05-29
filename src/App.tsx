@@ -16,6 +16,7 @@ import { PatrimonioModule } from './modules/Patrimonio';
 import { TemplatesModule } from './modules/Templates';
 import { SaudeModule } from './modules/Saude';
 import { PublicSaudePortal } from './modules/Saude/PublicPortal';
+import { PublicFarmaciaPortal } from './modules/Saude/PublicFarmacia';
 import { ServicosPublicosModule } from './modules/ServicosPublicos';
 import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
 import { CamaraModule } from './modules/Camara';
@@ -1701,6 +1702,7 @@ export default function App() {
 
   const currentPath = window.location.pathname;
   const isPublicPortal = currentPath === '/agendamento';
+  const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
   const isLandingPage = currentPath === '/';
@@ -1714,6 +1716,22 @@ export default function App() {
   // Página inicial — landing pública simplificada para cidadãos
   if (isLandingPage) {
     return <LandingPage darkMode={darkMode} setDarkMode={setDarkMode} />;
+  }
+
+  if (isFarmaciaPortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+         <div className="absolute top-10 right-10 z-50">
+           <button 
+             onClick={() => setDarkMode(!darkMode)}
+             className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+           >
+             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+           </button>
+         </div>
+         <PublicFarmaciaPortal darkMode={darkMode} />
+      </div>
+    );
   }
 
   if (isPublicPortal) {
