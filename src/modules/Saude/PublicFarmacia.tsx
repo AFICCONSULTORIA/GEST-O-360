@@ -113,8 +113,8 @@ export const PublicFarmaciaPortal = ({ darkMode }: { darkMode: boolean }) => {
                         </div>
                       ) : (
                         <div className="flex flex-col items-end">
-                          <span className="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 border border-red-200 dark:border-red-500/30">
-                            Falta no Estoque
+                          <span className="px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30">
+                            Aguardando fornecedor
                           </span>
                           <span className="text-xs text-neutral-400 mt-2">
                             Previsão de reposição em breve
