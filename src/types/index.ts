@@ -137,11 +137,12 @@ export interface AdminUser {
 export interface DocumentTemplate {
   id: string;
   title: string;
-  category: 'Ofícios' | 'Portarias' | 'Decretos' | 'Relatórios' | 'Contratos' | 'Memorandos';
-  format: 'DOCX' | 'XLSX' | 'PDF';
-  lastUpdated: string;
-  url: string;
-  downloads: number;
+  description: string;
+  category: string;
+  format: 'Word' | 'Excel' | 'PDF' | 'PowerPoint';
+  fileUrl: string;
+  updatedAt?: string;
+  downloads?: number;
 }
 
 export interface Contract {

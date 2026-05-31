@@ -628,40 +628,127 @@ export const RADAR_DATA: PNTPCategory[] = [
 // --- Protocols ---
 
 const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v: boolean) => void }) => {
-  const [activeTab, setActiveTab] = React.useState<'compliance' | 'gestao' | 'secretarias'>('compliance');
+  const [activeTab, setActiveTab] = React.useState<'gabinete' | 'administracao' | 'servicos' | 'cidadao'>('gabinete');
+  const [citySize, setCitySize] = React.useState<'small' | 'medium' | 'large' | 'huge'>('medium');
 
   const tabContent = {
-    compliance: {
-      title: "Governança, Integridade & Compliance",
-      description: "Garanta a conformidade jurídica do seu município com ferramentas automáticas de auditoria, análise preventiva de riscos e alinhamento com as regras do Tribunal de Contas (TCE) e a Nova Lei de Licitações.",
+    gabinete: {
+      title: "Gabinete & Governança Preventiva",
+      description: "Garanta a blindagem jurídica e administrativa do gabinete municipal. Ferramentas automáticas de auditoria, padronização de leis e monitoramento de riscos fiscais e de controle externo de acordo com o TCE.",
       features: [
-        { title: "Controles Internos", desc: "Checklists automatizados baseados em cronogramas oficiais para auditoria preventiva de todos os atos da gestão.", icon: ClipboardCheck },
-        { title: "Normativas", desc: "Repositório unificado e catalogado de leis, decretos, portarias e atos oficiais municipais.", icon: BookText },
-        { title: "Análise de Risco", desc: "Matrizes de risco inteligentes para identificar inconformidades fiscais e administrativas antes que gerem multas.", icon: ShieldAlert },
-        { title: "Radar PNTP", desc: "Integração e envio automático de contratações públicas para o Portal Nacional de Contratações Públicas.", icon: Globe }
+        { title: "Controles Internos", desc: "Checklists preventivos baseados nos cronogramas oficiais do TCE para auditoria ágil de todos os atos oficiais municipais.", icon: ClipboardCheck },
+        { title: "Normativas & Legislação", desc: "Repositório integrado, catalogado e acessível de leis, decretos, portarias e atos do Poder Executivo.", icon: BookText },
+        { title: "Análise de Risco", desc: "Matrizes de riscos operacionais e financeiros para alertar o prefeito e secretários sobre inconformidades prévias.", icon: ShieldAlert },
+        { title: "Modelos & Numeração", desc: "Criação de documentos padronizados (ofícios, decretos) com controle central sequencial de numeração anual.", icon: FileBadge }
       ]
     },
-    gestao: {
-      title: "Gestão Integrada & Eficiência Sem Papel",
-      description: "Aumente a produtividade das equipes municipais e reduza custos de custeio administrativo. Substitua processos manuais por trâmites digitais ágeis, controlados e rastreáveis.",
+    administracao: {
+      title: "Administração, Finanças & Compras Públicas",
+      description: "Simplifique as licitações e os contratos do município com conformidade automática à Nova Lei 14.133. Centralize e controle a saúde financeira municipal, emissões e relatórios fiscais do município.",
       features: [
-        { title: "Protocolo Digital", desc: "Abertura, acompanhamento, despacho e arquivamento de processos 100% eletrônicos e sem papel.", icon: FileText },
-        { title: "Licitações & Contratos", desc: "Controle de prazos de vigência, aditivos, garantias e conformidade imediata com a nova Lei 14.133.", icon: Target },
-        { title: "Patrimônio & Frotas", desc: "Tombamento de bens móveis e controle de manutenção de frotas com diários de bordo digitais.", icon: Package },
-        { title: "Banco de Certidões", desc: "Armazenamento unificado com monitoramento automático e alertas de expiração de certidões estaduais e federais.", icon: FileCheck }
+        { title: "Licitações & Contratos", desc: "Gestão completa de vigência, reajustes, aditivos contratuais e conformidade nativa e automática com a Lei 14.133.", icon: Target },
+        { title: "Radar PNTP", desc: "Integração imediata com envio automatizado de processos homologados para o Portal Nacional de Contratações Públicas.", icon: Globe },
+        { title: "Banco de Certidões", desc: "Monitoramento de regularidade em tempo real com alertas automáticos para certidões estaduais e federais municipais.", icon: FileCheck },
+        { title: "Gestão Financeira", desc: "Painéis e relatórios consolidados de receitas, despesas e alertas automáticos sobre limites legais da LRF.", icon: PieChartIcon }
       ]
     },
-    secretarias: {
-      title: "Módulos Inteligentes para as Secretarias",
-      description: "Sistemas desenhados sob medida para as especificidades das áreas finalísticas, promovendo a integração de dados e facilitando o trabalho diário dos servidores municipais.",
+    servicos: {
+      title: "Serviços Finalísticos & Saúde Pública",
+      description: "Modernize a ponta da prestação de serviços municipais. Gerencie a saúde, educação, frotas e obras públicas garantindo transparência ativa nos pedidos, uso eficiente de maquinários e suprimentos.",
       features: [
-        { title: "Saúde Integrada", desc: "Central de regulação de agendamentos e controle da frota de ambulâncias e TFD (Tratamento Fora do Domicílio).", icon: HeartPulse },
-        { title: "Educação Pública", desc: "Controle de transporte escolar, merendas, controle de estoque de escolas e acompanhamento pedagógico.", icon: GraduationCap },
-        { title: "Viação e Obras", desc: "Gestão de pedidos de insumos (brita, cimento, asfalto), controle de maquinário e relatórios de vistorias.", icon: HardHat },
-        { title: "Administração & Finanças", desc: "Gráficos de receitas, projeção de despesas municipais e alertas automáticos sobre limites legais da LRF.", icon: Briefcase }
+        { title: "Saúde Integrada & SUS", desc: "Módulos para controle da frota de ambulâncias, TFD e gerenciamento dinâmico de medicamentos da Farmácia SUS.", icon: HeartPulse },
+        { title: "Viação, Obras & Pedidos", desc: "Abertura digital de pedidos de insumos (brita, cimento, asfalto), controle de horas de maquinário e relatórios de vistorias.", icon: HardHat },
+        { title: "Transporte & Educação", desc: "Acompanhamento de rotas e frotas de ônibus escolar, distribuição de merendas e controle de estoque de materiais didáticos.", icon: GraduationCap },
+        { title: "Patrimônio & Frotas", desc: "Tombamento de bens públicos com QR-code, controle preventivo de manutenção de veículos e diários de bordo digitais.", icon: Package }
+      ]
+    },
+    cidadao: {
+      title: "Ouvidoria, Cidadão & Poder Legislativo",
+      description: "Conecte o cidadão diretamente à prefeitura e crie uma ponte robusta de transparência com a Câmara de Vereadores. Aumente seus índices oficiais de transparência pública e interatividade social.",
+      features: [
+        { title: "Portal de Serviços", desc: "Solicitações populares online (iluminação, podas de árvores, melhorias) com acompanhamento digital em tempo real pelo celular.", icon: Users },
+        { title: "Portal SUS Cidadão", desc: "Agendamento descentralizado de consultas médicas básicas e acompanhamento da disponibilidade física de remédios do SUS.", icon: Calendar },
+        { title: "Integração Câmara 360", desc: "Plataforma de integração e intercâmbio de processos, indicações e atos oficiais legislativos com o Executivo.", icon: Landmark },
+        { title: "Protocolo Eletrônico", desc: "Abertura, acompanhamento e despacho de processos de maneira 100% eletrônica, rastreável e sem papel no município.", icon: FileText }
       ]
     }
   };
+
+  const calculatorData = {
+    small: {
+      label: "Pequeno (até 15 mil hab.)",
+      economy: "R$ 45.000",
+      paper: "850 resmas",
+      time: "De 14 dias para 3 horas",
+      efficiency: "+35%"
+    },
+    medium: {
+      label: "Médio (15k a 50k hab.)",
+      economy: "R$ 135.000",
+      paper: "2.450 resmas",
+      time: "De 15 dias para 2 horas",
+      efficiency: "+42%"
+    },
+    large: {
+      label: "Grande (50k a 100k hab.)",
+      economy: "R$ 380.000",
+      paper: "7.200 resmas",
+      time: "De 18 dias para 1 hora",
+      efficiency: "+50%"
+    },
+    huge: {
+      label: "Metrópole (Mais de 100k hab.)",
+      economy: "R$ 820.000",
+      paper: "16.500 resmas",
+      time: "De 21 dias para 45 min",
+      efficiency: "+58%"
+    }
+  };
+
+  const timelineSteps = [
+    {
+      step: "01",
+      title: "Portal do Cidadão",
+      desc: "Um morador identifica um buraco na via pública e abre uma solicitação no Portal do Cidadão pelo celular, anexando foto e geolocalização exata.",
+      icon: Globe,
+      color: "from-emerald-500 to-teal-500"
+    },
+    {
+      step: "02",
+      title: "Protocolo Digital",
+      desc: "O chamado entra na prefeitura e gera imediatamente um Protocolo Digital unificado, com numeração automatizada e rastreabilidade total de trâmite.",
+      icon: ClipboardCheck,
+      color: "from-teal-500 to-cyan-500"
+    },
+    {
+      step: "03",
+      title: "Tramitação Imediata",
+      desc: "Sem malotes ou trânsito físico, o processo tramita online em 1 segundo para a Secretaria de Viação e Obras. O engenheiro recebe o alerta e faz a vistoria.",
+      icon: ArrowRight,
+      color: "from-cyan-500 to-sky-500"
+    },
+    {
+      step: "04",
+      title: "Pedido de Insumos",
+      desc: "O encarregado da secretaria abre um Pedido de Material de Obras integrado (brita/asfalto) através de um modal moderno e fluxo multi-item automatizado.",
+      icon: HardHat,
+      color: "from-sky-500 to-indigo-500"
+    },
+    {
+      step: "05",
+      title: "Conformidade 14.133",
+      desc: "O sistema verifica se o fornecedor está regular perante o Banco de Certidões e se a contratação cumpre a Nova Lei de Licitações, enviando ao Radar PNTP.",
+      icon: Shield,
+      color: "from-indigo-500 to-violet-500"
+    },
+    {
+      step: "06",
+      title: "Execução & Feedback",
+      desc: "A via é reparada e a retroescavadeira registra a atividade via diário de bordo digital. O cidadão recebe uma mensagem SMS informando a conclusão da obra.",
+      icon: Sparkles,
+      color: "from-violet-500 to-emerald-500"
+    }
+  ];
 
   const scrollToSolutions = () => {
     document.getElementById('solucoes')?.scrollIntoView({ behavior: 'smooth' });
@@ -773,7 +860,7 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
               </motion.div>
             </div>
 
-            {/* Right side: Simulated Premium Executive Dashboard */}
+            {/* Right side: Simulated Premium Executive Dashboard - Centro de Comando do Prefeito */}
             <div className="lg:col-span-5 relative">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 30 }}
@@ -790,72 +877,90 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                   </div>
                   <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-full flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" />
-                    Painel Executivo
+                    Painel do Prefeito
                   </span>
                 </div>
 
-                {/* Dashboard statistics row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Índice Compliance</span>
-                    <div className="flex items-baseline gap-2 mt-1.5">
-                      <span className="text-2xl font-black text-neutral-900 dark:text-white">94.8%</span>
-                      <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1 py-0.5 rounded">+2.4%</span>
+                {/* Dashboard statistics row - LRF and Savings */}
+                <div className="space-y-4">
+                  {/* Gasto com Pessoal LRF Card */}
+                  <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Gasto com Pessoal (LRF)</span>
+                      <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded">Regular</span>
                     </div>
-                    {/* Animated visual indicator bar */}
-                    <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
-                      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full w-[94.8%]" />
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-3xl font-black text-neutral-900 dark:text-white">48.2%</span>
+                      <span className="text-[9px] text-neutral-400 font-bold">Limite Alerta: 51.3% · Teto LRF: 54.0%</span>
+                    </div>
+                    {/* Animated visual LRF indicator bar */}
+                    <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-2 rounded-full overflow-hidden relative">
+                      <div className="absolute top-0 bottom-0 left-[51.3%] w-[1.5px] bg-amber-500/50 z-10" />
+                      <div className="absolute top-0 bottom-0 left-[54%] w-[1.5px] bg-rose-500/50 z-10" />
+                      <div className="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full w-[48.2%]" />
                     </div>
                   </div>
 
-                  <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Processos Digitais</span>
-                    <div className="flex items-baseline gap-2 mt-1.5">
-                      <span className="text-2xl font-black text-neutral-900 dark:text-white">12.480</span>
-                      <span className="text-[9px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-1 py-0.5 rounded">100% sem papel</span>
+                  {/* Two columns: Economia and Atendimentos */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30 text-left">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Economia Sem Papel</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-xl font-black text-neutral-900 dark:text-white">R$ 14.820</span>
+                        <span className="text-[8px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1 py-0.5 rounded">Este mês</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1 mt-2.5 rounded-full overflow-hidden">
+                        <div className="bg-emerald-500 h-full rounded-full w-[85%]" />
+                      </div>
                     </div>
-                    <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1.5 rounded-full mt-3 overflow-hidden">
-                      <div className="bg-gradient-to-r from-sky-500 to-teal-500 h-full rounded-full w-full" />
+
+                    <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30 text-left">
+                      <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Ouvidoria Cidadã</span>
+                      <div className="flex items-baseline gap-1 mt-1">
+                        <span className="text-xl font-black text-neutral-900 dark:text-white">94.2%</span>
+                        <span className="text-[8px] font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-1 py-0.5 rounded">Aprovado</span>
+                      </div>
+                      <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-1 mt-2.5 rounded-full overflow-hidden">
+                        <div className="bg-sky-500 h-full rounded-full w-[94.2%]" />
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Simulated Chart representing compliance progress */}
+                {/* Simulated Chart representing municipal departments status */}
                 <div className="bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800/30 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Histórico de Governança (6 meses)</span>
-                    <span className="text-[9px] font-bold text-neutral-400">TCE</span>
+                    <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500">Eficiência de Secretarias (Metas)</span>
+                    <span className="text-[9px] font-bold text-neutral-400">Gabinete 360</span>
                   </div>
-                  <div className="flex justify-between items-end h-28 pt-2">
+                  
+                  {/* Row bars for key departments */}
+                  <div className="space-y-2 pt-1 text-left">
                     {[
-                      { month: "Dez", val: 55, h: "h-[55%]" },
-                      { month: "Jan", val: 68, h: "h-[68%]" },
-                      { month: "Fev", val: 78, h: "h-[78%]" },
-                      { month: "Mar", val: 84, h: "h-[84%]" },
-                      { month: "Abr", val: 90, h: "h-[90%]" },
-                      { month: "Mai", val: 95, h: "h-[95%]" }
-                    ].map((bar, i) => (
-                      <div key={i} className="flex flex-col items-center gap-1.5 w-[12%] group cursor-pointer">
-                        <div className="w-full bg-neutral-100 dark:bg-neutral-800/60 rounded-lg h-24 flex items-end overflow-hidden">
-                          <div className={`w-full ${bar.h} bg-neutral-950 dark:bg-neutral-300 group-hover:bg-emerald-500 dark:group-hover:bg-emerald-400 rounded-t-md transition-all duration-300 relative`}>
-                            <div className="absolute top-[-24px] left-1/2 -translate-x-1/2 bg-neutral-900 text-white text-[8px] font-bold px-1 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                              {bar.val}%
-                            </div>
-                          </div>
+                      { name: "Saúde & Ambulâncias", val: 96.8, barW: "w-[96.8%]", color: "from-emerald-500 to-teal-500" },
+                      { name: "Licitações & Radar PNTP", val: 100, barW: "w-full", color: "from-sky-500 to-cyan-500" },
+                      { name: "Obras, Frota & Insumos", val: 89.2, barW: "w-[89.2%]", color: "from-amber-500 to-orange-500" }
+                    ].map((dept, i) => (
+                      <div key={i} className="space-y-0.5">
+                        <div className="flex justify-between text-[8px] font-bold">
+                          <span className="text-neutral-600 dark:text-neutral-300">{dept.name}</span>
+                          <span className="text-neutral-900 dark:text-white font-mono">{dept.val}%</span>
                         </div>
-                        <span className="text-[8px] font-bold text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">{bar.month}</span>
+                        <div className="w-full bg-neutral-100 dark:bg-neutral-800/60 h-1.5 rounded-full overflow-hidden">
+                          <div className={`bg-gradient-to-r ${dept.color} h-full rounded-full ${dept.barW}`} />
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Dashboard recent notifications list */}
+                {/* Dashboard recent compliance checkpoints */}
                 <div className="space-y-3">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500 block mb-1">Últimas Ações do Sistema</span>
-                  <div className="space-y-2">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-neutral-400 dark:text-neutral-500 block mb-1">Alertas Preventivos & Auditoria</span>
+                  <div className="space-y-2 text-left">
                     {[
-                      { icon: Shield, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10", title: "Matriz de Risco atualizada", sub: "Gabinete do Prefeito • há 10m" },
-                      { icon: Globe, color: "text-sky-500 bg-sky-50 dark:bg-sky-500/10", title: "Licitação enviada ao Radar PNTP", sub: "Departamento de Compras • há 1h" }
+                      { icon: CheckCircle2, color: "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10", title: "Certidões Fiscais Sincronizadas", sub: "Regularidade ativa perante Receita/FGTS" },
+                      { icon: AlertTriangle, color: "text-amber-500 bg-amber-50 dark:bg-amber-500/10", title: "Contrato de Obra Próximo do Fim (30d)", sub: "Matriz de risco disparou alerta de prorrogação" }
                     ].map((notify, i) => (
                       <div key={i} className="flex items-center gap-3 p-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800/30 rounded-xl transition-colors">
                         <div className={`p-2 rounded-lg ${notify.color} shrink-0`}>
@@ -863,7 +968,7 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] font-bold text-neutral-800 dark:text-neutral-200 truncate">{notify.title}</p>
-                          <p className="text-[9px] text-neutral-400 dark:text-neutral-500">{notify.sub}</p>
+                          <p className="text-[9px] text-neutral-400 dark:text-neutral-500 font-medium truncate">{notify.sub}</p>
                         </div>
                         <Check className="text-emerald-500 shrink-0" size={12} />
                       </div>
@@ -877,31 +982,32 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
             </div>
           </section>
 
-          {/* Interactive Showcase Tabs Section */}
+          {/* Interactive Showcase Tabs Section - Mapa de Macro-Áreas da Gestão 360 */}
           <section id="solucoes" className="space-y-12 scroll-mt-24">
-            <div className="text-center space-y-4 max-w-2xl mx-auto">
+            <div className="text-center space-y-4 max-w-3xl mx-auto">
               <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3.5 py-1.5 rounded-full">
-                Módulos e Recursos
+                Módulos & Recursos Municipais
               </span>
               <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white leading-tight">
-                Tudo o que o Gestão 360 oferece ao seu Município
+                Mapa Interativo de Recursos da Gestão 360
               </h2>
               <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                Uma solução unificada com ferramentas desenhadas especificamente para garantir segurança legal, otimização operacional e modernização das secretarias.
+                Navegue pelas quatro macro-áreas da nossa plataforma e conheça os recursos reais desenhados para modernizar cada setor da prefeitura e do legislativo municipal.
               </p>
             </div>
 
             {/* Pillar Tab Selectors */}
-            <div className="flex flex-col sm:flex-row justify-center items-center gap-2 p-1.5 bg-neutral-100/80 dark:bg-neutral-900/60 backdrop-blur border border-neutral-200/50 dark:border-neutral-800/50 rounded-2xl sm:rounded-3xl max-w-2xl mx-auto">
+            <div className="flex flex-col md:flex-row justify-center items-center gap-2 p-1.5 bg-neutral-100/80 dark:bg-neutral-900/60 backdrop-blur border border-neutral-200/50 dark:border-neutral-800/50 rounded-2xl md:rounded-3xl max-w-4xl mx-auto">
               {[
-                { id: "compliance", label: "Compliance & Riscos", icon: Shield },
-                { id: "gestao", label: "Gestão & Eficiência", icon: FileText },
-                { id: "secretarias", label: "Secretarias Inteligentes", icon: Users2 }
+                { id: "gabinete", label: "Gabinete & Governança", icon: Shield },
+                { id: "administracao", label: "Adm., Finanças & Compras", icon: Landmark },
+                { id: "servicos", label: "Serviços & Saúde Pública", icon: HardHat },
+                { id: "cidadao", label: "Cidadão & Legislativo", icon: Users2 }
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`w-full sm:w-auto flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl sm:rounded-2xl text-xs font-black uppercase tracking-widest transition-all duration-300 ${
+                  className={`w-full md:w-auto flex items-center justify-center gap-2.5 px-5 py-3.5 rounded-xl md:rounded-2xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all duration-300 ${
                     activeTab === tab.id
                       ? "bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-md shadow-neutral-200/50 dark:shadow-none font-bold"
                       : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
@@ -928,15 +1034,15 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                   <h3 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
                     {tabContent[activeTab].title}
                   </h3>
-                  <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                  <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
                     {tabContent[activeTab].description}
                   </p>
                   <div className="pt-4">
                     <button 
-                      onClick={scrollToSolutions}
+                      onClick={() => document.getElementById('calculadora')?.scrollIntoView({ behavior: 'smooth' })}
                       className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 hover:scale-102 transition-all"
                     >
-                      Ver detalhes técnicos de implantação
+                      Calcular economia da gestão sem papel
                       <ChevronRight size={14} />
                     </button>
                   </div>
@@ -966,6 +1072,154 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                 </div>
               </motion.div>
             </AnimatePresence>
+          </section>
+
+          {/* New Section: Interactive Impact Calculator (Calculadora de Impacto Gestão Sem Papel) */}
+          <section id="calculadora" className="bg-white dark:bg-neutral-900/60 backdrop-blur border border-neutral-200/80 dark:border-neutral-800/80 rounded-[48px] p-8 sm:p-12 space-y-10 shadow-2xl relative overflow-hidden transition-all duration-500">
+            {/* Background glowing gradients */}
+            <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/10 rounded-full blur-[100px] pointer-events-none" />
+            <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-sky-500/10 rounded-full blur-[100px] pointer-events-none" />
+
+            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              {/* Left Side: Description and Selection buttons */}
+              <div className="lg:col-span-5 space-y-6 text-left">
+                <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-3.5 py-1.5 rounded-full inline-block">
+                  Simulação de Eficiência
+                </span>
+                <h3 className="text-2xl sm:text-4xl font-black text-neutral-900 dark:text-white tracking-tight leading-tight">
+                  Calculadora de Retorno e Impacto Digital
+                </h3>
+                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                  A eliminação completa de trâmites físicos e malotes gera impacto direto no custeio municipal. Escolha o porte populacional do seu município para simular a economia anual estimada.
+                </p>
+
+                {/* Porte Selection Grid */}
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  {(Object.keys(calculatorData) as Array<keyof typeof calculatorData>).map((key) => (
+                    <button
+                      key={key}
+                      onClick={() => setCitySize(key)}
+                      className={`px-4 py-3 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all ${
+                        citySize === key
+                          ? "bg-neutral-900 border-neutral-900 dark:bg-white dark:border-white text-white dark:text-neutral-950 shadow-md font-bold"
+                          : "bg-transparent border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800/40"
+                      }`}
+                    >
+                      {key === 'small' && "Até 15k Hab."}
+                      {key === 'medium' && "15k a 50k Hab."}
+                      {key === 'large' && "50k a 100k Hab."}
+                      {key === 'huge' && "100k+ Hab."}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Side: Dynamic Metric Cards */}
+              <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: "Economia Financeira",
+                    value: calculatorData[citySize].economy,
+                    desc: "Estimativa anual de materiais, espaço físico, postagem e mão de obra.",
+                    icon: TrendingDown,
+                    badge: "Custo Menor",
+                    color: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10"
+                  },
+                  {
+                    title: "Papel Físico Salvo",
+                    value: calculatorData[citySize].paper,
+                    desc: "Redução de folhas de papel impressas em protocolos, certidões e memorandos.",
+                    icon: Leaf,
+                    badge: "Sustentável",
+                    color: "text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-500/10"
+                  },
+                  {
+                    title: "Tempo de Tramitação",
+                    value: calculatorData[citySize].time,
+                    desc: "Tempo médio de trâmite de processos administrativos entre secretarias.",
+                    icon: Clock,
+                    badge: "Resposta Rápida",
+                    color: "text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10"
+                  },
+                  {
+                    title: "Produtividade Interna",
+                    value: calculatorData[citySize].efficiency,
+                    desc: "Aumento na agilidade operacional das secretarias com processos paralelos.",
+                    icon: TrendingUp,
+                    badge: "Eficiência",
+                    color: "text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10"
+                  }
+                ].map((metric, i) => (
+                  <motion.div
+                    key={i}
+                    layoutId={`metric-${i}`}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                    className="bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-100 dark:border-neutral-800/30 p-5 rounded-3xl text-left hover:scale-[1.02] transition-transform duration-300 relative group overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={`p-2.5 rounded-xl ${metric.color} shrink-0`}>
+                        <metric.icon size={18} />
+                      </div>
+                      <span className="text-[8px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 border border-neutral-200/50 dark:border-neutral-700/50 px-2 py-0.5 rounded-md">
+                        {metric.badge}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[9px] font-black uppercase text-neutral-400 dark:text-neutral-500 tracking-wider">{metric.title}</p>
+                      <h4 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white tracking-tight">{metric.value}</h4>
+                      <p className="text-[10px] text-neutral-500 dark:text-neutral-400 leading-normal font-medium pt-1">{metric.desc}</p>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* New Section: Um Dia Sem Papel (Workflow Timeline) */}
+          <section className="space-y-12">
+            <div className="text-center space-y-4 max-w-3xl mx-auto">
+              <span className="text-[10px] font-black uppercase tracking-widest text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-3.5 py-1.5 rounded-full">
+                Fluxo de Trabalho Integrado
+              </span>
+              <h2 className="text-3xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white leading-tight">
+                Um Dia Sem Papel na Gestão Pública 360°
+              </h2>
+              <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Entenda como a integração entre os módulos do sistema otimiza de ponta a ponta as demandas do município, do portal do cidadão até a finalização do serviço pelo servidor.
+              </p>
+            </div>
+
+            {/* Path Timeline cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-left max-w-6xl mx-auto">
+              {timelineSteps.map((step, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800/80 rounded-[32px] p-6 space-y-4 relative group hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-emerald-500/5 to-transparent dark:from-emerald-500/10 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[32px]" />
+                  
+                  {/* Step counter and icon badge */}
+                  <div className="flex items-center justify-between">
+                    <span className={`w-10 h-10 rounded-xl bg-gradient-to-tr ${step.color} text-white flex items-center justify-center font-black text-xs shadow-md shadow-neutral-200 dark:shadow-none`}>
+                      <step.icon size={16} />
+                    </span>
+                    <span className="text-xs font-black font-mono text-neutral-200 dark:text-neutral-800 tracking-tighter group-hover:text-emerald-500/20 transition-colors">
+                      ETAPA {step.step}
+                    </span>
+                  </div>
+
+                  {/* Copy */}
+                  <div className="space-y-2">
+                    <h4 className="text-base font-black text-neutral-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                      {step.title}
+                    </h4>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                      {step.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
 
           {/* Benefits Grid (ROI and Legal Security) */}
@@ -1043,11 +1297,11 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                 Portais Oficiais para a População
               </h2>
               <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                Se você é morador do município, utilize os nossos portais integrados públicos para fazer suas solicitações de atendimento e agendar consultas de saúde.
+                Se você é morador do município, utilize os nossos portais integrados públicos para fazer suas solicitações de atendimento, agendar consultas e consultar medicamentos.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
               {/* Public Portal Servicos */}
               <div className="group bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800/80 rounded-[36px] p-8 text-left hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1 transition-all duration-300 overflow-hidden relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[36px]" />
@@ -1063,7 +1317,7 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                   </div>
                   <a
                     href="/servicos"
-                    className="px-6 py-4 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all w-full text-center mt-4"
+                    className="px-6 py-4 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all w-full text-center mt-4 animate-in fade-in duration-300"
                   >
                     Acessar Serviços do Cidadão
                     <ArrowRight size={14} />
@@ -1089,6 +1343,29 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
                     className="px-6 py-4 bg-sky-50 hover:bg-sky-100 dark:bg-sky-500/10 dark:hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all w-full text-center mt-4"
                   >
                     Agendar Serviços de Saúde
+                    <ArrowRight size={14} />
+                  </a>
+                </div>
+              </div>
+
+              {/* Public Portal Farmacia SUS */}
+              <div className="group bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800/80 rounded-[36px] p-8 text-left hover:shadow-2xl hover:shadow-emerald-500/5 hover:-translate-y-1 transition-all duration-300 overflow-hidden relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[36px]" />
+                <div className="relative space-y-6 flex flex-col h-full justify-between">
+                  <div className="space-y-4">
+                    <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                      <HeartPulse size={22} className="text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="text-xl font-black text-neutral-900 dark:text-white">Portal da Farmácia SUS</h3>
+                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed font-medium">
+                      Consulte em tempo real a disponibilidade física de medicamentos gratuitos distribuídos nos postos e na farmácia básica do município, verifique lotes e evite filas ou deslocamentos à toa.
+                    </p>
+                  </div>
+                  <a
+                    href="/farmaciasus"
+                    className="px-6 py-4 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all w-full text-center mt-4"
+                  >
+                    Consultar Remédios SUS
                     <ArrowRight size={14} />
                   </a>
                 </div>
