@@ -24,6 +24,39 @@ const TemplatesModule = () => {
     title: '', description: '', category: 'Geral', format: 'Word', fileUrl: ''
   });
 
+  const handleEdit = (template: DocumentTemplate) => {
+    setFormData(template);
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Tem certeza que deseja excluir este modelo?')) {
+      setTemplates(templates.filter(t => t.id !== id));
+      showToast('Modelo excluído com sucesso.');
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.id) {
+      setTemplates(templates.map(t => t.id === formData.id ? {
+        ...t,
+        ...formData,
+        updatedAt: new Date().toISOString()
+      } as DocumentTemplate : t));
+      showToast('Modelo atualizado com sucesso.');
+    } else {
+      setTemplates([{
+        ...formData,
+        id: Math.random().toString(36).substr(2, 9),
+        updatedAt: new Date().toISOString()
+      } as DocumentTemplate, ...templates]);
+      showToast('Modelo adicionado com sucesso.');
+    }
+    setIsModalOpen(false);
+    setFormData({ title: '', description: '', category: 'Geral', format: 'Word', fileUrl: '' });
+  };
+
   const filteredTemplates = templates.filter(t => 
     t.title.toLowerCase().includes(search.toLowerCase()) || 
     t.description.toLowerCase().includes(search.toLowerCase()) ||
@@ -51,17 +84,17 @@ const TemplatesModule = () => {
   };
 
   const handleDownload = (template: DocumentTemplate) => {
-    if (template.url.startsWith('data:')) {
+    if (template.fileUrl && template.fileUrl.startsWith('data:')) {
       const a = document.createElement('a');
-      a.href = template.url;
+      a.href = template.fileUrl;
       let ext = '.pdf';
-      if (template.format === 'DOCX') ext = '.docx';
-      else if (template.format === 'XLSX') ext = '.xlsx';
-      else if (template.format === 'PDF') ext = '.pptx';
+      if (template.format === 'Word') ext = '.docx';
+      else if (template.format === 'Excel') ext = '.xlsx';
+      else if (template.format === 'PowerPoint') ext = '.pptx';
       a.download = `${template.title}${ext}`;
       a.click();
-    } else {
-      window.open(template.url, '_blank');
+    } else if (template.fileUrl) {
+      window.open(template.fileUrl, '_blank');
     }
   };
 
@@ -90,7 +123,10 @@ const TemplatesModule = () => {
             />
           </div>
           <button 
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              setFormData({ title: '', description: '', category: 'Geral', format: 'Word', fileUrl: '' });
+              setIsModalOpen(true);
+            }}
             className="flex items-center gap-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 px-6 py-3 rounded-2xl font-bold text-sm hover:scale-105 transition-all shadow-xl shadow-neutral-900/10 dark:shadow-white/10 shrink-0"
           >
             <Plus size={18} />
@@ -106,9 +142,25 @@ const TemplatesModule = () => {
               <div className="bg-neutral-50 dark:bg-neutral-800 p-3 rounded-2xl group-hover:scale-110 transition-transform">
                 {getFormatIcon(template.format)}
               </div>
-              <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg border ${getFormatBadge(template.format)}`}>
-                {template.format}
-              </span>
+              <div className="flex flex-col items-end gap-2">
+                <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg border ${getFormatBadge(template.format)}`}>
+                  {template.format}
+                </span>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleEdit(template); }}
+                    className="p-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-sky-500 rounded-lg transition-colors"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleDelete(template.id); }}
+                    className="p-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:text-rose-500 rounded-lg transition-colors"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
             </div>
             <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2 line-clamp-2">{template.title}</h3>
             <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 line-clamp-3 flex-1">{template.description}</p>
@@ -140,8 +192,8 @@ const TemplatesModule = () => {
             >
               <div className="flex justify-between items-start mb-8">
                 <div>
-                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Novo Modelo</h3>
-                  <p className="text-sm text-neutral-500 mt-1">Adicione um novo documento padrão à biblioteca.</p>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{formData.id ? 'Editar Modelo' : 'Novo Modelo'}</h3>
+                  <p className="text-sm text-neutral-500 mt-1">{formData.id ? 'Atualize as informações do modelo de documento.' : 'Adicione um novo documento padrão à biblioteca.'}</p>
                 </div>
                 <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
                   <X size={20} />
@@ -149,16 +201,7 @@ const TemplatesModule = () => {
               </div>
 
               <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setTemplates([{
-                    ...formData,
-                    id: Math.random().toString(36).substr(2, 9),
-                    updatedAt: new Date().toISOString()
-                  } as DocumentTemplate, ...templates]);
-                  setIsModalOpen(false);
-                  setFormData({ title: '', description: '', category: 'Geral', format: 'Word', fileUrl: '' });
-                }}
+                onSubmit={handleSubmit}
                 className="space-y-6"
               >
                 <div>
@@ -217,9 +260,9 @@ const TemplatesModule = () => {
                 </div>
 
                 <div>
-                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Upload do Arquivo</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Upload do Arquivo {formData.id ? '(Opcional)' : ''}</label>
                   <input 
-                    required
+                    required={!formData.id}
                     type="file"
                     accept=".doc,.docx,.xls,.xlsx,.pdf,.ppt,.pptx"
                     onChange={e => {
@@ -239,7 +282,7 @@ const TemplatesModule = () => {
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
                   <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">
-                    Adicionar Modelo
+                    {formData.id ? 'Salvar Alterações' : 'Adicionar Modelo'}
                   </button>
                 </div>
               </form>

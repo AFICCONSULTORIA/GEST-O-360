@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, Download, Plus, Search, Filter, Printer, X, HeartPulse, Wrench } from 'lucide-react';
+import { Package, Download, Plus, Search, Filter, Printer, X, HeartPulse, Wrench, ShoppingCart } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { PatrimonioItem } from '../../types';
+import { PatrimonioItem, OrderItem } from '../../types';
 import { Appointment } from '../Saude';
 import { Demanda } from '../ServicosPublicos';
+import { Medication } from '../Saude/Farmacia';
 
 // ==========================================
 // SAÚDE: RELATÓRIO DE AGENDAMENTOS
@@ -579,10 +580,476 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
 };
 
 // ==========================================
+// FARMÁCIA: RELATÓRIO DE MEDICAMENTOS
+// ==========================================
+const MedicamentosPrintView = ({ onClose }: { onClose: () => void }) => {
+  const [medications, setMedications] = useState<Medication[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState<'config' | 'preview'>('config');
+
+  const [filterSearch, setFilterSearch] = useState<string>('');
+  const [filterStock, setFilterStock] = useState<string>('Todos');
+  const [filterValidity, setFilterValidity] = useState<string>('Todas');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('medications').select('*').order('name', { ascending: true });
+    if (!error && data) {
+      setMedications(data as Medication[]);
+    }
+    setLoading(false);
+  };
+
+  const isExpired = (dateStr: string) => new Date(dateStr) < new Date();
+  const isExpiringSoon = (dateStr: string) => {
+    const expDate = new Date(dateStr);
+    const today = new Date();
+    const diffTime = Math.abs(expDate.getTime() - today.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+    return diffDays <= 60 && expDate > today;
+  };
+
+  const filteredItems = medications.filter(item => {
+    if (filterStock === 'Baixo' && item.quantity >= 50) return false;
+    if (filterStock === 'Normal' && item.quantity < 50) return false;
+
+    if (filterValidity === 'Vencidos' && !isExpired(item.expiration_date)) return false;
+    if (filterValidity === 'A Vencer' && !isExpiringSoon(item.expiration_date)) return false;
+    if (filterValidity === 'Validos' && (isExpired(item.expiration_date) || isExpiringSoon(item.expiration_date))) return false;
+
+    if (filterSearch) {
+      const query = filterSearch.toLowerCase();
+      const matchName = item.name.toLowerCase().includes(query);
+      const matchIngredient = item.active_ingredient.toLowerCase().includes(query);
+      if (!matchName && !matchIngredient) return false;
+    }
+    
+    return true;
+  });
+
+  if (step === 'config') {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm">
+        <div className="bg-white dark:bg-neutral-900 rounded-[32px] w-full max-w-2xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+              <Package className="text-indigo-500" /> Relatório de Medicamentos
+            </h2>
+            <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"><X size={24} /></button>
+          </div>
+          
+          <div className="space-y-6">
+            <div>
+              <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Buscar Medicamento</label>
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input 
+                  type="text" 
+                  placeholder="Nome ou princípio ativo..." 
+                  value={filterSearch}
+                  onChange={e => setFilterSearch(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Estoque</label>
+                <select value={filterStock} onChange={e => setFilterStock(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <option value="Todos">Todo o Estoque</option>
+                  <option value="Baixo">Estoque Baixo (&lt; 50)</option>
+                  <option value="Normal">Estoque Normal (&ge; 50)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Validade</label>
+                <select value={filterValidity} onChange={e => setFilterValidity(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <option value="Todas">Todas as Validades</option>
+                  <option value="Vencidos">Vencidos</option>
+                  <option value="A Vencer">A Vencer (&le; 60 dias)</option>
+                  <option value="Validos">Válidos</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 flex justify-end gap-3">
+            <button onClick={onClose} className="px-6 py-3 font-bold text-neutral-500 hover:bg-neutral-100 rounded-xl transition-colors">Cancelar</button>
+            <button 
+              onClick={() => setStep('preview')} 
+              disabled={loading}
+              className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-sm rounded-xl shadow-lg shadow-indigo-500/20 transition-all flex items-center gap-2"
+            >
+              {loading ? 'Carregando...' : 'Gerar Relatório'}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+      <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
+        <div className="font-bold text-neutral-500 text-sm hidden md:block">
+          Visualização do Relatório - Selecionados: {filteredItems.length}
+        </div>
+        <div className="flex gap-2 w-full sm:w-auto justify-end overflow-x-auto hide-scrollbar">
+          <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800 whitespace-nowrap">
+            <Printer size={16} /> <span className="hidden sm:inline">Imprimir / Salvar PDF</span><span className="sm:hidden">Imprimir</span>
+          </button>
+          <button onClick={() => setStep('config')} className="bg-neutral-200 text-neutral-800 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-300 whitespace-nowrap">
+            <Filter size={16} /> <span className="hidden sm:inline">Filtros</span>
+          </button>
+          <button onClick={onClose} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200 whitespace-nowrap">
+            <X size={16} /> Fechar
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
+          <MedicamentosPrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, stock: filterStock, validity: filterValidity }} loading={loading} />
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+const MedicamentosPrintLayout = ({ filteredItems, filters, loading }: { filteredItems: Medication[], filters: any, loading: boolean }) => {
+  if (loading) return <div className="p-10 text-center font-bold">Carregando dados...</div>;
+
+  const lowStockCount = filteredItems.filter(item => item.quantity < 50).length;
+  const isExpired = (dateStr: string) => new Date(dateStr) < new Date();
+  const expiredCount = filteredItems.filter(item => isExpired(item.expiration_date)).length;
+  
+  return (
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+      <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
+        <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Medicamentos (Farmácia SUS)</h1>
+        <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+        
+        {filters && (filters.stock !== 'Todos' || filters.validity !== 'Todas' || filters.search) && (
+          <div className="mt-4 flex flex-wrap justify-center gap-3 print:hidden">
+            {filters.search && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Busca: "{filters.search}"</span>}
+            {filters.stock !== 'Todos' && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Estoque: {filters.stock}</span>}
+            {filters.validity !== 'Todas' && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Validade: {filters.validity}</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between mb-8 gap-4">
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 flex-1">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Itens</p>
+          <p className="text-2xl font-black">{filteredItems.length}</p>
+        </div>
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 flex-1">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Estoque Baixo</p>
+          <p className={`text-2xl font-black ${lowStockCount > 0 ? 'text-red-600' : 'text-neutral-900'}`}>{lowStockCount}</p>
+        </div>
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 flex-1">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Vencidos</p>
+          <p className={`text-2xl font-black ${expiredCount > 0 ? 'text-red-600' : 'text-neutral-900'}`}>{expiredCount}</p>
+        </div>
+      </div>
+
+      <table className="w-full text-left text-sm border-collapse">
+        <thead>
+          <tr className="border-b-2 border-neutral-800">
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Medicamento</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Princípio Ativo</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Apresentação</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Qtd</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Validade / Lote</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredItems.map((item) => (
+            <tr key={item.id} className="border-b border-neutral-200">
+              <td className="py-3 px-2 font-bold">{item.name}</td>
+              <td className="py-3 px-2 text-neutral-600 text-xs">{item.active_ingredient}</td>
+              <td className="py-3 px-2">
+                <p className="font-bold text-xs">{item.dosage}</p>
+                <p className="text-[10px] text-neutral-500">{item.form}</p>
+              </td>
+              <td className="py-3 px-2 font-bold text-right text-sm">
+                <span className={item.quantity < 50 ? 'text-red-600' : 'text-emerald-600'}>{item.quantity}</span>
+              </td>
+              <td className="py-3 px-2 font-mono text-right text-xs">
+                <p className={isExpired(item.expiration_date) ? 'text-red-600 font-bold' : ''}>
+                  {item.expiration_date ? item.expiration_date.split('-').reverse().join('/') : '-'}
+                </p>
+                <p className="text-[10px] text-neutral-500">LT: {item.batch_number}</p>
+              </td>
+            </tr>
+          ))}
+          {filteredItems.length === 0 && (
+            <tr><td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum medicamento encontrado.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// ==========================================
+// PEDIDOS: RELATÓRIO DE PEDIDOS
+// ==========================================
+const PedidosPrintView = ({ onClose }: { onClose: () => void }) => {
+  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState<'config' | 'preview'>('config');
+
+  const [filterSearch, setFilterSearch] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('Todos');
+  const [filterType, setFilterType] = useState<string>('Todos');
+  const [filterStartDate, setFilterStartDate] = useState<string>('');
+  const [filterEndDate, setFilterEndDate] = useState<string>('');
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('orders').select('*').order('date_requested', { ascending: false });
+    if (!error && data) {
+      setOrders(data.map((o: any) => ({
+        ...o,
+        dateRequested: o.date_requested,
+        quotationNumber: o.quotation_number,
+        winningSupplier: o.winning_supplier,
+        projectSite: o.project_site
+      })) as OrderItem[]);
+    }
+    setLoading(false);
+  };
+
+  const filteredItems = orders.filter(item => {
+    if (filterStatus !== 'Todos' && item.status !== filterStatus) return false;
+    if (filterType !== 'Todos' && item.type !== filterType) return false;
+    
+    if (filterStartDate && item.dateRequested && item.dateRequested < filterStartDate) return false;
+    if (filterEndDate && item.dateRequested && item.dateRequested > filterEndDate) return false;
+
+    if (filterSearch) {
+      const query = filterSearch.toLowerCase();
+      const matchDesc = item.description?.toLowerCase().includes(query);
+      const matchReq = item.requester?.toLowerCase().includes(query);
+      const matchSite = item.projectSite?.toLowerCase().includes(query);
+      const matchCot = item.quotationNumber?.toLowerCase().includes(query);
+      if (!matchDesc && !matchReq && !matchSite && !matchCot) return false;
+    }
+    
+    return true;
+  });
+
+  if (step === 'config') {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm">
+        <div className="bg-white dark:bg-neutral-900 rounded-[32px] w-full max-w-2xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="flex justify-between items-center mb-8">
+            <h2 className="text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+              <ShoppingCart className="text-amber-500" /> Relatório de Pedidos
+            </h2>
+            <button onClick={onClose} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"><X size={24} /></button>
+          </div>
+          
+          <div className="space-y-6">
+            <div>
+              <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Busca Rápida</label>
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input 
+                  type="text" 
+                  placeholder="Buscar solicitante, itens, obra..." 
+                  value={filterSearch}
+                  onChange={e => setFilterSearch(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none dark:text-white"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Data Inicial (De)</label>
+                <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Data Final (Até)</label>
+                <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none dark:text-white" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Tipo de Pedido</label>
+                <select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none dark:text-white">
+                  <option value="Todos">Todos</option>
+                  <option value="obras_abrange">Obras (Abrange)</option>
+                  <option value="veiculos_gtf">Veículos (GTF)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 uppercase tracking-widest mb-2">Status</label>
+                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-amber-500 outline-none dark:text-white">
+                  <option value="Todos">Todos</option>
+                  <option value="pendente">Pendente</option>
+                  <option value="em_cotacao">Em Cotação</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="cancelado">Cancelado</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 flex justify-end gap-3">
+            <button onClick={onClose} className="px-6 py-3 font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">Cancelar</button>
+            <button 
+              onClick={() => setStep('preview')} 
+              disabled={loading}
+              className="px-8 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black uppercase tracking-widest text-sm rounded-xl shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2"
+            >
+              {loading ? 'Carregando...' : 'Gerar Relatório'}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+      <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
+        <div className="font-bold text-neutral-500 text-sm hidden md:block">
+          Visualização do Relatório - Selecionados: {filteredItems.length}
+        </div>
+        <div className="flex gap-2 w-full sm:w-auto justify-end overflow-x-auto hide-scrollbar">
+          <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800 whitespace-nowrap">
+            <Printer size={16} /> <span className="hidden sm:inline">Imprimir / Salvar PDF</span><span className="sm:hidden">Imprimir</span>
+          </button>
+          <button onClick={() => setStep('config')} className="bg-neutral-200 text-neutral-800 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-300 whitespace-nowrap">
+            <Filter size={16} /> <span className="hidden sm:inline">Filtros</span>
+          </button>
+          <button onClick={onClose} className="bg-rose-100 text-rose-600 px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-rose-200 whitespace-nowrap">
+            <X size={16} /> Fechar
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
+          <PedidosPrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, status: filterStatus, type: filterType, startDate: filterStartDate, endDate: filterEndDate }} loading={loading} />
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+const PedidosPrintLayout = ({ filteredItems, filters, loading }: { filteredItems: OrderItem[], filters: any, loading: boolean }) => {
+  if (loading) return <div className="p-10 text-center font-bold">Carregando dados...</div>;
+
+  const concluidosCount = filteredItems.filter(item => item.status === 'concluido').length;
+  const pendentesCount = filteredItems.filter(item => item.status === 'pendente').length;
+  const cotacaoCount = filteredItems.filter(item => item.status === 'em_cotacao').length;
+  
+  return (
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+      <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
+        <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Pedidos</h1>
+        <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
+        
+        {filters && (filters.type !== 'Todos' || filters.status !== 'Todos' || filters.search || filters.startDate || filters.endDate) && (
+          <div className="mt-4 flex flex-wrap justify-center gap-3 print:hidden">
+            {filters.search && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Busca: "{filters.search}"</span>}
+            {filters.startDate && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">De: {filters.startDate.split('-').reverse().join('/')}</span>}
+            {filters.endDate && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Até: {filters.endDate.split('-').reverse().join('/')}</span>}
+            {filters.type !== 'Todos' && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Tipo: {filters.type === 'obras_abrange' ? 'Obras' : 'Veículos'}</span>}
+            {filters.status !== 'Todos' && <span className="px-3 py-1 bg-neutral-100 rounded-lg text-xs font-bold text-neutral-600 border border-neutral-200">Status: {filters.status}</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="flex justify-between mb-8 gap-4">
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 flex-1">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Total de Pedidos</p>
+          <p className="text-2xl font-black">{filteredItems.length}</p>
+        </div>
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 flex-1">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Concluídos</p>
+          <p className="text-2xl font-black text-emerald-600">{concluidosCount}</p>
+        </div>
+        <div className="bg-neutral-50 p-4 rounded-lg border border-neutral-200 flex-1">
+          <p className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Em Andamento</p>
+          <p className="text-2xl font-black text-amber-600">{pendentesCount + cotacaoCount}</p>
+        </div>
+      </div>
+
+      <table className="w-full text-left text-sm border-collapse">
+        <thead>
+          <tr className="border-b-2 border-neutral-800">
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Data</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Tipo / Solicitante</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest w-1/3">Descrição</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest">Fornecedor</th>
+            <th className="py-3 px-2 font-black uppercase tracking-widest text-right">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredItems.map((item) => (
+            <tr key={item.id} className="border-b border-neutral-200 align-top">
+              <td className="py-3 px-2 whitespace-nowrap">{item.dateRequested?.split('-').reverse().join('/')}</td>
+              <td className="py-3 px-2">
+                <p className="font-bold text-xs">{item.type === 'obras_abrange' ? 'Obras' : 'Veículos'}</p>
+                <p className="text-[10px] text-neutral-500">{item.requester}</p>
+                {item.projectSite && <p className="text-[10px] text-sky-600 mt-1 font-bold">Local: {item.projectSite}</p>}
+              </td>
+              <td className="py-3 px-2">
+                <div className="text-[10px] whitespace-pre-line leading-tight">{item.description}</div>
+              </td>
+              <td className="py-3 px-2 text-xs">
+                {item.winningSupplier ? (
+                  <>
+                    <p className="font-bold">{item.winningSupplier}</p>
+                    <p className="text-[10px] text-neutral-500">{item.quotationNumber}</p>
+                  </>
+                ) : (
+                  <span className="text-neutral-400 italic">Não definido</span>
+                )}
+              </td>
+              <td className="py-3 px-2 text-right">
+                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                  item.status === 'concluido' ? 'bg-emerald-100 text-emerald-700' :
+                  item.status === 'em_cotacao' ? 'bg-amber-100 text-amber-700' :
+                  item.status === 'cancelado' ? 'bg-red-100 text-red-700' :
+                  'bg-neutral-100 text-neutral-700'
+                }`}>
+                  {item.status.replace('_', ' ')}
+                </span>
+              </td>
+            </tr>
+          ))}
+          {filteredItems.length === 0 && (
+            <tr><td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum pedido encontrado com estes filtros.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// ==========================================
 // MÓDULO PRINCIPAL DE RELATÓRIOS
 // ==========================================
-const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | 'saude' | 'servicos_publicos' | null, clearPendingReport?: () => void }) => {
-  const [activeReport, setActiveReport] = React.useState<'patrimonio' | 'saude' | 'servicos_publicos' | null>(initialReport || null);
+const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null, clearPendingReport?: () => void }) => {
+  const [activeReport, setActiveReport] = React.useState<'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null>(initialReport || null);
 
   React.useEffect(() => {
     if (initialReport) {
@@ -601,6 +1068,14 @@ const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: {
 
   if (activeReport === 'servicos_publicos') {
     return <ServicosPublicosPrintView onClose={() => setActiveReport(null)} />;
+  }
+
+  if (activeReport === 'medicamentos') {
+    return <MedicamentosPrintView onClose={() => setActiveReport(null)} />;
+  }
+
+  if (activeReport === 'pedidos') {
+    return <PedidosPrintView onClose={() => setActiveReport(null)} />;
   }
 
   return (
@@ -660,6 +1135,40 @@ const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: {
           <button 
             onClick={() => setActiveReport('patrimonio')}
             className="w-full py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2 shadow-sm"
+          >
+            <Download size={16} /> Emitir Relatório
+          </button>
+        </div>
+
+        {/* Card: Medicamentos */}
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-indigo-500/30 transition-colors shadow-sm hover:shadow-md">
+          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center mb-4">
+            <Package size={24} />
+          </div>
+          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Farmácia: Medicamentos</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
+            Controle de estoque, vencimentos e informações detalhadas sobre os medicamentos disponíveis.
+          </p>
+          <button 
+            onClick={() => setActiveReport('medicamentos')}
+            className="w-full py-3 bg-indigo-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
+          >
+            <Download size={16} /> Emitir Relatório
+          </button>
+        </div>
+
+        {/* Card: Pedidos */}
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-amber-500/30 transition-colors shadow-sm hover:shadow-md">
+          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl flex items-center justify-center mb-4">
+            <ShoppingCart size={24} />
+          </div>
+          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Pedidos de Compras</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
+            Lista de pedidos (obras e veículos), cotações e andamento das contratações.
+          </p>
+          <button 
+            onClick={() => setActiveReport('pedidos')}
+            className="w-full py-3 bg-amber-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
           >
             <Download size={16} /> Emitir Relatório
           </button>

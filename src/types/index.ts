@@ -47,6 +47,7 @@ export interface OrderItem {
   type: OrderType;
   description: string;
   requester: string;
+  projectSite?: string;
   dateRequested: string;
   quotationNumber?: string;
   winningSupplier?: string;

@@ -1207,7 +1207,7 @@ const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
-          className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-5 w-full max-w-xl"
+          className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-5 w-full max-w-5xl"
         >
           {/* Card Serviços Públicos */}
           <a
@@ -1246,6 +1246,27 @@ const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode
               </p>
               <div className="mt-5 flex items-center gap-2 text-sky-600 dark:text-sky-400 text-xs font-black uppercase tracking-widest">
                 Agendar
+                <ChevronRight size={13} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </a>
+
+          {/* Card Farmácia SUS */}
+          <a
+            href="/farmaciasus"
+            className="group relative bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-7 text-left hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/80 to-transparent dark:from-indigo-500/5 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-[32px]" />
+            <div className="relative">
+              <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform duration-300">
+                <HeartPulse size={22} className="text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <h2 className="text-lg font-black text-neutral-900 dark:text-white mb-2">Farmácia SUS</h2>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                Consulte a disponibilidade de medicamentos nas unidades.
+              </p>
+              <div className="mt-5 flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase tracking-widest">
+                Consultar
                 <ChevronRight size={13} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
