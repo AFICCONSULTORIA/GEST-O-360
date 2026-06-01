@@ -9,8 +9,13 @@ import { Institution } from '../types';
  * Retorna null se não houver subdomínio ou se for o domínio principal.
  */
 export const getSubdomain = (): string | null => {
-  const hostname = window.location.hostname;
+  let hostname = window.location.hostname;
   
+  // Remove prefixo 'www.' se estiver presente para evitar erros de interpretação de subdomínio
+  if (hostname.startsWith('www.')) {
+    hostname = hostname.substring(4);
+  }
+
   // Lista de domínios ou IPs que não devem ser considerados subdomínios
   if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === 'localhost.localdomain') {
     return null;
