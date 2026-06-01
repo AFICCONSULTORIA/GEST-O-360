@@ -4,17 +4,19 @@ import { Package, Search, Home, Pill } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Medication } from './Farmacia';
 
-export const PublicFarmaciaPortal = ({ darkMode }: { darkMode: boolean }) => {
+export const PublicFarmaciaPortal = ({ darkMode, currentInstitution }: { darkMode: boolean, currentInstitution?: any }) => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   const loadMedications = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('medications')
-      .select('*')
-      .order('name', { ascending: true });
+    let query = supabase.from('medications').select('*');
+    if (currentInstitution) {
+      query = query.eq('institution_id', currentInstitution.id);
+    }
+    
+    const { data, error } = await query.order('name', { ascending: true });
     
     if (error) {
       console.error('Erro ao carregar medicamentos:', error);
@@ -26,7 +28,7 @@ export const PublicFarmaciaPortal = ({ darkMode }: { darkMode: boolean }) => {
 
   useEffect(() => {
     loadMedications();
-  }, []);
+  }, [currentInstitution]);
 
   const filtered = medications.filter(m => {
     const search = searchQuery.toLowerCase();
@@ -57,7 +59,9 @@ export const PublicFarmaciaPortal = ({ darkMode }: { darkMode: boolean }) => {
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, white 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
           <Package size={48} className="mx-auto mb-4" />
           <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2">Farmácia do SUS</h1>
-          <p className="text-sky-100 font-medium">Consulte a disponibilidade de medicamentos no município</p>
+          <p className="text-sky-100 font-medium">
+            {currentInstitution ? `Consulte a disponibilidade de medicamentos na prefeitura de ${currentInstitution.name.replace("Prefeitura Municipal de ", "")}` : 'Consulte a disponibilidade de medicamentos no município'}
+          </p>
         </div>
 
         <div className="p-8 md:p-12">

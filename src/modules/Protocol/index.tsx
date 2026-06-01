@@ -35,7 +35,7 @@ export const getAttachmentsArray = (attachment?: string): { name: string, url: s
   return [{ name: cleanName, url: attachment }];
 };
 
-export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?: string, currentUser?: any }) => {
+export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstitution }: { searchQuery?: string, currentUser?: any, currentInstitution?: any }) => {
   const canEdit = hasPermission(currentUser, 'protocol', 'edit');
   const canAdmin = hasPermission(currentUser, 'protocol', 'admin');
   
@@ -54,8 +54,16 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
 
   const loadData = async () => {
     setIsLoading(true);
+    let protoQuery = supabase.from('protocols').select('*').order('created_at', { ascending: false });
+    
+    if (currentInstitution) {
+      protoQuery = protoQuery.eq('institution_id', currentInstitution.id);
+    } else if (currentUser?.institution_id) {
+      protoQuery = protoQuery.eq('institution_id', currentUser.institution_id);
+    }
+
     const [protoRes, instRes] = await Promise.all([
-      supabase.from('protocols').select('*').order('created_at', { ascending: false }),
+      protoQuery,
       supabase.from('institutions').select('id, name').order('name')
     ]);
     
@@ -371,6 +379,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser }: { searchQuery?
             initialData={editingProtocol || undefined}
             institutions={institutions}
             currentUser={currentUser}
+            currentInstitution={currentInstitution}
             onSuccess={() => {
               loadData();
               setIsNewModalOpen(false);
@@ -417,14 +426,16 @@ export const NewProtocolModal = ({
   initialData,
   institutions = [],
   title = "Novo Processo Digital (SMAF)",
-  currentUser
+  currentUser,
+  currentInstitution
 }: { 
   onClose: () => void, 
   onSuccess: () => void,
   initialData?: Protocol,
   institutions?: {id: string, name: string}[],
   title?: string,
-  currentUser?: any
+  currentUser?: any,
+  currentInstitution?: any
 }) => {
   const defaultFrom = currentUser?.institution_id 
     ? institutions.find(i => i.id === currentUser.institution_id)?.name || (institutions.length > 0 ? institutions[0].name : 'Saúde')
@@ -610,7 +621,8 @@ export const NewProtocolModal = ({
         to: formData.to,
         status: formData.status,
         attachment: attachmentValue, // JSON stringified array of attachments
-        history: newHistory
+        history: newHistory,
+        institution_id: currentInstitution?.id || currentUser?.institution_id || null
       };
 
       if (initialData) {

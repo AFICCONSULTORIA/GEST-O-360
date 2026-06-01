@@ -5,6 +5,7 @@ import { CertificatesModule } from './modules/Certificates';
 import { SettingsModule } from './modules/Settings';
 import { ProtocolModule } from './modules/Protocol';
 import { hasPermission } from './lib/permissions';
+import { getSubdomain, fetchInstitutionBySubdomain } from './lib/subdomain';
 
 import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
 import { ControlsModule } from './modules/Controls';
@@ -296,19 +297,12 @@ const LogoCompass = ({ size = 32, className = '' }: { size?: number, className?:
 
 const NAVBAR_CATEGORIES = [
   {
-    id: 'painel',
-    label: 'Visão Geral',
-    icon: LayoutDashboard,
-    items: [
-      { id: 'calendar', label: 'Calendário TCE', icon: Calendar },
-    ]
-  },
-  {
     id: 'controle',
     label: 'Controles',
     icon: ShieldAlert,
     items: [
       { id: 'controls', label: 'Controles Internos', icon: ClipboardCheck },
+      { id: 'calendar', label: 'Calendário TCE', icon: Calendar },
       { id: 'norms', label: 'Normativas', icon: BookText },
       { id: 'risk', label: 'Análise de Risco', icon: ShieldAlert },
       { id: 'pntp', label: 'Radar PNTP', icon: Globe },
@@ -627,9 +621,21 @@ export const RADAR_DATA: PNTPCategory[] = [
 
 // --- Protocols ---
 
-const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v: boolean) => void }) => {
+const SalesLandingPage = ({ 
+  darkMode, 
+  setDarkMode, 
+  showMunicipalitySelector = false, 
+  institutions = [] 
+}: { 
+  darkMode: boolean, 
+  setDarkMode: (v: boolean) => void,
+  showMunicipalitySelector?: boolean,
+  institutions?: Institution[]
+}) => {
   const [activeTab, setActiveTab] = React.useState<'gabinete' | 'administracao' | 'servicos' | 'cidadao'>('gabinete');
   const [citySize, setCitySize] = React.useState<'small' | 'medium' | 'large' | 'huge'>('medium');
+  const [isSelectorModalOpen, setIsSelectorModalOpen] = React.useState(false);
+  const [searchCity, setSearchCity] = React.useState('');
 
   const tabContent = {
     gabinete: {
@@ -782,8 +788,18 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
             >
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
+            {showMunicipalitySelector && (
+              <button
+                type="button"
+                onClick={() => setIsSelectorModalOpen(true)}
+                className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-widest rounded-2xl hover:scale-[1.02] hover:shadow-lg transition-all"
+              >
+                <Building2 size={12} />
+                Acessar Prefeitura
+              </button>
+            )}
             <a
-              href="/admin"
+              href="/servidores"
               className="hidden sm:flex items-center gap-2 px-5 py-3 bg-neutral-950 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs uppercase tracking-widest rounded-2xl hover:scale-[1.02] hover:shadow-lg transition-all"
             >
               <Lock size={12} />
@@ -1415,7 +1431,7 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
               <span className="text-[9px] font-bold text-neutral-400/80">Desenvolvido para Prefeituras Municipais</span>
             </div>
             <a
-              href="/admin"
+              href="/servidores"
               className="flex items-center gap-1.5 text-neutral-300 dark:text-neutral-800 hover:text-neutral-500 dark:hover:text-neutral-500 transition-colors duration-300"
               title="Área do servidor"
             >
@@ -1424,12 +1440,100 @@ const SalesLandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDar
             </a>
           </div>
         </footer>
+        {/* Municipality Selector Modal */}
+        <AnimatePresence>
+          {isSelectorModalOpen && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+              onClick={() => setIsSelectorModalOpen(false)}
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-8 md:p-10 shadow-2xl space-y-6 flex flex-col relative"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Selecionar Município</h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Busque sua prefeitura para acessar o painel de serviços ou portal restrito.</p>
+                  </div>
+                  <button onClick={() => setIsSelectorModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                  <input 
+                    type="text"
+                    placeholder="Buscar município..."
+                    value={searchCity}
+                    onChange={e => setSearchCity(e.target.value)}
+                    className="w-full bg-neutral-50 dark:bg-neutral-850 border border-neutral-100 dark:border-neutral-800 pl-12 pr-5 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 outline-none transition-all dark:text-white font-bold"
+                  />
+                </div>
+
+                <div className="max-h-[280px] overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                  {(() => {
+                    const filtered = institutions.filter(inst => 
+                      inst.name.toLowerCase().includes(searchCity.toLowerCase()) || 
+                      (inst.subdomain && inst.subdomain.toLowerCase().includes(searchCity.toLowerCase()))
+                    );
+
+                    if (filtered.length === 0) {
+                      return (
+                        <p className="text-center py-6 text-xs text-neutral-400 font-bold uppercase tracking-widest">Nenhum município encontrado</p>
+                      );
+                    }
+
+                    return filtered.map(inst => (
+                      <button
+                        key={inst.id}
+                        type="button"
+                        onClick={() => {
+                          if (inst.subdomain) {
+                            const protocol = window.location.protocol;
+                            const hostname = window.location.hostname;
+                            const port = window.location.port ? `:${window.location.port}` : '';
+                            
+                            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                              window.location.href = `${protocol}//${inst.subdomain}.localhost${port}`;
+                            } else {
+                              const parts = hostname.split('.');
+                              const isComBr = hostname.endsWith('.com.br');
+                              const baseDomain = isComBr ? parts.slice(-3).join('.') : parts.slice(-2).join('.');
+                              window.location.href = `${protocol}//${inst.subdomain}.${baseDomain}${port}`;
+                            }
+                          } else {
+                            showToast('Subdomínio não configurado para esta instituição.', 'warning');
+                          }
+                        }}
+                        className="w-full flex items-center justify-between p-4 rounded-2xl bg-neutral-50 hover:bg-emerald-50 dark:bg-neutral-850/50 dark:hover:bg-emerald-500/10 text-left border border-neutral-100 dark:border-neutral-800 hover:border-emerald-100 dark:hover:border-emerald-500/20 transition-all group"
+                      >
+                        <div>
+                          <p className="text-sm font-bold text-neutral-900 dark:text-white group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{inst.name}</p>
+                          <p className="text-[10px] font-mono text-neutral-400 dark:text-neutral-500 mt-0.5">{inst.subdomain ? `${inst.subdomain}.gestao360sistema.com.br` : 'Subdomínio não ativo'}</p>
+                        </div>
+                        <ChevronRight size={16} className="text-neutral-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:translate-x-1 transition-all" />
+                      </button>
+                    ));
+                  })()}
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 };
 
-const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode: (v: boolean) => void }) => (
+const LandingPage = ({ darkMode, setDarkMode, currentInstitution }: { darkMode: boolean, setDarkMode: (v: boolean) => void, currentInstitution?: Institution | null }) => (
   <div className={`min-h-[100dvh] ${darkMode ? 'dark' : ''}`}>
     <div className="min-h-[100dvh] bg-[#F4F4F2] dark:bg-neutral-950 flex flex-col overflow-hidden relative transition-colors duration-300">
       {/* Gradients de fundo */}
@@ -1446,7 +1550,7 @@ const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode
             <LogoCompass size={28} />
           </div>
           <span className="text-xl font-black text-neutral-900 dark:text-white tracking-tight italic">
-            Gestão <span className="text-neutral-400 font-normal">360</span>
+            {currentInstitution ? currentInstitution.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : <>Gestão <span className="text-neutral-400 font-normal">360</span></>}
           </span>
         </div>
         <button
@@ -1470,12 +1574,25 @@ const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode
             Sistema Online
           </div>
 
-          <h1 className="text-5xl md:text-7xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
-            Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-sky-500">360°</span>
+          <h1 className="text-4xl md:text-6xl font-black text-neutral-900 dark:text-white tracking-tighter leading-none">
+            {currentInstitution ? (
+              <>
+                Portal do Cidadão
+                <span className="block text-xl md:text-3xl font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mt-4">
+                  {currentInstitution.name}
+                </span>
+              </>
+            ) : (
+              <>
+                Gestão <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-sky-500">360°</span>
+              </>
+            )}
           </h1>
 
           <p className="text-lg text-neutral-500 dark:text-neutral-400 max-w-lg mx-auto leading-relaxed">
-            Plataforma de compliance, transparência e gestão municipal integrada.
+            {currentInstitution 
+              ? `Acesse os serviços digitais oficiais da prefeitura de ${currentInstitution.name.replace('Prefeitura Municipal de ', '')}.` 
+              : "Plataforma de compliance, transparência e gestão municipal integrada."}
           </p>
         </motion.div>
 
@@ -1555,7 +1672,7 @@ const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode
       <footer className="relative z-10 flex items-center justify-between px-8 py-5 text-[10px] text-neutral-400 dark:text-neutral-700 font-bold uppercase tracking-widest">
         <span>Gestão 360 · Sistemas de Compliance Municipal</span>
         <a
-          href="/admin"
+          href="/servidores"
           className="flex items-center gap-1.5 text-neutral-300 dark:text-neutral-800 hover:text-neutral-500 dark:hover:text-neutral-500 transition-colors duration-300"
           title="Área restrita"
         >
@@ -1567,7 +1684,7 @@ const LandingPage = ({ darkMode, setDarkMode }: { darkMode: boolean, setDarkMode
   </div>
 );
 
-const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }) => {
+const Login = ({ onLogin, darkMode, currentInstitution }: { onLogin: () => void, darkMode: boolean, currentInstitution?: Institution | null }) => {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
@@ -1625,8 +1742,17 @@ const Login = ({ onLogin, darkMode }: { onLogin: () => void, darkMode: boolean }
             <LogoCompass size={44} />
           </div>
           <div>
-            <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic mt-2">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-widest mt-1">Sistemas de Compliance & Protocolo</p>
+            {currentInstitution ? (
+              <>
+                <h1 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight mt-2">{currentInstitution.name}</h1>
+                <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-widest mt-1">Painel Administrativo Oficial</p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic mt-2">Gestão <span className="text-neutral-400 font-normal">360</span></h1>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-widest mt-1">Sistemas de Compliance & Protocolo</p>
+              </>
+            )}
           </div>
         </div>
 
@@ -1775,6 +1901,13 @@ const PlaceholderModule = ({ title }: { title: string }) => (
 export interface Institution {
   id: string;
   name: string;
+  subdomain?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  institution_id: string;
 }
 
 interface AdminUser {
@@ -1786,6 +1919,7 @@ interface AdminUser {
   lastLogin: string;
   permissions: View[];
   institution_id?: string;
+  department_id?: string;
 }
 
 const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
@@ -1850,6 +1984,8 @@ export const MOCK_TEMPLATES: DocumentTemplate[] = [
 
 
 export default function App() {
+  const [currentInstitution, setCurrentInstitution] = React.useState<Institution | null>(null);
+  const [loadingInstitution, setLoadingInstitution] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [currentUser, setCurrentUser] = React.useState<AdminUser | null>(null);
   const [pendingReport, setPendingReport] = React.useState<'patrimonio' | null>(null);
@@ -1869,44 +2005,75 @@ export default function App() {
   }, [darkMode]);
 
   React.useEffect(() => {
-    const handleAuthSession = (session: any) => {
-      setIsAuthenticated(!!session);
-      if (session?.user?.email) {
-        if (session.user.email === 'aficconsultoria@gmail.com') {
-          setCurrentUser({
-            id: session.user.id,
-            name: 'AFIC Consultoria',
-            email: session.user.email,
-            role: 'Super Admin',
-            status: 'Ativo',
-            lastLogin: new Date().toISOString(),
-            permissions: AVAILABLE_PERMISSIONS.map(p => p.id)
-          });
+    const bootstrap = async () => {
+      let activeInst: Institution | null = null;
+      const subdomain = getSubdomain();
+      if (subdomain) {
+        activeInst = await fetchInstitutionBySubdomain(subdomain);
+        if (activeInst) {
+          setCurrentInstitution(activeInst);
+          document.title = `GESTÃO 360 · ${activeInst.name}`;
         } else {
-          supabase.from('admin_users').select('*').eq('email', session.user.email).single().then(({data}) => {
+          console.warn(`Subdomínio '${subdomain}' não encontrado no banco de dados.`);
+        }
+      }
+
+      const handleAuthSession = async (session: any, resolvedInst: Institution | null) => {
+        setIsAuthenticated(!!session);
+        if (session?.user?.email) {
+          if (session.user.email === 'aficconsultoria@gmail.com') {
+            setCurrentUser({
+              id: session.user.id,
+              name: 'AFIC Consultoria',
+              email: session.user.email,
+              role: 'Super Admin',
+              status: 'Ativo',
+              lastLogin: new Date().toISOString(),
+              permissions: AVAILABLE_PERMISSIONS.map(p => p.id)
+            });
+          } else {
+            const { data } = await supabase.from('admin_users').select('*').eq('email', session.user.email).single();
             if (data) {
+              if (resolvedInst && data.role !== 'Super Admin' && data.institution_id !== resolvedInst.id) {
+                showToast('Acesso não autorizado para esta prefeitura.', 'error');
+                await supabase.auth.signOut();
+                setIsAuthenticated(false);
+                setCurrentUser(null);
+                return;
+              }
+
               setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
               if (data.last_login === 'Nunca') {
                 setIsChangingPassword(true);
                 setForcePasswordChange(true);
               }
             }
-          });
+          }
+        } else {
+          setCurrentUser(null);
         }
-      } else {
-        setCurrentUser(null);
-      }
+      };
+
+      const { data: { session } } = await supabase.auth.getSession();
+      await handleAuthSession(session, activeInst);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+        await handleAuthSession(session, activeInst);
+      });
+
+      setLoadingInstitution(false);
+
+      return () => {
+        subscription.unsubscribe();
+      };
     };
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      handleAuthSession(session);
+    let cleanupFn: () => void = () => {};
+    bootstrap().then(cleanup => {
+      if (cleanup) cleanupFn = cleanup;
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleAuthSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    return () => cleanupFn();
   }, []);
   const [activeView, setActiveView] = React.useState<View>('home');
   const [patrimonioItems, setPatrimonioItems] = React.useState<PatrimonioItem[]>([]);
@@ -1917,27 +2084,51 @@ export default function App() {
   const [controls, setControls] = React.useState<CheckItem[]>(MOCK_CONTROLS);
   const [orders, setOrders] = React.useState<OrderItem[]>(MOCK_ORDERS);
   const [docRecords, setDocRecords] = React.useState<DocumentRecord[]>(MOCK_DOCUMENTS);
+  const [departments, setDepartments] = React.useState<Department[]>([]);
 
   React.useEffect(() => {
     if (!isAuthenticated) return;
 
     const fetchGlobalData = async () => {
       try {
-        const [{ data: users }, { data: docs }, { data: ords }, { data: ctrls }, { data: insts }, { data: pats }] = await Promise.all([
-          supabase.from('admin_users').select('*'),
-          supabase.from('documents').select('*'),
-          supabase.from('orders').select('*'),
-          supabase.from('controls').select('*'),
-          supabase.from('institutions').select('*'),
-          supabase.from('patrimonio').select('*')
+        let usersQuery = supabase.from('admin_users').select('*');
+        let docsQuery = supabase.from('documents').select('*');
+        let ordsQuery = supabase.from('orders').select('*');
+        let ctrlsQuery = supabase.from('controls').select('*');
+        let instsQuery = supabase.from('institutions').select('*');
+        let patsQuery = supabase.from('patrimonio').select('*');
+        let deptsQuery = supabase.from('departments').select('*');
+
+        if (currentInstitution) {
+          usersQuery = usersQuery.eq('institution_id', currentInstitution.id);
+          docsQuery = docsQuery.eq('institution_id', currentInstitution.id);
+          ordsQuery = ordsQuery.eq('institution_id', currentInstitution.id);
+          ctrlsQuery = ctrlsQuery.eq('institution_id', currentInstitution.id);
+          patsQuery = patsQuery.eq('institution_id', currentInstitution.id);
+          deptsQuery = deptsQuery.eq('institution_id', currentInstitution.id);
+          
+          if (currentUser?.role !== 'Super Admin') {
+            instsQuery = instsQuery.eq('id', currentInstitution.id);
+          }
+        }
+
+        const [{ data: users }, { data: docs }, { data: ords }, { data: ctrls }, { data: insts }, { data: pats }, { data: depts }] = await Promise.all([
+          usersQuery,
+          docsQuery,
+          ordsQuery,
+          ctrlsQuery,
+          instsQuery,
+          patsQuery,
+          deptsQuery
         ]);
 
-        if (users && users.length > 0) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
-        if (docs && docs.length > 0) setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
-        if (ords && ords.length > 0) setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
-        if (ctrls && ctrls.length > 0) setControls(ctrls as CheckItem[]);
-        if (insts && insts.length > 0) setInstitutions(insts as Institution[]);
-        if (pats && pats.length > 0) setPatrimonioItems(pats.map(p => ({
+        if (users) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
+        if (docs) setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
+        if (ords) setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
+        if (ctrls) setControls(ctrls as CheckItem[]);
+        if (insts) setInstitutions(insts as Institution[]);
+        if (depts) setDepartments(depts as Department[]);
+        if (pats) setPatrimonioItems(pats.map(p => ({
           ...p,
           itemType: p.item_type,
           objectName: p.object_name,
@@ -1949,7 +2140,7 @@ export default function App() {
     };
 
     fetchGlobalData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentInstitution, currentUser?.id]);
   const [protocols, setProtocols] = React.useState<Protocol[]>([]);
   const [editingControl, setEditingControl] = React.useState<CheckItem | null>(null);
   const [viewingControl, setViewingControl] = React.useState<CheckItem | null>(null);
@@ -1998,36 +2189,51 @@ export default function App() {
     }
   }, [activeView, currentUser?.id]);
 
+  if (loadingInstitution) {
+    return (
+      <div className="min-h-screen bg-[#F9F9F8] dark:bg-neutral-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-neutral-900/10 dark:border-white/10 border-t-neutral-900 dark:border-t-white rounded-full animate-spin" />
+          <p className="text-xs font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Carregando Gestão 360...</p>
+        </div>
+      </div>
+    );
+  }
+
   const currentPath = window.location.pathname;
   const isPublicPortal = currentPath === '/agendamento';
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
-  const isAdminRoute = currentPath === '/admin' || currentPath.startsWith('/admin/');
+  const isAdminRoute = currentPath === '/servidores' || currentPath.startsWith('/servidores/');
   const isLandingPage = currentPath === '/';
   const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
 
   // Rota de apresentação e vendas
   if (isSalesPage) {
-    return <SalesLandingPage darkMode={darkMode} setDarkMode={setDarkMode} />;
+    return <SalesLandingPage darkMode={darkMode} setDarkMode={setDarkMode} showMunicipalitySelector={true} institutions={institutions} />;
   }
 
-  // Página inicial — landing pública simplificada para cidadãos
+  // Página inicial — se não houver subdomínio, exibe a página institucional com seletor.
+  // Se houver subdomínio, exibe a landing page pública daquela prefeitura.
   if (isLandingPage) {
-    return <LandingPage darkMode={darkMode} setDarkMode={setDarkMode} />;
+    if (!currentInstitution) {
+      return <SalesLandingPage darkMode={darkMode} setDarkMode={setDarkMode} showMunicipalitySelector={true} institutions={institutions} />;
+    }
+    return <LandingPage darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />;
   }
 
   if (isFarmaciaPortal) {
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
-           <button 
-             onClick={() => setDarkMode(!darkMode)}
-             className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
-           >
-             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-           </button>
-         </div>
-         <PublicFarmaciaPortal darkMode={darkMode} />
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+          <PublicFarmaciaPortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }
@@ -2036,14 +2242,14 @@ export default function App() {
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
-           <button 
-             onClick={() => setDarkMode(!darkMode)}
-             className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
-           >
-             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-           </button>
-         </div>
-         <PublicSaudePortal darkMode={darkMode} />
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+          <PublicSaudePortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }
@@ -2052,19 +2258,19 @@ export default function App() {
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
-           <button 
-             onClick={() => setDarkMode(!darkMode)}
-             className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
-           >
-             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-           </button>
-         </div>
-         <PublicServicosPortal darkMode={darkMode} />
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+          <PublicServicosPortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }
 
-  // Qualquer rota que não seja /admin redireciona para a landing
+  // Qualquer rota que não seja /servidores redireciona para a landing
   if (!isAdminRoute) {
     window.location.replace('/');
     return null;
@@ -2081,7 +2287,7 @@ export default function App() {
              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
            </button>
          </div>
-         <Login onLogin={() => setIsAuthenticated(true)} darkMode={darkMode} />
+         <Login onLogin={() => setIsAuthenticated(true)} darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }
@@ -2102,7 +2308,8 @@ export default function App() {
       department: control.department,
       deadline: control.deadline,
       notes: control.notes,
-      history: control.history || []
+      history: control.history || [],
+      institution_id: currentInstitution?.id || null
     }).then(({ error }) => { if (error) console.error(error) });
   };
 
@@ -2497,7 +2704,8 @@ export default function App() {
                     image_urls: item.imageUrls,
                     plate: item.plate,
                     chassis: item.chassis,
-                    model: item.model
+                    model: item.model,
+                    institution_id: currentInstitution?.id || null
                   };
                   try {
                     const { data, error } = await supabase.from('patrimonio').insert([dbItem]).select().single();
@@ -2535,7 +2743,8 @@ export default function App() {
                     date_requested: order.dateRequested,
                     quotation_number: order.quotationNumber,
                     winning_supplier: order.winningSupplier,
-                    status: order.status
+                    status: order.status,
+                    institution_id: currentInstitution?.id || null
                   }).then(({ error }) => { if (error) console.error(error) });
                 }}
                 onEdit={async (updatedOrder) => {
@@ -2640,7 +2849,7 @@ export default function App() {
               />
             )}
             {activeView === 'norms' && <NormsModule />}
-            {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} />}
+            {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'contracts' && <ContractsModule />}
             {activeView === 'education' && <EducationModule />}
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} />}
@@ -2657,7 +2866,7 @@ export default function App() {
             {activeView === 'esporte' && <PlaceholderModule title="Secretaria de Esporte" />}
             {activeView === 'planejamento' && <PlaceholderModule title="Secretaria de Planejamento" />}
             {activeView === 'camara' && <CamaraModule />}
-            {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} />}
+            {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} departments={departments} setDepartments={setDepartments} currentUser={currentUser} />}
             {activeView === 'templates' && <TemplatesModule />}
           </motion.div>
         </AnimatePresence>

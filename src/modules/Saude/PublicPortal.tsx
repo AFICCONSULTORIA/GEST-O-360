@@ -51,7 +51,7 @@ const formatDate = (dateString: string) => {
   return `${day}/${month}/${year}`;
 };
 
-export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
+export const PublicSaudePortal = ({ darkMode, currentInstitution }: { darkMode: boolean, currentInstitution?: any }) => {
   const [activeTab, setActiveTab] = useState<'agendar' | 'acompanhar'>('agendar');
 
   // AGENDAR STATE
@@ -93,7 +93,8 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
       ...restFormData,
       referral_details: restFormData.specialty === 'Clínico Geral' ? null : referral_details,
       is_urgent: false,
-      status: 'Aguardando Regulação'
+      status: 'Aguardando Regulação',
+      institution_id: currentInstitution?.id || null
     };
 
     const { error: dbError } = await supabase.from('appointments').insert(newAppointment);
@@ -113,12 +114,17 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
     setTrackError('');
     setHasSearched(false);
 
-    const { data, error } = await supabase
+    let trackQuery = supabase
       .from('appointments')
       .select('*')
       .eq('patient_cpf', trackData.cpf)
-      .eq('patient_birth_date', trackData.birth_date)
-      .order('appointment_date', { ascending: false });
+      .eq('patient_birth_date', trackData.birth_date);
+      
+    if (currentInstitution) {
+      trackQuery = trackQuery.eq('institution_id', currentInstitution.id);
+    }
+    
+    const { data, error } = await trackQuery.order('appointment_date', { ascending: false });
 
     setIsTrackLoading(false);
     setHasSearched(true);
@@ -209,7 +215,9 @@ export const PublicSaudePortal = ({ darkMode }: { darkMode: boolean }) => {
         <div className="bg-emerald-600 p-10 text-white text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, white 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
           <HeartPulse size={48} className="mx-auto mb-4" />
-          <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2">Portal da Saúde</h1>
+          <h1 className="text-3xl md:text-4xl font-black tracking-tight mb-2">
+            {currentInstitution ? `Portal da Saúde · ${currentInstitution.name.replace("Prefeitura Municipal de ", "")}` : 'Portal da Saúde'}
+          </h1>
           <p className="text-emerald-100 font-medium">Agende e acompanhe suas consultas</p>
         </div>
 

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
-import { AdminUser, Institution, View } from '../../types';
+import { AdminUser, Institution, View, Department } from '../../types';
 
 const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
@@ -107,8 +107,24 @@ const PERMISSION_GROUPS: {
 ];
 
 
-export const SettingsModule = ({ users, setUsers, institutions, setInstitutions }: { users: AdminUser[], setUsers: (u: AdminUser[]) => void, institutions: Institution[], setInstitutions: (i: Institution[]) => void }) => {
-  const [activeTab, setActiveTab] = React.useState<'users' | 'institutions'>('users');
+export const SettingsModule = ({ 
+  users, 
+  setUsers, 
+  institutions, 
+  setInstitutions,
+  departments,
+  setDepartments,
+  currentUser
+}: { 
+  users: AdminUser[], 
+  setUsers: (u: AdminUser[]) => void, 
+  institutions: Institution[], 
+  setInstitutions: (i: Institution[]) => void,
+  departments: Department[],
+  setDepartments: (d: Department[]) => void,
+  currentUser?: AdminUser | null
+}) => {
+  const [activeTab, setActiveTab] = React.useState<'users' | 'institutions' | 'departments'>('users');
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<AdminUser | null>(null);
   const [managingPermissionsUser, setManagingPermissionsUser] = React.useState<AdminUser | null>(null);
@@ -121,7 +137,8 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
     status: 'Ativo' as AdminUser['status'],
     password: '',
     permissions: [] as View[],
-    institution_id: ''
+    institution_id: '',
+    department_id: ''
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -136,7 +153,8 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
         role: updatedUser.role,
         status: updatedUser.status,
         permissions: updatedUser.permissions,
-        institution_id: updatedUser.institution_id || null
+        institution_id: updatedUser.institution_id || null,
+        department_id: updatedUser.department_id || null
       }).eq('id', updatedUser.id);
       
       if (error) {
@@ -174,7 +192,8 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
         status: newUser.status,
         last_login: newUser.lastLogin,
         permissions: newUser.permissions,
-        institution_id: newUser.institution_id || null
+        institution_id: newUser.institution_id || null,
+        department_id: newUser.department_id || null
       });
     }
     setIsModalOpen(false);
@@ -183,7 +202,16 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
 
   const handleEdit = (u: AdminUser) => {
     setEditingUser(u);
-    setFormData({ name: u.name, email: u.email, role: u.role, status: u.status, password: '', permissions: u.permissions || [], institution_id: u.institution_id || '' });
+    setFormData({ 
+      name: u.name, 
+      email: u.email, 
+      role: u.role, 
+      status: u.status, 
+      password: '', 
+      permissions: u.permissions || [], 
+      institution_id: u.institution_id || '',
+      department_id: u.department_id || ''
+    });
     setIsModalOpen(true);
   };
 
@@ -194,23 +222,58 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
     }
   };
 
+  const [isDeptModalOpen, setIsDeptModalOpen] = React.useState(false);
+  const [editingDept, setEditingDept] = React.useState<Department | null>(null);
+  const [deptFormData, setDeptFormData] = React.useState({ name: '', institution_id: '' });
+
+  const handleDeptSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (editingDept) {
+      const updated = { ...editingDept, ...deptFormData };
+      setDepartments(departments.map(d => d.id === editingDept.id ? updated : d));
+      await supabase.from('departments').update({ name: updated.name, institution_id: updated.institution_id }).eq('id', updated.id).then(({ error }) => { if (error) console.error(error) });
+    } else {
+      const newDept: Department = {
+        ...deptFormData,
+        id: Math.random().toString(36).substr(2, 9)
+      };
+      setDepartments([...departments, newDept]);
+      await supabase.from('departments').insert({ id: newDept.id, name: newDept.name, institution_id: newDept.institution_id }).then(({ error }) => { if (error) console.error(error) });
+    }
+    setIsDeptModalOpen(false);
+    setEditingDept(null);
+  };
+
+  const handleDeptDelete = async (id: string) => {
+    if (confirm('Tem certeza que deseja remover esta secretaria? Todos os servidores lotados nela ficarão sem lotação.')) {
+      const { error } = await supabase.from('departments').delete().eq('id', id);
+      if (error) {
+        showToast(`Erro ao excluir secretaria: ${error.message}`, 'error');
+        console.error(error);
+      } else {
+        setDepartments(departments.filter(d => d.id !== id));
+        showToast('Secretaria removida com sucesso!', 'success');
+      }
+    }
+  };
+
   const [isInstModalOpen, setIsInstModalOpen] = React.useState(false);
   const [editingInstitution, setEditingInstitution] = React.useState<Institution | null>(null);
-  const [instFormData, setInstFormData] = React.useState({ name: '' });
+  const [instFormData, setInstFormData] = React.useState({ name: '', subdomain: '' });
 
   const handleInstSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingInstitution) {
       const updated = { ...editingInstitution, ...instFormData };
       setInstitutions(institutions.map(i => i.id === editingInstitution.id ? updated : i));
-      await supabase.from('institutions').update({ name: updated.name }).eq('id', updated.id).then(({ error }) => { if (error) console.error(error) });
+      await supabase.from('institutions').update({ name: updated.name, subdomain: updated.subdomain }).eq('id', updated.id).then(({ error }) => { if (error) console.error(error) });
     } else {
       const newInst: Institution = {
         ...instFormData,
         id: Math.random().toString(36).substr(2, 9)
       };
       setInstitutions([...institutions, newInst]);
-      await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name }).then(({ error }) => { if (error) console.error(error) });
+      await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name, subdomain: newInst.subdomain }).then(({ error }) => { if (error) console.error(error) });
     }
     setIsInstModalOpen(false);
     setEditingInstitution(null);
@@ -244,27 +307,42 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
             Usuários
           </button>
           <button 
-            onClick={() => setActiveTab('institutions')}
-            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'institutions' ? 'bg-white dark:bg-neutral-900 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            onClick={() => setActiveTab('departments')}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'departments' ? 'bg-white dark:bg-neutral-900 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
           >
-            Instituições
+            Secretarias
           </button>
+          {currentUser?.role === 'Super Admin' && (
+            <button 
+              onClick={() => setActiveTab('institutions')}
+              className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'institutions' ? 'bg-white dark:bg-neutral-900 shadow-sm text-neutral-900 dark:text-white' : 'text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'}`}
+            >
+              Instituições
+            </button>
+          )}
         </div>
         <button 
           onClick={() => {
             if (activeTab === 'users') {
               setEditingUser(null);
-              setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [], institution_id: '' });
+              setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [], institution_id: currentUser?.institution_id || '', department_id: '' });
               setIsModalOpen(true);
+            } else if (activeTab === 'departments') {
+              setEditingDept(null);
+              setDeptFormData({ name: '', institution_id: currentUser?.institution_id || (institutions.length > 0 ? institutions[0].id : '') });
+              setIsDeptModalOpen(true);
             } else {
               setEditingInstitution(null);
-              setInstFormData({ name: '' });
+              setInstFormData({ name: '', subdomain: '' });
               setIsInstModalOpen(true);
             }
           }}
           className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest hover:scale-105 transition-all shadow-xl shadow-neutral-900/20"
         >
-          <span className="flex items-center gap-2"><Plus size={16} /> {activeTab === 'users' ? 'Novo Usuário' : 'Nova Instituição'}</span>
+          <span className="flex items-center gap-2">
+            <Plus size={16} /> 
+            {activeTab === 'users' ? 'Novo Usuário' : activeTab === 'departments' ? 'Nova Secretaria' : 'Nova Instituição'}
+          </span>
         </button>
       </div>
 
@@ -275,6 +353,7 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
             <thead>
               <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Usuário</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Lotação / Prefeitura</th>
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Nível de Acesso</th>
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Status</th>
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Último Acesso</th>
@@ -282,40 +361,54 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-              {users.map(u => (
-                <tr key={u.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors">
-                  <td className="p-6">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 font-black">
-                        {u.name.charAt(0)}
+              {users.map(u => {
+                const userInst = institutions.find(i => i.id === u.institution_id);
+                const userDept = departments.find(d => d.id === u.department_id);
+                
+                return (
+                  <tr key={u.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors">
+                    <td className="p-6">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-500 dark:text-neutral-400 font-black">
+                          {u.name.charAt(0)}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{u.name}</p>
+                          <p className="text-xs text-neutral-500">{u.email}</p>
+                        </div>
                       </div>
+                    </td>
+                    <td className="p-6">
                       <div>
-                        <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{u.name}</p>
-                        <p className="text-xs text-neutral-500">{u.email}</p>
+                        <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                          {userInst ? userInst.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : 'Global'}
+                        </p>
+                        <p className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mt-0.5">
+                          {userDept ? userDept.name : 'Sem Secretaria'}
+                        </p>
                       </div>
-                    </div>
-                  </td>
-                  <td className="p-6">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
-                      u.role === 'Super Admin' ? 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400' :
-                      u.role === 'Admin' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' :
-                      u.role === 'Editor' ? 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400' :
-                      'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
-                    }`}>
-                      {u.role}
-                    </span>
-                  </td>
-                  <td className="p-6">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center w-max gap-1.5 ${
-                      u.status === 'Ativo' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
-                    }`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'Ativo' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                      {u.status}
-                    </span>
-                  </td>
-                  <td className="p-6">
-                    <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{u.lastLogin}</p>
-                  </td>
+                    </td>
+                    <td className="p-6">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                        u.role === 'Super Admin' ? 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400' :
+                        u.role === 'Admin' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400' :
+                        u.role === 'Editor' ? 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400' :
+                        'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
+                      }`}>
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="p-6">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center w-max gap-1.5 ${
+                        u.status === 'Ativo' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
+                      }`}>
+                        <div className={`w-1.5 h-1.5 rounded-full ${u.status === 'Ativo' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        {u.status}
+                      </span>
+                    </td>
+                    <td className="p-6">
+                      <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">{u.lastLogin}</p>
+                    </td>
                   <td className="p-6 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
@@ -337,7 +430,8 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
                     </div>
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
         </div>
@@ -351,6 +445,7 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
             <thead>
               <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Instituição</th>
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Subdomínio</th>
                 <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 text-right">Ações</th>
               </tr>
             </thead>
@@ -360,9 +455,12 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
                   <td className="p-6">
                     <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{inst.name}</p>
                   </td>
+                  <td className="p-6">
+                    <p className="text-xs font-mono text-neutral-500 dark:text-neutral-400">{inst.subdomain || '-'}</p>
+                  </td>
                   <td className="p-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => { setEditingInstitution(inst); setInstFormData({ name: inst.name }); setIsInstModalOpen(true); }} className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all">
+                      <button onClick={() => { setEditingInstitution(inst); setInstFormData({ name: inst.name, subdomain: inst.subdomain || '' }); setIsInstModalOpen(true); }} className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all">
                         <Edit2 size={16} />
                       </button>
                       <button onClick={() => handleInstDelete(inst.id)} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all">
@@ -372,6 +470,60 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      )}
+
+      {activeTab === 'departments' && (
+      <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Secretaria</th>
+                {currentUser?.role === 'Super Admin' && (
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Instituição</th>
+                )}
+                <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+              {departments
+                .filter(dept => currentUser?.role === 'Super Admin' ? true : dept.institution_id === currentUser?.institution_id)
+                .map(dept => {
+                  const inst = institutions.find(i => i.id === dept.institution_id);
+                  return (
+                    <tr key={dept.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors">
+                      <td className="p-6">
+                        <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{dept.name}</p>
+                      </td>
+                      {currentUser?.role === 'Super Admin' && (
+                        <td className="p-6">
+                          <p className="text-xs text-neutral-500">{inst ? inst.name : 'Nenhum'}</p>
+                        </td>
+                      )}
+                      <td className="p-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => { 
+                              setEditingDept(dept); 
+                              setDeptFormData({ name: dept.name, institution_id: dept.institution_id }); 
+                              setIsDeptModalOpen(true); 
+                            }} 
+                            className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button onClick={() => handleDeptDelete(dept.id)} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all">
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -411,14 +563,88 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
                       required
                       type="text" 
                       value={instFormData.name}
-                      onChange={e => setInstFormData({ name: e.target.value })}
+                      onChange={e => setInstFormData({ ...instFormData, name: e.target.value })}
                       className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Subdomínio (ex: torixoreu)</label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="Apenas letras minúsculas"
+                      value={instFormData.subdomain}
+                      onChange={e => setInstFormData({ ...instFormData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm font-mono outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
                     />
                   </div>
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button type="button" onClick={() => setIsInstModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
                   <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">Salvar Instituição</button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {isDeptModalOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-8"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{editingDept ? 'Editar Secretaria' : 'Nova Secretaria'}</h3>
+                  <p className="text-sm text-neutral-500 mt-1">Preencha os dados da secretaria.</p>
+                </div>
+                <button onClick={() => setIsDeptModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleDeptSubmit} className="space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nome da Secretaria</label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="Ex: Secretaria Municipal de Educação"
+                      value={deptFormData.name}
+                      onChange={e => setDeptFormData({ ...deptFormData, name: e.target.value })}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                    />
+                  </div>
+                  {currentUser?.role === 'Super Admin' && (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Instituição</label>
+                      <select 
+                        required
+                        value={deptFormData.institution_id}
+                        onChange={e => setDeptFormData({ ...deptFormData, institution_id: e.target.value })}
+                        className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                      >
+                        <option value="">Selecione uma instituição</option>
+                        {institutions.map(inst => (
+                          <option key={inst.id} value={inst.id}>{inst.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button type="button" onClick={() => setIsDeptModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">Salvar Secretaria</button>
                 </div>
               </form>
             </motion.div>
@@ -489,13 +715,30 @@ export const SettingsModule = ({ users, setUsers, institutions, setInstitutions 
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Instituição</label>
                     <select 
                       value={formData.institution_id}
-                      onChange={e => setFormData({...formData, institution_id: e.target.value})}
+                      onChange={e => setFormData({...formData, institution_id: e.target.value, department_id: ''})}
                       className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
                     >
                       <option value="">Sem Instituição</option>
                       {institutions.map(inst => (
                         <option key={inst.id} value={inst.id}>{inst.name}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Secretaria (Lotação)</label>
+                    <select 
+                      value={formData.department_id}
+                      disabled={!formData.institution_id}
+                      onChange={e => setFormData({...formData, department_id: e.target.value})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white disabled:opacity-50"
+                    >
+                      <option value="">Sem Secretaria / Lotação</option>
+                      {departments
+                        .filter(dept => dept.institution_id === formData.institution_id)
+                        .map(dept => (
+                          <option key={dept.id} value={dept.id}>{dept.name}</option>
+                        ))
+                      }
                     </select>
                   </div>
                   <div className="grid grid-cols-2 gap-4">

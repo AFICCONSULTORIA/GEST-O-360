@@ -33,7 +33,7 @@ const LogoCompass = ({ size = 32, className = '' }: { size?: number, className?:
   </svg>
 );
 
-export function PublicServicosPortal({ darkMode }: { darkMode: boolean }) {
+export function PublicServicosPortal({ darkMode, currentInstitution }: { darkMode: boolean, currentInstitution?: any }) {
   const [step, setStep] = React.useState<'category' | 'details' | 'success'>('category');
   const [loading, setLoading] = React.useState(false);
   const [protocol, setProtocol] = React.useState('');
@@ -64,7 +64,8 @@ export function PublicServicosPortal({ darkMode }: { darkMode: boolean }) {
           endereco: formData.endereco,
           solicitante: formData.nome,
           telefone: formData.telefone,
-          status: 'Aberto'
+          status: 'Aberto',
+          institution_id: currentInstitution?.id || null
         });
 
         if (error) throw error;
@@ -103,7 +104,9 @@ export function PublicServicosPortal({ darkMode }: { darkMode: boolean }) {
                 <LogoCompass size={24} />
               </div>
               <div>
-                <h1 className="text-xl font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">Gestão <span className="font-normal opacity-50">360</span></h1>
+                <h1 className="text-xl font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">
+                  {currentInstitution ? currentInstitution.name.replace("Prefeitura Municipal de ", "") : <>Gestão <span className="font-normal opacity-50">360</span></>}
+                </h1>
               </div>
             </div>
             <div className="flex items-center gap-3">

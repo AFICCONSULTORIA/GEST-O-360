@@ -119,6 +119,13 @@ export interface CompanyCertificates {
 export interface Institution {
   id: string;
   name: string;
+  subdomain?: string;
+}
+
+export interface Department {
+  id: string;
+  name: string;
+  institution_id: string;
 }
 
 export interface AdminUser {
@@ -130,6 +137,7 @@ export interface AdminUser {
   lastLogin: string;
   permissions: View[];
   institution_id?: string;
+  department_id?: string;
 }
 
 
