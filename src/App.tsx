@@ -2034,9 +2034,16 @@ export default function App() {
         }
       }
 
-      const handleAuthSession = async (session: any, resolvedInst: Institution | null, isSaaSAdmin: boolean) => {
+      const handleAuthSession = async (session: any, resolvedInst: Institution | null, isSaaSAdmin: boolean, event?: string) => {
         setIsAuthenticated(!!session);
         if (session?.user?.email) {
+          // Prevenção de deadlocks e loop recursivo: evitamos chamadas ao Supabase
+          // em eventos secundários (ex: alteração de senha 'USER_UPDATED' ou refresh de token).
+          if (event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') {
+            console.log('[Auth] Ignorando recarregamento de perfil no banco para o evento:', event);
+            return;
+          }
+
           if (session.user.email === 'aficconsultoria@gmail.com') {
             setCurrentUser({
               id: session.user.id,
@@ -2068,11 +2075,14 @@ export default function App() {
                 return;
               }
 
+              const hasChangedPassword = sessionStorage.getItem('password_changed') === 'true';
+              console.log('[Auth] User loaded:', data.email, 'last_login:', data.last_login, 'event:', event, 'hasChangedPassword:', hasChangedPassword);
+
               setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
               
-              // Se o usuário já mudou a senha nesta sessão, ignora o estado 'Nunca' defasado (Race Condition fix)
-              const hasChangedPassword = sessionStorage.getItem('password_changed');
-              if (data.last_login === 'Nunca' && !hasChangedPassword) {
+              // Se o usuário já mudou a senha nesta sessão ou o evento é de atualização, ignora o estado 'Nunca' defasado (Race Condition fix)
+              if (data.last_login === 'Nunca' && !hasChangedPassword && event !== 'USER_UPDATED') {
+                console.log('[Auth] First login detected. Opening ChangePasswordModal.');
                 setIsChangingPassword(true);
                 setForcePasswordChange(true);
               }
@@ -2084,10 +2094,13 @@ export default function App() {
       };
 
       const { data: { session } } = await supabase.auth.getSession();
-      await handleAuthSession(session, activeInst, isSaaS);
+      await handleAuthSession(session, activeInst, isSaaS, 'INITIAL_SESSION');
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        await handleAuthSession(session, activeInst, isSaaS);
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        // Executamos no próximo tick para desempilhar a execução e evitar deadlocks internos do cliente Supabase
+        setTimeout(async () => {
+          await handleAuthSession(session, activeInst, isSaaS, event);
+        }, 0);
       });
 
       setLoadingInstitution(false);
@@ -2503,15 +2516,24 @@ export default function App() {
             forceChange={forcePasswordChange}
             onClose={() => !forcePasswordChange && setIsChangingPassword(false)}
             onSuccess={async () => {
+              console.log('[ChangePassword] Success handler started.');
               sessionStorage.setItem('password_changed', 'true');
               if (forcePasswordChange && currentUser) {
                 const now = new Date().toLocaleString('pt-BR');
-                await supabase.from('admin_users').update({ last_login: now }).eq('id', currentUser.id);
+                console.log('[ChangePassword] Updating last_login in DB to:', now);
+                try {
+                  const { error } = await supabase.from('admin_users').update({ last_login: now }).eq('id', currentUser.id);
+                  if (error) throw error;
+                  console.log('[ChangePassword] DB updated successfully.');
+                } catch (dbErr) {
+                  console.error('[ChangePassword] Erro ao atualizar last_login no banco:', dbErr);
+                }
                 setCurrentUser({ ...currentUser, lastLogin: now } as AdminUser);
                 setAdminUsers(adminUsers.map(u => u.id === currentUser.id ? { ...u, lastLogin: now } : u));
                 setForcePasswordChange(false);
               }
               setIsChangingPassword(false);
+              console.log('[ChangePassword] Success handler finished.');
             }}
           />
         )}
@@ -3228,7 +3250,7 @@ const HistoryModal = ({ item, onClose }: { item: CheckItem, onClose: () => void 
   </motion.div>
 );
 
-const ChangePasswordModal = ({ forceChange, onClose, onSuccess }: { forceChange: boolean, onClose: () => void, onSuccess: () => void }) => {
+const ChangePasswordModal = ({ forceChange, onClose, onSuccess }: { forceChange: boolean, onClose: () => void, onSuccess: () => void | Promise<void> }) => {
   const [password, setPassword] = React.useState('');
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [loading, setLoading] = React.useState(false);
