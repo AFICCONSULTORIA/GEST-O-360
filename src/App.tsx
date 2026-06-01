@@ -6,6 +6,7 @@ import { SettingsModule } from './modules/Settings';
 import { ProtocolModule } from './modules/Protocol';
 import { hasPermission } from './lib/permissions';
 import { getSubdomain, fetchInstitutionBySubdomain } from './lib/subdomain';
+import { SaaSControlCenter } from './modules/SaaSControlCenter';
 
 import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
 import { ControlsModule } from './modules/Controls';
@@ -1684,7 +1685,7 @@ const LandingPage = ({ darkMode, setDarkMode, currentInstitution }: { darkMode: 
   </div>
 );
 
-const Login = ({ onLogin, darkMode, currentInstitution }: { onLogin: () => void, darkMode: boolean, currentInstitution?: Institution | null }) => {
+const Login = ({ onLogin, darkMode, currentInstitution, isSaaSAdmin = false }: { onLogin: () => void, darkMode: boolean, currentInstitution?: Institution | null, isSaaSAdmin?: boolean }) => {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
@@ -1730,19 +1731,26 @@ const Login = ({ onLogin, darkMode, currentInstitution }: { onLogin: () => void,
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-[32px] sm:rounded-[48px] p-8 sm:p-12 shadow-2xl shadow-neutral-200/50 dark:shadow-neutral-950/50 border border-neutral-100 dark:border-neutral-800 relative z-10 my-auto"
       >
-        <a
-          href="/"
-          className="absolute top-6 right-6 p-2.5 rounded-xl transition-all text-neutral-400 hover:bg-neutral-50 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
-          title="Voltar à Página Inicial"
-        >
-          <Home size={18} />
-        </a>
+        {!isSaaSAdmin && (
+          <a
+            href="/"
+            className="absolute top-6 right-6 p-2.5 rounded-xl transition-all text-neutral-400 hover:bg-neutral-50 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
+            title="Voltar à Página Inicial"
+          >
+            <Home size={18} />
+          </a>
+        )}
         <div className="text-center space-y-4 mb-10">
           <div className="bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white p-3 rounded-[1.25rem] shadow-[0_0_40px_-10px_rgba(16,185,129,0.3)] border border-neutral-100 dark:border-neutral-800 flex items-center justify-center mx-auto w-20 h-20 transition-all hover:scale-110 duration-500">
             <LogoCompass size={44} />
           </div>
           <div>
-            {currentInstitution ? (
+            {isSaaSAdmin ? (
+              <>
+                <h1 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight mt-2">Central SaaS</h1>
+                <p className="text-[10px] text-purple-600 dark:text-purple-400 font-black uppercase tracking-widest mt-1">Controle Geral de Prefeituras</p>
+              </>
+            ) : currentInstitution ? (
               <>
                 <h1 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight mt-2">{currentInstitution.name}</h1>
                 <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-black uppercase tracking-widest mt-1">Painel Administrativo Oficial</p>
@@ -2008,17 +2016,25 @@ export default function App() {
     const bootstrap = async () => {
       let activeInst: Institution | null = null;
       const subdomain = getSubdomain();
+      let isSaaS = false;
+
       if (subdomain) {
-        activeInst = await fetchInstitutionBySubdomain(subdomain);
-        if (activeInst) {
-          setCurrentInstitution(activeInst);
-          document.title = `GESTÃO 360 · ${activeInst.name}`;
+        if (subdomain.toLowerCase() === 'admin') {
+          isSaaS = true;
+          setIsSuperAdminPortal(true);
+          document.title = 'GESTÃO 360 · Central de Controle SaaS';
         } else {
-          console.warn(`Subdomínio '${subdomain}' não encontrado no banco de dados.`);
+          activeInst = await fetchInstitutionBySubdomain(subdomain);
+          if (activeInst) {
+            setCurrentInstitution(activeInst);
+            document.title = `GESTÃO 360 · ${activeInst.name}`;
+          } else {
+            console.warn(`Subdomínio '${subdomain}' não encontrado no banco de dados.`);
+          }
         }
       }
 
-      const handleAuthSession = async (session: any, resolvedInst: Institution | null) => {
+      const handleAuthSession = async (session: any, resolvedInst: Institution | null, isSaaSAdmin: boolean) => {
         setIsAuthenticated(!!session);
         if (session?.user?.email) {
           if (session.user.email === 'aficconsultoria@gmail.com') {
@@ -2034,6 +2050,16 @@ export default function App() {
           } else {
             const { data } = await supabase.from('admin_users').select('*').eq('email', session.user.email).single();
             if (data) {
+              // Bloqueio de Segurança para o Portal SaaS (Subdomínio 'admin')
+              if (isSaaSAdmin && data.role !== 'Super Admin') {
+                showToast('Acesso restrito para Super Administradores da plataforma.', 'error');
+                await supabase.auth.signOut();
+                setIsAuthenticated(false);
+                setCurrentUser(null);
+                return;
+              }
+
+              // Bloqueio de Segurança para Prefeitura Municipal
               if (resolvedInst && data.role !== 'Super Admin' && data.institution_id !== resolvedInst.id) {
                 showToast('Acesso não autorizado para esta prefeitura.', 'error');
                 await supabase.auth.signOut();
@@ -2055,10 +2081,10 @@ export default function App() {
       };
 
       const { data: { session } } = await supabase.auth.getSession();
-      await handleAuthSession(session, activeInst);
+      await handleAuthSession(session, activeInst, isSaaS);
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        await handleAuthSession(session, activeInst);
+        await handleAuthSession(session, activeInst, isSaaS);
       });
 
       setLoadingInstitution(false);
@@ -2075,6 +2101,7 @@ export default function App() {
 
     return () => cleanupFn();
   }, []);
+  const [isSuperAdminPortal, setIsSuperAdminPortal] = React.useState(false);
   const [activeView, setActiveView] = React.useState<View>('home');
   const [patrimonioItems, setPatrimonioItems] = React.useState<PatrimonioItem[]>([]);
   const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>(MOCK_USERS);
@@ -2207,6 +2234,42 @@ export default function App() {
   const isAdminRoute = currentPath === '/servidores' || currentPath.startsWith('/servidores/');
   const isLandingPage = currentPath === '/';
   const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
+
+  // Rota Especial: Central de Controle SaaS (Subdomínio 'admin')
+  if (isSuperAdminPortal) {
+    if (!isAuthenticated) {
+      return (
+        <div className={darkMode ? 'dark' : ''}>
+           <div className="absolute top-10 right-10 z-50">
+             <button 
+               onClick={() => setDarkMode(!darkMode)}
+               className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+             >
+               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+             </button>
+           </div>
+           <Login onLogin={() => setIsAuthenticated(true)} darkMode={darkMode} currentInstitution={null} isSaaSAdmin={true} />
+        </div>
+      );
+    }
+
+    return (
+      <SaaSControlCenter 
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        currentUser={currentUser}
+        adminUsers={adminUsers}
+        setAdminUsers={setAdminUsers}
+        institutions={institutions}
+        setInstitutions={setInstitutions}
+        departments={departments}
+        setDepartments={setDepartments}
+        controls={controls}
+        patrimonioItems={patrimonioItems}
+        orders={orders}
+      />
+    );
+  }
 
   // Rota de apresentação e vendas
   if (isSalesPage) {
