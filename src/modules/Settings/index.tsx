@@ -162,15 +162,19 @@ export const SettingsModule = ({
         console.error("Update error:", error);
       }
     } else {
-      let finalUserId = Math.random().toString(36).substr(2, 9);
+      let finalUserId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
       
       try {
         const { data, error } = await signUpNewUser(formData.email, formData.password);
         if (error) {
-          showToast('Erro ao criar usuário no Supabase: ' + error.message, 'error');
-          return;
-        }
-        if (data.user) {
+          if (error.status === 422 || error.message.toLowerCase().includes('already registered')) {
+            showToast('Usuário já registrado no Auth. Vinculando...', 'info');
+            // Mantém o finalUserId gerado para a tabela admin_users
+          } else {
+            showToast('Erro ao criar usuário no Supabase: ' + error.message, 'error');
+            return;
+          }
+        } else if (data?.user) {
           finalUserId = data.user.id;
         }
       } catch (err) {

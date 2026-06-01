@@ -1992,6 +1992,19 @@ export const MOCK_TEMPLATES: DocumentTemplate[] = [
 
 
 export default function App() {
+  React.useEffect(() => {
+    const hostname = window.location.hostname;
+    if (hostname.startsWith('www.')) {
+      const parts = hostname.split('.');
+      const isComBr = hostname.endsWith('.com.br');
+      const baseDomainParts = isComBr ? 3 : 2;
+      // Se tiver mais partes que www + dominio base (ex: www.torixoreu.gestao360sistema.com.br tem 5 partes)
+      if (parts.length > baseDomainParts + 1) {
+        window.location.replace(window.location.href.replace('www.', ''));
+      }
+    }
+  }, []);
+
   const [currentInstitution, setCurrentInstitution] = React.useState<Institution | null>(null);
   const [loadingInstitution, setLoadingInstitution] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
@@ -2086,6 +2099,12 @@ export default function App() {
                 setIsChangingPassword(true);
                 setForcePasswordChange(true);
               }
+            } else {
+              console.warn('[Auth] Usuário autenticado não encontrado na tabela admin_users.');
+              showToast('Seu usuário não possui acesso a este sistema.', 'error');
+              await supabase.auth.signOut();
+              setIsAuthenticated(false);
+              setCurrentUser(null);
             }
           }
         } else {
