@@ -2069,7 +2069,10 @@ export default function App() {
               }
 
               setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
-              if (data.last_login === 'Nunca') {
+              
+              // Se o usuário já mudou a senha nesta sessão, ignora o estado 'Nunca' defasado (Race Condition fix)
+              const hasChangedPassword = sessionStorage.getItem('password_changed');
+              if (data.last_login === 'Nunca' && !hasChangedPassword) {
                 setIsChangingPassword(true);
                 setForcePasswordChange(true);
               }
@@ -2500,6 +2503,7 @@ export default function App() {
             forceChange={forcePasswordChange}
             onClose={() => !forcePasswordChange && setIsChangingPassword(false)}
             onSuccess={async () => {
+              sessionStorage.setItem('password_changed', 'true');
               if (forcePasswordChange && currentUser) {
                 const now = new Date().toLocaleString('pt-BR');
                 await supabase.from('admin_users').update({ last_login: now }).eq('id', currentUser.id);
@@ -3242,14 +3246,26 @@ const ChangePasswordModal = ({ forceChange, onClose, onSuccess }: { forceChange:
       return;
     }
     setLoading(true);
-    const { error: authError } = await supabase.auth.updateUser({ password });
-    setLoading(false);
+    
+    let authError = null;
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      authError = error;
+    } catch (err: any) {
+      authError = { message: err.message || 'Erro inesperado ao atualizar a senha.' };
+    }
     
     if (authError) {
       setError('Erro ao atualizar senha: ' + authError.message);
+      setLoading(false);
     } else {
       showToast('Senha atualizada com sucesso!', 'success');
-      onSuccess();
+      try {
+        await onSuccess();
+      } catch (err) {
+        console.error('Erro no onSuccess do ChangePasswordModal:', err);
+      }
+      setLoading(false);
     }
   };
 
