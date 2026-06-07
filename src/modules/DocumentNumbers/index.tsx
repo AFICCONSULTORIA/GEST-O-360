@@ -30,13 +30,28 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
   const [typeFilter, setTypeFilter] = React.useState('Todos');
   const [recordToDelete, setRecordToDelete] = React.useState<string | null>(null);
 
+  const [recordToEdit, setRecordToEdit] = React.useState<DocumentRecord | null>(null);
+  const [editFormData, setEditFormData] = React.useState({
+    type: 'Ofício' as DocType,
+    number: 1,
+    year: new Date().getFullYear(),
+    dateCreated: '',
+    requester: '',
+    subject: ''
+  });
+  const [isSavingEdit, setIsSavingEdit] = React.useState(false);
+
   React.useEffect(() => {
     fetchRecords();
   }, []);
 
   const fetchRecords = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('document_records').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase
+      .from('document_records')
+      .select('*')
+      .order('year', { ascending: false })
+      .order('number', { ascending: false });
     if (data && !error) {
       // Postgres returns lowercased 'datecreated' or 'created_at'. Map it to 'dateCreated' for the UI.
       const mappedData = data.map(item => ({
@@ -66,6 +81,78 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
       showToast('Erro ao excluir documento. Verifique as permissões do banco.', 'error');
       console.error(error);
     }
+  };
+
+  const openEditModal = (record: DocumentRecord) => {
+    setRecordToEdit(record);
+    
+    let formattedDate = '';
+    if (record.dateCreated) {
+      try {
+        formattedDate = new Date(record.dateCreated).toISOString().split('T')[0];
+      } catch (e) {
+        console.error('Invalid date', record.dateCreated);
+      }
+    }
+
+    setEditFormData({
+      type: record.type,
+      number: record.number,
+      year: record.year,
+      dateCreated: formattedDate,
+      requester: record.requester || '',
+      subject: record.subject || ''
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!recordToEdit) return;
+
+    if (
+      editFormData.type !== recordToEdit.type ||
+      editFormData.number !== recordToEdit.number ||
+      editFormData.year !== recordToEdit.year
+    ) {
+      const { data: duplicate } = await supabase
+        .from('document_records')
+        .select('id')
+        .eq('type', editFormData.type)
+        .eq('year', editFormData.year)
+        .eq('number', editFormData.number)
+        .neq('id', recordToEdit.id)
+        .limit(1);
+        
+      if (duplicate && duplicate.length > 0) {
+        showToast('Este número já está em uso para este tipo e ano.', 'error');
+        return;
+      }
+    }
+
+    setIsSavingEdit(true);
+    
+    const updatePayload: any = {
+      type: editFormData.type,
+      number: editFormData.number,
+      year: editFormData.year,
+      requester: editFormData.requester,
+      subject: editFormData.subject
+    };
+    
+    if (editFormData.dateCreated) {
+      updatePayload.created_at = new Date(editFormData.dateCreated).toISOString();
+    }
+
+    const { error } = await supabase.from('document_records').update(updatePayload).eq('id', recordToEdit.id);
+
+    if (!error) {
+      showToast('Documento atualizado com sucesso.', 'success');
+      setRecordToEdit(null);
+      fetchRecords();
+    } else {
+      showToast('Erro ao atualizar documento.', 'error');
+      console.error(error);
+    }
+    setIsSavingEdit(false);
   };
 
   const handleUpload = async (recordId: string, file: File) => {
@@ -113,6 +200,20 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
     let newNumber = 1;
     if (formData.customNumber && !isNaN(Number(formData.customNumber))) {
       newNumber = Number(formData.customNumber);
+      
+      const { data: duplicate } = await supabase
+        .from('document_records')
+        .select('id')
+        .eq('type', formData.type)
+        .eq('year', currentYear)
+        .eq('number', newNumber)
+        .limit(1);
+        
+      if (duplicate && duplicate.length > 0) {
+        showToast('Este número já está em uso para este tipo e ano.', 'error');
+        setIsGenerating(false);
+        return;
+      }
     } else if (maxData && maxData.length > 0) {
       newNumber = maxData[0].number + 1;
     }
@@ -291,13 +392,22 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
                 </div>
 
                 {['Super Admin', 'Admin'].includes(currentUser?.role || '') && (
-                  <button 
-                    onClick={() => setRecordToDelete(record.id)}
-                    className="p-2 text-neutral-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
-                    title="Excluir Documento"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex gap-1">
+                    <button 
+                      onClick={() => openEditModal(record)}
+                      className="p-2 text-neutral-300 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all"
+                      title="Editar Documento"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => setRecordToDelete(record.id)}
+                      className="p-2 text-neutral-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
+                      title="Excluir Documento"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -334,6 +444,102 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
                   className="flex-1 px-4 py-3 bg-rose-600 hover:bg-rose-700 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-rose-500/20 transition-all"
                 >
                   Excluir
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Modal */}
+      <AnimatePresence>
+        {recordToEdit && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-neutral-900 rounded-[32px] w-full max-w-md p-8 shadow-2xl flex flex-col"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-black text-neutral-900 dark:text-white">Editar Documento</h3>
+                <button onClick={() => setRecordToEdit(null)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              
+              <div className="space-y-4 mb-8">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Tipo de Documento</label>
+                  <select
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                    value={editFormData.type}
+                    onChange={e => setEditFormData({ ...editFormData, type: e.target.value as DocType })}
+                  >
+                    <option value="Ofício">Ofício</option>
+                    <option value="Decreto">Decreto</option>
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Número</label>
+                    <input
+                      type="number"
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                      value={editFormData.number}
+                      onChange={e => setEditFormData({ ...editFormData, number: Number(e.target.value) })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Ano</label>
+                    <input
+                      type="number"
+                      className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                      value={editFormData.year}
+                      onChange={e => setEditFormData({ ...editFormData, year: Number(e.target.value) })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Data de Criação</label>
+                  <input
+                    type="date"
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                    value={editFormData.dateCreated}
+                    onChange={e => setEditFormData({ ...editFormData, dateCreated: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Solicitante</label>
+                  <input
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                    value={editFormData.requester}
+                    onChange={e => setEditFormData({ ...editFormData, requester: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Assunto</label>
+                  <input
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                    value={editFormData.subject}
+                    onChange={e => setEditFormData({ ...editFormData, subject: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 w-full">
+                <button 
+                  onClick={() => setRecordToEdit(null)}
+                  className="flex-1 px-4 py-3 font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={handleSaveEdit}
+                  disabled={!editFormData.requester || !editFormData.subject || isSavingEdit}
+                  className="flex-1 px-4 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all disabled:opacity-50"
+                >
+                  {isSavingEdit ? 'Salvando...' : 'Salvar'}
                 </button>
               </div>
             </motion.div>
