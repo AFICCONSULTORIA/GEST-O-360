@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check, Printer, FileSignature } from 'lucide-react';
+import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check, Printer, PenTool } from 'lucide-react';
 import { Protocol } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
+import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { hasPermission } from '../../lib/permissions';
 
 
@@ -388,6 +389,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
             departments={departments}
             currentUser={currentUser}
             currentInstitution={currentInstitution}
+            protocols={protocols}
             onSuccess={() => {
               loadData();
               setIsNewModalOpen(false);
@@ -440,7 +442,8 @@ export const NewProtocolModal = ({
   departments = [],
   title = "Novo Processo Digital (SMAF)",
   currentUser,
-  currentInstitution
+  currentInstitution,
+  protocols = []
 }: { 
   onClose: () => void, 
   onSuccess: () => void,
@@ -448,7 +451,8 @@ export const NewProtocolModal = ({
   departments?: {id: string, name: string}[],
   title?: string,
   currentUser?: any,
-  currentInstitution?: any
+  currentInstitution?: any,
+  protocols?: Protocol[]
 }) => {
   const defaultFrom = currentUser?.department_id 
     ? departments.find(d => d.id === currentUser.department_id)?.name || (departments.length > 0 ? departments[0].name : 'Saúde')
@@ -456,7 +460,22 @@ export const NewProtocolModal = ({
 
   const defaultTo = departments.find(d => d.name.includes('Administração') || d.name.includes('Finanças'))?.name || 'Administração e Finanças';
 
+  const nextNumber = React.useMemo(() => {
+    if (initialData) return initialData.id;
+    if (!protocols || protocols.length === 0) return `2026001`;
+    let max = 0;
+    protocols.forEach(p => {
+      const match = p.id.match(/\d+/g);
+      if (match) {
+        const lastNum = parseInt(match[match.length - 1], 10);
+        if (lastNum > max && lastNum < 1000000) max = lastNum;
+      }
+    });
+    return max > 0 ? (max + 1).toString().padStart(3, '0') : `2026001`;
+  }, [protocols, initialData]);
+
   const [formData, setFormData] = React.useState({
+    id: initialData ? initialData.id : nextNumber,
     subject: initialData ? initialData.subject : '',
     from: initialData ? initialData.from : defaultFrom,
     to: initialData ? initialData.to : defaultTo,
@@ -647,7 +666,7 @@ export const NewProtocolModal = ({
           onSuccess();
         }
       } else {
-        const generatedId = `2024${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
+        const generatedId = formData.id || `2024${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`;
         const { error } = await supabase.from('protocols').insert({
           id: generatedId,
           ...payload,
@@ -695,6 +714,19 @@ export const NewProtocolModal = ({
         </div>
 
         <div className="flex-1 overflow-y-auto pr-1 space-y-6 scrollbar-thin scrollbar-thumb-neutral-200 dark:scrollbar-thumb-neutral-700">
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nº do Processo / Ofício</label>
+            <input 
+              type="text"
+              value={formData.id}
+              onChange={(e) => setFormData({...formData, id: e.target.value})}
+              disabled={!!initialData}
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-lg font-black italic tracking-tight focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all dark:text-neutral-100 disabled:opacity-60"
+              placeholder="Ex: 001/2026"
+            />
+            {!initialData && <p className="text-[10px] text-neutral-500 ml-1 font-bold">Número gerado sequencialmente. Você pode alterar se necessário.</p>}
+          </div>
+
           {/* Document Types Checkbox Selection */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Tipos de Documentos Inclusos (Selecione vários se desejar)</label>
@@ -1054,6 +1086,7 @@ const getRoleBadgeStyle = (role?: string) => {
 export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: { protocol: Protocol, onClose: () => void, currentUser?: any, onUpdate?: () => void }) => {
   const [despachoText, setDespachoText] = React.useState('');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [stampModalData, setStampModalData] = React.useState<{isOpen: boolean, url: string, name: string, date: string} | null>(null);
 
   const handleAddDespacho = async () => {
     if (!despachoText.trim() || !currentUser || !onUpdate) return;
@@ -1107,6 +1140,86 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
       showToast('Erro ao assinar protocolo', 'error');
     }
     setIsSubmitting(false);
+  };
+  const handleConfirmStamp = async () => {
+    if (!stampModalData) return;
+    const { url, name, date: userDate } = stampModalData;
+    setStampModalData(null);
+
+    try {
+      setIsSubmitting(true);
+      showToast('Aplicando carimbo ao PDF...', 'success');
+      
+      const response = await fetch(url);
+      const arrayBuffer = await response.arrayBuffer();
+      
+      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const pages = pdfDoc.getPages();
+      
+      if (pages.length > 0) {
+        const firstPage = pages[0];
+        const userName = currentUser?.name || currentUser?.email || 'Sistema';
+        
+        const stampColor = rgb(0.86, 0.15, 0.27);
+        const boxX = firstPage.getWidth() - 210;
+        const boxY = 85;
+        const boxWidth = 190;
+        const boxHeight = 70;
+
+        // Draw the square/rectangle border
+        firstPage.drawRectangle({
+          x: boxX,
+          y: boxY,
+          width: boxWidth,
+          height: boxHeight,
+          borderColor: stampColor,
+          borderWidth: 2,
+          opacity: 1,
+        });
+
+        // Load font for measurement
+        const helveticaFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        
+        const lines = [
+          'RECEBIDO',
+          userDate,
+          `Por: ${userName}`,
+          `Protocolo #${protocol.id}`
+        ];
+
+        let currentY = boxY + boxHeight - 16;
+        for (const line of lines) {
+          const textWidth = helveticaFont.widthOfTextAtSize(line, 11);
+          const xOffset = boxX + (boxWidth - textWidth) / 2;
+          
+          firstPage.drawText(line, {
+            x: xOffset,
+            y: currentY,
+            size: 11,
+            font: helveticaFont,
+            color: stampColor,
+            opacity: 1,
+          });
+          currentY -= 14;
+        }
+      }
+      
+      const pdfBytes = await pdfDoc.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `[CARIMBADO]_${name}`;
+      a.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error(e);
+      showToast('Erro ao carimbar. Tente visualizar o original.', 'error');
+      window.open(url, '_blank');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handlePrintReceipt = () => {
@@ -1271,6 +1384,31 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
             width: 80px;
             height: 80px;
           }
+          .received-stamp {
+            position: absolute;
+            top: 40px;
+            right: 40px;
+            border: 4px solid #10b981;
+            color: #10b981;
+            font-size: 24px;
+            font-weight: 900;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            transform: rotate(15deg);
+            opacity: 0.7;
+            letter-spacing: 0.1em;
+            pointer-events: none;
+            z-index: 100;
+          }
+          .received-stamp span {
+            display: block;
+            font-size: 10px;
+            margin-top: 4px;
+            text-align: center;
+            border-top: 2px solid #10b981;
+            padding-top: 4px;
+          }
           @media print {
             body {
               padding: 0;
@@ -1284,7 +1422,12 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
         </style>
       </head>
       <body>
-        <div class="receipt-container">
+        <div class="receipt-container" style="position: relative;">
+          <div class="received-stamp">
+            RECEBIDO
+            <span>${dateFormatted}</span>
+          </div>
+          
           <div class="header">
             <p>Estado de Mato Grosso</p>
             <h1>Prefeitura Municipal de Cláudia</h1>
@@ -1392,6 +1535,7 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
   };
 
   return (
+    <>
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -1571,31 +1715,52 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
               }
               return (
                 <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
-                  {atts.map((att, idx) => (
-                    <a 
-                      key={idx}
-                      href={att.url} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="flex items-center gap-4 p-4 rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors border border-sky-100 dark:border-sky-500/20 group"
-                    >
-                      <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm text-sky-500 shrink-0">
-                        <FileText size={20} />
+                  {atts.map((att, idx) => {
+                    const isPdf = att.name.toLowerCase().endsWith('.pdf') || att.url.toLowerCase().includes('.pdf');
+                    return (
+                      <div key={idx} className="flex flex-col sm:flex-row gap-2">
+                        <a 
+                          href={att.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="flex-1 flex items-center gap-4 p-4 rounded-2xl bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors border border-sky-100 dark:border-sky-500/20 group"
+                        >
+                          <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm text-sky-500 shrink-0">
+                            <FileText size={20} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-bold text-sm truncate flex-1" title={att.name}>{att.name}</p>
+                              {att.role && (
+                                <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${getRoleBadgeStyle(att.role)}`}>
+                                  {att.role}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs opacity-70 mt-0.5">Visualizar Original</p>
+                          </div>
+                          <Eye size={20} className="opacity-50 group-hover:opacity-100 transition-opacity shrink-0" />
+                        </a>
+                        
+                        {isPdf && (
+                          <button
+                            onClick={() => setStampModalData({
+                              isOpen: true,
+                              url: att.url,
+                              name: att.name,
+                              date: new Date(protocol.date).toLocaleDateString('pt-BR')
+                            })}
+                            disabled={isSubmitting}
+                            className="sm:w-auto w-full px-4 py-4 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 border border-emerald-100 dark:border-emerald-500/20 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                            title="Baixar com Carimbo de Recebido"
+                          >
+                            <PenTool size={16} />
+                            Carimbado
+                          </button>
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-bold text-sm truncate flex-1" title={att.name}>{att.name}</p>
-                          {att.role && (
-                            <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${getRoleBadgeStyle(att.role)}`}>
-                              {att.role}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs opacity-70 mt-0.5">Clique para visualizar ou baixar o arquivo</p>
-                      </div>
-                      <Download size={20} className="opacity-50 group-hover:opacity-100 transition-opacity shrink-0" />
-                    </a>
-                  ))}
+                    );
+                  })}
                 </div>
               );
             })()}
@@ -1612,7 +1777,7 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
                   disabled={isSubmitting}
                   className="px-4 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 font-bold text-[10px] uppercase tracking-wider border border-emerald-200 dark:border-emerald-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
                 >
-                  <FileSignature size={14} />
+                  <PenTool size={14} />
                   Assinar Documento
                 </button>
               )}
@@ -1648,6 +1813,63 @@ export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: 
         </div>
       </motion.div>
     </motion.div>
+
+    <AnimatePresence>
+      {stampModalData?.isOpen && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+          onClick={() => setStampModalData(null)}
+        >
+          <motion.div 
+            initial={{ scale: 0.9, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.9, y: 20 }}
+            className="bg-white dark:bg-neutral-900 w-full max-w-sm rounded-[32px] p-8 shadow-2xl space-y-6"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <h3 className="text-xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Data do Carimbo</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Confirme ou altere a data de recebimento.</p>
+              </div>
+              <button onClick={() => setStampModalData(null)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-400">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={stampModalData.date}
+                onChange={(e) => {
+                  let v = e.target.value.replace(/\D/g, '');
+                  if (v.length > 2) v = v.substring(0, 2) + '/' + v.substring(2);
+                  if (v.length > 5) v = v.substring(0, 5) + '/' + v.substring(5, 9);
+                  setStampModalData({ ...stampModalData, date: v });
+                }}
+                maxLength={10}
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl px-4 py-4 text-center font-bold text-lg text-neutral-900 dark:text-neutral-100 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                placeholder="Ex: 07/06/2026"
+                autoFocus
+              />
+            </div>
+            
+            <button
+              onClick={handleConfirmStamp}
+              disabled={!stampModalData.date.trim()}
+              className="w-full py-4 rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all disabled:opacity-50 shadow-lg shadow-emerald-500/20"
+            >
+              <PenTool size={16} />
+              Aplicar Carimbo
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 };
 
