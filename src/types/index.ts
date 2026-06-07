@@ -6,19 +6,28 @@ export interface ProtocolHistoryEntry {
   user: string;
   action: string;
   previousStatus?: string;
-  newStatus: string;
+  newStatus?: string;
+  comment?: string;
+}
+
+export interface ProtocolSignature {
+  user: string;
+  date: string;
+  hash: string;
+  role?: string;
 }
 
 export interface Protocol {
   id: string;
   subject: string;
-  type: 'Memorando' | 'Ofício' | 'Pedido';
+  type: string;
   from: string;
   to: string;
   status: 'Pendente' | 'Recebido' | 'Em Análise' | 'Concluído';
   date: string;
   attachment?: string;
   history?: ProtocolHistoryEntry[];
+  signatures?: ProtocolSignature[];
 }
 
 export interface HistoryEntry {

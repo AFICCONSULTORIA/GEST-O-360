@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check, Printer } from 'lucide-react';
+import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check, Printer, FileSignature } from 'lucide-react';
 import { Protocol } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -40,7 +40,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
   const canAdmin = hasPermission(currentUser, 'protocol', 'admin');
   
   const [protocols, setProtocols] = React.useState<Protocol[]>([]);
-  const [institutions, setInstitutions] = React.useState<{id: string, name: string}[]>([]);
+  const [departments, setDepartments] = React.useState<{id: string, name: string}[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [filterDept, setFilterDept] = React.useState<string>('Todas');
   const [filterStatus, setFilterStatus] = React.useState<string>('Todos');
@@ -62,16 +62,24 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
       protoQuery = protoQuery.eq('institution_id', currentUser.institution_id);
     }
 
-    const [protoRes, instRes] = await Promise.all([
+    let deptQuery = supabase.from('departments').select('id, name').order('name');
+    
+    if (currentInstitution) {
+      deptQuery = deptQuery.eq('institution_id', currentInstitution.id);
+    } else if (currentUser?.institution_id) {
+      deptQuery = deptQuery.eq('institution_id', currentUser.institution_id);
+    }
+
+    const [protoRes, deptRes] = await Promise.all([
       protoQuery,
-      supabase.from('institutions').select('id, name').order('name')
+      deptQuery
     ]);
     
     if (protoRes.error) console.error("Erro ao carregar protocolos:", protoRes.error);
     else if (protoRes.data) setProtocols(protoRes.data as Protocol[]);
     
-    if (instRes.error) console.error("Erro ao carregar instituições:", instRes.error);
-    else if (instRes.data) setInstitutions(instRes.data);
+    if (deptRes.error) console.error("Erro ao carregar secretarias:", deptRes.error);
+    else if (deptRes.data) setDepartments(deptRes.data);
     
     setIsLoading(false);
   };
@@ -135,10 +143,10 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
               className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 text-xs font-bold px-4 py-2 rounded-xl outline-none min-w-[140px] dark:text-neutral-100"
             >
               <option value="Todas">Todas</option>
-              {institutions.map(inst => (
-                <option key={inst.id} value={inst.name}>{inst.name}</option>
+              {departments.map(dept => (
+                <option key={dept.id} value={dept.name}>{dept.name}</option>
               ))}
-              {institutions.length === 0 && (
+              {departments.length === 0 && (
                 <>
                   <option value="Administração e Finanças">Administração e Finanças</option>
                   <option value="Saúde">Saúde</option>
@@ -377,7 +385,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
           <NewProtocolModal 
             onClose={() => { setIsNewModalOpen(false); setEditingProtocol(null); }}
             initialData={editingProtocol || undefined}
-            institutions={institutions}
+            departments={departments}
             currentUser={currentUser}
             currentInstitution={currentInstitution}
             onSuccess={() => {
@@ -397,6 +405,11 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
           <ViewProtocolModal 
             protocol={viewingProtocol}
             onClose={() => setViewingProtocol(null)}
+            currentUser={currentUser}
+            onUpdate={() => {
+              loadData();
+              setViewingProtocol(null);
+            }}
           />
         )}
         {deletingProtocolId && (
@@ -424,7 +437,7 @@ export const NewProtocolModal = ({
   onClose, 
   onSuccess,
   initialData,
-  institutions = [],
+  departments = [],
   title = "Novo Processo Digital (SMAF)",
   currentUser,
   currentInstitution
@@ -432,16 +445,16 @@ export const NewProtocolModal = ({
   onClose: () => void, 
   onSuccess: () => void,
   initialData?: Protocol,
-  institutions?: {id: string, name: string}[],
+  departments?: {id: string, name: string}[],
   title?: string,
   currentUser?: any,
   currentInstitution?: any
 }) => {
-  const defaultFrom = currentUser?.institution_id 
-    ? institutions.find(i => i.id === currentUser.institution_id)?.name || (institutions.length > 0 ? institutions[0].name : 'Saúde')
-    : (institutions.length > 0 ? institutions[0].name : 'Saúde');
+  const defaultFrom = currentUser?.department_id 
+    ? departments.find(d => d.id === currentUser.department_id)?.name || (departments.length > 0 ? departments[0].name : 'Saúde')
+    : (departments.length > 0 ? departments[0].name : 'Saúde');
 
-  const defaultTo = institutions.find(i => i.name.includes('Administração') || i.name.includes('Finanças'))?.name || 'Administração e Finanças';
+  const defaultTo = departments.find(d => d.name.includes('Administração') || d.name.includes('Finanças'))?.name || 'Administração e Finanças';
 
   const [formData, setFormData] = React.useState({
     subject: initialData ? initialData.subject : '',
@@ -721,10 +734,10 @@ export const NewProtocolModal = ({
                 onChange={(e) => setFormData({...formData, from: e.target.value})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all dark:text-neutral-100"
               >
-                {institutions.map(inst => (
-                  <option key={inst.id} value={inst.name}>{inst.name}</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.name}>{dept.name}</option>
                 ))}
-                {institutions.length === 0 && (
+                {departments.length === 0 && (
                   <>
                     <option value="Saúde">Secretaria de Saúde</option>
                     <option value="Obras">Secretaria de Obras</option>
@@ -743,10 +756,10 @@ export const NewProtocolModal = ({
                 onChange={(e) => setFormData({...formData, to: e.target.value})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all dark:text-neutral-100"
               >
-                {institutions.map(inst => (
-                  <option key={inst.id} value={inst.name}>{inst.name}</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.name}>{dept.name}</option>
                 ))}
-                {institutions.length === 0 && (
+                {departments.length === 0 && (
                   <>
                     <option value="Administração e Finanças">Administração e Finanças</option>
                     <option value="Saúde">Secretaria de Saúde</option>
@@ -1038,7 +1051,64 @@ const getRoleBadgeStyle = (role?: string) => {
   return "bg-neutral-50 dark:bg-neutral-850 text-neutral-600 dark:text-neutral-400 border border-neutral-100 dark:border-neutral-800";
 };
 
-export const ViewProtocolModal = ({ protocol, onClose }: { protocol: Protocol, onClose: () => void }) => {
+export const ViewProtocolModal = ({ protocol, onClose, currentUser, onUpdate }: { protocol: Protocol, onClose: () => void, currentUser?: any, onUpdate?: () => void }) => {
+  const [despachoText, setDespachoText] = React.useState('');
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const handleAddDespacho = async () => {
+    if (!despachoText.trim() || !currentUser || !onUpdate) return;
+    setIsSubmitting(true);
+    
+    const newHistory = [...(protocol.history || []), {
+      date: new Date().toISOString(),
+      user: currentUser.name || currentUser.email,
+      action: 'Despacho',
+      newStatus: protocol.status,
+      comment: despachoText.trim()
+    }];
+    
+    const { error } = await supabase.from('protocols').update({ history: newHistory }).eq('id', protocol.id);
+    if (!error) {
+      showToast('Despacho adicionado com sucesso', 'success');
+      onUpdate();
+    } else {
+      showToast('Erro ao adicionar despacho', 'error');
+    }
+    setIsSubmitting(false);
+  };
+
+  const handleSign = async () => {
+    if (!currentUser || !onUpdate) return;
+    
+    const alreadySigned = protocol.signatures?.some(s => s.user === (currentUser.name || currentUser.email));
+    if (alreadySigned) {
+      showToast('Você já assinou este protocolo', 'warning');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const cryptoHash = Array.from({length: 40}, () => Math.floor(Math.random()*16).toString(16)).join('').toUpperCase();
+    const formattedHash = `${protocol.id.slice(0, 4)}-${cryptoHash.slice(0, 8)}-${cryptoHash.slice(8, 16)}-${cryptoHash.slice(16, 24)}`;
+    
+    const newSignature = {
+      user: currentUser.name || currentUser.email,
+      date: new Date().toISOString(),
+      hash: formattedHash,
+      role: currentUser.role || 'Usuário do Sistema'
+    };
+    
+    const newSignatures = [...(protocol.signatures || []), newSignature];
+    
+    const { error } = await supabase.from('protocols').update({ signatures: newSignatures }).eq('id', protocol.id);
+    if (!error) {
+      showToast('Assinatura eletrônica realizada', 'success');
+      onUpdate();
+    } else {
+      showToast('Erro ao assinar protocolo', 'error');
+    }
+    setIsSubmitting(false);
+  };
+
   const handlePrintReceipt = () => {
     const atts = getAttachmentsArray(protocol.attachment);
     const dateFormatted = new Date(protocol.date).toLocaleDateString('pt-BR');
@@ -1261,6 +1331,32 @@ export const ViewProtocolModal = ({ protocol, onClose }: { protocol: Protocol, o
             }
           </div>
 
+          ${protocol.history && protocol.history.some(h => h.action === 'Despacho') ? `
+          <div class="attachments-title" style="margin-top: 30px;">Despachos e Pareceres</div>
+          <div style="margin-bottom: 30px;">
+            ${protocol.history.filter(h => h.action === 'Despacho').map(h => `
+              <div class="field-block" style="margin-bottom: 10px;">
+                <div class="field-label">${h.user} - ${new Date(h.date).toLocaleString('pt-BR')}</div>
+                <div class="field-value" style="font-weight: normal;">${h.comment}</div>
+              </div>
+            `).join('')}
+          </div>
+          ` : ''}
+
+          ${protocol.signatures && protocol.signatures.length > 0 ? `
+          <div class="attachments-title" style="margin-top: 30px;">Assinaturas Eletrônicas</div>
+          <div style="margin-bottom: 30px;">
+            ${protocol.signatures.map(s => `
+              <div class="field-block" style="margin-bottom: 10px; border-left: 3px solid #10b981;">
+                <div class="field-value" style="color: #10b981;">Assinado digitalmente por <strong>${s.user}</strong></div>
+                <div class="field-label" style="margin-top: 4px;">Data: ${new Date(s.date).toLocaleString('pt-BR')} | Função: ${s.role || ''}</div>
+                <div class="field-label">Hash de Validação: <span style="font-family: monospace; color: #171717;">${s.hash}</span></div>
+              </div>
+            `).join('')}
+          </div>
+          ` : ''}
+
+
           <div class="footer-signature">
             <div class="verification-area">
               <p style="margin: 0 0 5px 0;"><strong>EMISSÃO DIGITAL:</strong> ${emissionDate}</p>
@@ -1408,14 +1504,22 @@ export const ViewProtocolModal = ({ protocol, onClose }: { protocol: Protocol, o
                         </div>
                         
                         <div className="text-xs font-bold text-neutral-600 dark:text-neutral-450">
-                          Status Resultante: <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider ml-1 ${
-                            entry.newStatus === 'Concluído' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 
-                            entry.newStatus === 'Em Análise' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' : 
-                            entry.newStatus === 'Recebido' ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400' : 
-                            'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400'
-                          }`}>
-                            {entry.newStatus}
-                          </span>
+                          {entry.action === 'Despacho' ? (
+                            <div className="mt-2 bg-white dark:bg-neutral-900 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 font-normal">
+                              {entry.comment}
+                            </div>
+                          ) : (
+                            <>
+                              Status Resultante: <span className={`px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider ml-1 ${
+                                entry.newStatus === 'Concluído' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 
+                                entry.newStatus === 'Em Análise' ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400' : 
+                                entry.newStatus === 'Recebido' ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400' : 
+                                'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400'
+                              }`}>
+                                {entry.newStatus}
+                              </span>
+                            </>
+                          )}
                         </div>
 
                         <div className="text-[9px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mt-2">
@@ -1425,6 +1529,25 @@ export const ViewProtocolModal = ({ protocol, onClose }: { protocol: Protocol, o
                     </div>
                   );
                 })}
+              </div>
+            )}
+            
+            {/* Adicionar Despacho */}
+            {currentUser && onUpdate && (
+              <div className="mt-4 flex flex-col gap-2 animate-in slide-in-from-bottom-2 duration-300">
+                <textarea 
+                  value={despachoText}
+                  onChange={(e) => setDespachoText(e.target.value)}
+                  placeholder="Escreva um despacho ou parecer..."
+                  className="w-full bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4 text-sm outline-none focus:ring-2 focus:ring-neutral-900/10 transition-all dark:text-neutral-100 min-h-[100px] resize-y"
+                />
+                <button 
+                  onClick={handleAddDespacho}
+                  disabled={!despachoText.trim() || isSubmitting}
+                  className="self-end px-6 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs uppercase tracking-wider hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all disabled:opacity-50"
+                >
+                  Adicionar Despacho
+                </button>
               </div>
             )}
           </div>
@@ -1476,6 +1599,51 @@ export const ViewProtocolModal = ({ protocol, onClose }: { protocol: Protocol, o
                 </div>
               );
             })()}
+          </div>
+
+          {/* Assinaturas */}
+          <div className="space-y-4 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Assinaturas Eletrônicas</span>
+              
+              {currentUser && onUpdate && !protocol.signatures?.some(s => s.user === (currentUser.name || currentUser.email)) && (
+                <button 
+                  onClick={handleSign}
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 font-bold text-[10px] uppercase tracking-wider border border-emerald-200 dark:border-emerald-500/20 transition-all flex items-center gap-2 disabled:opacity-50"
+                >
+                  <FileSignature size={14} />
+                  Assinar Documento
+                </button>
+              )}
+            </div>
+
+            {!protocol.signatures || protocol.signatures.length === 0 ? (
+              <p className="text-xs text-neutral-500 font-medium pl-1">Este protocolo ainda não possui assinaturas eletrônicas.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {protocol.signatures.map((sig, idx) => (
+                  <div key={idx} className="bg-emerald-50 dark:bg-emerald-500/10 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-500/20 flex flex-col gap-2">
+                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                      <CheckCircle2 size={16} />
+                      <span className="font-bold text-sm truncate" title={sig.user}>{sig.user}</span>
+                    </div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                      Função: {sig.role}
+                    </div>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-neutral-500 dark:text-neutral-400">
+                      Data: {new Date(sig.date).toLocaleString('pt-BR')}
+                    </div>
+                    <div className="mt-1 pt-2 border-t border-emerald-200/50 dark:border-emerald-500/20">
+                      <div className="text-[8px] font-black uppercase tracking-widest text-emerald-600/70 dark:text-emerald-400/70 mb-0.5">Hash de Validação:</div>
+                      <div className="font-mono text-[10px] text-emerald-700 dark:text-emerald-300 break-all bg-emerald-100/50 dark:bg-emerald-900/30 p-1.5 rounded">
+                        {sig.hash}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </motion.div>
