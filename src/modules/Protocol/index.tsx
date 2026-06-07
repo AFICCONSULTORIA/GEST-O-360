@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check, Printer, PenTool } from 'lucide-react';
+import { FileText, Plus, Search, Filter, CircleOff, Download, Edit2, Trash2, Eye, EyeOff, CheckCircle2, Clock, AlertCircle, X, Check, Printer, PenTool, BellRing } from 'lucide-react';
 import { Protocol } from '../../types';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -128,8 +128,39 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
     return matchDept && matchStatus && matchType && matchSearch;
   });
 
+  const currentUserDepartmentName = React.useMemo(() => {
+    return currentUser?.department_id 
+      ? departments.find(d => d.id === currentUser.department_id)?.name 
+      : undefined;
+  }, [currentUser, departments]);
+
+  const myPendingProtocols = React.useMemo(() => {
+    if (!currentUserDepartmentName) return [];
+    return protocols.filter(p => p.status === 'Pendente' && p.to === currentUserDepartmentName);
+  }, [protocols, currentUserDepartmentName]);
+
   return (
     <div className="space-y-6">
+      {myPendingProtocols.length > 0 && (
+        <div className="bg-rose-500 text-white rounded-3xl p-6 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-pulse shrink-0">
+              <BellRing size={24} className="text-white" />
+            </div>
+            <div>
+              <h3 className="font-black text-lg tracking-tight uppercase">Você tem {myPendingProtocols.length} {myPendingProtocols.length === 1 ? 'protocolo pendente' : 'protocolos pendentes'}!</h3>
+              <p className="text-rose-100 text-sm font-medium">Estes documentos foram enviados para a sua secretaria e aguardam recebimento.</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => { setFilterDept(currentUserDepartmentName || 'Todas'); setFilterStatus('Pendente'); }}
+            className="px-6 py-3 bg-white text-rose-600 rounded-2xl font-black text-[10px] uppercase tracking-wider hover:bg-rose-50 transition-colors whitespace-nowrap shadow-sm"
+          >
+            Ver Pendentes
+          </button>
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm gap-6">
         <div>
           <h2 className="text-2xl font-bold italic tracking-tight uppercase dark:text-neutral-100">Protocolo Digital</h2>
@@ -259,14 +290,24 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filtered.map((p, i) => (
+          {filtered.map((p, i) => {
+            const isMyPending = p.status === 'Pendente' && p.to === currentUserDepartmentName;
+            return (
             <div 
               key={p.id}
               onClick={() => setViewingProtocol(p)}
-              className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer relative"
+              className={`bg-white dark:bg-neutral-900 border rounded-3xl p-6 shadow-sm hover:shadow-md transition-all flex flex-col group cursor-pointer relative overflow-hidden ${
+                isMyPending ? 'border-rose-400 dark:border-rose-500 ring-4 ring-rose-500/10' : 'border-neutral-100 dark:border-neutral-800'
+              }`}
             >
+              {isMyPending && (
+                <div className="absolute top-0 right-0 bg-rose-500 text-white px-4 py-1.5 rounded-bl-xl font-black text-[9px] uppercase tracking-widest flex items-center gap-1.5 shadow-sm z-10">
+                  <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>
+                  NOVO PARA VOCÊ
+                </div>
+              )}
               {/* Card Header: Type/ID on Left, Status on Right */}
-              <div className="flex justify-between items-start mb-4 gap-2">
+              <div className="flex justify-between items-start mb-4 gap-2 pt-2">
                 <div className="bg-neutral-50 dark:bg-neutral-800/50 px-3 py-1.5 rounded-xl border border-neutral-100 dark:border-neutral-700">
                   <span className="font-mono text-neutral-900 dark:text-neutral-100 text-sm font-medium">
                     {p.type.toUpperCase()}&nbsp;<span className="font-black text-emerald-600 dark:text-emerald-400">#{p.id.slice(-3)}</span>
@@ -377,7 +418,8 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
       
