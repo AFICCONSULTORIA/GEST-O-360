@@ -27,7 +27,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
     projectSite: '',
   };
   const [formData, setFormData] = React.useState(formDataInitialState);
-  const [orderItemsList, setOrderItemsList] = React.useState([{ name: '', quantity: '1' }]);
+  const [orderItemsList, setOrderItemsList] = React.useState([{ name: '', quantity: '1', unit: 'Un' }]);
 
   const uniqueRequesters = React.useMemo(() => {
     return Array.from(new Set(orders.map(o => o.requester))).sort();
@@ -54,7 +54,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
     const validItems = orderItemsList.filter(item => item.name.trim() !== '');
     if (validItems.length === 0 || !formData.requester) return;
 
-    const description = validItems.map(item => `${item.quantity}x ${item.name}`).join('\n');
+    const description = validItems.map(item => `${item.quantity} ${item.unit} - ${item.name}`).join('\n');
 
     onAdd({
       type: formData.type,
@@ -66,7 +66,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
     });
     setIsAdding(false);
     setFormData({ type: 'obras_abrange', requester: '', projectSite: '' });
-    setOrderItemsList([{ name: '', quantity: '1' }]);
+    setOrderItemsList([{ name: '', quantity: '1', unit: 'Un' }]);
   };
 
   const handleEditSave = () => {
@@ -148,7 +148,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
                 <button 
                   onClick={() => {
                     setIsAdding(false);
-                    setOrderItemsList([{ name: '', quantity: '1' }]);
+                    setOrderItemsList([{ name: '', quantity: '1', unit: 'Un' }]);
                   }}
                   className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors shrink-0"
                 >
@@ -193,7 +193,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
                       {orderItemsList.map((item, index) => (
                         <div key={index} className="flex items-center gap-2">
                           <input
-                            className="w-24 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100 text-center"
+                            className="w-20 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-3 py-3 rounded-xl text-sm outline-none dark:text-neutral-100 text-center"
                             value={item.quantity}
                             onChange={e => {
                               const newItems = [...orderItemsList];
@@ -202,6 +202,28 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
                             }}
                             placeholder="Qtd"
                           />
+                          <select
+                            className="w-24 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-3 py-3 rounded-xl text-sm outline-none dark:text-neutral-100 font-bold"
+                            value={item.unit}
+                            onChange={e => {
+                              const newItems = [...orderItemsList];
+                              newItems[index].unit = e.target.value;
+                              setOrderItemsList(newItems);
+                            }}
+                          >
+                            <option value="Un">Unidade</option>
+                            <option value="Kg">Kg</option>
+                            <option value="Gr">Gramas</option>
+                            <option value="L">Litros</option>
+                            <option value="Cx">Caixa</option>
+                            <option value="Pct">Pacote</option>
+                            <option value="M">Metros</option>
+                            <option value="M²">Metros²</option>
+                            <option value="M³">Metros³</option>
+                            <option value="Ton">Tonelada</option>
+                            <option value="Galão">Galão</option>
+                            <option value="Saco">Saco</option>
+                          </select>
                           <input
                             className="flex-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
                             value={item.name}
@@ -224,7 +246,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
                       ))}
                     </div>
                     <button
-                      onClick={() => setOrderItemsList([...orderItemsList, { name: '', quantity: '1' }])}
+                      onClick={() => setOrderItemsList([...orderItemsList, { name: '', quantity: '1', unit: 'Un' }])}
                       className="flex items-center gap-2 px-4 py-2 text-xs font-bold text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-colors w-full justify-center border border-dashed border-sky-200 dark:border-sky-800"
                     >
                       <Plus size={14} /> Adicionar Item
@@ -236,7 +258,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
               <div className="p-6 sm:p-8 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 flex justify-end gap-3 sticky bottom-0">
                 <button onClick={() => {
                   setIsAdding(false);
-                  setOrderItemsList([{ name: '', quantity: '1' }]);
+                  setOrderItemsList([{ name: '', quantity: '1', unit: 'Un' }]);
                 }} className="px-6 py-3 rounded-xl text-sm font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors">Cancelar</button>
                 <button onClick={handleAdd} disabled={orderItemsList.filter(i => i.name.trim() !== '').length === 0 || !formData.requester} className="px-6 py-3 rounded-xl text-sm font-bold bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 disabled:opacity-50 transition-opacity">Salvar Pedido</button>
               </div>
