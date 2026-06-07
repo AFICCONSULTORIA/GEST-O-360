@@ -4,10 +4,96 @@ import {
   Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { showToast } from '../../components/ui/Toast';
 import { CompanyCertificates } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 
+export const DEFAULT_STATE_LINKS: Record<string, string> = {
+  AC: 'https://sefaznet.ac.gov.br/sefazonline/servlet/wcertidaonegativa',
+  AL: 'https://contribuinte.sefaz.al.gov.br/certidao',
+  AP: 'https://www.sefaz.ap.gov.br',
+  AM: 'http://sistemas.sefaz.am.gov.br/gae/certidao-negativa',
+  BA: 'https://www.sefaz.ba.gov.br/scripts/certidao/certidaoBaResult.asp',
+  CE: 'https://internet-consultapublica.apps.sefaz.ce.gov.br/certidaonegativa',
+  DF: 'https://ww1.receita.fazenda.df.gov.br/cidadao/certidoes',
+  ES: 'https://internet.sefaz.es.gov.br/agenciavirtual/area_publica/cnd/emissao.php',
+  GO: 'https://www.economia.go.gov.br/certidao.html',
+  MA: 'https://sistemas1.sefaz.ma.gov.br/certidoes/jsp/emissaoCertidaoNegativa/emissaoCertidaoNegativa.jsf',
+  MT: 'https://www.sefaz.mt.gov.br/cnd/certidao/servlet/ServletRotd',
+  MS: 'https://eservicos.sefaz.ms.gov.br/certidao',
+  MG: 'https://www2.fazenda.mg.gov.br/sol',
+  PA: 'https://app.sefa.pa.gov.br/emissao-certidao',
+  PB: 'https://www.sefaz.pb.gov.br/servirtual/cnd',
+  PR: 'https://www.arinternet.pr.gov.br/certidao',
+  PE: 'https://efisco.sefaz.pe.gov.br/sfi_trb_gcc/PREmitirCertidaoNegativaDebitosFiscal',
+  PI: 'https://webas.sefaz.pi.gov.br/certidaonet',
+  RJ: 'https://www4.fazenda.rj.gov.br/certidao-fiscal-web',
+  RN: 'https://uvt.set.rn.gov.br',
+  RS: 'https://www.sefaz.rs.gov.br/SAT/CER-PUB-SOL.aspx',
+  RO: 'https://portalcontribuinte.sefin.ro.gov.br',
+  RR: 'https://www.sefaz.rr.gov.br',
+  SC: 'https://sat.sef.sc.gov.br/tax.NET/Sat.CtaCte.Web/SolicitacaoCnd.aspx',
+  SP: 'https://www10.fazenda.sp.gov.br/CertidaoNegativaDeb/Pages/EmissaoCertidaoNegativa.aspx',
+  SE: 'https://www.sefaz.se.gov.br/SitePages/servico.aspx?cod=8',
+  TO: 'https://www.to.gov.br/sefaz/cnd-certidao-negativa-de-debitos/7h3xx8lr88vg'
+};
+
+const STATE_NAMES: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará',
+  DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso',
+  MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná',
+  PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte', RS: 'Rio Grande do Sul',
+  RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina', SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins'
+};
+
+const StateSelectionModal = ({ stateLinks, onClose }: { stateLinks: Record<string, string>, onClose: () => void }) => {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="bg-white dark:bg-neutral-900 w-full max-w-4xl rounded-[40px] p-10 shadow-2xl space-y-6 flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center shrink-0">
+           <div>
+             <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 flex items-center gap-2"><ExternalLink size={24} /> Selecione o Estado</h3>
+             <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold mt-1">Escolha a Unidade Federativa para emitir a certidão na SEFAZ correspondente.</p>
+           </div>
+           <button onClick={onClose} className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-2xl hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors">
+              <XCircle size={20} className="text-neutral-500" />
+           </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Object.entries(stateLinks).map(([uf, link]) => (
+              <a 
+                key={uf}
+                href={link} 
+                target="_blank" 
+                rel="noreferrer" 
+                onClick={onClose}
+                className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-2xl hover:bg-emerald-50 dark:hover:bg-emerald-500/10 hover:border-emerald-200 dark:hover:border-emerald-500/30 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 rounded-xl flex items-center justify-center font-black text-neutral-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors shadow-sm">
+                    {uf}
+                  </div>
+                  <span className="font-bold text-sm text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">
+                    {STATE_NAMES[uf] || uf}
+                  </span>
+                </div>
+                <ExternalLink size={16} className="text-neutral-300 dark:text-neutral-600 group-hover:text-emerald-500 transition-colors" />
+              </a>
+            ))}
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, onClose: () => void, onConfirm: (expiryDate: string, file: File | null) => void }) => {
   const [expiryDate, setExpiryDate] = React.useState('');
@@ -85,8 +171,9 @@ const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, 
   );
 };
 
-const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate, canEdit = true }: { company: CompanyCertificates, certLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void, canEdit?: boolean }) => {
+const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUpdate, canEdit = true }: { company: CompanyCertificates, certLinks: Record<string, string>, stateLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void, canEdit?: boolean }) => {
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
+  const [isStateModalOpen, setIsStateModalOpen] = React.useState(false);
 
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'] as const;
 
@@ -156,12 +243,23 @@ const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate, canEdi
                      <FileBadge size={18} className="text-neutral-400" />
                    </div>
                    <div>
-                     <div className="flex items-center gap-2">
+                     <div className="flex items-center gap-2 relative">
                        <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{certType}</p>
-                       {certLinks[certType] && (
-                         <a href={certLinks[certType]} target="_blank" rel="noreferrer" title={`Emitir Certidão ${certType}`} className="text-[10px] bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 px-2 py-0.5 rounded border border-transparent transition-all flex items-center gap-1">
-                           <ExternalLink size={10} /> Emitir
-                         </a>
+                       
+                       {certType === 'Estadual' ? (
+                         <button 
+                           onClick={() => setIsStateModalOpen(true)}
+                           title={`Emitir Certidão ${certType}`} 
+                           className="text-[10px] bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 px-3 py-1 rounded-lg border border-transparent transition-all flex items-center gap-1.5 font-bold uppercase tracking-widest shadow-sm"
+                         >
+                           <ExternalLink size={12} /> Selecionar UF
+                         </button>
+                       ) : (
+                         certLinks[certType] && (
+                           <a href={certLinks[certType]} target="_blank" rel="noreferrer" title={`Emitir Certidão ${certType}`} className="text-[10px] bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 px-2 py-0.5 rounded border border-transparent transition-all flex items-center gap-1">
+                             <ExternalLink size={10} /> Emitir
+                           </a>
+                         )
                        )}
                      </div>
                      {isPresent ? (
@@ -212,6 +310,12 @@ const ManageCertificatesModal = ({ company, certLinks, onClose, onUpdate, canEdi
           })}
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {isStateModalOpen && (
+          <StateSelectionModal stateLinks={stateLinks} onClose={() => setIsStateModalOpen(false)} />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -352,8 +456,10 @@ const CompanyFormModal = ({ onClose, onConfirm, initialData }: { onClose: () => 
   );
 };
 
-const ConfigLinksModal = ({ currentLinks, onClose, onSave }: { currentLinks: Record<string, string>, onClose: () => void, onSave: (links: Record<string, string>) => void }) => {
+const ConfigLinksModal = ({ currentLinks, currentStateLinks, onClose, onSave }: { currentLinks: Record<string, string>, currentStateLinks: Record<string, string>, onClose: () => void, onSave: (links: Record<string, string>, stateLinks: Record<string, string>) => void }) => {
   const [links, setLinks] = React.useState(currentLinks);
+  const [localStateLinks, setLocalStateLinks] = React.useState(currentStateLinks);
+  const [activeTab, setActiveTab] = React.useState<'Gerais' | 'Estaduais'>('Gerais');
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'];
 
   return (
@@ -363,10 +469,10 @@ const ConfigLinksModal = ({ currentLinks, onClose, onSave }: { currentLinks: Rec
     >
       <motion.div 
         initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-        className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-6"
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[40px] p-10 shadow-2xl space-y-6 max-h-[90vh] flex flex-col"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center shrink-0">
            <div>
              <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 flex items-center gap-2"><LinkIcon size={24} /> Configurar Links</h3>
              <p className="text-sm text-neutral-500 dark:text-neutral-400 font-bold mt-1">Links para emissão rápida de certidões.</p>
@@ -376,27 +482,60 @@ const ConfigLinksModal = ({ currentLinks, onClose, onSave }: { currentLinks: Rec
            </button>
         </div>
 
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
-          {certTypes.map(type => (
-            <div key={type}>
-              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 uppercase tracking-widest">{type}</label>
-              <input 
-                type="url" 
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none text-neutral-900 dark:text-neutral-100"
-                value={links[type] || ''}
-                onChange={e => setLinks({ ...links, [type]: e.target.value })}
-                placeholder={`https://link-para-certidao-${type.toLowerCase()}.com.br`}
-              />
-            </div>
-          ))}
+        <div className="flex gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-2 shrink-0">
+          <button 
+            onClick={() => setActiveTab('Gerais')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'Gerais' ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+          >
+            Principais
+          </button>
+          <button 
+            onClick={() => setActiveTab('Estaduais')}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${activeTab === 'Estaduais' ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950' : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'}`}
+          >
+            Por Estado (UF)
+          </button>
         </div>
 
-        <div className="pt-2 flex gap-4">
+        <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+          {activeTab === 'Gerais' ? (
+            <div className="space-y-4">
+              {certTypes.map(type => (
+                <div key={type}>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 uppercase tracking-widest">{type}</label>
+                  <input 
+                    type="url" 
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none text-neutral-900 dark:text-neutral-100"
+                    value={links[type] || ''}
+                    onChange={e => setLinks({ ...links, [type]: e.target.value })}
+                    placeholder={`https://link-para-certidao-${type.toLowerCase()}.com.br`}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {Object.keys(localStateLinks).sort().map(uf => (
+                <div key={uf}>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 uppercase tracking-widest">Estado: {uf}</label>
+                  <input 
+                    type="url" 
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-3 py-2 rounded-xl text-xs outline-none text-neutral-900 dark:text-neutral-100"
+                    value={localStateLinks[uf] || ''}
+                    onChange={e => setLocalStateLinks({ ...localStateLinks, [uf]: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="pt-2 flex gap-4 shrink-0">
           <button 
-            onClick={() => onSave(links)}
+            onClick={() => onSave(links, localStateLinks)}
             className="flex-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all text-center"
           >
-            Salvar Links
+            Salvar Todos os Links
           </button>
         </div>
       </motion.div>
@@ -425,6 +564,11 @@ export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
       'Municipal': 'http://45.161.37.1:8080/servicosweb/home.jsf',
       'FGTS': 'https://consulta-crf.caixa.gov.br/consultacrf/pages/consultaEmpregador.jsf'
     };
+  });
+
+  const [stateLinks, setStateLinks] = React.useState<Record<string, string>>(() => {
+    const saved = localStorage.getItem('@gestao360:stateLinks_v3');
+    return saved ? JSON.parse(saved) : DEFAULT_STATE_LINKS;
   });
 
   React.useEffect(() => {
@@ -615,6 +759,7 @@ export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
           <ManageCertificatesModal 
             company={managingCompany}
             certLinks={certLinks}
+            stateLinks={stateLinks}
             canEdit={canEdit}
             onClose={() => setManagingCompany(null)}
             onUpdate={async (updatedCompany) => {
@@ -683,10 +828,13 @@ export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
         {isConfiguringLinks && (
           <ConfigLinksModal 
             currentLinks={certLinks}
+            currentStateLinks={stateLinks}
             onClose={() => setIsConfiguringLinks(false)}
-            onSave={(links) => {
+            onSave={(links, newStateLinks) => {
               setCertLinks(links);
+              setStateLinks(newStateLinks);
               localStorage.setItem('@gestao360:certLinks_v2', JSON.stringify(links));
+              localStorage.setItem('@gestao360:stateLinks_v3', JSON.stringify(newStateLinks));
               setIsConfiguringLinks(false);
               showToast("Links configurados com sucesso!", "success");
             }}
