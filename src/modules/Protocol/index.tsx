@@ -135,9 +135,12 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
   }, [currentUser, departments]);
 
   const myPendingProtocols = React.useMemo(() => {
+    if (currentUser?.role === 'Super Admin') {
+      return protocols.filter(p => p.status === 'Pendente');
+    }
     if (!currentUserDepartmentName) return [];
     return protocols.filter(p => p.status === 'Pendente' && p.to === currentUserDepartmentName);
-  }, [protocols, currentUserDepartmentName]);
+  }, [protocols, currentUserDepartmentName, currentUser]);
 
   return (
     <div className="space-y-6">
@@ -291,7 +294,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filtered.map((p, i) => {
-            const isMyPending = p.status === 'Pendente' && p.to === currentUserDepartmentName;
+            const isMyPending = p.status === 'Pendente' && (currentUser?.role === 'Super Admin' || p.to === currentUserDepartmentName);
             return (
             <div 
               key={p.id}
@@ -803,24 +806,13 @@ export const NewProtocolModal = ({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Secretaria Remetente</label>
-              <select 
+              <input 
+                type="text"
                 value={formData.from}
-                onChange={(e) => setFormData({...formData, from: e.target.value})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-neutral-900/5 outline-none transition-all dark:text-neutral-100"
-              >
-                {departments.map(dept => (
-                  <option key={dept.id} value={dept.name}>{dept.name}</option>
-                ))}
-                {departments.length === 0 && (
-                  <>
-                    <option value="Saúde">Secretaria de Saúde</option>
-                    <option value="Obras">Secretaria de Obras</option>
-                    <option value="Educação">Secretaria de Educação</option>
-                    <option value="Transportes">Secretaria de Transportes</option>
-                    <option value="Cultura">Secretaria de Cultura</option>
-                  </>
-                )}
-              </select>
+                disabled
+                className="w-full bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm font-bold text-neutral-500 dark:text-neutral-400 outline-none cursor-not-allowed"
+                title="A secretaria remetente é definida automaticamente pela sua lotação."
+              />
             </div>
 
             <div className="space-y-2">
