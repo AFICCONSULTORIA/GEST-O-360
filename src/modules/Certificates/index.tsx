@@ -6,6 +6,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { CompanyCertificates } from '../../types';
 import { hasPermission } from '../../lib/permissions';
+import { showToast } from '../../components/ui/Toast';
 
 export const DEFAULT_STATE_LINKS: Record<string, string> = {
   AC: 'https://sefaznet.ac.gov.br/sefazonline/servlet/wcertidaonegativa',

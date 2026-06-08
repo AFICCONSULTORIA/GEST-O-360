@@ -1977,13 +1977,16 @@ export interface DocumentTemplate {
   title: string;
   description: string;
   category: 'RH' | 'Licitações' | 'Contratos' | 'Ofícios' | 'Geral';
-  format: 'Word' | 'Excel' | 'PDF' | 'PowerPoint' | 'Outro';
+  format: 'Word' | 'Excel' | 'PDF' | 'PowerPoint' | 'Editor Web' | 'Outro';
   fileUrl: string;
   updatedAt: string;
+  content?: string;
+  header?: string;
+  footer?: string;
 }
 
 export const MOCK_TEMPLATES: DocumentTemplate[] = [
-  { id: 'tpl1', title: 'Ofício Padrão - Notificação', description: 'Modelo oficial para notificação de empresas e fornecedores.', category: 'Ofícios', format: 'Word', fileUrl: '#', updatedAt: '2025-10-15' },
+  { id: 'tpl1', title: 'Ofício Padrão - Notificação', description: 'Modelo nativo para notificação de empresas e fornecedores.', category: 'Ofícios', format: 'Editor Web', fileUrl: '#', updatedAt: '2025-10-15', content: '<h1>OFÍCIO Nº XXX/2026</h1><p><b>À Empresa [Nome da Empresa]</b></p><br><p>Prezados,</p><p>Servimo-nos do presente para notificar V. Sas. acerca de...</p>' },
   { id: 'tpl2', title: 'Planilha de Custos Unitários', description: 'Planilha padrão para estimativa de custos em processos licitatórios.', category: 'Licitações', format: 'Excel', fileUrl: '#', updatedAt: '2025-11-20' },
   { id: 'tpl3', title: 'Minuta de Contrato Administrativo', description: 'Estrutura base para contratos de prestação de serviços.', category: 'Contratos', format: 'Word', fileUrl: '#', updatedAt: '2026-01-05' },
   { id: 'tpl4', title: 'Ficha de Avaliação de Desempenho', description: 'Formulário anual para avaliação de servidores.', category: 'RH', format: 'PDF', fileUrl: '#', updatedAt: '2026-02-10' },
@@ -2559,8 +2562,8 @@ export default function App() {
       </AnimatePresence>
 
                         {/* Top Navbar Component */}
-      <div className="flex-1 flex flex-col min-h-screen relative z-10 transition-all duration-300 w-full overflow-x-hidden bg-neutral-50 dark:bg-neutral-950">
-        <nav className="bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 sticky top-0 z-40 transition-colors shadow-sm w-full">
+      <div className="flex-1 flex flex-col min-h-screen print:min-h-0 print:h-auto print:block relative z-10 transition-all duration-300 w-full overflow-x-hidden print:overflow-visible bg-neutral-50 dark:bg-neutral-950">
+        <nav className="bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 sticky top-0 z-40 transition-colors shadow-sm w-full print:hidden">
           <div className="max-w-[1400px] mx-auto px-6">
             <div className="flex items-center justify-between h-20">
               <div className="flex items-center gap-10">

@@ -13,3 +13,80 @@
     @apply font-sans;
   }
 }
+
+/* ========================================
+   PRINT STYLES — Editor de Documentos
+   ======================================== */
+@page {
+  size: A4;
+  margin: 0;
+}
+
+@media print {
+  /* Reset do body */
+  html, body {
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: white !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Esconder TUDO que não é o documento */
+  nav,
+  .print-hidden {
+    display: none !important;
+  }
+
+  /* Containers pai devem permitir overflow */
+  * {
+    overflow: visible !important;
+  }
+
+  /* O container A4 do editor */
+  .shadow-2xl {
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Forçar cores exatas em imagens e backgrounds */
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  /* Tabelas não devem quebrar no meio de uma linha */
+  tr, td {
+    page-break-inside: avoid;
+  }
+
+  /* Repetir cabeçalho e rodapé em cada página */
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  /* Numeração de páginas no rodapé */
+  .print-page-number {
+    display: block !important;
+    text-align: center;
+    font-size: 8pt;
+    font-family: 'Times New Roman', serif;
+    color: #4b5563;
+    margin-top: 15px;
+    padding-bottom: 25px;
+  }
+  
+  .print-page-number::after {
+    content: "Página " counter(page);
+  }
+}
+
