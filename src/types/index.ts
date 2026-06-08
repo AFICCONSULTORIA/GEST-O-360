@@ -129,6 +129,8 @@ export interface Institution {
   id: string;
   name: string;
   subdomain?: string;
+  cert_links?: any;
+  state_links?: any;
 }
 
 export interface Department {

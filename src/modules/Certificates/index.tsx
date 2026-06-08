@@ -544,7 +544,7 @@ const ConfigLinksModal = ({ currentLinks, currentStateLinks, onClose, onSave }: 
   );
 };
 
-export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
+export const CertificatesModule = ({ currentUser, institution }: { currentUser?: any, institution?: any }) => {
   const canEdit = hasPermission(currentUser, 'certificates', 'edit');
   const canAdmin = hasPermission(currentUser, 'certificates', 'admin');
 
@@ -557,6 +557,7 @@ export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
   const [isLoading, setIsLoading] = React.useState(true);
 
   const [certLinks, setCertLinks] = React.useState<Record<string, string>>(() => {
+    if (institution?.cert_links) return typeof institution.cert_links === 'string' ? JSON.parse(institution.cert_links) : institution.cert_links;
     const saved = localStorage.getItem('@gestao360:certLinks_v2');
     return saved ? JSON.parse(saved) : {
       'Trabalhista': 'https://cndt-certidao.tst.jus.br/inicio.faces',
@@ -568,6 +569,7 @@ export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
   });
 
   const [stateLinks, setStateLinks] = React.useState<Record<string, string>>(() => {
+    if (institution?.state_links) return typeof institution.state_links === 'string' ? JSON.parse(institution.state_links) : institution.state_links;
     const saved = localStorage.getItem('@gestao360:stateLinks_v3');
     return saved ? JSON.parse(saved) : DEFAULT_STATE_LINKS;
   });
@@ -831,11 +833,26 @@ export const CertificatesModule = ({ currentUser }: { currentUser?: any }) => {
             currentLinks={certLinks}
             currentStateLinks={stateLinks}
             onClose={() => setIsConfiguringLinks(false)}
-            onSave={(links, newStateLinks) => {
+            onSave={async (links, newStateLinks) => {
               setCertLinks(links);
               setStateLinks(newStateLinks);
               localStorage.setItem('@gestao360:certLinks_v2', JSON.stringify(links));
               localStorage.setItem('@gestao360:stateLinks_v3', JSON.stringify(newStateLinks));
+              
+              if (institution?.id) {
+                const { error } = await supabase
+                  .from('institutions')
+                  .update({ cert_links: links, state_links: newStateLinks })
+                  .eq('id', institution.id);
+                
+                if (error) {
+                  console.error("Erro ao salvar links na instituição:", error);
+                  showToast("Erro ao salvar no banco. Salvo apenas localmente.", "error");
+                  setIsConfiguringLinks(false);
+                  return;
+                }
+              }
+
               setIsConfiguringLinks(false);
               showToast("Links configurados com sucesso!", "success");
             }}

@@ -2965,7 +2965,7 @@ export default function App() {
             {activeView === 'education' && <EducationModule />}
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} />}
-            {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} />}
+            {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
             {activeView === 'saude' && <SaudeModule />}
