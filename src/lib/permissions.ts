@@ -17,6 +17,9 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
   // Se o usuário estiver inativo, ele não tem acesso a nada
   if (user.status === 'Inativo') return 'none';
 
+  // O módulo de suporte é sempre acessível a todos os usuários ativos
+  if (moduleId === 'support') return 'admin';
+
   const permissions = user.permissions || [];
 
   // 1. Procurar por permissão granular específica no formato "modulo:nivel"
@@ -53,6 +56,9 @@ export function hasPermission(
   if (!user) return false;
   if (user.role === 'Super Admin') return true;
   if (user.status === 'Inativo') return false;
+
+  // O módulo de suporte é sempre acessível a todos os usuários ativos
+  if (moduleId === 'support') return true;
 
   const currentLevel = getModulePermissionLevel(user, moduleId);
 

@@ -1,6 +1,27 @@
-export type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara';
+export type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support';
 
+export interface SupportTicket {
+  id: string;
+  title: string;
+  description: string;
+  type: 'Bug' | 'Dúvida' | 'Sugestão';
+  status: 'Aberto' | 'Em Análise' | 'Fechado' | 'Respondido';
+  user_id: string;
+  user_name?: string;
+  institution_id?: string;
+  created_at: string;
+}
 
+export interface SupportTicketMessage {
+  id: string;
+  ticket_id: string;
+  user_id: string;
+  user_name?: string;
+  message: string;
+  attachment_url?: string;
+  is_admin: boolean;
+  created_at: string;
+}
 export interface ProtocolHistoryEntry {
   date: string;
   user: string;

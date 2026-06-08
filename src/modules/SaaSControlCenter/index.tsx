@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { 
-  Building2, Users, ClipboardCheck, ArrowRight, Plus, Edit2, Trash2, X, Lock, LogOut, LayoutDashboard, Globe, Activity, CheckCircle2, AlertTriangle, Settings, Home, Sun, Moon
+  Building2, Users, ClipboardCheck, ArrowRight, Plus, Edit2, Trash2, X, Lock, LogOut, LayoutDashboard, Globe, Activity, CheckCircle2, AlertTriangle, Settings, Home, Sun, Moon, LifeBuoy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -9,6 +9,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { AdminUser, Institution, Department, View } from '../../types';
+import { SaaSControlCenterSupport } from './SaaSControlCenterSupport';
 
 interface SaaSControlCenterProps {
   darkMode: boolean;
@@ -39,7 +40,30 @@ export const SaaSControlCenter = ({
   patrimonioItems,
   orders
 }: SaaSControlCenterProps) => {
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'institutions' | 'users' | 'departments'>('overview');
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'institutions' | 'users' | 'departments' | 'support'>('overview');
+  
+  // Notificações de Suporte
+  const [openTicketsCount, setOpenTicketsCount] = React.useState(0);
+
+  React.useEffect(() => {
+    let lastCount = 0;
+    
+    const fetchTickets = async () => {
+      const { data, error } = await supabase.from('support_tickets').select('id').eq('status', 'Aberto');
+      if (!error && data) {
+        const currentCount = data.length;
+        if (currentCount > lastCount && lastCount !== 0) {
+          showToast('🔔 Novo chamado de suporte recebido!', 'info');
+        }
+        lastCount = currentCount;
+        setOpenTicketsCount(currentCount);
+      }
+    };
+
+    fetchTickets();
+    const interval = setInterval(fetchTickets, 30000); // A cada 30 segundos
+    return () => clearInterval(interval);
+  }, []);
   
   // Modals state
   const [isInstModalOpen, setIsInstModalOpen] = React.useState(false);
@@ -280,6 +304,20 @@ export const SaaSControlCenter = ({
             <Settings size={18} />
             Secretarias
           </button>
+          <button 
+            onClick={() => setActiveTab('support')}
+            className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'support' ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-100/50 dark:border-purple-550/10' : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800/40'}`}
+          >
+            <div className="flex items-center gap-4">
+              <LifeBuoy size={18} />
+              Help Desk
+            </div>
+            {openTicketsCount > 0 && (
+              <span className="bg-rose-500 text-white text-[9px] px-2 py-0.5 rounded-full shadow-lg shadow-rose-500/30">
+                {openTicketsCount}
+              </span>
+            )}
+          </button>
         </nav>
 
         {/* Sidebar Footer with Session Control */}
@@ -322,16 +360,18 @@ export const SaaSControlCenter = ({
               {activeTab === 'institutions' && 'Gerenciar Prefeituras'}
               {activeTab === 'users' && 'Diretório Global de Servidores'}
               {activeTab === 'departments' && 'Estrutura de Secretarias'}
+              {activeTab === 'support' && 'Central de Help Desk'}
             </h1>
             <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest mt-1.5">
               {activeTab === 'overview' && 'Métricas SaaS e Saúde do Ecossistema'}
               {activeTab === 'institutions' && 'Controle de Organizações e Subdomínios'}
               {activeTab === 'users' && 'Usuários e permissões de acesso centralizados'}
               {activeTab === 'departments' && 'Pastas e departamentos governamentais do SaaS'}
+              {activeTab === 'support' && 'Chamados e suporte técnico global'}
             </p>
           </div>
 
-          {activeTab !== 'overview' && (
+          {activeTab !== 'overview' && activeTab !== 'support' && (
             <button 
               onClick={() => {
                 if (activeTab === 'institutions') {
@@ -689,6 +729,10 @@ export const SaaSControlCenter = ({
             </div>
           )}
 
+          {activeTab === 'support' && (
+            <SaaSControlCenterSupport institutions={institutions} currentUser={currentUser} />
+          )}
+
         </div>
       </main>
 
@@ -866,6 +910,75 @@ export const SaaSControlCenter = ({
                         <option value="Ativo">Ativo</option>
                         <option value="Inativo">Inativo</option>
                       </select>
+                    </div>
+                  </div>
+                  
+                  <div className="pt-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1 mb-2 block">Permissões de Acesso (Módulos)</label>
+                    <div className="grid grid-cols-2 gap-2 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border border-neutral-100 dark:border-neutral-700 max-h-48 overflow-y-auto custom-scrollbar">
+                      {[
+                        { id: 'home', label: 'Painel Inicial' },
+                        { id: 'controls', label: 'Controle Interno' },
+                        { id: 'protocol', label: 'Protocolo' },
+                        { id: 'orders', label: 'Pedidos / Compras' },
+                        { id: 'contracts', label: 'Contratos' },
+                        { id: 'pntp', label: 'Transparência (PNTP)' },
+                        { id: 'education', label: 'Educação' },
+                        { id: 'saude', label: 'Saúde' },
+                        { id: 'obras', label: 'Obras' },
+                        { id: 'admin_financas', label: 'Admin / Finanças' },
+                        { id: 'servicos_publicos', label: 'Serviços Públicos' },
+                        { id: 'meio_ambiente', label: 'Meio Ambiente' },
+                        { id: 'tributos', label: 'Tributos' },
+                        { id: 'agricultura', label: 'Agricultura' },
+                        { id: 'assistencia_social', label: 'Assist. Social' },
+                        { id: 'esporte', label: 'Esporte' },
+                        { id: 'planejamento', label: 'Planejamento' },
+                        { id: 'camara', label: 'Câmara Municipal' },
+                        { id: 'patrimonio', label: 'Patrimônio' },
+                        { id: 'certificates', label: 'Certidões' },
+                        { id: 'doc_numbers', label: 'Controle de Ofícios' },
+                        { id: 'calendar', label: 'Agenda' },
+                        { id: 'norms', label: 'Normas' },
+                        { id: 'risk', label: 'Riscos' },
+                        { id: 'reports', label: 'Relatórios' },
+                        { id: 'templates', label: 'Templates' },
+                        { id: 'settings', label: 'Configurações' },
+                        { id: 'support', label: 'Suporte' }
+                      ].map(mod => (
+                        <label key={mod.id} className="flex items-center gap-2 cursor-pointer">
+                          <input 
+                            type="checkbox"
+                            checked={userFormData.permissions.includes(mod.id as any)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setUserFormData({ ...userFormData, permissions: [...userFormData.permissions, mod.id as any] });
+                              } else {
+                                setUserFormData({ ...userFormData, permissions: userFormData.permissions.filter(p => p !== mod.id) });
+                              }
+                            }}
+                            className="rounded border-neutral-300 dark:border-neutral-600 text-purple-600 focus:ring-purple-500 bg-white dark:bg-neutral-900"
+                          />
+                          <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">{mod.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 mt-2 ml-1">
+                      <button 
+                        type="button" 
+                        onClick={() => setUserFormData({ ...userFormData, permissions: ['home', 'controls', 'protocol', 'orders', 'contracts', 'pntp', 'education', 'saude', 'obras', 'admin_financas', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'patrimonio', 'certificates', 'doc_numbers', 'calendar', 'norms', 'risk', 'reports', 'templates', 'settings', 'support'] })} 
+                        className="text-[10px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 transition-colors"
+                      >
+                        Marcar Todos
+                      </button>
+                      <span className="text-[10px] text-neutral-300 dark:text-neutral-700">•</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setUserFormData({ ...userFormData, permissions: [] })} 
+                        className="text-[10px] font-bold text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-colors"
+                      >
+                        Desmarcar Todos
+                      </button>
                     </div>
                   </div>
                 </div>

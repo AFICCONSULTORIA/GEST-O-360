@@ -26,6 +26,7 @@ import { ContractsModule } from './modules/Contracts';
 import { EducationModule } from './modules/Education';
 import { CalendarModule } from './modules/Calendar';
 import { NormsModule } from './modules/Norms';
+import { SupportModule } from './modules/Support';
 import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, TreePine, Calculator, Tractor, HeartHandshake, Trophy, Map, Menu, X, 
   LayoutDashboard, 
   ClipboardCheck, 
@@ -79,7 +80,8 @@ import { Building2, XCircle, FileBadge, HardHat, Briefcase, HeartPulse, Wrench, 
   Check,
   Sparkles,
   Activity,
-  Send
+  Send,
+  LifeBuoy
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -2682,6 +2684,17 @@ export default function App() {
                     <Settings size={20} />
                   </button>
                 )}
+                <button 
+                  onClick={() => setActiveView('support')}
+                  className={`p-2.5 rounded-xl transition-all ${
+                    activeView === 'support' 
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20' 
+                      : 'text-neutral-500 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-400'
+                  }`}
+                  title="Suporte & Ajuda"
+                >
+                  <LifeBuoy size={20} />
+                </button>
                 <a
                   href="/"
                   className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-white"
@@ -2978,6 +2991,7 @@ export default function App() {
             {activeView === 'planejamento' && <PlaceholderModule title="Secretaria de Planejamento" />}
             {activeView === 'camara' && <CamaraModule />}
             {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} departments={departments} setDepartments={setDepartments} currentUser={currentUser} />}
+            {activeView === 'support' && <SupportModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'templates' && <TemplatesModule />}
           </motion.div>
         </AnimatePresence>
