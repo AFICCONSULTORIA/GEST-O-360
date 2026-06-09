@@ -43,9 +43,63 @@ export interface WebDocument {
 }
 
 // -------------------------------------------------------------
+// CONFIRM MODAL
+// -------------------------------------------------------------
+const ConfirmModal = ({ isOpen, title, message, confirmText = 'Confirmar', cancelText = 'Cancelar', isDestructive = false, onConfirm, onCancel }: any) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onCancel} />
+      <div className="relative bg-white dark:bg-neutral-900 w-full max-w-sm rounded-[2rem] p-8 shadow-2xl border border-neutral-200 dark:border-neutral-800 animate-in zoom-in-95 duration-200">
+        <h3 className="text-xl font-black text-neutral-900 dark:text-white mb-2">{title}</h3>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-8 leading-relaxed">{message}</p>
+        <div className="flex items-center gap-3 w-full">
+          <button onClick={onCancel} className="flex-1 py-3.5 px-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors">
+            {cancelText}
+          </button>
+          <button onClick={onConfirm} className={`flex-1 py-3.5 px-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-white transition-all shadow-xl hover:scale-105 ${isDestructive ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'}`}>
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------
+// UNCONTROLLED EDITABLE (Prevents React Re-renders from breaking typing)
+// -------------------------------------------------------------
+const UncontrolledEditable = ({ 
+  innerRef, className, style, onFocus, onBlur, onInput, onKeyDown, onContextMenu, onDragOver, onDrop, initialHtml 
+}: any) => {
+  React.useEffect(() => {
+    if (innerRef.current && !innerRef.current.innerHTML) {
+      innerRef.current.innerHTML = initialHtml;
+    }
+  }, []);
+
+  return (
+    <div 
+      ref={innerRef}
+      contentEditable
+      suppressContentEditableWarning
+      className={className}
+      style={style}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      onInput={onInput}
+      onKeyDown={onKeyDown}
+      onContextMenu={onContextMenu}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    />
+  );
+};
+
+// -------------------------------------------------------------
 // EDITOR COMPONENT
 // -------------------------------------------------------------
-const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: () => void, onSave: (d: WebDocument) => void }) => {
+const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: () => void, onSave: (d: WebDocument, silent?: boolean) => void }) => {
   const DEFAULT_CONTENT = '<p style="font-family: Times New Roman, serif; font-size: 12pt; line-height: 1.5;"><br></p>';
   
   const [title, setTitle] = React.useState(doc?.title || 'Novo Documento Sem Título');
@@ -56,7 +110,11 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   const [contextMenu, setContextMenu] = React.useState<{ x: number, y: number } | null>(null);
   const [activeRegion, setActiveRegion] = React.useState<'header'|'body'|'footer'>('body');
   const [pages, setPages] = React.useState(1);
-  
+  const [confirmConfig, setConfirmConfig] = React.useState<any>(null);
+  const initialHeader = React.useRef(doc?.header || '<p><br></p>');
+  const initialContent = React.useRef(doc?.content || DEFAULT_CONTENT);
+  const initialFooter = React.useRef(doc?.footer || '<p><br></p>');
+
   // Fase 1: novos estados
   const [selectedFont, setSelectedFont] = React.useState('Times New Roman');
   const [selectedSize, setSelectedSize] = React.useState('12');
@@ -66,7 +124,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   const [highlightColor, setHighlightColor] = React.useState('#FFFF00');
   const [activeFormats, setActiveFormats] = React.useState<Record<string, boolean>>({});
   const [lastSaved, setLastSaved] = React.useState<string | null>(null);
-  const [isDirty, setIsDirty] = React.useState(false);
+  const isDirtyRef = React.useRef(false);
 
   // Fase 2: novos estados
   const [zoom, setZoom] = React.useState(100);
@@ -131,7 +189,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   // ---- Confirmação ao sair sem salvar ----
   React.useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (isDirty) {
+      if (isDirtyRef.current) {
         e.preventDefault();
         e.returnValue = 'Você tem alterações não salvas. Deseja sair mesmo assim?';
         return e.returnValue;
@@ -139,7 +197,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [isDirty]);
+  }, []);
 
   // ---- Aplicar fonte e tamanho padrão no corpo ao montar ----
   React.useEffect(() => {
@@ -173,7 +231,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   // ---- Monitorar estado ativo da formatação ----
   React.useEffect(() => {
     const update = () => {
-      setActiveFormats({
+      const newFormats = {
         bold: document.queryCommandState('bold'),
         italic: document.queryCommandState('italic'),
         underline: document.queryCommandState('underline'),
@@ -184,10 +242,25 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
         justifyFull: document.queryCommandState('justifyFull'),
         insertUnorderedList: document.queryCommandState('insertUnorderedList'),
         insertOrderedList: document.queryCommandState('insertOrderedList'),
+      };
+      
+      setActiveFormats(prev => {
+        let changed = false;
+        for (const k in newFormats) {
+          if (prev[k] !== newFormats[k as keyof typeof newFormats]) {
+            changed = true;
+            break;
+          }
+        }
+        return changed ? newFormats : prev;
       });
+
       // Atualizar fonte e tamanho atuais
       const fn = document.queryCommandValue('fontName');
-      if (fn) setSelectedFont(fn.replace(/"/g, ''));
+      if (fn) {
+        const parsedFn = fn.replace(/"/g, '');
+        setSelectedFont(prev => prev !== parsedFn ? parsedFn : prev);
+      }
     };
     document.addEventListener('selectionchange', update);
     return () => document.removeEventListener('selectionchange', update);
@@ -196,15 +269,15 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   // ---- Auto-save a cada 30s ----
   React.useEffect(() => {
     const interval = setInterval(() => {
-      if (isDirty) {
+      if (isDirtyRef.current) {
         handleSave('Rascunho', true);
       }
     }, 30000);
     return () => clearInterval(interval);
-  }, [isDirty, title, header, content, footer]);
+  }, [title, header, content, footer]);
 
   // ---- Marcar conteúdo como modificado ----
-  const markDirty = () => { if (!isDirty) setIsDirty(true); };
+  const markDirty = () => { isDirtyRef.current = true; };
 
   const getActiveRef = () => {
     if (activeRegion === 'header') return headerRef;
@@ -330,8 +403,8 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
       createdAt: doc?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       status
-    });
-    setIsDirty(false);
+    }, silent);
+    isDirtyRef.current = false;
     setLastSaved(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     if (!silent) showToast(`Documento ${status === 'Rascunho' ? 'salvo como rascunho' : 'finalizado'}!`, 'success');
   };
@@ -494,27 +567,15 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   // ---- Aplicar tamanho de fonte via CSS inline (mais preciso que fontSize do execCommand) ----
   const applyFontSize = (size: string) => {
     setSelectedSize(size);
-    // execCommand fontSize usa 1-7, então usamos insertHTML com span
     const sel = window.getSelection();
     if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
-      const range = sel.getRangeAt(0);
-      const span = document.createElement('span');
-      span.style.fontSize = size + 'pt';
-      try {
-        range.surroundContents(span);
-        markDirty();
-      } catch {
-        // Seleção cruza nós — fallback
-        execCmd('fontSize', '7');
-        const fonts = getActiveRef().current?.querySelectorAll('font[size="7"]');
-        fonts?.forEach(f => {
-          const s = document.createElement('span');
-          s.style.fontSize = size + 'pt';
-          s.innerHTML = f.innerHTML;
-          f.replaceWith(s);
-        });
-        markDirty();
-      }
+      execCmd('fontSize', '7');
+      const fonts = getActiveRef().current?.querySelectorAll('font[size="7"]');
+      fonts?.forEach(f => {
+        f.removeAttribute('size');
+        f.style.fontSize = size + 'pt';
+      });
+      markDirty();
     }
   };
 
@@ -617,10 +678,19 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
       className="w-full flex flex-col -mt-8"
     >
       {/* Top Navbar */}
-      <div className="sticky top-0 z-20 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden shadow-sm rounded-t-3xl -mx-4 sm:mx-0">
+      <div className="sticky top-0 z-30 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden shadow-sm rounded-t-3xl -mx-4 sm:mx-0">
         <div className="flex items-center gap-4 flex-1">
           <button onClick={() => {
-            if (isDirty && !window.confirm('Você tem alterações não salvas. Deseja sair mesmo assim?')) return;
+            if (isDirtyRef.current) {
+              setConfirmConfig({
+                title: 'Alterações não salvas',
+                message: 'Você tem alterações que ainda não foram salvas. Se sair agora, perderá o trabalho feito desde o último salvamento.',
+                confirmText: 'Sair sem salvar',
+                isDestructive: true,
+                onConfirm: () => { setConfirmConfig(null); onClose(); },
+              });
+              return;
+            }
             onClose();
           }} className="flex items-center gap-2 px-4 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors text-xs font-bold uppercase tracking-widest text-neutral-600 dark:text-neutral-400">
             <ChevronLeft size={16} /> Voltar
@@ -692,7 +762,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
       )}
 
       {/* Editor Toolbar */}
-      <div className={`sticky ${showFindReplace ? 'top-[117px]' : 'top-[73px]'} z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 py-2 flex flex-wrap items-center justify-center gap-1 print:hidden shadow-sm -mx-4 sm:mx-0`}>
+      <div className={`sticky ${showFindReplace ? 'top-[117px]' : 'top-[73px]'} z-20 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 py-2 flex flex-wrap items-center justify-center gap-1 print:hidden shadow-sm -mx-4 sm:mx-0`}>
         
         <input type="file" ref={fileInputRef} accept="image/*" style={{ display: 'none' }} onChange={handleInsertImage} />
         
@@ -755,7 +825,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
           {showTextColorPicker && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowTextColorPicker(false)} />
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl p-3 z-50 w-56">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl p-3 z-50 w-max">
                 <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-2">Cor do Texto</p>
                 <div className="grid grid-cols-10 gap-1">
                   {PRESET_COLORS.map(c => (
@@ -797,7 +867,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
           {showHighlightPicker && (
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowHighlightPicker(false)} />
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl p-3 z-50 w-56">
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl p-3 z-50 w-max">
                 <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-2">Cor de Realce</p>
                 <div className="grid grid-cols-10 gap-1">
                   {PRESET_COLORS.map(c => (
@@ -1048,10 +1118,8 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
                         Cabeçalho <div className="w-8 h-px bg-neutral-200"></div>
                       </div>
                     )}
-                    <div 
-                      ref={headerRef}
-                      contentEditable
-                      suppressContentEditableWarning
+                    <UncontrolledEditable
+                      innerRef={headerRef}
                       className={`pt-16 pb-6 outline-none prose prose-neutral max-w-none text-neutral-900 prose-p:m-0 prose-headings:m-0 prose-ul:my-0 prose-ol:my-0 prose-li:my-0 min-h-[120px] transition-colors print:hover:bg-transparent print:border-none focus:bg-neutral-50/50 select-text pointer-events-auto ${
                         showGuides 
                           ? 'hover:bg-neutral-50/50 border-b border-dashed border-transparent hover:border-neutral-200 focus:border-neutral-200' 
@@ -1059,13 +1127,13 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
                       }`}
                       style={{ paddingLeft: MARGIN_PRESETS[margins].px, paddingRight: MARGIN_PRESETS[margins].px }}
                       onFocus={() => setActiveRegion('header')}
-                      onBlur={(e) => setHeader(e.currentTarget.innerHTML)}
+                      onBlur={(e: any) => setHeader(e.currentTarget.innerHTML)}
                       onInput={markDirty}
                       onKeyDown={handleKeyDown}
                       onContextMenu={handleContextMenu}
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
-                      dangerouslySetInnerHTML={{ __html: header }}
+                      initialHtml={initialHeader.current}
                     />
                   </div>
                 </td>
@@ -1081,22 +1149,20 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
                         Corpo do Texto <div className="w-4 h-px bg-neutral-200"></div>
                       </div>
                     )}
-                    <div 
-                      ref={bodyRef}
-                      contentEditable
-                      suppressContentEditableWarning
+                    <UncontrolledEditable
+                      innerRef={bodyRef}
                       className={`py-8 outline-none prose prose-neutral max-w-none text-neutral-900 text-justify prose-p:m-0 prose-headings:mt-4 prose-headings:mb-2 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 h-full min-h-[500px] select-text pointer-events-auto ${
                         showGuides ? 'hover:bg-neutral-50/50 focus:bg-neutral-50/50' : ''
                       }`}
                       style={{ fontFamily: 'Times New Roman, serif', fontSize: '12pt', lineHeight: '1.5', paddingLeft: MARGIN_PRESETS[margins].px, paddingRight: MARGIN_PRESETS[margins].px }}
                       onFocus={() => setActiveRegion('body')}
-                      onBlur={(e) => setContent(e.currentTarget.innerHTML)}
+                      onBlur={(e: any) => setContent(e.currentTarget.innerHTML)}
                       onInput={markDirty}
                       onKeyDown={handleKeyDown}
                       onContextMenu={handleContextMenu}
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
-                      dangerouslySetInnerHTML={{ __html: content }}
+                      initialHtml={initialContent.current}
                     />
                   </div>
                 </td>
@@ -1112,10 +1178,8 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
                         Rodapé <div className="w-8 h-px bg-neutral-200"></div>
                       </div>
                     )}
-                    <div 
-                      ref={footerRef}
-                      contentEditable
-                      suppressContentEditableWarning
+                    <UncontrolledEditable
+                      innerRef={footerRef}
                       className={`pt-6 pb-12 outline-none prose prose-neutral max-w-none text-neutral-900 prose-p:m-0 prose-headings:m-0 prose-ul:my-0 prose-ol:my-0 prose-li:my-0 min-h-[100px] transition-colors print:hover:bg-transparent print:border-none focus:bg-neutral-50/50 text-center text-xs ${
                         showGuides 
                           ? 'hover:bg-neutral-50/50 border-t border-dashed border-transparent hover:border-neutral-200 focus:border-neutral-200' 
@@ -1123,13 +1187,13 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
                       }`}
                       style={{ paddingLeft: MARGIN_PRESETS[margins].px, paddingRight: MARGIN_PRESETS[margins].px }}
                       onFocus={() => setActiveRegion('footer')}
-                      onBlur={(e) => setFooter(e.currentTarget.innerHTML)}
+                      onBlur={(e: any) => setFooter(e.currentTarget.innerHTML)}
                       onInput={markDirty}
                       onKeyDown={handleKeyDown}
                       onContextMenu={handleContextMenu}
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
-                      dangerouslySetInnerHTML={{ __html: footer }}
+                      initialHtml={initialFooter.current}
                     />
                     <div className="print-page-number" />
                   </div>
@@ -1190,10 +1254,11 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
           <button onMouseDown={e => e.preventDefault()} onClick={() => { setContextMenu(null); handleOpenSpacingMenu(); }} className="w-full text-left px-4 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-3"><ArrowUpDown size={16}/> Espaçamento</button>
         </div>
       )}
+
+      <ConfirmModal isOpen={!!confirmConfig} onCancel={() => setConfirmConfig(null)} {...confirmConfig} />
     </motion.div>
   );
 };
-
 
 // -------------------------------------------------------------
 // MAIN MODULE COMPONENT
@@ -1208,6 +1273,7 @@ const TemplatesModule = () => {
   const [formData, setFormData] = React.useState<Partial<DocumentTemplate>>({
     title: '', description: '', category: 'Geral', format: 'Word', fileUrl: ''
   });
+  const [confirmConfig, setConfirmConfig] = React.useState<any>(null);
 
   // Meus Documentos State
   const [webDocs, setWebDocs] = React.useState<WebDocument[]>(() => {
@@ -1233,10 +1299,17 @@ const TemplatesModule = () => {
   };
 
   const handleDelete = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este modelo?')) {
-      setTemplates(templates.filter(t => t.id !== id));
-      showToast('Modelo excluído com sucesso.');
-    }
+    setConfirmConfig({
+      title: 'Excluir modelo?',
+      message: 'Esta ação não pode ser desfeita. O modelo oficial será removido de forma permanente.',
+      confirmText: 'Excluir',
+      isDestructive: true,
+      onConfirm: () => {
+        setTemplates(templates.filter(t => t.id !== id));
+        showToast('Modelo excluído.', 'success');
+        setConfirmConfig(null);
+      }
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1335,13 +1408,15 @@ const TemplatesModule = () => {
   // -----------------------------------
   // MEUS DOCUMENTOS LOGIC
   // -----------------------------------
-  const handleSaveWebDoc = (doc: WebDocument) => {
+  const handleSaveWebDoc = (doc: WebDocument, silent?: boolean) => {
     if (editingTemplateId) {
       // We are editing a template's base content
       setTemplates(templates.map(t => t.id === editingTemplateId ? { ...t, content: doc.content, header: doc.header, footer: doc.footer } as DocumentTemplate : t));
-      setIsEditorOpen(false);
-      setEditingTemplateId(null);
-      showToast('Conteúdo do modelo oficial atualizado!', 'success');
+      if (!silent) {
+        setIsEditorOpen(false);
+        setEditingTemplateId(null);
+        showToast('Conteúdo do modelo oficial atualizado!', 'success');
+      }
       return;
     }
 
@@ -1350,15 +1425,25 @@ const TemplatesModule = () => {
       if (exists) return prev.map(d => d.id === doc.id ? doc : d);
       return [doc, ...prev];
     });
-    setIsEditorOpen(false);
-    showToast(`Documento ${doc.status} salvo com sucesso!`, 'success');
+    
+    if (!silent) {
+      setIsEditorOpen(false);
+      showToast(`Documento ${doc.status} salvo com sucesso!`, 'success');
+    }
   };
 
   const handleDeleteWebDoc = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
-      setWebDocs(webDocs.filter(d => d.id !== id));
-      showToast('Documento excluído.');
-    }
+    setConfirmConfig({
+      title: 'Excluir documento?',
+      message: 'Esta ação não pode ser desfeita. O documento será removido permanentemente.',
+      confirmText: 'Excluir',
+      isDestructive: true,
+      onConfirm: () => {
+        setWebDocs(webDocs.filter(d => d.id !== id));
+        showToast('Documento excluído.');
+        setConfirmConfig(null);
+      }
+    });
   };
 
   const filteredWebDocs = webDocs.filter(d => d.title.toLowerCase().includes(search.toLowerCase()));
@@ -1641,6 +1726,8 @@ const TemplatesModule = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal isOpen={!!confirmConfig} onCancel={() => setConfirmConfig(null)} {...confirmConfig} />
     </div>
   );
 };
