@@ -28,7 +28,7 @@ const COMMON_FORMS = [
   'Injetável'
 ];
 
-export const FarmaciaModule = () => {
+export const FarmaciaModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,10 +38,9 @@ export const FarmaciaModule = () => {
 
   const loadMedications = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('medications')
-      .select('*')
-      .order('name', { ascending: true });
+    let query = supabase.from('medications').select('*');
+    if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
+    const { data, error } = await query.order('name', { ascending: true });
     
     if (error) {
       console.error('Erro ao carregar medicamentos:', error);
@@ -265,6 +264,7 @@ export const FarmaciaModule = () => {
             medication={editingMedication}
             onClose={() => setIsModalOpen(false)}
             onSuccess={() => { loadMedications(); setIsModalOpen(false); }}
+            currentInstitution={currentInstitution}
           />
         )}
         {isStockModalOpen.isOpen && isStockModalOpen.med && (
@@ -280,7 +280,7 @@ export const FarmaciaModule = () => {
   );
 };
 
-const MedicationModal = ({ medication, onClose, onSuccess }: { medication: Medication | null, onClose: () => void, onSuccess: () => void }) => {
+const MedicationModal = ({ medication, onClose, onSuccess, currentInstitution }: { medication: Medication | null, onClose: () => void, onSuccess: () => void, currentInstitution?: { id: string } | null }) => {
   const [formData, setFormData] = useState<Partial<Medication>>(
     medication || {
       name: '',
@@ -309,7 +309,8 @@ const MedicationModal = ({ medication, onClose, onSuccess }: { medication: Medic
     } else {
       const newMed = {
         id: Math.random().toString(36).substring(2, 10),
-        ...formData
+        ...formData,
+        institution_id: currentInstitution?.id || null
       };
       const { error } = await supabase.from('medications').insert(newMed);
       if (error) {

@@ -16,11 +16,13 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
 } = LucideIcons;
 
-const ContractsModule = () => {
+const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
   const [contracts, setContracts] = React.useState<Contract[]>(MOCK_CONTRACTS);
   
   React.useEffect(() => {
-    supabase.from('contracts').select('*').then(({ data }) => {
+    let query = supabase.from('contracts').select('*');
+    if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
+    query.then(({ data }) => {
       if (data && data.length > 0) {
         setContracts(data.map(c => ({ ...c, vendorName: c.vendor_name } as Contract)));
       }

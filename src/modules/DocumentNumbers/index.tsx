@@ -15,7 +15,7 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
 } = LucideIcons;
 
-const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null }) => {
+const DocumentNumbersModule = ({ currentUser, currentInstitution }: { currentUser: AdminUser | null, currentInstitution?: { id: string } | null }) => {
   const [records, setRecords] = React.useState<DocumentRecord[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isAdding, setIsAdding] = React.useState(false);
@@ -47,9 +47,9 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
 
   const fetchRecords = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('document_records')
-      .select('*')
+    let query = supabase.from('document_records').select('*');
+    if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
+    const { data, error } = await query
       .order('year', { ascending: false })
       .order('number', { ascending: false });
     if (data && !error) {
@@ -189,11 +189,13 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
     const currentYear = new Date().getFullYear();
     
     // Find max number for this type and year
-    const { data: maxData } = await supabase
+    let queryMax = supabase
       .from('document_records')
       .select('number')
       .eq('type', formData.type)
-      .eq('year', currentYear)
+      .eq('year', currentYear);
+    if (currentInstitution?.id) queryMax = queryMax.eq('institution_id', currentInstitution.id);
+    const { data: maxData } = await queryMax
       .order('number', { ascending: false })
       .limit(1);
       
@@ -201,13 +203,14 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
     if (formData.customNumber && !isNaN(Number(formData.customNumber))) {
       newNumber = Number(formData.customNumber);
       
-      const { data: duplicate } = await supabase
+      let queryDup = supabase
         .from('document_records')
         .select('id')
         .eq('type', formData.type)
         .eq('year', currentYear)
-        .eq('number', newNumber)
-        .limit(1);
+        .eq('number', newNumber);
+      if (currentInstitution?.id) queryDup = queryDup.eq('institution_id', currentInstitution.id);
+      const { data: duplicate } = await queryDup.limit(1);
         
       if (duplicate && duplicate.length > 0) {
         showToast('Este número já está em uso para este tipo e ano.', 'error');
@@ -223,7 +226,8 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
       number: newNumber,
       year: currentYear,
       requester: formData.requester,
-      subject: formData.subject
+      subject: formData.subject,
+      institution_id: currentInstitution?.id || currentUser?.institution_id || null
     };
     
     const { error } = await supabase.from('document_records').insert(newDoc);

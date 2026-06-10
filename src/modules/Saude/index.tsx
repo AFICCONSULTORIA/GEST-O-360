@@ -65,7 +65,7 @@ const formatPhone = (value: string) => {
   return v;
 };
 
-const AgendamentosModule = () => {
+const AgendamentosModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,10 +75,9 @@ const AgendamentosModule = () => {
 
   const loadAppointments = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('*')
-      .order('appointment_date', { ascending: true });
+    let query = supabase.from('appointments').select('*');
+    if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
+    const { data, error } = await query.order('appointment_date', { ascending: true });
     
     if (error) {
       console.error('Erro ao carregar agendamentos:', error);
@@ -376,6 +375,7 @@ const AgendamentosModule = () => {
           <NewAppointmentModal 
             onClose={() => setIsModalOpen(false)}
             onSuccess={() => { loadAppointments(); setIsModalOpen(false); }}
+            currentInstitution={currentInstitution}
           />
         )}
         {selectedAppointment && (
@@ -538,7 +538,7 @@ const AppointmentDetailsModal = ({ apt, onClose, onSave }: { apt: Appointment, o
   );
 };
 
-const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSuccess: () => void }) => {
+const NewAppointmentModal = ({ onClose, onSuccess, currentInstitution }: { onClose: () => void, onSuccess: () => void, currentInstitution?: { id: string } | null }) => {
   const [formData, setFormData] = useState({
     patient_name: '',
     patient_cpf: '',
@@ -562,7 +562,8 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
       id: Math.random().toString(36).substring(2, 10),
       ...formData,
       referral_details: formData.specialty === 'Clínico Geral' ? null : formData.referral_details,
-      status: 'Agendado'
+      status: 'Agendado',
+      institution_id: currentInstitution?.id || null
     };
 
     const { error } = await supabase.from('appointments').insert(newAppointment);
@@ -742,7 +743,7 @@ const NewAppointmentModal = ({ onClose, onSuccess }: { onClose: () => void, onSu
   );
 };
 
-export const SaudeModule = () => {
+export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
   const [activeTab, setActiveTab] = useState<'agendamentos' | 'farmacia'>('agendamentos');
 
   return (
@@ -780,7 +781,7 @@ export const SaudeModule = () => {
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {activeTab === 'agendamentos' ? <AgendamentosModule /> : <FarmaciaModule />}
+          {activeTab === 'agendamentos' ? <AgendamentosModule currentInstitution={currentInstitution} /> : <FarmaciaModule currentInstitution={currentInstitution} />}
         </motion.div>
       </AnimatePresence>
     </div>

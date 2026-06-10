@@ -575,7 +575,9 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   });
 
   React.useEffect(() => {
-    supabase.from('company_certificates').select('*').then(({ data, error }) => {
+    let query = supabase.from('company_certificates').select('*');
+    if (institution?.id) query = query.eq('institution_id', institution.id);
+    query.then(({ data, error }) => {
       setIsLoading(false);
       if (error) {
         console.error("Erro ao buscar empresas:", error);
@@ -795,7 +797,8 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
                 id: comp.id,
                 company_name: comp.companyName,
                 cnpj: comp.cnpj,
-                certificates: comp.certificates
+                certificates: comp.certificates,
+                institution_id: institution?.id || null
               });
               if (error) {
                 showToast(`Erro do Banco: ${error.message} (Código: ${error.code})`, "error");

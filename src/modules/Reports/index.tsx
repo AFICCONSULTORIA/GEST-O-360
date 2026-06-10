@@ -10,7 +10,7 @@ import { Medication } from '../Saude/Farmacia';
 // ==========================================
 // SAÚDE: RELATÓRIO DE AGENDAMENTOS
 // ==========================================
-const SaudePrintView = ({ onClose }: { onClose: () => void }) => {
+const SaudePrintView = ({ onClose, institutionId }: { onClose: () => void, institutionId?: string }) => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<'config' | 'preview'>('config');
@@ -27,7 +27,9 @@ const SaudePrintView = ({ onClose }: { onClose: () => void }) => {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('appointments').select('*').order('appointment_date', { ascending: false });
+    let query = supabase.from('appointments').select('*');
+    if (institutionId) query = query.eq('institution_id', institutionId);
+    const { data, error } = await query.order('appointment_date', { ascending: false });
     if (!error && data) {
       setAppointments(data as Appointment[]);
     }
@@ -233,7 +235,7 @@ const SaudePrintLayout = ({ filteredItems, filters, loading }: { filteredItems: 
 // ==========================================
 // SERVIÇOS PÚBLICOS: RELATÓRIO DE DEMANDAS
 // ==========================================
-const ServicosPublicosPrintView = ({ onClose }: { onClose: () => void }) => {
+const ServicosPublicosPrintView = ({ onClose, institutionId }: { onClose: () => void, institutionId?: string }) => {
   const [demandas, setDemandas] = useState<Demanda[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<'config' | 'preview'>('config');
@@ -247,7 +249,9 @@ const ServicosPublicosPrintView = ({ onClose }: { onClose: () => void }) => {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('servicos_publicos_demandas').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('servicos_publicos_demandas').select('*');
+    if (institutionId) query = query.eq('institution_id', institutionId);
+    const { data, error } = await query.order('created_at', { ascending: false });
     if (!error && data) {
       setDemandas(data as Demanda[]);
     }
@@ -582,7 +586,7 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
 // ==========================================
 // FARMÁCIA: RELATÓRIO DE MEDICAMENTOS
 // ==========================================
-const MedicamentosPrintView = ({ onClose }: { onClose: () => void }) => {
+const MedicamentosPrintView = ({ onClose, institutionId }: { onClose: () => void, institutionId?: string }) => {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<'config' | 'preview'>('config');
@@ -597,7 +601,9 @@ const MedicamentosPrintView = ({ onClose }: { onClose: () => void }) => {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('medications').select('*').order('name', { ascending: true });
+    let query = supabase.from('medications').select('*');
+    if (institutionId) query = query.eq('institution_id', institutionId);
+    const { data, error } = await query.order('name', { ascending: true });
     if (!error && data) {
       setMedications(data as Medication[]);
     }
@@ -801,7 +807,7 @@ const MedicamentosPrintLayout = ({ filteredItems, filters, loading }: { filtered
 // ==========================================
 // PEDIDOS: RELATÓRIO DE PEDIDOS
 // ==========================================
-const PedidosPrintView = ({ onClose }: { onClose: () => void }) => {
+const PedidosPrintView = ({ onClose, institutionId }: { onClose: () => void, institutionId?: string }) => {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<'config' | 'preview'>('config');
@@ -818,7 +824,9 @@ const PedidosPrintView = ({ onClose }: { onClose: () => void }) => {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('orders').select('*').order('date_requested', { ascending: false });
+    let query = supabase.from('orders').select('*');
+    if (institutionId) query = query.eq('institution_id', institutionId);
+    const { data, error } = await query.order('date_requested', { ascending: false });
     if (!error && data) {
       setOrders(data.map((o: any) => ({
         ...o,
@@ -1048,7 +1056,7 @@ const PedidosPrintLayout = ({ filteredItems, filters, loading }: { filteredItems
 // ==========================================
 // MÓDULO PRINCIPAL DE RELATÓRIOS
 // ==========================================
-const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null, clearPendingReport?: () => void }) => {
+const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport, currentInstitution }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null, clearPendingReport?: () => void, currentInstitution?: { id: string } | null }) => {
   const [activeReport, setActiveReport] = React.useState<'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null>(initialReport || null);
 
   React.useEffect(() => {
@@ -1063,19 +1071,19 @@ const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport }: {
   }
 
   if (activeReport === 'saude') {
-    return <SaudePrintView onClose={() => setActiveReport(null)} />;
+    return <SaudePrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
 
   if (activeReport === 'servicos_publicos') {
-    return <ServicosPublicosPrintView onClose={() => setActiveReport(null)} />;
+    return <ServicosPublicosPrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
 
   if (activeReport === 'medicamentos') {
-    return <MedicamentosPrintView onClose={() => setActiveReport(null)} />;
+    return <MedicamentosPrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
 
   if (activeReport === 'pedidos') {
-    return <PedidosPrintView onClose={() => setActiveReport(null)} />;
+    return <PedidosPrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
 
   return (

@@ -74,7 +74,7 @@ const DeleteConfirmationModal = ({ onClose, onConfirm }: { onClose: () => void, 
   );
 };
 
-export function ServicosPublicosModule() {
+export function ServicosPublicosModule({ currentInstitution }: { currentInstitution?: { id: string } | null }) {
   const [demands, setDemands] = React.useState<Demanda[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [selectedStatus, setSelectedStatus] = React.useState<Demanda['status'] | 'Todos'>('Todos');
@@ -86,10 +86,9 @@ export function ServicosPublicosModule() {
   }, []);
 
   const fetchDemands = async () => {
-    const { data, error } = await supabase
-      .from('servicos_publicos_demandas')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('servicos_publicos_demandas').select('*');
+    if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
+    const { data, error } = await query.order('created_at', { ascending: false });
     
     if (error) {
       console.error('Erro ao buscar demandas:', error);

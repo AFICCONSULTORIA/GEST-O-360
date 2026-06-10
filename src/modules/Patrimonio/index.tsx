@@ -242,7 +242,7 @@ const PatrimonioModule = ({ items, onAdd, onDelete, canDelete, canEdit = true }:
                   e.preventDefault();
                   onAdd({
                     ...formData,
-                    id: Math.random().toString(36).substr(2, 9)
+                    id: crypto.randomUUID()
                   } as PatrimonioItem);
                   setIsModalOpen(false);
                   setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });

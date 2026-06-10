@@ -162,7 +162,7 @@ export const SettingsModule = ({
         console.error("Update error:", error);
       }
     } else {
-      let finalUserId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substr(2, 9);
+      let finalUserId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomUUID();
       
       try {
         const { data, error } = await signUpNewUser(formData.email, formData.password);
@@ -239,7 +239,7 @@ export const SettingsModule = ({
     } else {
       const newDept: Department = {
         ...deptFormData,
-        id: Math.random().toString(36).substr(2, 9)
+        id: crypto.randomUUID()
       };
       setDepartments([...departments, newDept]);
       await supabase.from('departments').insert({ id: newDept.id, name: newDept.name, institution_id: newDept.institution_id }).then(({ error }) => { if (error) console.error(error) });
@@ -274,7 +274,7 @@ export const SettingsModule = ({
     } else {
       const newInst: Institution = {
         ...instFormData,
-        id: Math.random().toString(36).substr(2, 9)
+        id: crypto.randomUUID()
       };
       setInstitutions([...institutions, newInst]);
       await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name, subdomain: newInst.subdomain }).then(({ error }) => { if (error) console.error(error) });

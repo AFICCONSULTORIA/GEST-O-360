@@ -2398,7 +2398,7 @@ export default function App() {
   const addControl = async (newControl: Omit<CheckItem, 'id'>) => {
     const control: CheckItem = {
       ...newControl,
-      id: Math.random().toString(36).substr(2, 9)
+      id: crypto.randomUUID()
     };
     setControls([control, ...controls]);
     setIsNewControlModalOpen(false);
@@ -2854,7 +2854,7 @@ export default function App() {
               <OrdersModule 
                 orders={orders.filter(o => o.description.toLowerCase().includes(searchQuery.toLowerCase()) || o.requester.toLowerCase().includes(searchQuery.toLowerCase()))}
                 onAdd={async (newOrder) => {
-                  const order = { ...newOrder, id: Math.random().toString(36).substr(2, 9) } as OrderItem;
+                  const order = { ...newOrder, id: crypto.randomUUID() } as OrderItem;
                   setOrders([order, ...orders]);
                   setNotifications([{ id: Date.now(), text: `Novo pedido recebido de ${order.requester}`, type: 'info', read: false }, ...notifications]);
                   showToast('Pedido registrado com sucesso!', 'success');
@@ -2974,15 +2974,15 @@ export default function App() {
             )}
             {activeView === 'norms' && <NormsModule />}
             {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} currentInstitution={currentInstitution} />}
-            {activeView === 'contracts' && <ContractsModule />}
+            {activeView === 'contracts' && <ContractsModule currentInstitution={currentInstitution} />}
             {activeView === 'education' && <EducationModule />}
-            {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} />}
-            {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} />}
+            {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} currentInstitution={currentInstitution} />}
+            {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} currentInstitution={currentInstitution} />}
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
-            {activeView === 'saude' && <SaudeModule />}
-            {activeView === 'servicos_publicos' && <ServicosPublicosModule />}
+            {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} />}
+            {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}
             {activeView === 'meio_ambiente' && <PlaceholderModule title="Secretaria de Meio Ambiente" />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}
             {activeView === 'agricultura' && <PlaceholderModule title="Secretaria de Agricultura" />}

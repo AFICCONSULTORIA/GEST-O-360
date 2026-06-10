@@ -42,6 +42,9 @@ export const SaaSControlCenter = ({
 }: SaaSControlCenterProps) => {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'institutions' | 'users' | 'departments' | 'support'>('overview');
   
+  // Modal de Resultado Demo
+  const [demoResultModal, setDemoResultModal] = React.useState<{isOpen: boolean, success: boolean, message: string}>({isOpen: false, success: true, message: ''});
+
   // Notificações de Suporte
   const [openTicketsCount, setOpenTicketsCount] = React.useState(0);
 
@@ -122,7 +125,7 @@ export const SaaSControlCenter = ({
     } else {
       const newInst: Institution = {
         ...instFormData,
-        id: Math.random().toString(36).substr(2, 9)
+        id: crypto.randomUUID()
       };
       setInstitutions([...institutions, newInst]);
       const { error } = await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name, subdomain: newInst.subdomain });
@@ -165,7 +168,7 @@ export const SaaSControlCenter = ({
       if (error) showToast('Erro ao salvar no banco de dados: ' + error.message, 'error');
       else showToast('Usuário atualizado!', 'success');
     } else {
-      let finalUserId = Math.random().toString(36).substr(2, 9);
+      let finalUserId = crypto.randomUUID();
       
       try {
         const { data, error } = await supabase.auth.signUp({
@@ -227,7 +230,7 @@ export const SaaSControlCenter = ({
     } else {
       const newDept: Department = {
         ...deptFormData,
-        id: Math.random().toString(36).substr(2, 9)
+        id: crypto.randomUUID()
       };
       setDepartments([...departments, newDept]);
       const { error } = await supabase.from('departments').insert({ id: newDept.id, name: newDept.name, institution_id: newDept.institution_id });
@@ -556,6 +559,32 @@ export const SaaSControlCenter = ({
                         </td>
                         <td className="p-6 text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={async () => {
+                                const { seedDemoInstitution } = await import('../../lib/demoSeeder');
+                                showToast('Iniciando geração de dados...', 'info');
+                                const success = await seedDemoInstitution(inst.id);
+                                if (success) {
+                                  showToast('Dados de demonstração gerados com sucesso!', 'success');
+                                  setDemoResultModal({
+                                    isOpen: true,
+                                    success: true,
+                                    message: 'Os dados de demonstração foram gerados e inseridos no sistema. Acesse os módulos da prefeitura para conferir!'
+                                  });
+                                } else {
+                                  showToast('Erro ao gerar dados. Verifique o console.', 'error');
+                                  setDemoResultModal({
+                                    isOpen: true,
+                                    success: false,
+                                    message: 'Ocorreu um erro ao gerar os dados. Verifique sua conexão ou o console do navegador.'
+                                  });
+                                }
+                              }}
+                              className="p-2 text-neutral-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-xl transition-all"
+                              title="Popular Dados de Teste"
+                            >
+                              <Activity size={16} />
+                            </button>
                             <button 
                               onClick={() => { setEditingInstitution(inst); setInstFormData({ name: inst.name, subdomain: inst.subdomain || '' }); setIsInstModalOpen(true); }}
                               className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all"
@@ -1053,6 +1082,47 @@ export const SaaSControlCenter = ({
           </motion.div>
         )}
 
+      </AnimatePresence>
+
+      {/* Demo Result Modal */}
+      <AnimatePresence>
+        {demoResultModal.isOpen && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
+              onClick={() => setDemoResultModal({ ...demoResultModal, isOpen: false })} 
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }} 
+              animate={{ scale: 1, opacity: 1, y: 0 }} 
+              exit={{ scale: 0.95, opacity: 0, y: 20 }} 
+              className="relative bg-white dark:bg-neutral-900 rounded-[32px] shadow-2xl p-8 max-w-md w-full border border-neutral-100 dark:border-neutral-800 text-center"
+            >
+              <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-6 ${demoResultModal.success ? 'bg-emerald-50 dark:bg-emerald-500/10' : 'bg-rose-50 dark:bg-rose-500/10'}`}>
+                {demoResultModal.success ? (
+                  <CheckCircle2 size={32} className="text-emerald-500" />
+                ) : (
+                  <AlertTriangle size={32} className="text-rose-500" />
+                )}
+              </div>
+              <h2 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight mb-2">
+                {demoResultModal.success ? 'Sucesso!' : 'Ocorreu um erro'}
+              </h2>
+              <p className="text-neutral-500 dark:text-neutral-400 leading-relaxed mb-8">
+                {demoResultModal.message}
+              </p>
+              <button 
+                onClick={() => setDemoResultModal({ ...demoResultModal, isOpen: false })}
+                className="w-full py-4 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl font-bold hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all shadow-lg shadow-neutral-900/20 dark:shadow-white/10"
+              >
+                Entendi, continuar
+              </button>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
     </div>
