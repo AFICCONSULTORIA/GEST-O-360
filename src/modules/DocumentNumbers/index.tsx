@@ -309,16 +309,18 @@ const DocumentNumbersModule = ({ currentUser }: { currentUser: AdminUser | null 
                 placeholder="Assunto tratado no documento..."
               />
             </div>
-            <div className="col-span-2 space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Número Inicial (Opcional - para forçar um pulo na sequência)</label>
-              <input
-                type="number"
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
-                value={formData.customNumber}
-                onChange={e => setFormData({ ...formData, customNumber: e.target.value })}
-                placeholder="Ex: 90 (Se deixado em branco, seguirá a numeração automática)"
-              />
-            </div>
+            {['Super Admin', 'Admin'].includes(currentUser?.role || '') && (
+              <div className="col-span-2 space-y-1">
+                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Número Inicial (Opcional - para forçar um pulo na sequência)</label>
+                <input
+                  type="number"
+                  className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm outline-none dark:text-neutral-100"
+                  value={formData.customNumber}
+                  onChange={e => setFormData({ ...formData, customNumber: e.target.value })}
+                  placeholder="Ex: 90 (Se deixado em branco, seguirá a numeração automática)"
+                />
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-2">
             <button onClick={() => setIsAdding(false)} className="px-6 py-3 rounded-xl text-xs font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 dark:text-neutral-400 transition-colors">Cancelar</button>
