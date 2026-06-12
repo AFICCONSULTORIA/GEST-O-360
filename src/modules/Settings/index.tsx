@@ -162,7 +162,7 @@ export const SettingsModule = ({
         console.error("Update error:", error);
       }
     } else {
-      let finalUserId = crypto.randomUUID ? crypto.randomUUID() : crypto.randomUUID();
+      let finalUserId: string = crypto.randomUUID ? crypto.randomUUID() : crypto.randomUUID();
       
       try {
         const { data, error } = await signUpNewUser(formData.email, formData.password);

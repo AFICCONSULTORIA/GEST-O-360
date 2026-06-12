@@ -168,7 +168,7 @@ export const SaaSControlCenter = ({
       if (error) showToast('Erro ao salvar no banco de dados: ' + error.message, 'error');
       else showToast('Usuário atualizado!', 'success');
     } else {
-      let finalUserId = crypto.randomUUID();
+      let finalUserId: string = crypto.randomUUID();
       
       try {
         const { data, error } = await supabase.auth.signUp({
