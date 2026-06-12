@@ -1,8 +1,9 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2
+  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2, Printer
 } from 'lucide-react';
+import { PDFDocument } from 'pdf-lib';
 import { supabase } from '../../lib/supabase';
 import { CompanyCertificates } from '../../types';
 import { hasPermission } from '../../lib/permissions';
@@ -175,8 +176,67 @@ const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, 
 const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUpdate, canEdit = true }: { company: CompanyCertificates, certLinks: Record<string, string>, stateLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void, canEdit?: boolean }) => {
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
   const [isStateModalOpen, setIsStateModalOpen] = React.useState(false);
+  const [isPrintingAll, setIsPrintingAll] = React.useState(false);
 
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'] as const;
+
+  const handlePrintAll = async () => {
+    setIsPrintingAll(true);
+    try {
+      const pdfDoc = await PDFDocument.create();
+      let hasPages = false;
+
+      for (const certType of certTypes) {
+        const cert = company.certificates[certType];
+        if (cert && cert.fileUrl) {
+          try {
+            const response = await fetch(cert.fileUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const contentType = response.headers.get('content-type') || '';
+            
+            if (cert.fileUrl.toLowerCase().endsWith('.pdf') || contentType.includes('pdf')) {
+              const donorPdf = await PDFDocument.load(arrayBuffer);
+              const copiedPages = await pdfDoc.copyPages(donorPdf, donorPdf.getPageIndices());
+              copiedPages.forEach((page) => pdfDoc.addPage(page));
+              hasPages = true;
+            } else if (contentType.includes('image') || cert.fileUrl.match(/\.(jpeg|jpg|png)$/i)) {
+              let image;
+              if (contentType.includes('png') || cert.fileUrl.toLowerCase().endsWith('.png')) {
+                image = await pdfDoc.embedPng(arrayBuffer);
+              } else {
+                image = await pdfDoc.embedJpg(arrayBuffer);
+              }
+              const page = pdfDoc.addPage([image.width, image.height]);
+              page.drawImage(image, {
+                x: 0,
+                y: 0,
+                width: image.width,
+                height: image.height,
+              });
+              hasPages = true;
+            }
+          } catch (err) {
+            console.error(`Erro ao processar certidão ${certType}:`, err);
+            showToast(`Erro ao incluir certidão ${certType} na impressão.`, 'warning');
+          }
+        }
+      }
+
+      if (hasPages) {
+        const pdfBytes = await pdfDoc.save();
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        showToast('Documento gerado! O arquivo foi aberto em uma nova guia para impressão.', 'success');
+      } else {
+        showToast('Nenhuma certidão válida encontrada para impressão.', 'warning');
+      }
+    } catch (error) {
+      console.error(error);
+      showToast('Erro inesperado ao gerar a impressão.', 'error');
+    }
+    setIsPrintingAll(false);
+  };
 
   if (uploadingCert) {
     return (
@@ -309,6 +369,17 @@ const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUp
               </div>
             );
           })}
+        </div>
+
+        <div className="pt-2 flex justify-end">
+          <button 
+            onClick={handlePrintAll}
+            disabled={isPrintingAll}
+            className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+          >
+            <Printer size={16} />
+            {isPrintingAll ? 'Gerando PDF...' : 'Imprimir Todas'}
+          </button>
         </div>
       </motion.div>
 
