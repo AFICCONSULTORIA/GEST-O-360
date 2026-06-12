@@ -548,7 +548,8 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   const canEdit = hasPermission(currentUser, 'certificates', 'edit');
   const canAdmin = hasPermission(currentUser, 'certificates', 'admin');
 
-  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchName, setSearchName] = React.useState('');
+  const [searchCnpj, setSearchCnpj] = React.useState('');
   const [companies, setCompanies] = React.useState<CompanyCertificates[]>([]);
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isAddingCompany, setIsAddingCompany] = React.useState(false);
@@ -604,7 +605,11 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   };
 
   const filtered = companies.filter(comp => {
-    return comp.companyName.toLowerCase().includes(searchQuery.toLowerCase()) || comp.cnpj.includes(searchQuery);
+    const matchName = searchName === '' || comp.companyName.toLowerCase().includes(searchName.toLowerCase());
+    const cleanSearchCnpj = searchCnpj.replace(/\D/g, '');
+    const cleanCompCnpj = comp.cnpj.replace(/\D/g, '');
+    const matchCnpj = searchCnpj === '' || comp.cnpj.includes(searchCnpj) || (cleanSearchCnpj.length > 0 && cleanCompCnpj.includes(cleanSearchCnpj));
+    return matchName && matchCnpj;
   });
 
   const renderCertBadge = (cert: { expiryDate: string } | null) => {
@@ -651,14 +656,49 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
 
       <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden p-6 md:p-8 space-y-6">
         <div className="flex flex-col md:flex-row items-center gap-4">
-          <div className="relative flex-1 w-full">
+          <div className="relative flex-1 w-full md:w-1/2">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
             <input 
               type="text" 
-              placeholder="Buscar por Empresa ou CNPJ..." 
+              placeholder="Buscar por Nome da Empresa..." 
               className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 pl-11 pr-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={searchName}
+              onChange={(e) => setSearchName(e.target.value)}
+            />
+          </div>
+          <div className="relative flex-1 w-full md:w-1/2">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Buscar por CNPJ ou CPF..." 
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 pl-11 pr-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
+              value={searchCnpj}
+              maxLength={18}
+              onChange={(e) => {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value.length > 14) value = value.slice(0, 14);
+                
+                if (value.length > 11) {
+                  if (value.length > 12) {
+                    value = value.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2}).*/, '$1.$2.$3/$4-$5');
+                  } else if (value.length > 8) {
+                    value = value.replace(/^(\d{2})(\d{3})(\d{3})(\d{1,4}).*/, '$1.$2.$3/$4');
+                  } else if (value.length > 5) {
+                    value = value.replace(/^(\d{2})(\d{3})(\d{1,3}).*/, '$1.$2.$3');
+                  } else if (value.length > 2) {
+                    value = value.replace(/^(\d{2})(\d{1,3}).*/, '$1.$2');
+                  }
+                } else {
+                  if (value.length > 9) {
+                    value = value.replace(/^(\d{3})(\d{3})(\d{3})(\d{1,2}).*/, '$1.$2.$3-$4');
+                  } else if (value.length > 6) {
+                    value = value.replace(/^(\d{3})(\d{3})(\d{1,3}).*/, '$1.$2.$3');
+                  } else if (value.length > 3) {
+                    value = value.replace(/^(\d{3})(\d{1,3}).*/, '$1.$2');
+                  }
+                }
+                setSearchCnpj(value);
+              }}
             />
           </div>
         </div>
