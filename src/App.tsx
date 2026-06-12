@@ -1001,6 +1001,35 @@ const SalesLandingPage = ({
             </div>
           </section>
 
+          {/* Clients Section */}
+          {institutions && institutions.length > 0 && (
+            <section className="py-12 border-y border-neutral-200/50 dark:border-neutral-800/50 bg-white/30 dark:bg-neutral-900/30 backdrop-blur-sm -mx-6 sm:-mx-12 px-6 sm:px-12 mt-12 mb-24">
+              <div className="max-w-5xl mx-auto text-center space-y-8">
+                <p className="text-xs font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+                  Municípios que já confiam na Gestão 360
+                </p>
+                <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6">
+                  {institutions.map((inst, i) => (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1, duration: 0.5 }}
+                      key={inst.id}
+                      className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 hover:-translate-y-1 transition-all duration-300 group"
+                    >
+                      <div className="p-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/20 transition-colors">
+                        <Building2 size={16} className="text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <span className="font-bold text-neutral-800 dark:text-neutral-200 text-sm">
+                        {inst.name}
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Interactive Showcase Tabs Section - Mapa de Macro-Áreas da Gestão 360 */}
           <section id="solucoes" className="space-y-12 scroll-mt-24">
             <div className="text-center space-y-4 max-w-3xl mx-auto">

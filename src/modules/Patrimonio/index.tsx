@@ -403,7 +403,7 @@ const PatrimonioModule = ({ items, onAdd, onDelete, canDelete, canEdit = true }:
                           accept="image/*"
                           multiple
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const files = Array.from(e.target.files || []) as File[];
                             if (!files.length) return;
                             
@@ -415,20 +415,24 @@ const PatrimonioModule = ({ items, onAdd, onDelete, canDelete, canEdit = true }:
                               showToast(`Você só pode adicionar mais ${remainingSlots} foto(s). O limite é 5.`, 'warning');
                             }
 
-                            const newImageUrls: string[] = [];
-                            let processed = 0;
+                            showToast('Enviando imagens...', 'info');
 
-                            filesToProcess.forEach(file => {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                newImageUrls.push(reader.result as string);
-                                processed++;
-                                if (processed === filesToProcess.length) {
-                                  setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...newImageUrls] }));
-                                }
-                              };
-                              reader.readAsDataURL(file);
-                            });
+                            const newImageUrls: string[] = [];
+                            for (const file of filesToProcess) {
+                               const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
+                               const filename = `patrimonio/${Date.now()}-${safeName}`;
+                               const { error } = await supabase.storage.from('certidoes').upload(filename, file);
+                               if (!error) {
+                                 const { data } = supabase.storage.from('certidoes').getPublicUrl(filename);
+                                 newImageUrls.push(data.publicUrl);
+                               } else {
+                                 console.error("Erro no upload", error);
+                                 showToast(`Erro ao enviar a imagem ${file.name}`, 'error');
+                               }
+                            }
+
+                            setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...newImageUrls] }));
+                            showToast('Imagens anexadas!', 'success');
                           }}
                         />
                         <Package size={24} className="text-neutral-400" />
