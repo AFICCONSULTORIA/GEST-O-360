@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase';
 import { CompanyCertificates } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 import { showToast } from '../../components/ui/Toast';
+import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 
 export const DEFAULT_STATE_LINKS: Record<string, string> = {
   AC: 'https://sefaznet.ac.gov.br/sefazonline/servlet/wcertidaonegativa',
@@ -703,6 +704,15 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
+      <WhatsNewBanner 
+        version="1.1.0"
+        title="Novidades no Banco de Certidões"
+        features={[
+          "Impressão em Lote: Imprima todas as certidões de uma empresa de uma só vez no botão 'Imprimir Todas'.",
+          "Formatação Automática: Máscaras de CPF e CNPJ aplicadas perfeitamente na busca e cadastro."
+        ]}
+      />
+
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div className="flex items-center gap-6">
           <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center">
