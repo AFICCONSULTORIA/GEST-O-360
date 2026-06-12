@@ -1009,7 +1009,7 @@ const SalesLandingPage = ({
                   Municípios que já confiam na Gestão 360
                 </p>
                 <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6">
-                  {institutions.map((inst, i) => (
+                  {institutions.filter(inst => !inst.name.toLowerCase().includes('demonstração')).map((inst, i) => (
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1021,7 +1021,7 @@ const SalesLandingPage = ({
                         <Building2 size={16} className="text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <span className="font-bold text-neutral-800 dark:text-neutral-200 text-sm">
-                        {inst.name}
+                        {inst.name.replace(/Prefeitura Municipal de |Prefeitura de /i, '')}{!inst.name.includes('/') ? '/MT' : ''}
                       </span>
                     </motion.div>
                   ))}
