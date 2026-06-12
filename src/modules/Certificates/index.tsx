@@ -605,10 +605,12 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   };
 
   const filtered = companies.filter(comp => {
-    const matchName = searchName === '' || comp.companyName.toLowerCase().includes(searchName.toLowerCase());
+    const cName = comp.companyName || '';
+    const cCnpj = comp.cnpj || '';
+    const matchName = searchName === '' || cName.toLowerCase().includes(searchName.toLowerCase());
     const cleanSearchCnpj = searchCnpj.replace(/\D/g, '');
-    const cleanCompCnpj = comp.cnpj.replace(/\D/g, '');
-    const matchCnpj = searchCnpj === '' || comp.cnpj.includes(searchCnpj) || (cleanSearchCnpj.length > 0 && cleanCompCnpj.includes(cleanSearchCnpj));
+    const cleanCompCnpj = cCnpj.replace(/\D/g, '');
+    const matchCnpj = searchCnpj === '' || cCnpj.includes(searchCnpj) || (cleanSearchCnpj.length > 0 && cleanCompCnpj.includes(cleanSearchCnpj));
     return matchName && matchCnpj;
   });
 
