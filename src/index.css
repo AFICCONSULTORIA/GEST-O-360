@@ -8,6 +8,17 @@
   --animate-spin-slow: spin 8s linear infinite;
 }
 
+@layer utilities {
+  .text-body-lg { font-size: 18px; line-height: 1.6; font-weight: 400; }
+  .text-headline-lg { font-size: 32px; line-height: 1.3; font-weight: 700; }
+  .text-caption { font-size: 12px; line-height: 1.2; font-weight: 400; }
+  .text-display-lg { font-size: 48px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+  .text-headline-md { font-size: 24px; line-height: 1.4; font-weight: 600; }
+  .text-body-md { font-size: 16px; line-height: 1.6; font-weight: 400; }
+  .text-label-md { font-size: 14px; line-height: 1.2; font-weight: 600; letter-spacing: 0.01em; }
+}
+
+
 @layer base {
   body {
     @apply font-sans;
@@ -88,5 +99,88 @@
   .print-page-number::after {
     content: "Página " counter(page);
   }
+}
+
+@theme {
+  /* Fontes Personalizadas Educação */
+  --font-edu-headline-lg-mobile: "Plus Jakarta Sans";
+  --font-edu-body-lg: "Atkinson Hyperlegible Next";
+  --font-edu-headline-lg: "Plus Jakarta Sans";
+  --font-edu-caption: "Atkinson Hyperlegible Next";
+  --font-edu-display-lg: "Plus Jakarta Sans";
+  --font-edu-headline-md: "Plus Jakarta Sans";
+  --font-edu-body-md: "Atkinson Hyperlegible Next";
+  --font-edu-label-md: "Atkinson Hyperlegible Next";
+
+  /* Espaçamentos Educação */
+  --spacing-edu-xs: 8px;
+  --spacing-edu-lg: 40px;
+  --spacing-edu-xl: 64px;
+  --spacing-edu-md: 24px;
+  --spacing-edu-margin-mobile: 16px;
+  --spacing-edu-base: 4px;
+  --spacing-edu-margin-desktop: 48px;
+  --spacing-edu-sm: 16px;
+  --spacing-edu-gutter: 24px;
+
+  /* Cores Educação */
+  --color-edu-secondary-fixed: #ffdbca;
+  --color-edu-error: #ba1a1a;
+  --color-edu-inverse-on-surface: #eaf1ff;
+  --color-edu-on-surface: #0b1c30;
+  --color-edu-surface-container-highest: #d3e4fe;
+  --color-edu-outline: #737686;
+  --color-edu-primary-container: #1a56db;
+  --color-edu-on-primary-container: #d4dcff;
+  --color-edu-secondary: #9d4300;
+  --color-edu-secondary-fixed-dim: #ffb690;
+  --color-edu-on-tertiary-fixed: #002113;
+  --color-edu-on-error: #ffffff;
+  --color-edu-on-primary: #ffffff;
+  --color-edu-on-tertiary-container: #68f5b8;
+  --color-edu-surface-variant: #d3e4fe;
+  --color-edu-primary-fixed: #dbe1ff;
+  --color-edu-surface-container-low: #eff4ff;
+  --color-edu-on-background: #0b1c30;
+  --color-edu-surface-container: #e5eeff;
+  --color-edu-background: #f8f9ff;
+  --color-edu-tertiary-fixed-dim: #4edea3;
+  --color-edu-surface-dim: #cbdbf5;
+  --color-edu-tertiary-fixed: #6ffbbe;
+  --color-edu-inverse-primary: #b5c4ff;
+  --color-edu-on-surface-variant: #434654;
+  --color-edu-surface-tint: #1353d8;
+  --color-edu-on-secondary: #ffffff;
+  --color-edu-tertiary-container: #006f4b;
+  --color-edu-error-container: #ffdad6;
+  --color-edu-surface-container-lowest: #ffffff;
+  --color-edu-inverse-surface: #213145;
+  --color-edu-on-tertiary: #ffffff;
+  --color-edu-primary-fixed-dim: #b5c4ff;
+  --color-edu-on-tertiary-fixed-variant: #005236;
+  --color-edu-on-secondary-fixed-variant: #783200;
+  --color-edu-surface: #f8f9ff;
+  --color-edu-primary: #003fb1;
+  --color-edu-secondary-container: #fd761a;
+  --color-edu-surface-container-high: #dce9ff;
+  --color-edu-on-primary-fixed: #00174d;
+  --color-edu-on-primary-fixed-variant: #003dab;
+  --color-edu-on-secondary-container: #5c2400;
+  --color-edu-on-error-container: #93000a;
+  --color-edu-on-secondary-fixed: #341100;
+  --color-edu-outline-variant: #c3c5d7;
+  --color-edu-tertiary: #005438;
+  --color-edu-surface-bright: #f8f9ff;
+}
+
+@layer utilities {
+  .text-edu-headline-lg-mobile { font-size: 24px; line-height: 1.3; font-weight: 700; }
+  .text-edu-body-lg { font-size: 18px; line-height: 1.6; font-weight: 400; }
+  .text-edu-headline-lg { font-size: 32px; line-height: 1.3; font-weight: 700; }
+  .text-edu-caption { font-size: 12px; line-height: 1.2; font-weight: 400; }
+  .text-edu-display-lg { font-size: 48px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
+  .text-edu-headline-md { font-size: 24px; line-height: 1.4; font-weight: 600; }
+  .text-edu-body-md { font-size: 16px; line-height: 1.6; font-weight: 400; }
+  .text-edu-label-md { font-size: 14px; line-height: 1.2; font-weight: 600; letter-spacing: 0.01em; }
 }
 

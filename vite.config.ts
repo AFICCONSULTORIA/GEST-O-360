@@ -13,6 +13,9 @@ export default defineConfig(({mode}) => {
       VitePWA({
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
+        workbox: {
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 // 4MB
+        },
         manifest: {
           name: 'Gestão 360',
           short_name: 'Gestão 360',

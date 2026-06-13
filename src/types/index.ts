@@ -150,6 +150,7 @@ export interface Institution {
   id: string;
   name: string;
   subdomain?: string;
+  logo_url?: string;
   cert_links?: any;
   state_links?: any;
 }
