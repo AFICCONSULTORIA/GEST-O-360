@@ -1015,14 +1015,30 @@ const SalesLandingPage = ({
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.1, duration: 0.5 }}
                       key={inst.id}
-                      className="flex items-center gap-3 px-6 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 hover:-translate-y-1 transition-all duration-300 group"
+                      className="flex flex-col sm:flex-row items-center gap-4 px-6 py-4 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-[24px] shadow-lg shadow-neutral-200/20 dark:shadow-none hover:shadow-xl hover:shadow-emerald-500/10 hover:border-emerald-200 dark:hover:border-emerald-800 hover:-translate-y-1 transition-all duration-300 group relative overflow-hidden"
                     >
-                      <div className="p-1.5 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/20 transition-colors">
-                        <Building2 size={16} className="text-emerald-600 dark:text-emerald-400" />
-                      </div>
-                      <span className="font-bold text-neutral-800 dark:text-neutral-200 text-sm">
-                        {inst.name.replace(/Prefeitura Municipal de |Prefeitura de /i, '')}{!inst.name.includes('/') ? '/MT' : ''}
-                      </span>
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                      
+                      {inst.logo_url ? (
+                        <div className="relative z-10 p-2 w-32 h-32 sm:w-40 sm:h-40 flex items-center justify-center shrink-0">
+                          <img src={inst.logo_url} alt={`Logo ${inst.name}`} className="max-w-full max-h-full object-contain filter drop-shadow-sm group-hover:scale-105 transition-transform duration-300" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="relative z-10 p-3 sm:p-4 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl group-hover:bg-emerald-100 dark:group-hover:bg-emerald-500/20 transition-colors shrink-0">
+                            <Building2 size={24} className="text-emerald-600 dark:text-emerald-400" />
+                          </div>
+                          
+                          <div className="relative z-10 flex flex-col sm:items-start text-center sm:text-left">
+                            <span className="font-black text-neutral-900 dark:text-neutral-100 text-lg tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                              {inst.name.replace(/Prefeitura Municipal de |Prefeitura de /i, '')}{!inst.name.includes('/') ? '/MT' : ''}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 dark:text-neutral-500">
+                              Cliente Gestão 360
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </motion.div>
                   ))}
                 </div>
@@ -1941,6 +1957,7 @@ export interface Institution {
   id: string;
   name: string;
   subdomain?: string;
+  logo_url?: string;
 }
 
 export interface Department {
@@ -1990,9 +2007,7 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
 ];
 
 const MOCK_INSTITUTIONS: Institution[] = [
-  { id: 'inst_1', name: 'Prefeitura Municipal' },
-  { id: 'inst_2', name: 'Câmara Municipal' },
-  { id: 'inst_3', name: 'Secretaria de Saúde' }
+  { id: 'inst_4', name: 'Prefeitura de Torixoréu/MT' }
 ];
 
 const MOCK_USERS: AdminUser[] = [
@@ -2181,6 +2196,21 @@ export default function App() {
   const [orders, setOrders] = React.useState<OrderItem[]>(MOCK_ORDERS);
   const [docRecords, setDocRecords] = React.useState<DocumentRecord[]>(MOCK_DOCUMENTS);
   const [departments, setDepartments] = React.useState<Department[]>([]);
+
+  React.useEffect(() => {
+    // Busca pública das prefeituras para exibir a logo na Landing Page
+    const fetchPublicInstitutions = async () => {
+      try {
+        const { data, error } = await supabase.from('institutions').select('*');
+        if (!error && data && data.length > 0) {
+          setInstitutions(data as Institution[]);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar prefeituras públicas:', err);
+      }
+    };
+    fetchPublicInstitutions();
+  }, []);
 
   React.useEffect(() => {
     if (!isAuthenticated) return;

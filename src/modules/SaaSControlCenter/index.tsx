@@ -71,7 +71,7 @@ export const SaaSControlCenter = ({
   // Modals state
   const [isInstModalOpen, setIsInstModalOpen] = React.useState(false);
   const [editingInstitution, setEditingInstitution] = React.useState<Institution | null>(null);
-  const [instFormData, setInstFormData] = React.useState({ name: '', subdomain: '' });
+  const [instFormData, setInstFormData] = React.useState({ name: '', subdomain: '', logo_url: '' });
 
   const [isUserModalOpen, setIsUserModalOpen] = React.useState(false);
   const [editingUser, setEditingUser] = React.useState<AdminUser | null>(null);
@@ -119,7 +119,7 @@ export const SaaSControlCenter = ({
     if (editingInstitution) {
       const updated = { ...editingInstitution, ...instFormData };
       setInstitutions(institutions.map(i => i.id === editingInstitution.id ? updated : i));
-      const { error } = await supabase.from('institutions').update({ name: updated.name, subdomain: updated.subdomain }).eq('id', updated.id);
+      const { error } = await supabase.from('institutions').update({ name: updated.name, subdomain: updated.subdomain, logo_url: updated.logo_url }).eq('id', updated.id);
       if (error) showToast('Erro ao atualizar prefeitura: ' + error.message, 'error');
       else showToast('Prefeitura atualizada com sucesso!', 'success');
     } else {
@@ -128,7 +128,7 @@ export const SaaSControlCenter = ({
         id: crypto.randomUUID()
       };
       setInstitutions([...institutions, newInst]);
-      const { error } = await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name, subdomain: newInst.subdomain });
+      const { error } = await supabase.from('institutions').insert({ id: newInst.id, name: newInst.name, subdomain: newInst.subdomain, logo_url: newInst.logo_url });
       if (error) showToast('Erro ao criar prefeitura: ' + error.message, 'error');
       else showToast('Prefeitura criada com sucesso!', 'success');
     }
@@ -379,7 +379,7 @@ export const SaaSControlCenter = ({
               onClick={() => {
                 if (activeTab === 'institutions') {
                   setEditingInstitution(null);
-                  setInstFormData({ name: '', subdomain: '' });
+                  setInstFormData({ name: '', subdomain: '', logo_url: '' });
                   setIsInstModalOpen(true);
                 } else if (activeTab === 'users') {
                   setEditingUser(null);
@@ -586,7 +586,7 @@ export const SaaSControlCenter = ({
                               <Activity size={16} />
                             </button>
                             <button 
-                              onClick={() => { setEditingInstitution(inst); setInstFormData({ name: inst.name, subdomain: inst.subdomain || '' }); setIsInstModalOpen(true); }}
+                              onClick={() => { setEditingInstitution(inst); setInstFormData({ name: inst.name, subdomain: inst.subdomain || '', logo_url: inst.logo_url || '' }); setIsInstModalOpen(true); }}
                               className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all"
                               title="Editar"
                             >
@@ -815,6 +815,16 @@ export const SaaSControlCenter = ({
                       value={instFormData.subdomain}
                       onChange={e => setInstFormData({ ...instFormData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
                       className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm font-mono outline-none focus:ring-4 focus:ring-purple-600/10 focus:border-purple-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">URL da Logo (Opcional)</label>
+                    <input 
+                      type="url" 
+                      placeholder="Ex: https://site.com/logo.png"
+                      value={instFormData.logo_url}
+                      onChange={e => setInstFormData({ ...instFormData, logo_url: e.target.value })}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-purple-600/10 focus:border-purple-600 dark:text-white"
                     />
                   </div>
                 </div>
