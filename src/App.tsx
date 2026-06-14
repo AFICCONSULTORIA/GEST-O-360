@@ -3110,6 +3110,7 @@ export default function App() {
                 items={patrimonioItems} 
                 canDelete={hasPermission(currentUser, 'patrimonio', 'admin')}
                 canEdit={hasPermission(currentUser, 'patrimonio', 'edit')}
+                userDepartment={departments.find(d => d.id === currentUser?.department_id)?.name || ''}
 
                 onDelete={async (id) => {
                   try {
@@ -3136,6 +3137,7 @@ export default function App() {
                     plate: item.plate,
                     chassis: item.chassis,
                     model: item.model,
+                    description: item.description,
                     institution_id: currentInstitution?.id || null
                   };
                   try {
@@ -3146,13 +3148,48 @@ export default function App() {
                         ...data,
                         itemType: data.item_type,
                         objectName: data.object_name,
-                        imageUrls: data.image_urls
+                        imageUrls: data.image_urls,
+                        description: data.description
                       } as PatrimonioItem, ...patrimonioItems]);
                       showToast('Item de patrimônio salvo com sucesso', 'success');
                     }
                   } catch (error) {
                     console.error('Erro ao salvar patrimônio:', error);
                     showToast('Erro ao salvar item', 'error');
+                  }
+                }}
+                onEdit={async (item) => {
+                  const dbItem = {
+                    item_type: item.itemType,
+                    code: item.code,
+                    object_name: item.objectName,
+                    location: item.location,
+                    status: item.status,
+                    condition: item.condition,
+                    department: item.department,
+                    year: item.year,
+                    image_urls: item.imageUrls,
+                    plate: item.plate,
+                    chassis: item.chassis,
+                    model: item.model,
+                    description: item.description
+                  };
+                  try {
+                    const { data, error } = await supabase.from('patrimonio').update(dbItem).eq('id', item.id).select().single();
+                    if (error) throw error;
+                    if (data) {
+                      setPatrimonioItems(patrimonioItems.map(p => p.id === item.id ? {
+                        ...data,
+                        itemType: data.item_type,
+                        objectName: data.object_name,
+                        imageUrls: data.image_urls,
+                        description: data.description
+                      } as PatrimonioItem : p));
+                      showToast('Item atualizado com sucesso', 'success');
+                    }
+                  } catch (error) {
+                    console.error('Erro ao atualizar patrimônio:', error);
+                    showToast('Erro ao atualizar item', 'error');
                   }
                 }}
               />

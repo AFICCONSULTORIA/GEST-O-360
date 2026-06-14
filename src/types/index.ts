@@ -111,6 +111,7 @@ export interface PatrimonioItem {
   plate?: string;
   chassis?: string;
   model?: string;
+  description?: string;
 }
 
 export interface Evidence {
