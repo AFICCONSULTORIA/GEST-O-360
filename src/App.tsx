@@ -3232,6 +3232,61 @@ export default function App() {
             )}
             {activeView === 'home' && (
               <div className="w-full max-w-[1400px] mx-auto px-6 py-12 relative z-10 animate-in fade-in duration-500">
+                
+                {/* Update Card */}
+                <div className="mb-12 bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-500/10 dark:to-teal-500/5 border border-emerald-100 dark:border-emerald-500/20 rounded-[32px] p-8 flex flex-col md:flex-row gap-8 items-start shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
+                  <div className="absolute -right-10 -top-10 opacity-5 dark:opacity-10 transform rotate-12 pointer-events-none group-hover:scale-110 transition-transform duration-700">
+                    <History size={240} />
+                  </div>
+                  
+                  <div className="w-16 h-16 rounded-[20px] bg-emerald-500 dark:bg-emerald-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-emerald-500/30">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  
+                  <div className="relative z-10">
+                    <div className="flex items-center gap-3 mb-3">
+                      <h3 className="text-2xl font-black text-emerald-950 dark:text-emerald-50 tracking-tight">Atualizações no Patrimônio</h3>
+                      <span className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-sm">Novo</span>
+                    </div>
+                    <p className="text-emerald-800/80 dark:text-emerald-200/70 mb-6 max-w-2xl text-sm md:text-base">
+                      Implementamos diversas melhorias solicitadas no módulo de Patrimônio para tornar seu dia a dia mais produtivo e a interface muito mais limpa:
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
+                      <div className="flex items-start gap-3 bg-white/60 dark:bg-neutral-900/40 p-4 rounded-2xl border border-emerald-100/50 dark:border-emerald-500/10">
+                        <List size={20} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-bold text-emerald-950 dark:text-emerald-100 text-sm">Modo Lista Limpo</p>
+                          <p className="text-xs text-emerald-800/70 dark:text-emerald-300/60 mt-1">A tabela foi substituída por caixinhas organizadas e expansíveis.</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-start gap-3 bg-white/60 dark:bg-neutral-900/40 p-4 rounded-2xl border border-emerald-100/50 dark:border-emerald-500/10">
+                        <Activity size={20} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-bold text-emerald-950 dark:text-emerald-100 text-sm">Cores de Status</p>
+                          <p className="text-xs text-emerald-800/70 dark:text-emerald-300/60 mt-1">Status e condições voltaram a exibir cores para facilitar a identificação.</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-start gap-3 bg-white/60 dark:bg-neutral-900/40 p-4 rounded-2xl border border-emerald-100/50 dark:border-emerald-500/10">
+                        <Users size={20} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-bold text-emerald-950 dark:text-emerald-100 text-sm">Preenchimento Automático</p>
+                          <p className="text-xs text-emerald-800/70 dark:text-emerald-300/60 mt-1">A secretaria agora é preenchida sozinha com base na sua lotação.</p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-start gap-3 bg-white/60 dark:bg-neutral-900/40 p-4 rounded-2xl border border-emerald-100/50 dark:border-emerald-500/10">
+                        <Eye size={20} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-bold text-emerald-950 dark:text-emerald-100 text-sm">Galeria de Fotos</p>
+                          <p className="text-xs text-emerald-800/70 dark:text-emerald-300/60 mt-1">Novo carrossel dinâmico acessível direto pelo modo lista.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="mb-10">
                   <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
                     {recentViews.length > 0 ? 'Acessados Recentemente' : 'Acesso Rápido'}
