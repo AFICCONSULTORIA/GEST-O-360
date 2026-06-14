@@ -73,12 +73,12 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
         ]}
       />
 
-      <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div>
           <h2 className="text-2xl font-bold dark:text-neutral-100">Controle de Patrimônio</h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm">Gerencie os bens móveis, imóveis, equipamentos e veículos da administração.</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Gerencie os bens móveis, imóveis, equipamentos e veículos da administração.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3 w-full md:w-auto">
           <button 
             onClick={() => window.print()}
             className="bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-6 py-2.5 rounded-2xl text-sm font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/40 transition-all flex items-center gap-2"
@@ -115,7 +115,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
             />
           </div>
           
-          <div className="grid grid-cols-3 gap-2 md:flex md:gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 md:flex md:gap-3">
             <select 
               value={filterDept}
               onChange={e => setFilterDept(e.target.value)}
@@ -332,7 +332,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   </div>
                 </div>
                 
-                <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
+                <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto pt-3 md:pt-0 border-t border-neutral-100 dark:border-neutral-800 md:border-0">
                   {(canEdit || canDelete) && (
                     <div className="flex gap-2" onClick={e => e.stopPropagation()}>
                       {canEdit && (

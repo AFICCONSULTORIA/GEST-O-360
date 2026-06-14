@@ -47,14 +47,14 @@ export const WhatsNewBanner: React.FC<WhatsNewBannerProps> = ({ version, title, 
             <X size={20} />
           </button>
 
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center gap-6">
-            <div className="p-4 bg-white/20 rounded-2xl text-white backdrop-blur-sm shrink-0 w-max">
+          <div className="relative z-10 flex flex-col md:flex-row md:items-start gap-6">
+            <div className="hidden md:flex p-4 bg-white/20 rounded-2xl text-white backdrop-blur-sm shrink-0 w-max">
               <Sparkles size={32} />
             </div>
             
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="px-3 py-1 bg-white text-emerald-700 text-xs font-black uppercase tracking-widest rounded-full shadow-sm">
+              <div className="flex items-center gap-3 mb-3">
+                <span className="px-3 py-1 bg-white text-emerald-700 text-[10px] sm:text-xs font-black uppercase tracking-widest rounded-full shadow-sm">
                   Nova Versão {version}
                 </span>
               </div>
@@ -63,7 +63,7 @@ export const WhatsNewBanner: React.FC<WhatsNewBannerProps> = ({ version, title, 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
                 {features.map((feature, i) => (
                   <div key={i} className="flex items-start gap-3 bg-black/10 backdrop-blur-sm rounded-2xl p-4 text-white">
-                    <CheckCircle2 size={20} className="text-emerald-200 shrink-0 mt-0.5" />
+                    <CheckCircle2 size={18} className="text-emerald-200 shrink-0 mt-0.5" />
                     <span className="text-sm font-medium leading-relaxed text-emerald-50">{feature}</span>
                   </div>
                 ))}
