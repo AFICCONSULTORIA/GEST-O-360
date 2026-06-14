@@ -510,14 +510,25 @@ const CompanyFormModal = ({ onClose, onConfirm, initialData }: { onClose: () => 
           <button 
             onClick={() => {
               const doc = formData.useCpf ? formData.cpf : formData.cnpj;
-              if (formData.companyName && doc) {
-                onConfirm({
-                  id: initialData ? initialData.id : Date.now().toString(),
-                  companyName: formData.companyName,
-                  cnpj: doc,
-                  certificates: initialData ? initialData.certificates : { Trabalhista: null, Federal: null, Estadual: null, Municipal: null, FGTS: null }
-                });
+              const cleanDoc = doc.replace(/\D/g, '');
+              const isValidDoc = formData.useCpf ? cleanDoc.length === 11 : cleanDoc.length === 14;
+
+              if (!formData.companyName) {
+                showToast('Por favor, preencha a Razão Social.', 'warning');
+                return;
               }
+
+              if (!isValidDoc) {
+                showToast(`Por favor, preencha o ${formData.useCpf ? 'CPF' : 'CNPJ'} completamente.`, 'warning');
+                return;
+              }
+
+              onConfirm({
+                id: initialData ? initialData.id : Date.now().toString(),
+                companyName: formData.companyName,
+                cnpj: doc,
+                certificates: initialData ? initialData.certificates : { Trabalhista: null, Federal: null, Estadual: null, Municipal: null, FGTS: null }
+              });
             }}
             className="flex-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all text-center"
           >
