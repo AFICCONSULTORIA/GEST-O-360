@@ -2092,7 +2092,7 @@ const Login = ({ onLogin, onDemoLogin, darkMode, currentInstitution, isSaaSAdmin
           </button>
         </form>
 
-        {onDemoLogin && (
+        {onDemoLogin && getSubdomain() === 'demo' && (
           <div className="mt-4">
             <button
               type="button"
