@@ -10,6 +10,7 @@ import {
   Institution, AdminUser, View, PNTPCategory, Evidence
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
+import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 
 const { 
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List
@@ -61,6 +62,17 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   return (
     <>
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 relative print:hidden">
+      <WhatsNewBanner 
+        version="2.1.0"
+        title="Atualizações no Patrimônio"
+        features={[
+          "Modo Lista Limpo: A tabela foi substituída por caixinhas organizadas e expansíveis.",
+          "Cores de Status: Status e condições voltaram a exibir cores para facilitar a identificação.",
+          "Preenchimento Automático: A secretaria agora é preenchida sozinha com base na sua lotação.",
+          "Galeria de Fotos: Novo carrossel dinâmico acessível direto pelo modo lista."
+        ]}
+      />
+
       <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div>
           <h2 className="text-2xl font-bold dark:text-neutral-100">Controle de Patrimônio</h2>
