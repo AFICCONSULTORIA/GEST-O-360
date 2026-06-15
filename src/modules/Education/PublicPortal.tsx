@@ -49,13 +49,18 @@ const MOCK_QUESTIONS = [
 ];
 
 export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEducacaoPortalProps) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'student' | 'teacher' | 'student-login'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'student' | 'teacher' | 'student-login' | 'teacher-login'>('home');
   
   // Student Login State
-  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [loginPhase, setLoginPhase] = useState<'idle' | 'loading' | 'exploding'>('idle');
   const [selectedSchool, setSelectedSchool] = useState('');
   const [studentName, setStudentName] = useState('');
   const [studentPassword, setStudentPassword] = useState('');
+
+  // Teacher Login State
+  const [isTeacherLoggingIn, setIsTeacherLoggingIn] = useState(false);
+  const [teacherEmail, setTeacherEmail] = useState('');
+  const [teacherPassword, setTeacherPassword] = useState('');
 
   // Student Dashboard State
   const [studentGrade, setStudentGrade] = useState<number | null>(null);
@@ -67,11 +72,25 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
     e.preventDefault();
     if (!selectedSchool || !studentName || !studentPassword) return;
     
-    setIsLoggingIn(true);
-    // Simulate network request
+    setLoginPhase('loading');
+    
     setTimeout(() => {
-      setIsLoggingIn(false);
-      setActiveTab('student');
+      setLoginPhase('exploding');
+      setTimeout(() => {
+        setLoginPhase('idle');
+        setActiveTab('student');
+      }, 3000); // Explosion effect duration
+    }, 2000); // 2s loading + 3s explosion = 5s total
+  };
+
+  const handleTeacherLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!teacherEmail || !teacherPassword) return;
+    
+    setIsTeacherLoggingIn(true);
+    setTimeout(() => {
+      setIsTeacherLoggingIn(false);
+      setActiveTab('teacher');
     }, 1500);
   };
 
@@ -179,7 +198,7 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
         <motion.button 
           whileHover={{ scale: 1.02, y: -5 }}
           whileTap={{ scale: 0.98 }}
-          onClick={() => setActiveTab('teacher')}
+          onClick={() => setActiveTab('teacher-login')}
           className="group text-left p-1.5 rounded-[2.5rem] bg-gradient-to-br from-indigo-400 via-blue-500 to-cyan-500 shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 transition-all duration-300 relative overflow-hidden"
         >
           <div className="bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl p-8 sm:p-10 rounded-[2.3rem] h-full relative z-10 border border-white/20">
@@ -225,96 +244,259 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      className="min-h-[calc(100vh-100px)] flex items-center justify-center p-4 relative"
+      className="min-h-[calc(100vh-100px)] flex items-center justify-center p-4 relative overflow-hidden"
     >
-      {/* Decorative Background */}
+      {/* Super Magical Decorative Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-emerald-100/50 via-transparent to-transparent dark:from-emerald-900/20" />
-        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-sky-100/50 via-transparent to-transparent dark:from-sky-900/20" />
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-amber-300/30 via-transparent to-transparent" />
+        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-rose-300/30 via-transparent to-transparent" />
+        {/* Floating magical orbs */}
+        <motion.div animate={{ y: [0, -20, 0], x: [0, 10, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute top-20 left-20 w-32 h-32 bg-amber-400/20 rounded-full blur-3xl mix-blend-multiply" />
+        <motion.div animate={{ y: [0, 30, 0], x: [0, -20, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }} className="absolute bottom-20 right-20 w-40 h-40 bg-purple-400/20 rounded-full blur-3xl mix-blend-multiply" />
       </div>
 
       <div className="w-full max-w-md relative z-10">
-        <div className="bg-white/90 dark:bg-neutral-900/90 backdrop-blur-3xl p-8 rounded-[40px] shadow-2xl border border-white/50 dark:border-neutral-800/50">
+        <div className="bg-white/90 dark:bg-neutral-900/90 backdrop-blur-3xl p-8 rounded-[3rem] shadow-2xl shadow-amber-500/20 border-4 border-amber-200/50 dark:border-amber-500/20 relative">
+          
+          <AnimatePresence mode="wait">
+            {loginPhase !== 'idle' ? (
+              <motion.div 
+                key="loading"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className="flex flex-col items-center justify-center py-12 space-y-10 relative z-50"
+              >
+                {/* Portal Animation */}
+                <motion.div 
+                  className="relative w-48 h-48 flex items-center justify-center"
+                  animate={{ 
+                    scale: loginPhase === 'exploding' ? 20 : 1,
+                    opacity: loginPhase === 'exploding' ? 0 : 1
+                  }}
+                  transition={{ duration: 3, ease: "easeInOut" }}
+                >
+                  <motion.div 
+                    animate={{ rotate: 360, scale: [1, 1.1, 1] }} 
+                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 rounded-full border-[8px] border-transparent border-t-amber-400 border-r-orange-500 border-b-rose-500 border-l-purple-500 opacity-80 mix-blend-screen"
+                  />
+                  <motion.div 
+                    animate={{ rotate: -360 }} 
+                    transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-4 rounded-full border-[4px] border-dashed border-amber-300 opacity-60"
+                  />
+                  <motion.div 
+                    animate={{ scale: [0.8, 1.2, 0.8] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    className="w-20 h-20 bg-gradient-to-tr from-amber-300 via-orange-400 to-rose-500 rounded-full blur-md"
+                  />
+                  <Sparkles size={40} className="absolute text-white z-10 drop-shadow-lg animate-pulse" />
+                </motion.div>
+                
+                <motion.div 
+                  className="text-center space-y-4 w-full px-4 relative z-10"
+                  animate={{ opacity: 1, scale: loginPhase === 'exploding' ? 1.1 : 1 }}
+                  transition={{ duration: 3, ease: "easeOut" }}
+                >
+                  <motion.h3 
+                    animate={{ opacity: [0.5, 1, 0.5] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-rose-500"
+                  >
+                    {loginPhase === 'exploding' ? "Vamos conhecer o novo mundo! 🌍" : "Atravessando o Portal..."}
+                  </motion.h3>
+                  {/* Loading Bar */}
+                  <div className="w-full h-4 bg-amber-100 dark:bg-neutral-800 rounded-full overflow-hidden relative shadow-inner">
+                    <motion.div 
+                      initial={{ width: "0%" }}
+                      animate={{ width: "100%" }}
+                      transition={{ duration: 2, ease: "linear" }}
+                      className="absolute top-0 left-0 h-full bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500"
+                    />
+                  </div>
+                </motion.div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="form"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                {/* Magic floating icon */}
+                <motion.div 
+                  animate={{ rotate: [0, 10, -10, 0] }} 
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute -top-6 -right-6 w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg shadow-amber-500/40 border-4 border-white dark:border-neutral-900"
+                >
+                  <Sparkles size={28} className="text-white" />
+                </motion.div>
+
+                <button 
+                  onClick={() => setActiveTab('home')}
+                  className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 hover:scale-110 shadow-sm border border-amber-200 dark:border-amber-800 transition-all mb-6 group"
+                >
+                  <ChevronLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
+                </button>
+
+                <div className="text-center mb-8">
+                  <div className="w-24 h-24 bg-gradient-to-tr from-amber-400 via-orange-400 to-rose-400 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-amber-500/30 transform rotate-3 hover:rotate-6 hover:scale-105 transition-all">
+                    <Star size={48} className="text-white fill-current" />
+                  </div>
+                  <h2 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-rose-500">Portal Mágico</h2>
+                  <p className="text-amber-600/80 dark:text-amber-400/80 mt-2 font-bold text-lg">Pronto para a aventura? 🚀</p>
+                </div>
+
+                <form onSubmit={handleStudentLogin} className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">🏰 Sua Escola</label>
+                    <div className="relative group">
+                      <School size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                      <select 
+                        required
+                        value={selectedSchool}
+                        onChange={(e) => setSelectedSchool(e.target.value)}
+                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 focus:ring-0 outline-none transition-all appearance-none font-black text-neutral-700 dark:text-neutral-200 text-lg shadow-inner cursor-pointer"
+                      >
+                        <option value="" disabled>Escolha sua escola...</option>
+                        <option value="1">Escola Municipal Maria Quitéria</option>
+                        <option value="2">Centro Educacional Crescer</option>
+                        <option value="3">Escola Setor Rural Boa Vista</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">👤 Seu Nome de Herói</label>
+                    <div className="relative group">
+                      <User size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                      <input 
+                        type="text" 
+                        required
+                        value={studentName}
+                        onChange={(e) => setStudentName(e.target.value)}
+                        placeholder="Como você se chama?"
+                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">🔑 Senha Secreta</label>
+                    <div className="relative group">
+                      <Lock size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                      <input 
+                        type="password" 
+                        required
+                        value={studentPassword}
+                        onChange={(e) => setStudentPassword(e.target.value)}
+                        placeholder="* * * * * *"
+                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-rose-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-xl placeholder:text-neutral-400/70 placeholder:font-bold tracking-[0.3em] shadow-inner"
+                      />
+                    </div>
+                  </div>
+
+                  <button 
+                    type="submit"
+                    disabled={loginPhase !== 'idle'}
+                    className="w-full mt-8 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 text-white py-5 rounded-3xl font-black text-xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 overflow-hidden relative group"
+                  >
+                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjUpIi8+PC9zdmc+')] opacity-0 group-hover:opacity-30 transition-opacity animate-[spin_10s_linear_infinite]" />
+                    <span className="relative z-10">Entrar no Portal</span>
+                    <ArrowRight size={24} className="relative z-10 group-hover:translate-x-2 transition-transform" />
+                  </button>
+                </form>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+        </div>
+      </div>
+    </motion.div>
+  );
+
+  const renderTeacherLogin = () => (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="min-h-[calc(100vh-100px)] flex items-center justify-center p-4 relative"
+    >
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-indigo-100/50 via-transparent to-transparent dark:from-indigo-900/20" />
+        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-blue-100/50 via-transparent to-transparent dark:from-blue-900/20" />
+      </div>
+
+      <div className="w-full max-w-md relative z-10">
+        <div className="bg-white/95 dark:bg-neutral-900/95 backdrop-blur-3xl p-8 rounded-[2.5rem] shadow-2xl border border-white/50 dark:border-neutral-800/50">
           
           <button 
             onClick={() => setActiveTab('home')}
-            className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-neutral-500 hover:text-emerald-600 dark:hover:text-emerald-400 shadow-sm border border-neutral-100 dark:border-neutral-700 transition-colors mb-6"
+            className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-neutral-500 hover:text-indigo-600 dark:hover:text-indigo-400 shadow-sm border border-neutral-100 dark:border-neutral-700 transition-colors mb-6"
           >
             <ChevronLeft size={20} />
           </button>
 
           <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-gradient-to-tr from-emerald-400 to-sky-400 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20 transform rotate-3 hover:rotate-0 transition-transform">
-              <Sparkles size={36} className="text-white" />
+            <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-500/20">
+              <Brain size={36} className="text-white" />
             </div>
-            <h2 className="text-3xl font-black text-neutral-900 dark:text-white">Área do Aluno</h2>
-            <p className="text-neutral-500 dark:text-neutral-400 mt-2 font-medium">Prepare-se para aprender brincando!</p>
+            <h2 className="text-3xl font-black text-neutral-900 dark:text-white">Acesso do Educador</h2>
+            <p className="text-neutral-500 dark:text-neutral-400 mt-2 font-medium">Faça login para acessar o painel</p>
           </div>
 
-          <form onSubmit={handleStudentLogin} className="space-y-5">
+          <form onSubmit={handleTeacherLogin} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">Sua Escola</label>
+              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">E-mail Profissional</label>
               <div className="relative">
-                <School size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <select 
-                  required
-                  value={selectedSchool}
-                  onChange={(e) => setSelectedSchool(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-emerald-500 focus:bg-white dark:focus:bg-neutral-900 focus:ring-0 outline-none transition-colors appearance-none font-bold text-neutral-700 dark:text-neutral-200 shadow-inner"
-                >
-                  <option value="" disabled>Selecione sua escola...</option>
-                  <option value="1">Escola Municipal Maria Quitéria</option>
-                  <option value="2">Centro Educacional Crescer</option>
-                  <option value="3">Escola Setor Rural Boa Vista</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">Seu Nome Mágico</label>
-              <div className="relative">
-                <User size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <FileText size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
                 <input 
-                  type="text" 
+                  type="email" 
                   required
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  placeholder="Como você se chama?"
-                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-sky-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-bold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal shadow-inner"
+                  value={teacherEmail}
+                  onChange={(e) => setTeacherEmail(e.target.value)}
+                  placeholder="seu.email@escola.com.br"
+                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal shadow-inner"
                 />
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">Senha Secreta</label>
+              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">Senha</label>
               <div className="relative">
                 <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
                 <input 
                   type="password" 
                   required
-                  value={studentPassword}
-                  onChange={(e) => setStudentPassword(e.target.value)}
-                  placeholder="* * * * * *"
-                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-amber-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-black text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal tracking-[0.3em] shadow-inner"
+                  value={teacherPassword}
+                  onChange={(e) => setTeacherPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal shadow-inner"
                 />
               </div>
             </div>
 
+            <div className="flex justify-end px-2">
+              <button type="button" className="text-sm font-bold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+                Esqueceu a senha?
+              </button>
+            </div>
+
             <button 
               type="submit"
-              disabled={isLoggingIn}
-              className="w-full mt-8 bg-gradient-to-r from-emerald-500 via-teal-500 to-sky-500 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-sky-500/20 hover:shadow-sky-500/40 hover:-translate-y-1 active:scale-95 transition-all flex justify-center items-center gap-2 overflow-hidden relative group"
+              disabled={isTeacherLoggingIn}
+              className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-1 active:scale-95 transition-all flex justify-center items-center gap-2"
             >
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-in-out" />
-              {isLoggingIn ? (
+              {isTeacherLoggingIn ? (
                 <>
-                  <Loader2 size={24} className="animate-spin relative z-10" />
-                  <span className="relative z-10">Entrando na Aventura...</span>
+                  <Loader2 size={24} className="animate-spin" />
+                  <span>Autenticando...</span>
                 </>
               ) : (
                 <>
-                  <span className="relative z-10">Começar a Aventura</span>
-                  <ArrowRight size={20} className="relative z-10 group-hover:translate-x-1 transition-transform" />
+                  <span>Entrar no Painel</span>
+                  <ArrowRight size={20} />
                 </>
               )}
             </button>
@@ -326,10 +508,11 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
   );
 
   return (
-    <div className={`min-h-[100dvh] transition-colors ${darkMode ? 'dark' : ''} ${(activeTab === 'home' || activeTab === 'student-login') ? 'pt-24 pb-20 px-4 md:px-8 bg-[#F4F4F2] dark:bg-neutral-950' : 'bg-edu-background'}`}>
+    <div className={`min-h-[100dvh] transition-colors ${darkMode ? 'dark' : ''} ${(activeTab === 'home' || activeTab === 'student-login' || activeTab === 'teacher-login') ? 'pt-24 pb-20 px-4 md:px-8 bg-[#F4F4F2] dark:bg-neutral-950' : 'bg-edu-background'}`}>
       <AnimatePresence mode="wait">
         {activeTab === 'home' && renderHome()}
         {activeTab === 'student-login' && renderStudentLogin()}
+        {activeTab === 'teacher-login' && renderTeacherLogin()}
         {activeTab === 'student' && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <StudentPortal onBack={() => setActiveTab('home')} />
