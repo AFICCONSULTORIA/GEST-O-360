@@ -99,69 +99,123 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="max-w-5xl mx-auto space-y-12"
+      className="max-w-6xl mx-auto space-y-12 relative"
     >
-      <div className="text-center space-y-4">
-        <div className="w-20 h-20 bg-sky-100 dark:bg-sky-500/20 text-sky-600 dark:text-sky-400 rounded-3xl flex items-center justify-center mx-auto mb-6">
-          <GraduationCap size={40} />
-        </div>
-        <h2 className="text-4xl sm:text-5xl font-black tracking-tight text-neutral-900 dark:text-white">
-          Portal da Educação Municipal
+      {/* Decorative background elements */}
+      <div className="absolute -top-20 left-0 w-64 h-64 bg-sky-400/20 rounded-full blur-3xl mix-blend-multiply dark:mix-blend-screen animate-pulse" />
+      <div className="absolute top-40 right-0 w-72 h-72 bg-amber-400/20 rounded-full blur-3xl mix-blend-multiply dark:mix-blend-screen animate-pulse" style={{ animationDelay: '1s' }} />
+
+      <div className="text-center space-y-6 relative z-10">
+        <motion.div 
+          initial={{ scale: 0.8, rotate: -10 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ type: "spring", bounce: 0.5 }}
+          className="w-24 h-24 bg-gradient-to-br from-sky-400 to-indigo-500 text-white rounded-[2rem] shadow-xl shadow-sky-500/30 flex items-center justify-center mx-auto mb-6 transform rotate-3 hover:rotate-6 transition-transform cursor-default"
+        >
+          <GraduationCap size={48} />
+        </motion.div>
+        
+        <h2 className="text-5xl sm:text-6xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 dark:from-sky-400 dark:via-indigo-400 dark:to-purple-400 drop-shadow-sm">
+          Portal da Educação
         </h2>
-        <p className="text-neutral-500 dark:text-neutral-400 max-w-2xl mx-auto">
-          Um ambiente digital voltado para o desenvolvimento contínuo da nossa rede de ensino. 
-          Selecione o seu perfil abaixo para acessar os recursos disponíveis.
+        
+        <p className="text-xl text-neutral-600 dark:text-neutral-300 max-w-2xl mx-auto font-medium">
+          Um universo de aprendizado e diversão espera por você! 🚀
+          <br/>Escolha quem você é para começar a aventura:
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Student Card */}
-        <button 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12 px-4 relative z-10">
+        {/* Student Card - Highly playful */}
+        <motion.button 
+          whileHover={{ scale: 1.02, y: -5 }}
+          whileTap={{ scale: 0.98 }}
           onClick={() => setActiveTab('student-login')}
-          className="group text-left bg-white dark:bg-neutral-900 p-8 rounded-[32px] border border-neutral-100 dark:border-neutral-800 shadow-xl shadow-neutral-200/50 dark:shadow-none hover:shadow-2xl hover:shadow-amber-500/10 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
+          className="group text-left p-1.5 rounded-[2.5rem] bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 shadow-2xl shadow-orange-500/30 hover:shadow-orange-500/50 transition-all duration-300 relative overflow-hidden"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-amber-50 dark:from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="relative z-10 space-y-6">
-            <div className="w-16 h-16 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Star size={32} />
+          <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjUpIi8+PC9zdmc+')] opacity-50 animate-[spin_60s_linear_infinite]" />
+          
+          <div className="bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl p-8 sm:p-10 rounded-[2.3rem] h-full relative z-10 border border-white/20">
+            <div className="absolute top-6 right-6">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+              >
+                <Sparkles size={40} className="text-amber-400 opacity-30" />
+              </motion.div>
             </div>
-            <div>
-              <h3 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">Área do Aluno</h3>
-              <p className="text-neutral-500 dark:text-neutral-400 text-sm">
-                (1º ao 5º ano do Ensino Fundamental)<br/><br/>
-                Faça suas avaliações de forma divertida, teste seus conhecimentos e ajude seus professores a montar as melhores aulas para você!
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-black text-xs uppercase tracking-widest mt-4">
-              Entrar como Aluno
-              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-        </button>
 
-        {/* Teacher Card */}
-        <button 
-          onClick={() => setActiveTab('teacher')}
-          className="group text-left bg-white dark:bg-neutral-900 p-8 rounded-[32px] border border-neutral-100 dark:border-neutral-800 shadow-xl shadow-neutral-200/50 dark:shadow-none hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-1 transition-all duration-300 relative overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 dark:from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-          <div className="relative z-10 space-y-6">
-            <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform">
-              <BookOpen size={32} />
-            </div>
-            <div>
-              <h3 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">Área do Professor</h3>
-              <p className="text-neutral-500 dark:text-neutral-400 text-sm">
-                (Formação Continuada e Diagnósticos)<br/><br/>
-                Acesse trilhas de capacitação pedagógica, analise as defasagens mapeadas dos alunos e baixe materiais de apoio exclusivos.
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest mt-4">
-              Acessar Formações
-              <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            <div className="space-y-6">
+              <motion.div 
+                whileHover={{ rotate: 15, scale: 1.1 }}
+                className="w-20 h-20 bg-gradient-to-br from-amber-300 to-orange-500 text-white rounded-3xl flex items-center justify-center shadow-lg shadow-amber-500/30"
+              >
+                <Star size={40} className="fill-current" />
+              </motion.div>
+              
+              <div>
+                <h3 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600 mb-3">
+                  Área do Aluno
+                </h3>
+                <div className="inline-flex px-4 py-1.5 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-sm font-bold rounded-full mb-4">
+                  1º ao 5º ano 👦👧
+                </div>
+                <p className="text-neutral-600 dark:text-neutral-400 text-base leading-relaxed font-medium">
+                  Venha brincar, jogar e aprender! Ganhe medalhas, faça desafios incríveis e mostre que você é um super aluno! 🎮✨
+                </p>
+              </div>
+
+              <div className="pt-4 flex items-center gap-3">
+                <div className="h-12 px-6 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-lg rounded-xl flex items-center gap-2 group-hover:pr-4 transition-all">
+                  ENTRAR AGORA
+                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
             </div>
           </div>
-        </button>
+        </motion.button>
+
+        {/* Teacher Card - Clean but vibrant */}
+        <motion.button 
+          whileHover={{ scale: 1.02, y: -5 }}
+          whileTap={{ scale: 0.98 }}
+          onClick={() => setActiveTab('teacher')}
+          className="group text-left p-1.5 rounded-[2.5rem] bg-gradient-to-br from-indigo-400 via-blue-500 to-cyan-500 shadow-2xl shadow-blue-500/30 hover:shadow-blue-500/50 transition-all duration-300 relative overflow-hidden"
+        >
+          <div className="bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl p-8 sm:p-10 rounded-[2.3rem] h-full relative z-10 border border-white/20">
+            <div className="absolute top-6 right-6">
+              <BookOpen size={80} className="text-indigo-500 opacity-10 -rotate-12 group-hover:rotate-0 transition-transform duration-500" />
+            </div>
+
+            <div className="space-y-6">
+              <motion.div 
+                whileHover={{ rotate: -15, scale: 1.1 }}
+                className="w-20 h-20 bg-gradient-to-br from-indigo-400 to-blue-600 text-white rounded-3xl flex items-center justify-center shadow-lg shadow-indigo-500/30"
+              >
+                <Brain size={40} />
+              </motion.div>
+              
+              <div>
+                <h3 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-blue-600 dark:from-indigo-400 dark:to-blue-400 mb-3">
+                  Área do Professor
+                </h3>
+                <div className="inline-flex px-4 py-1.5 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-sm font-bold rounded-full mb-4">
+                  Educadores 📚
+                </div>
+                <p className="text-neutral-600 dark:text-neutral-400 text-base leading-relaxed font-medium">
+                  Acesse suas turmas, acompanhe o desenvolvimento dos alunos, baixe materiais e participe de formações exclusivas.
+                </p>
+              </div>
+
+              <div className="pt-4 flex items-center gap-3">
+                <div className="h-12 px-6 bg-gradient-to-r from-indigo-500 to-blue-500 text-white font-bold text-lg rounded-xl flex items-center gap-2 group-hover:pr-4 transition-all">
+                  Acessar Painel
+                  <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.button>
       </div>
     </motion.div>
   );
