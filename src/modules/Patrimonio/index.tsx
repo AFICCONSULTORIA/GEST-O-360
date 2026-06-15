@@ -443,15 +443,15 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
               initial={{ scale: 0.9, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-neutral-900 w-full max-w-3xl rounded-[40px] p-10 shadow-2xl"
+              className="bg-white dark:bg-neutral-900 w-full max-w-3xl max-h-[95vh] overflow-y-auto rounded-[30px] md:rounded-[40px] p-6 md:p-10 shadow-2xl custom-scrollbar"
               onClick={e => e.stopPropagation()}
             >
-              <div className="flex justify-between items-start mb-8">
+              <div className="flex justify-between items-start mb-6 md:mb-8">
                 <div>
-                  <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">{editingItemId ? 'Editar Item de Patrimônio' : 'Novo Item de Patrimônio'}</h3>
-                  <p className="text-sm text-neutral-500 mt-1">{editingItemId ? 'Atualize as informações do bem selecionado.' : 'Cadastre um novo bem para o controle da administração.'}</p>
+                  <h3 className="text-xl md:text-2xl font-black text-neutral-900 dark:text-neutral-100">{editingItemId ? 'Editar Item' : 'Novo Item'}</h3>
+                  <p className="text-xs md:text-sm text-neutral-500 mt-1">{editingItemId ? 'Atualize as informações do bem selecionado.' : 'Cadastre um novo bem para o controle da administração.'}</p>
                 </div>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 shrink-0 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-all">
                   <X size={20} />
                 </button>
               </div>
@@ -489,7 +489,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Código do Item</label>
                     <input 
@@ -526,7 +526,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                 </div>
 
                 {formData.itemType === 'Veículo' && (
-                  <div className="grid grid-cols-3 gap-6 bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/30">
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-widest text-indigo-500 ml-1">Placa</label>
                       <input 
@@ -563,7 +563,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Secretaria</label>
                     <input 
@@ -589,7 +589,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Status</label>
                     <select 
@@ -699,9 +699,9 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   </div>
                 </div>
 
-                <div className="pt-4 flex gap-3">
-                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
-                  <button type="submit" className="flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 hover:scale-105 transition-all">
+                <div className="pt-4 flex flex-col md:flex-row gap-3">
+                  <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3.5 md:py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
+                  <button type="submit" className="flex-1 py-3.5 md:py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 md:hover:scale-105 transition-all">
                     {editingItemId ? 'Atualizar Item' : 'Salvar Item'}
                   </button>
                 </div>
