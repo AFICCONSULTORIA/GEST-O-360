@@ -487,39 +487,90 @@ export const SaaSControlCenter = ({
                 </div>
 
                 {/* Health & Monitoring */}
-                <div className="lg:col-span-4 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm space-y-6">
-                  <div>
-                    <h3 className="text-lg font-bold">Status do Ecossistema</h3>
-                    <p className="text-xs text-neutral-400 mt-1">Monitoramento em tempo real dos serviços conectados ao SaaS.</p>
+                <div className="lg:col-span-4 flex flex-col gap-8">
+                  {/* Health & Monitoring */}
+                  <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm space-y-6">
+                    <div>
+                      <h3 className="text-lg font-bold">Status do Ecossistema</h3>
+                      <p className="text-xs text-neutral-400 mt-1">Monitoramento em tempo real dos serviços conectados ao SaaS.</p>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-850 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-xs font-bold">Supabase Database</span>
+                        </div>
+                        <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">online</span>
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-850 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-xs font-bold">Vercel Web Hosting</span>
+                        </div>
+                        <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">online</span>
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-850 rounded-2xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="text-xs font-bold">Gemini IA API</span>
+                        </div>
+                        <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">online</span>
+                      </div>
+                    </div>
+                    
+                    <div className="pt-2">
+                      <div className="p-4 bg-purple-50/50 dark:bg-purple-950/10 rounded-2xl border border-purple-100/50 dark:border-purple-950/20 text-center">
+                        <p className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider mb-1">Versão do Sistema</p>
+                        <p className="text-xs font-bold text-neutral-600 dark:text-neutral-300">v1.4.0 SaaS Multitenant</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-850 rounded-2xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold">Supabase Database</span>
-                      </div>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">online</span>
+
+                  {/* Supabase Usage Display */}
+                  <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] p-8 shadow-sm space-y-6">
+                    <div>
+                      <h3 className="text-lg font-bold">Uso do Servidor (Supabase)</h3>
+                      <p className="text-xs text-neutral-400 mt-1">Métricas estimadas de consumo do plano atual.</p>
                     </div>
-                    <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-850 rounded-2xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold">Vercel Web Hosting</span>
+                    
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-end">
+                          <div>
+                            <p className="text-xs font-bold">Database (Tabelas)</p>
+                            <p className="text-[10px] text-neutral-400">Plano Gratuito</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-purple-600">~12 MB</p>
+                            <p className="text-[10px] text-neutral-400">de 500 MB</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2">
+                          <div className="bg-purple-500 h-2 rounded-full" style={{ width: '2.4%' }}></div>
+                        </div>
                       </div>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">online</span>
-                    </div>
-                    <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-850 rounded-2xl">
-                      <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold">Gemini IA API</span>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-end">
+                          <div>
+                            <p className="text-xs font-bold">Storage (Fotos e Mídia)</p>
+                            <p className="text-[10px] text-neutral-400">Plano Gratuito</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs font-black text-sky-600">~145 MB</p>
+                            <p className="text-[10px] text-neutral-400">de 1024 MB</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-2">
+                          <div className="bg-sky-500 h-2 rounded-full" style={{ width: '14.1%' }}></div>
+                        </div>
                       </div>
-                      <span className="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-950/20 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">online</span>
                     </div>
-                  </div>
-                  
-                  <div className="pt-2">
-                    <div className="p-4 bg-purple-50/50 dark:bg-purple-950/10 rounded-2xl border border-purple-100/50 dark:border-purple-950/20 text-center">
-                      <p className="text-[10px] font-black uppercase text-purple-600 dark:text-purple-400 tracking-wider mb-1">Versão do Sistema</p>
-                      <p className="text-xs font-bold text-neutral-600 dark:text-neutral-300">v1.4.0 SaaS Multitenant</p>
+                    
+                    <div className="pt-2 text-center">
+                       <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="inline-block text-[10px] uppercase font-black tracking-widest text-neutral-400 hover:text-purple-600 transition-colors">
+                         Acessar Dashboard Real
+                       </a>
                     </div>
                   </div>
                 </div>

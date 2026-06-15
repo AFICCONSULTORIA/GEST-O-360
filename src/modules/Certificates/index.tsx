@@ -178,17 +178,24 @@ const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUp
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
   const [isStateModalOpen, setIsStateModalOpen] = React.useState(false);
   const [isPrintingAll, setIsPrintingAll] = React.useState(false);
+  const [selectedCerts, setSelectedCerts] = React.useState<string[]>([]);
 
   const certTypes = ['Trabalhista', 'Federal', 'Estadual', 'Municipal', 'FGTS'] as const;
 
-  const handlePrintAll = async () => {
+  const handlePrint = async (selectedOnly: boolean) => {
+    const certsToPrint = selectedOnly ? selectedCerts : certTypes;
+    if (certsToPrint.length === 0) {
+      showToast('Nenhuma certidão selecionada para impressão.', 'warning');
+      return;
+    }
+
     setIsPrintingAll(true);
     try {
       const pdfDoc = await PDFDocument.create();
       let hasPages = false;
 
-      for (const certType of certTypes) {
-        const cert = company.certificates[certType];
+      for (const certType of certsToPrint) {
+        const cert = company.certificates[certType as keyof typeof company.certificates];
         if (cert && cert.fileUrl) {
           try {
             const response = await fetch(cert.fileUrl);
@@ -299,10 +306,23 @@ const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUp
             const isPresent = !!cert;
             
             return (
-              <div key={certType} className="flex flex-col sm:flex-row justify-between sm:items-center p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl border border-neutral-100 dark:border-neutral-700 gap-4">
+              <div key={certType} className={`flex flex-col sm:flex-row justify-between sm:items-center p-4 rounded-2xl border transition-all gap-4 ${selectedCerts.includes(certType) ? 'bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/50' : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-100 dark:border-neutral-700'}`}>
                 <div className="flex items-center gap-4">
-                   <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm">
-                     <FileBadge size={18} className="text-neutral-400" />
+                   <div className="w-5 flex justify-center shrink-0">
+                     {isPresent && (
+                       <input 
+                         type="checkbox" 
+                         className="w-5 h-5 rounded border-neutral-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-emerald-600"
+                         checked={selectedCerts.includes(certType)}
+                         onChange={(e) => {
+                           if (e.target.checked) setSelectedCerts([...selectedCerts, certType]);
+                           else setSelectedCerts(selectedCerts.filter(c => c !== certType));
+                         }}
+                       />
+                     )}
+                   </div>
+                   <div className="w-10 h-10 bg-white dark:bg-neutral-900 rounded-xl flex items-center justify-center shadow-sm shrink-0">
+                     <FileBadge size={18} className={selectedCerts.includes(certType) ? "text-emerald-600" : "text-neutral-400"} />
                    </div>
                    <div>
                      <div className="flex items-center gap-2 relative">
@@ -372,9 +392,19 @@ const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUp
           })}
         </div>
 
-        <div className="pt-2 flex justify-end">
+        <div className="pt-2 flex justify-end gap-3 flex-wrap">
+          {selectedCerts.length > 0 && (
+            <button 
+              onClick={() => handlePrint(true)}
+              disabled={isPrintingAll}
+              className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 transition-all shadow-lg shadow-neutral-900/20 disabled:opacity-50"
+            >
+              <Printer size={16} />
+              {isPrintingAll ? 'Gerando...' : `Imprimir Selecionadas (${selectedCerts.length})`}
+            </button>
+          )}
           <button 
-            onClick={handlePrintAll}
+            onClick={() => handlePrint(false)}
             disabled={isPrintingAll}
             className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 transition-all shadow-lg shadow-emerald-600/20 disabled:opacity-50"
           >
