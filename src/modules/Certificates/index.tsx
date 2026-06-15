@@ -746,9 +746,10 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
       <WhatsNewBanner 
-        version="1.1.0"
+        version="1.2.0"
         title="Novidades no Banco de Certidões"
         features={[
+          "Impressão Inteligente: Agora você pode selecionar certidões específicas e imprimir apenas as selecionadas.",
           "Impressão em Lote: Imprima todas as certidões de uma empresa de uma só vez no botão 'Imprimir Todas'.",
           "Formatação Automática: Máscaras de CPF e CNPJ aplicadas perfeitamente na busca e cadastro."
         ]}
