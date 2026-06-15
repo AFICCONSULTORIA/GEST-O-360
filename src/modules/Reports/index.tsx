@@ -133,7 +133,7 @@ const SaudePrintView = ({ onClose, institutionId }: { onClose: () => void, insti
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col print:absolute print:top-0 print:left-0 print:w-full print:bottom-auto print:h-auto print:block">
       <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
         <div className="font-bold text-neutral-500 text-sm hidden md:block">
           Visualização do Relatório - Selecionados: {filteredItems.length}
@@ -150,7 +150,7 @@ const SaudePrintView = ({ onClose, institutionId }: { onClose: () => void, insti
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
         <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
           <SaudePrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, status: filterStatus, specialty: filterSpecialty, startDate: filterStartDate, endDate: filterEndDate }} loading={loading} />
         </div>
@@ -315,7 +315,7 @@ const ServicosPublicosPrintView = ({ onClose, institutionId }: { onClose: () => 
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col print:absolute print:top-0 print:left-0 print:w-full print:bottom-auto print:h-auto print:block">
       <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
         <div className="font-bold text-neutral-500 text-sm hidden md:block">
           Visualização do Relatório - Selecionados: {filteredItems.length}
@@ -332,7 +332,7 @@ const ServicosPublicosPrintView = ({ onClose, institutionId }: { onClose: () => 
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
         <div className="bg-white shadow-2xl print:shadow-none w-full print:w-full max-w-[210mm] min-h-[297mm]">
           <ServicosPublicosPrintLayout filteredItems={filteredItems} filters={{ status: filterStatus, category: filterCategory }} loading={loading} />
         </div>
@@ -411,6 +411,7 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
   const [filterCond, setFilterCond] = React.useState<string>('Todos');
   const [filterStatus, setFilterStatus] = React.useState<string>('Todos');
   const [filterSearch, setFilterSearch] = React.useState<string>('');
+  const [exporting, setExporting] = React.useState(false);
 
   const filteredItems = patrimonioItems.filter(item => {
     if (filterDept !== 'Todos' && item.department !== filterDept) return false;
@@ -496,13 +497,95 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
     );
   }
 
+  const exportToExcel = async () => {
+    try {
+      setExporting(true);
+      const ExcelJS = await import('exceljs');
+      const { saveAs } = await import('file-saver');
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Patrimônio');
+
+      worksheet.columns = [
+        { header: 'Foto', key: 'foto', width: 12 },
+        { header: 'Código', key: 'code', width: 15 },
+        { header: 'Objeto', key: 'objectName', width: 40 },
+        { header: 'Departamento', key: 'department', width: 25 },
+        { header: 'Localização', key: 'location', width: 25 },
+        { header: 'Estado', key: 'condition', width: 15 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Ano', key: 'year', width: 10 }
+      ];
+
+      // Formatar cabeçalho
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+
+      for (let i = 0; i < filteredItems.length; i++) {
+        const item = filteredItems[i];
+        const row = worksheet.addRow({
+          code: item.code,
+          objectName: item.objectName,
+          department: item.department,
+          location: item.location,
+          condition: item.condition,
+          status: item.status,
+          year: item.year
+        });
+        
+        row.height = 70; // Altura para a imagem
+        row.alignment = { vertical: 'middle' };
+
+        if (item.imageUrls && item.imageUrls.length > 0) {
+          try {
+            const response = await fetch(item.imageUrls[0]);
+            const blob = await response.blob();
+            const base64data = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(blob);
+              reader.onloadend = () => resolve(reader.result as string);
+            });
+            
+            const imageId = workbook.addImage({
+              base64: base64data,
+              extension: 'png',
+            });
+            
+            // Adicionar a imagem centralizada na primeira célula
+            worksheet.addImage(imageId, {
+              tl: { col: 0, row: row.number - 1 },
+              ext: { width: 80, height: 80 },
+              editAs: 'oneCell'
+            });
+          } catch (e) {
+            console.error("Erro ao anexar imagem", e);
+            row.getCell('foto').value = 'Erro ao carregar';
+          }
+        } else {
+          row.getCell('foto').value = 'Sem Foto';
+        }
+      }
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer]), `patrimonio_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao exportar planilha');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col print:absolute print:top-0 print:left-0 print:w-full print:bottom-auto print:h-auto print:block">
       <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
         <div className="font-bold text-neutral-500 text-sm hidden md:block">
           Visualização do Relatório - Selecionados: {filteredItems.length}
         </div>
         <div className="flex gap-2 w-full sm:w-auto justify-end overflow-x-auto hide-scrollbar">
+          <button onClick={exportToExcel} disabled={exporting} className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50">
+            <Download size={16} /> <span className="hidden sm:inline">{exporting ? 'Gerando Planilha...' : 'Exportar Excel'}</span><span className="sm:hidden">Excel</span>
+          </button>
           <button onClick={() => window.print()} className="bg-neutral-900 text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-neutral-800 whitespace-nowrap">
             <Printer size={16} /> <span className="hidden sm:inline">Imprimir / Salvar PDF</span><span className="sm:hidden">Imprimir</span>
           </button>
@@ -514,7 +597,7 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
         <div className="bg-white shadow-2xl print:shadow-none w-full print:w-full max-w-[210mm] min-h-[297mm]">
           <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ dept: filterDept, cond: filterCond, status: filterStatus, search: filterSearch }} />
         </div>
@@ -557,6 +640,7 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
       <table className="w-full text-left text-sm border-collapse">
         <thead>
           <tr className="border-b-2 border-neutral-800">
+            <th className="py-3 px-2 font-black uppercase tracking-widest w-14">Foto</th>
             <th className="py-3 px-2 font-black uppercase tracking-widest">Código</th>
             <th className="py-3 px-2 font-black uppercase tracking-widest">Objeto</th>
             <th className="py-3 px-2 font-black uppercase tracking-widest">Departamento</th>
@@ -567,6 +651,15 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
         <tbody>
           {filteredItems.map((item) => (
             <tr key={item.id} className="border-b border-neutral-200">
+              <td className="py-3 px-2">
+                {item.imageUrls && item.imageUrls.length > 0 ? (
+                  <img src={item.imageUrls[0]} alt={item.objectName} className="w-10 h-10 object-cover rounded-lg border border-neutral-200 print:border-neutral-300" />
+                ) : (
+                  <div className="w-10 h-10 rounded-lg bg-neutral-100 print:bg-neutral-50 flex items-center justify-center border border-neutral-200 print:border-neutral-300">
+                    <Package size={16} className="text-neutral-400 print:text-neutral-300" />
+                  </div>
+                )}
+              </td>
               <td className="py-3 px-2 font-mono text-xs">{item.code}</td>
               <td className="py-3 px-2 font-bold">{item.objectName}</td>
               <td className="py-3 px-2 text-neutral-600">{item.department}</td>
@@ -575,7 +668,7 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
             </tr>
           ))}
           {filteredItems.length === 0 && (
-            <tr><td colSpan={5} className="py-8 text-center text-neutral-500 italic">Nenhum item encontrado com os filtros atuais.</td></tr>
+            <tr><td colSpan={6} className="py-8 text-center text-neutral-500 italic">Nenhum item encontrado com os filtros atuais.</td></tr>
           )}
         </tbody>
       </table>
@@ -701,7 +794,7 @@ const MedicamentosPrintView = ({ onClose, institutionId }: { onClose: () => void
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col print:absolute print:top-0 print:left-0 print:w-full print:bottom-auto print:h-auto print:block">
       <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
         <div className="font-bold text-neutral-500 text-sm hidden md:block">
           Visualização do Relatório - Selecionados: {filteredItems.length}
@@ -718,7 +811,7 @@ const MedicamentosPrintView = ({ onClose, institutionId }: { onClose: () => void
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
         <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
           <MedicamentosPrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, stock: filterStock, validity: filterValidity }} loading={loading} />
         </div>
@@ -934,7 +1027,7 @@ const PedidosPrintView = ({ onClose, institutionId }: { onClose: () => void, ins
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col">
+    <div className="fixed inset-0 z-[9999] bg-neutral-100 print:bg-white text-black print:text-black flex flex-col print:absolute print:top-0 print:left-0 print:w-full print:bottom-auto print:h-auto print:block">
       <div className="bg-white border-b border-neutral-300 p-4 flex flex-col sm:flex-row gap-4 print:hidden z-50 items-center justify-between shadow-md shrink-0">
         <div className="font-bold text-neutral-500 text-sm hidden md:block">
           Visualização do Relatório - Selecionados: {filteredItems.length}
@@ -951,7 +1044,7 @@ const PedidosPrintView = ({ onClose, institutionId }: { onClose: () => void, ins
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start">
+      <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
         <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
           <PedidosPrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, status: filterStatus, type: filterType, startDate: filterStartDate, endDate: filterEndDate }} loading={loading} />
         </div>
