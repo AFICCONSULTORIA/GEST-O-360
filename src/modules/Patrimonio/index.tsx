@@ -13,7 +13,7 @@ import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 
 const { 
-  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List
+  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy
 } = LucideIcons;
 
 const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string }) => {
@@ -35,6 +35,16 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const openEditModal = (item: PatrimonioItem) => {
     setEditingItemId(item.id);
     setFormData(item);
+    setIsModalOpen(true);
+  };
+  const handleDuplicate = (item: PatrimonioItem) => {
+    setEditingItemId(null);
+    setFormData({
+      ...item,
+      id: undefined,
+      code: item.code ? item.code + ' (Cópia)' : '',
+      plate: item.plate ? item.plate + ' (Cópia)' : ''
+    });
     setIsModalOpen(true);
   };
   const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
@@ -63,13 +73,13 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
     <>
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 relative print:hidden">
       <WhatsNewBanner 
-        version="2.1.0"
+        version="2.2.0"
         title="Atualizações no Patrimônio"
         features={[
+          "Duplicação Rápida: Novo botão para clonar um item idêntico, poupando tempo na digitação.",
           "Modo Lista Limpo: A tabela foi substituída por caixinhas organizadas e expansíveis.",
           "Cores de Status: Status e condições voltaram a exibir cores para facilitar a identificação.",
-          "Preenchimento Automático: A secretaria agora é preenchida sozinha com base na sua lotação.",
-          "Galeria de Fotos: Novo carrossel dinâmico acessível direto pelo modo lista."
+          "Preenchimento Automático: A secretaria agora é preenchida sozinha com base na sua lotação."
         ]}
       />
 
@@ -271,13 +281,22 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   {(canEdit || canDelete) && (
                     <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800/50 flex justify-end gap-2">
                       {canEdit && (
-                        <button
-                          onClick={() => openEditModal(item)}
-                          className="p-2 text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"
-                          title="Editar item"
-                        >
-                          <Edit2 size={15} />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleDuplicate(item)}
+                            className="p-2 text-neutral-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all"
+                            title="Duplicar item"
+                          >
+                            <Copy size={15} />
+                          </button>
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-2 text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all"
+                            title="Editar item"
+                          >
+                            <Edit2 size={15} />
+                          </button>
+                        </>
                       )}
                       {canDelete && (
                         <button
@@ -336,9 +355,14 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   {(canEdit || canDelete) && (
                     <div className="flex gap-2" onClick={e => e.stopPropagation()}>
                       {canEdit && (
-                        <button onClick={() => openEditModal(item)} className="p-2 text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all" title="Editar item">
-                          <Edit2 size={16} />
-                        </button>
+                        <>
+                          <button onClick={() => handleDuplicate(item)} className="p-2 text-neutral-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-xl transition-all" title="Duplicar item">
+                            <Copy size={16} />
+                          </button>
+                          <button onClick={() => openEditModal(item)} className="p-2 text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-all" title="Editar item">
+                            <Edit2 size={16} />
+                          </button>
+                        </>
                       )}
                       {canDelete && (
                         <button onClick={() => { if (window.confirm('Tem certeza que deseja excluir este item?')) onDelete?.(item.id); }} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all" title="Excluir item">
