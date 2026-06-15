@@ -1,4 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../lib/supabase';
+import { fetchStudentProfile, awardStudent, spendCoins } from '../../lib/api/education';
 import { 
   ArrowLeft,
   LayoutDashboard,
@@ -39,13 +42,79 @@ import {
   Unlock,
   Flame,
   Crown,
-  PlayCircle
+  PlayCircle,
+  Brain
 } from 'lucide-react';
 
 export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support' | 'trail-map' | 'taking-assessment'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  const [activeCourse, setActiveCourse] = useState<any>(null);
+  const [activeLesson, setActiveLesson] = useState<any>(null);
+
+  const [assessmentStep, setAssessmentStep] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+
+  const handleAccessCourse = (course: any) => {
+    setActiveCourse(course);
+    setActiveView('trail-map');
+  };
+
+  // Student Global State
+  const [studentData, setStudentData] = useState({
+    id: '',
+    name: 'Arthur da Silva',
+    level: 7,
+    title: 'Explorador Nível 7 ⚡',
+    xp: 1850,
+    nextLevelXp: 2500,
+    streak: 12,
+    coins: 450,
+  });
+
+  useEffect(() => {
+    async function loadData() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const data = await fetchStudentProfile(user.id);
+        if (data) {
+          setStudentData(prev => ({
+            ...prev,
+            id: data.id,
+            name: data.name,
+            level: data.level,
+            title: data.title,
+            xp: data.xp,
+            coins: data.coins,
+            streak: data.streak
+          }));
+        }
+      }
+    }
+    loadData();
+  }, []);
+
+  const handleAward = async (xp: number, coins: number) => {
+    setStudentData(prev => ({...prev, xp: prev.xp + xp, coins: prev.coins + coins}));
+    if (studentData.id) {
+      await awardStudent(studentData.id, xp, coins);
+    }
+  };
+
+  const handleSpend = async (cost: number) => {
+    if (studentData.coins < cost) return;
+    setStudentData(prev => ({...prev, coins: prev.coins - cost}));
+    if (studentData.id) {
+      const success = await spendCoins(studentData.id, cost);
+      if (!success) {
+        setStudentData(prev => ({...prev, coins: prev.coins + cost}));
+      }
+    }
+  };
+
+  const xpPercentage = Math.round((studentData.xp / studentData.nextLevelXp) * 100);
 
   return (
     <div className="min-h-[100dvh] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20">
@@ -61,7 +130,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
               <Sparkles size={14} className="text-white" />
             </div>
             <span className="font-black text-base bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-sky-600">
-              EduMunicipa
+              Gestão 360 Educação
             </span>
           </div>
         </div>
@@ -91,7 +160,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                 <Sparkles size={18} className="text-white" />
               </div>
               <div>
-                <h2 className="font-black text-sm text-neutral-900 dark:text-white leading-none">EduMunicipa</h2>
+                <h2 className="font-black text-sm text-neutral-900 dark:text-white leading-none">Gestão 360 Educação</h2>
                 <p className="text-[10px] text-neutral-500 dark:text-neutral-400 font-medium">Portal do Aluno</p>
               </div>
             </div>
@@ -109,18 +178,18 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                 </div>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-black text-sm text-neutral-900 dark:text-white leading-none truncate">Arthur da Silva</p>
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-medium">Explorador Nível 7 ⚡</p>
+                <p className="font-black text-sm text-neutral-900 dark:text-white leading-none truncate">{studentData.name}</p>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-medium">{studentData.title}</p>
               </div>
             </div>
             {/* XP Bar */}
             <div className="space-y-1">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">XP: 1.850 / 2.500</span>
-                <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">74%</span>
+                <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">XP: {studentData.xp.toLocaleString('pt-BR')} / {studentData.nextLevelXp.toLocaleString('pt-BR')}</span>
+                <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">{xpPercentage}%</span>
               </div>
               <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-700 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-400 to-sky-400 rounded-full relative" style={{ width: '74%' }}>
+                <div className="h-full bg-gradient-to-r from-emerald-400 to-sky-400 rounded-full relative" style={{ width: `${xpPercentage}%` }}>
                   <div className="absolute inset-0 bg-white/30 animate-pulse rounded-full"></div>
                 </div>
               </div>
@@ -192,7 +261,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
           {/* Breadcrumb / Page title */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
-              <span className="font-medium">EduMunicipa</span>
+              <span className="font-medium">Gestão 360 Educação</span>
               <span>/</span>
               <span className="font-black text-neutral-900 dark:text-white capitalize">
                 {activeView === 'dashboard' ? '🏠 Portal do Aluno' 
@@ -209,14 +278,20 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
             {/* XP Pill */}
             <div className="hidden lg:flex items-center gap-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 px-3 py-1.5 rounded-full">
               <Zap size={14} className="text-amber-500" fill="currentColor" />
-              <span className="text-xs font-black">1.850 XP</span>
-              <span className="text-[10px] font-bold text-amber-500/70">Nível 7</span>
+              <span className="text-xs font-black">{studentData.xp.toLocaleString('pt-BR')} XP</span>
+              <span className="text-[10px] font-bold text-amber-500/70">Nível {studentData.level}</span>
             </div>
 
             {/* Streak Pill */}
             <div className="hidden lg:flex items-center gap-1.5 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-600 dark:text-orange-400 px-3 py-1.5 rounded-full">
               <Flame size={14} fill="currentColor" />
-              <span className="text-xs font-black">12 dias 🔥</span>
+              <span className="text-xs font-black">{studentData.streak} dias 🔥</span>
+            </div>
+
+            {/* Coins Pill */}
+            <div className="hidden lg:flex items-center gap-1 bg-yellow-50 dark:bg-yellow-500/10 border border-yellow-200 dark:border-yellow-500/20 text-yellow-700 dark:text-yellow-400 px-3 py-1.5 rounded-full">
+              <span className="text-xs font-black">{studentData.coins}</span>
+              <span className="text-sm leading-none mt-[-2px]">🪙</span>
             </div>
 
             {/* Search */}
@@ -244,7 +319,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                   <img alt="Arthur" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v" className="w-full h-full object-cover" />
                 </div>
               </div>
-              <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300 hidden lg:block group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">Arthur</span>
+              <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300 hidden lg:block group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">{studentData.name.split(' ')[0]}</span>
             </button>
           </div>
         </header>
@@ -280,10 +355,10 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                 <div className="relative w-32 h-32 md:w-40 md:h-40 flex items-center justify-center">
                   <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
                     <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" className="text-white/20" />
-                    <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" strokeDasharray="282.7" strokeDashoffset="70.6" className="text-white drop-shadow-md" strokeLinecap="round" />
+                    <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="8" strokeDasharray="282.7" strokeDashoffset={282.7 * (1 - (xpPercentage / 100))} className="text-white drop-shadow-md" strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-in-out' }} />
                   </svg>
                   <div className="absolute flex flex-col items-center justify-center">
-                    <span className="text-3xl md:text-4xl font-black tracking-tighter">75%</span>
+                    <span className="text-3xl md:text-4xl font-black tracking-tighter">{xpPercentage}%</span>
                   </div>
                 </div>
                 <p className="mt-3 font-bold text-emerald-50 tracking-wide text-sm">Progresso Semanal</p>
@@ -516,7 +591,15 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                   </div>
                 </div>
                 
-                <button className="bg-white text-indigo-600 hover:bg-neutral-50 font-black px-8 py-5 rounded-[20px] shadow-2xl hover:scale-105 hover:-translate-y-1 transition-all flex items-center gap-3 w-full md:w-auto justify-center group/btn">
+                <button 
+                  onClick={() => handleAccessCourse({
+                    id: 'ciencias',
+                    title: 'Os Mistérios do Sistema Solar',
+                    bg: 'bg-indigo-500',
+                    color: 'indigo',
+                    icon: <Star size={32} className="text-indigo-500" />
+                  })}
+                  className="bg-white text-indigo-600 hover:bg-neutral-50 font-black px-8 py-5 rounded-[20px] shadow-2xl hover:scale-105 hover:-translate-y-1 transition-all flex items-center gap-3 w-full md:w-auto justify-center group/btn">
                   <PlayCircle size={28} className="group-hover/btn:scale-110 transition-transform" />
                   Continuar Aventura
                 </button>
@@ -548,7 +631,15 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                   <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 text-right">40% Concluído</p>
                 </div>
 
-                <button className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-sky-50 dark:hover:bg-sky-500/10 text-neutral-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-sky-200 dark:hover:border-sky-500/30 flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => handleAccessCourse({
+                    id: 'matematica',
+                    title: 'Matemática',
+                    bg: 'bg-sky-500',
+                    color: 'sky',
+                    icon: <Calculator size={32} className="text-sky-500" />
+                  })}
+                  className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-sky-50 dark:hover:bg-sky-500/10 text-neutral-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-sky-200 dark:hover:border-sky-500/30 flex items-center justify-center gap-2">
                   <Compass size={18} /> Acessar Trilha
                 </button>
               </div>
@@ -575,7 +666,15 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                   <p className="text-[10px] font-bold text-fuchsia-600 dark:text-fuchsia-400 text-right">80% Concluído</p>
                 </div>
 
-                <button className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-500/10 text-neutral-900 dark:text-white hover:text-fuchsia-600 dark:hover:text-fuchsia-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-fuchsia-200 dark:hover:border-fuchsia-500/30 flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => handleAccessCourse({
+                    id: 'portugues',
+                    title: 'Língua Portuguesa',
+                    bg: 'bg-fuchsia-500',
+                    color: 'fuchsia',
+                    icon: <BookOpen size={32} className="text-fuchsia-500" />
+                  })}
+                  className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-500/10 text-neutral-900 dark:text-white hover:text-fuchsia-600 dark:hover:text-fuchsia-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-fuchsia-200 dark:hover:border-fuchsia-500/30 flex items-center justify-center gap-2">
                   <Compass size={18} /> Acessar Trilha
                 </button>
               </div>
@@ -602,7 +701,15 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                   <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 text-right">15% Concluído</p>
                 </div>
 
-                <button className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-neutral-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-emerald-200 dark:hover:border-emerald-500/30 flex items-center justify-center gap-2">
+                <button 
+                  onClick={() => handleAccessCourse({
+                    id: 'historia',
+                    title: 'História',
+                    bg: 'bg-emerald-500',
+                    color: 'emerald',
+                    icon: <Map size={32} className="text-emerald-500" />
+                  })}
+                  className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-neutral-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-emerald-200 dark:hover:border-emerald-500/30 flex items-center justify-center gap-2">
                   <Compass size={18} /> Acessar Trilha
                 </button>
               </div>
@@ -611,25 +718,446 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
           </div>
         )}
 
-        {/* Avaliações Placeholder */}
-        {activeView === 'assessments' && (
-          <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-24 h-24 bg-sky-100 dark:bg-sky-900/30 text-sky-500 rounded-full flex items-center justify-center mb-6 shadow-sm">
-              <Target size={48} />
+        {/* Trail Map UI */}
+        {activeView === 'trail-map' && activeCourse && (
+          <div className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-right-8 duration-500">
+            {/* Header com botão voltar */}
+            <div className="flex items-center gap-4 mb-8">
+              <button onClick={() => setActiveView('courses')} className="p-2 bg-white dark:bg-neutral-900 rounded-full shadow-sm hover:scale-110 transition-transform text-neutral-600 dark:text-neutral-400">
+                <ArrowLeft size={24} />
+              </button>
+              <div>
+                <h2 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+                  {activeCourse.icon}
+                  {activeCourse.title}
+                </h2>
+                <p className="text-neutral-500 font-medium">Trilha de Conhecimento</p>
+              </div>
             </div>
-            <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">Avaliações</h2>
-            <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Você não tem avaliações pendentes. Aproveite para revisar a matéria!</p>
+
+            {/* O Mapa (Caminho Zig-Zag) */}
+            <div className="relative py-10 flex flex-col items-center space-y-12 before:absolute before:inset-0 before:ml-[50%] before:-translate-x-1/2 before:w-4 before:bg-neutral-200 dark:before:bg-neutral-800 before:rounded-full before:-z-10">
+              
+              {/* Node 1 (Completed) */}
+              <div className="relative w-full flex justify-center translate-x-[-80px] hover:-translate-y-2 transition-transform cursor-pointer group" onClick={() => setActiveLesson({ id: 1, title: 'Introdução', type: 'video' })}>
+                <div className={`w-24 h-24 ${activeCourse.bg} rounded-full border-8 border-white dark:border-neutral-950 flex items-center justify-center shadow-xl relative z-10`}>
+                  <CheckCircle2 size={40} className="text-white" />
+                </div>
+                <div className="absolute top-full mt-2 text-center w-max">
+                  <p className="font-black text-neutral-900 dark:text-white text-lg">Fase 1</p>
+                  <p className="text-sm text-neutral-500">Introdução</p>
+                </div>
+              </div>
+
+              {/* Node 2 (Current) */}
+              <div className="relative w-full flex justify-center translate-x-[80px] hover:-translate-y-2 transition-transform cursor-pointer group" onClick={() => setActiveLesson({ id: 2, title: 'O Desafio Principal', type: 'video' })}>
+                {/* Crown/Indicator */}
+                <div className="absolute -top-8 animate-bounce text-yellow-500">
+                  <Crown size={32} fill="currentColor" />
+                </div>
+                <div className={`w-28 h-28 ${activeCourse.bg} rounded-full border-8 border-white dark:border-neutral-950 flex items-center justify-center shadow-2xl relative z-10 ring-4 ring-offset-4 ring-offset-neutral-50 dark:ring-offset-neutral-950 ring-${activeCourse.color}-300 animate-pulse`}>
+                  <Star size={48} className="text-white" fill="currentColor" />
+                </div>
+                <div className="absolute top-full mt-2 text-center w-max">
+                  <p className={`font-black text-${activeCourse.color}-500 text-xl`}>Fase 2</p>
+                  <p className="text-sm font-bold text-neutral-600 dark:text-neutral-400">Em Andamento</p>
+                </div>
+              </div>
+
+              {/* Node 3 (Locked) */}
+              <div className="relative w-full flex justify-center translate-x-[-60px] opacity-60 grayscale cursor-not-allowed">
+                <div className="w-20 h-20 bg-neutral-300 dark:bg-neutral-800 rounded-full border-8 border-white dark:border-neutral-950 flex items-center justify-center shadow-inner relative z-10">
+                  <Lock size={28} className="text-neutral-500" />
+                </div>
+                <div className="absolute top-full mt-2 text-center w-max">
+                  <p className="font-black text-neutral-500 text-lg">Fase 3</p>
+                  <p className="text-sm text-neutral-400">Bloqueado</p>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 
-        {/* Conquistas Placeholder */}
-        {activeView === 'achievements' && (
-          <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-24 h-24 bg-amber-100 dark:bg-amber-900/30 text-amber-500 rounded-full flex items-center justify-center mb-6 shadow-sm">
-              <Award size={48} />
+        {/* Lesson Modal */}
+        <AnimatePresence>
+          {activeLesson && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-neutral-900/80 backdrop-blur-sm"
+            >
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col"
+              >
+                <div className={`p-6 ${activeCourse?.bg || 'bg-emerald-500'} flex justify-between items-center text-white`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
+                      <Star size={20} fill="currentColor" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-xl">{activeLesson.title}</h3>
+                      <p className="text-sm font-medium text-white/80">Fase {activeLesson.id} • Desafio Prático</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setActiveLesson(null)} className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                
+                <div className="p-8 space-y-6 flex-1 flex flex-col items-center text-center">
+                  <div className="w-full aspect-video bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center relative group overflow-hidden cursor-pointer">
+                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors"></div>
+                    <PlayCircle size={64} className="text-white drop-shadow-md group-hover:scale-110 transition-transform z-10" />
+                    <img src="https://images.unsplash.com/photo-1596495578065-6e0763fa1178?q=80&w=800&auto=format&fit=crop" alt="Video Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-multiply" />
+                  </div>
+                  
+                  <h4 className="text-2xl font-black text-neutral-900 dark:text-white">Pronto para começar?</h4>
+                  <p className="text-neutral-500 dark:text-neutral-400">Assista ao vídeo e depois responda ao quiz para ganhar 50 Moedas e 100 XP!</p>
+                  
+                  <button 
+                    onClick={() => {
+                      handleAward(100, 50);
+                      setActiveLesson(null);
+                    }}
+                    className={`w-full py-4 ${activeCourse?.bg || 'bg-emerald-500'} text-white rounded-2xl font-black text-lg hover:-translate-y-1 hover:shadow-lg transition-all active:scale-95`}
+                  >
+                    Concluir Aula e Ganhar Recompensas
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Avaliações List */}
+        {activeView === 'assessments' && (
+          <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col gap-2 mb-6">
+              <h2 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+                <Target className="text-orange-500" size={32} />
+                Central de Missões e Avaliações
+              </h2>
+              <p className="text-neutral-500 dark:text-neutral-400">Complete testes para ganhar muita experiência e moedas!</p>
             </div>
-            <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">Mural de Conquistas</h2>
-            <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Continue estudando e jogando os desafios para colecionar mais troféus!</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Avaliação 1 */}
+              <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 hover:shadow-xl hover:shadow-orange-500/10 hover:-translate-y-1 transition-all group">
+                <div className="flex gap-4 items-start">
+                  <div className="w-16 h-16 rounded-2xl bg-orange-100 dark:bg-orange-500/20 text-orange-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                    <Brain size={32} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md">Pendente</span>
+                      <span className="text-xs font-bold text-neutral-400 flex items-center gap-1">
+                        <Clock size={12} /> 15 min
+                      </span>
+                    </div>
+                    <h4 className="font-black text-xl text-neutral-900 dark:text-white leading-tight">Diagnóstico de Leitura e Interpretação</h4>
+                  </div>
+                </div>
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 mt-auto">
+                  <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400 flex items-center gap-2">
+                    <Trophy size={16} className="text-yellow-500" />
+                    Recompensa: 250 XP + 100 Moedas
+                  </p>
+                </div>
+                <button 
+                  onClick={() => {
+                    setAssessmentStep(0);
+                    setSelectedAnswer(null);
+                    setActiveView('taking-assessment');
+                  }}
+                  className="w-full bg-gradient-to-r from-orange-400 to-rose-500 text-white font-black py-4 rounded-xl transition-all hover:shadow-lg hover:shadow-orange-500/30 active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Play size={20} fill="currentColor" /> Iniciar Missão
+                </button>
+              </div>
+
+              {/* Avaliação 2 */}
+              <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 opacity-60">
+                <div className="flex gap-4 items-start">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md">Concluída</span>
+                    </div>
+                    <h4 className="font-black text-xl text-neutral-900 dark:text-white leading-tight">Matemática: Adição e Subtração</h4>
+                  </div>
+                </div>
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 mt-auto">
+                  <p className="text-sm font-medium text-neutral-600 dark:text-neutral-400">Nota: 10/10 • Concluído há 2 dias</p>
+                </div>
+                <button className="w-full bg-neutral-100 dark:bg-neutral-800 text-neutral-400 font-black py-4 rounded-xl cursor-not-allowed">
+                  Missão Cumprida
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Assessment Engine */}
+        {activeView === 'taking-assessment' && (
+          <div className="fixed inset-0 z-[200] bg-white dark:bg-neutral-950 flex flex-col animate-in fade-in duration-300">
+            {/* Header Prova */}
+            <header className="px-6 py-4 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-white dark:bg-neutral-950">
+              <div className="flex items-center gap-4">
+                <button onClick={() => setActiveView('assessments')} className="p-2 bg-neutral-100 dark:bg-neutral-900 rounded-full hover:bg-neutral-200 dark:hover:bg-neutral-800 transition-colors text-neutral-600 dark:text-neutral-400">
+                  <X size={20} />
+                </button>
+                <div className="h-2 w-32 md:w-64 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-orange-500 rounded-full transition-all duration-500" style={{ width: assessmentStep === 0 ? '50%' : '100%' }}></div>
+                </div>
+                <span className="font-bold text-neutral-500 text-sm">{assessmentStep + 1} de 2</span>
+              </div>
+              <div className="flex items-center gap-2 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 px-3 py-1.5 rounded-full font-bold text-sm">
+                <Timer size={16} /> 14:59
+              </div>
+            </header>
+
+            {/* Area da Questão */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center">
+              <div className="max-w-3xl w-full space-y-8 py-8 animate-in slide-in-from-right-8 duration-500" key={assessmentStep}>
+                {assessmentStep === 0 ? (
+                  <>
+                    <h2 className="text-2xl md:text-3xl font-black text-neutral-900 dark:text-white leading-tight">
+                      1. Leia o pequeno texto abaixo. Sobre o que o texto fala principalmente?
+                    </h2>
+                    <div className="bg-orange-50 dark:bg-orange-500/10 p-6 rounded-2xl border border-orange-200 dark:border-orange-500/20 text-neutral-800 dark:text-neutral-200 font-medium text-lg leading-relaxed shadow-inner">
+                      "O Sol é uma estrela que fica no centro do nosso sistema solar. Ele nos dá luz e calor durante o dia. Sem o Sol, a Terra seria muito escura e fria para os animais e as plantas viverem."
+                    </div>
+                    <div className="space-y-3">
+                      {['Sobre a Lua', 'Sobre o Sol e sua importância', 'Sobre o frio e a escuridão', 'Sobre os planetas gigantes'].map((opcao, index) => (
+                        <button 
+                          key={index}
+                          onClick={() => setSelectedAnswer(index)}
+                          className={`w-full text-left p-5 rounded-2xl font-bold text-lg border-2 transition-all flex items-center gap-4 ${
+                            selectedAnswer === index 
+                              ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 shadow-md transform scale-[1.01]' 
+                              : 'border-neutral-200 dark:border-neutral-800 hover:border-orange-300 dark:hover:border-orange-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300'
+                          }`}
+                        >
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${selectedAnswer === index ? 'border-orange-500 bg-orange-500 text-white' : 'border-neutral-300 text-neutral-400'}`}>
+                            {String.fromCharCode(65 + index)}
+                          </div>
+                          {opcao}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-2xl md:text-3xl font-black text-neutral-900 dark:text-white leading-tight">
+                      2. Observe a imagem e responda: Quantos planetas conseguimos ver nitidamente?
+                    </h2>
+                    <div className="w-full aspect-video rounded-3xl overflow-hidden shadow-lg border border-neutral-200 dark:border-neutral-800 relative">
+                      <img src="https://images.unsplash.com/photo-1614730321146-b6fa6a46bcb4?q=80&w=1000&auto=format&fit=crop" alt="Planets" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="space-y-3">
+                      {['1 planeta', '2 planetas', '3 planetas', 'Nenhum'].map((opcao, index) => (
+                        <button 
+                          key={index}
+                          onClick={() => setSelectedAnswer(index)}
+                          className={`w-full text-left p-5 rounded-2xl font-bold text-lg border-2 transition-all flex items-center gap-4 ${
+                            selectedAnswer === index 
+                              ? 'border-orange-500 bg-orange-50 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 shadow-md transform scale-[1.01]' 
+                              : 'border-neutral-200 dark:border-neutral-800 hover:border-orange-300 dark:hover:border-orange-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300'
+                          }`}
+                        >
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${selectedAnswer === index ? 'border-orange-500 bg-orange-500 text-white' : 'border-neutral-300 text-neutral-400'}`}>
+                            {String.fromCharCode(65 + index)}
+                          </div>
+                          {opcao}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Footer Prova */}
+            <footer className="p-4 md:p-6 border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 flex justify-between items-center">
+              <button disabled className="px-6 py-3 font-bold text-neutral-400 opacity-50 cursor-not-allowed hidden md:block">Pular</button>
+              <button 
+                disabled={selectedAnswer === null}
+                onClick={() => {
+                  if (assessmentStep === 0) {
+                    setAssessmentStep(1);
+                    setSelectedAnswer(null);
+                  } else {
+                    handleAward(250, 100);
+                    setActiveView('dashboard');
+                  }
+                }}
+                className={`ml-auto px-8 py-4 rounded-2xl font-black text-lg text-white transition-all shadow-xl flex items-center gap-2 ${selectedAnswer !== null ? 'bg-orange-500 hover:bg-orange-600 hover:-translate-y-1 shadow-orange-500/30 active:scale-95' : 'bg-neutral-300 dark:bg-neutral-800 cursor-not-allowed shadow-none'}`}
+              >
+                {assessmentStep === 0 ? 'Próxima Questão' : 'Finalizar Missão'} <ArrowRight size={20} />
+              </button>
+            </footer>
+          </div>
+        )}
+
+        {/* Conquistas Hub */}
+        {activeView === 'achievements' && (
+          <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col gap-2 mb-6">
+              <h2 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+                <Award className="text-amber-500" size={32} />
+                Mural de Conquistas e Heróis
+              </h2>
+              <p className="text-neutral-500 dark:text-neutral-400">Exiba suas medalhas e veja quem são os líderes da semana!</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Coluna Esquerda: Badges */}
+              <div className="lg:col-span-2 bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
+                <div className="flex justify-between items-center border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Trophy size={24} className="text-amber-500" /> Suas Insígnias
+                  </h3>
+                  <span className="bg-amber-100 text-amber-700 font-bold px-3 py-1 rounded-full text-sm">3 de 12 Desbloqueadas</span>
+                </div>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-6 pt-4">
+                  {/* Badge Earned */}
+                  <div className="flex flex-col items-center text-center gap-3 group relative cursor-pointer">
+                    <div className="w-24 h-24 bg-gradient-to-br from-amber-300 to-amber-500 rounded-[28px] flex items-center justify-center shadow-lg shadow-amber-500/30 group-hover:-translate-y-2 group-hover:scale-105 transition-all rotate-3 ring-4 ring-amber-100 dark:ring-amber-900/30 ring-offset-4 ring-offset-white dark:ring-offset-neutral-900">
+                      <Flame size={48} className="text-white drop-shadow-md" fill="currentColor" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-neutral-900 dark:text-white text-sm">Fogo do Conhecimento</h4>
+                      <p className="text-[10px] font-bold text-neutral-500">7 Dias Seguidos</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center text-center gap-3 group relative cursor-pointer">
+                    <div className="w-24 h-24 bg-gradient-to-br from-emerald-300 to-emerald-500 rounded-[28px] flex items-center justify-center shadow-lg shadow-emerald-500/30 group-hover:-translate-y-2 group-hover:scale-105 transition-all -rotate-3 ring-4 ring-emerald-100 dark:ring-emerald-900/30 ring-offset-4 ring-offset-white dark:ring-offset-neutral-900">
+                      <Star size={48} className="text-white drop-shadow-md" fill="currentColor" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-neutral-900 dark:text-white text-sm">Estrela Perfeita</h4>
+                      <p className="text-[10px] font-bold text-neutral-500">Nota 10 em Matemática</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center text-center gap-3 group relative cursor-pointer">
+                    <div className="w-24 h-24 bg-gradient-to-br from-indigo-300 to-indigo-500 rounded-[28px] flex items-center justify-center shadow-lg shadow-indigo-500/30 group-hover:-translate-y-2 group-hover:scale-105 transition-all rotate-6 ring-4 ring-indigo-100 dark:ring-indigo-900/30 ring-offset-4 ring-offset-white dark:ring-offset-neutral-900">
+                      <Compass size={48} className="text-white drop-shadow-md" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-neutral-900 dark:text-white text-sm">Primeiros Passos</h4>
+                      <p className="text-[10px] font-bold text-neutral-500">Concluiu 1 Trilha</p>
+                    </div>
+                  </div>
+
+                  {/* Badges Locked */}
+                  <div className="flex flex-col items-center text-center gap-3 opacity-50 grayscale hover:grayscale-0 transition-all cursor-not-allowed">
+                    <div className="w-24 h-24 bg-neutral-200 dark:bg-neutral-800 rounded-[28px] flex items-center justify-center border-4 border-dashed border-neutral-300 dark:border-neutral-700">
+                      <BookOpen size={40} className="text-neutral-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-neutral-500 text-sm">Rato de Biblioteca</h4>
+                      <p className="text-[10px] font-bold text-neutral-400">Leia 5 Textos</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center text-center gap-3 opacity-50 grayscale hover:grayscale-0 transition-all cursor-not-allowed">
+                    <div className="w-24 h-24 bg-neutral-200 dark:bg-neutral-800 rounded-[28px] flex items-center justify-center border-4 border-dashed border-neutral-300 dark:border-neutral-700">
+                      <Crown size={40} className="text-neutral-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-neutral-500 text-sm">Rei da Sala</h4>
+                      <p className="text-[10px] font-bold text-neutral-400">Top 1 no Ranking</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col items-center text-center gap-3 opacity-50 grayscale hover:grayscale-0 transition-all cursor-not-allowed">
+                    <div className="w-24 h-24 bg-neutral-200 dark:bg-neutral-800 rounded-[28px] flex items-center justify-center border-4 border-dashed border-neutral-300 dark:border-neutral-700">
+                      <Zap size={40} className="text-neutral-400" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-neutral-500 text-sm">Veloz</h4>
+                      <p className="text-[10px] font-bold text-neutral-400">Termine em &lt; 5 min</p>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+
+              {/* Coluna Direita: Ranking */}
+              <div className="bg-gradient-to-b from-sky-500 to-indigo-600 rounded-[32px] p-1 shadow-xl shadow-sky-500/20 relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-20">
+                  <Trophy size={120} />
+                </div>
+                <div className="bg-white/10 backdrop-blur-md w-full h-full rounded-[28px] p-6 flex flex-col gap-6 relative z-10 text-white">
+                  <div className="text-center pb-4 border-b border-white/20">
+                    <h3 className="text-2xl font-black mb-1">Ranking Semanal</h3>
+                    <p className="text-sm font-medium text-sky-100">Atualizado a cada hora</p>
+                  </div>
+                  
+                  <div className="flex-1 space-y-4">
+                    {/* Top 1 */}
+                    <div className="bg-white/20 rounded-2xl p-3 flex items-center gap-4 relative overflow-hidden ring-2 ring-yellow-400">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-yellow-400"></div>
+                      <div className="font-black text-xl w-6 text-center text-yellow-300">1</div>
+                      <img src="https://i.pravatar.cc/150?u=a" alt="User" className="w-10 h-10 rounded-full border-2 border-white" />
+                      <div className="flex-1">
+                        <p className="font-black text-sm truncate">Maria Clara</p>
+                        <p className="text-[10px] font-bold text-sky-100">Nível 9</p>
+                      </div>
+                      <div className="font-black text-yellow-300 text-sm">3450 XP</div>
+                    </div>
+
+                    {/* Top 2 */}
+                    <div className="bg-white/10 rounded-2xl p-3 flex items-center gap-4 relative overflow-hidden">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-slate-300"></div>
+                      <div className="font-black text-xl w-6 text-center text-slate-300">2</div>
+                      <img src="https://i.pravatar.cc/150?u=b" alt="User" className="w-10 h-10 rounded-full border-2 border-white/50" />
+                      <div className="flex-1">
+                        <p className="font-bold text-sm truncate text-white/90">João Pedro</p>
+                        <p className="text-[10px] font-bold text-sky-100">Nível 8</p>
+                      </div>
+                      <div className="font-black text-white/90 text-sm">2900 XP</div>
+                    </div>
+
+                    {/* Current User */}
+                    <div className="bg-amber-400 text-neutral-900 rounded-2xl p-3 flex items-center gap-4 relative overflow-hidden shadow-lg shadow-amber-500/50 transform scale-105 z-10 my-6">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-amber-600"></div>
+                      <div className="font-black text-xl w-6 text-center text-amber-900">3</div>
+                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-black text-amber-500 border-2 border-amber-600">
+                        {studentData.name.charAt(0)}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-black text-sm truncate">Você ({studentData.name})</p>
+                        <p className="text-[10px] font-bold text-amber-900">Subindo rápido! 🚀</p>
+                      </div>
+                      <div className="font-black text-amber-900 text-sm">{studentData.xp} XP</div>
+                    </div>
+
+                    {/* Top 4 */}
+                    <div className="bg-white/5 rounded-2xl p-3 flex items-center gap-4 relative overflow-hidden">
+                      <div className="font-black text-xl w-6 text-center text-white/50">4</div>
+                      <img src="https://i.pravatar.cc/150?u=c" alt="User" className="w-10 h-10 rounded-full border-2 border-white/30" />
+                      <div className="flex-1">
+                        <p className="font-bold text-sm truncate text-white/70">Ana Beatriz</p>
+                        <p className="text-[10px] font-bold text-sky-200/50">Nível 7</p>
+                      </div>
+                      <div className="font-black text-white/70 text-sm">1800 XP</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
           </div>
         )}
 
@@ -641,7 +1169,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                 <Settings className="text-emerald-500" size={32} />
                 Meu Perfil e Opções
               </h2>
-              <p className="text-neutral-500 dark:text-neutral-400">Personalize sua experiência no EduMunicipa e deixe tudo com a sua cara!</p>
+              <p className="text-neutral-500 dark:text-neutral-400">Personalize sua experiência no Gestão 360 Educação e deixe tudo com a sua cara!</p>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -674,32 +1202,89 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
               </div>
 
               <div className="flex flex-col gap-8">
-                {/* Personalização */}
+                {/* Loja Mágica */}
                 <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
-                  <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                    <Palette className="text-fuchsia-500" size={24} />
-                    Suas Cores Favoritas
-                  </h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                      <Sparkles className="text-yellow-500" size={24} />
+                      Loja Mágica
+                    </h3>
+                    <div className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-500 px-3 py-1 rounded-full flex items-center gap-1 font-bold text-sm">
+                      <div className="w-4 h-4 bg-yellow-400 rounded-full flex items-center justify-center text-[10px] text-yellow-900">🪙</div>
+                      {studentData.coins}
+                    </div>
+                  </div>
 
-                  <div className="grid grid-cols-3 gap-4">
-                    <button className="flex flex-col items-center gap-2 group">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-emerald-400 to-teal-400 p-1 group-hover:scale-110 transition-transform ring-4 ring-emerald-500/20">
-                        <div className="w-full h-full bg-white dark:bg-neutral-900 rounded-full border border-emerald-200 dark:border-emerald-800"></div>
+                  <div className="space-y-4">
+                    {/* Item 1: Avatar Robô */}
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center text-2xl shadow-inner">
+                          🤖
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Avatar Robô</h4>
+                          <p className="text-[10px] text-neutral-500">Mude seu visual.</p>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-bold text-neutral-500 group-hover:text-emerald-600">Esmeralda</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-2 group">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-400 to-indigo-400 p-1 group-hover:scale-110 transition-transform">
-                        <div className="w-full h-full bg-white dark:bg-neutral-900 rounded-full border border-sky-200 dark:border-sky-800"></div>
+                      <button 
+                        onClick={() => {
+                          if (studentData.coins >= 500) {
+                            setStudentData(prev => ({...prev, coins: prev.coins - 500}));
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-1 ${studentData.coins >= 500 ? 'bg-yellow-400 text-yellow-950 hover:bg-yellow-500 hover:scale-105 shadow-sm active:scale-95' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'}`}
+                      >
+                        500 🪙
+                      </button>
+                    </div>
+
+                    {/* Item 2: Tema Sombrio */}
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-slate-800 flex items-center justify-center text-2xl shadow-inner">
+                          🌌
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Tema Galáxia</h4>
+                          <p className="text-[10px] text-neutral-500">Aventura noturna.</p>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-bold text-neutral-500 group-hover:text-sky-600">Safira</span>
-                    </button>
-                    <button className="flex flex-col items-center gap-2 group">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-amber-400 to-rose-400 p-1 group-hover:scale-110 transition-transform">
-                        <div className="w-full h-full bg-white dark:bg-neutral-900 rounded-full border border-amber-200 dark:border-amber-800"></div>
+                      <button 
+                        onClick={() => {
+                          if (studentData.coins >= 1000) {
+                            setStudentData(prev => ({...prev, coins: prev.coins - 1000}));
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-1 ${studentData.coins >= 1000 ? 'bg-yellow-400 text-yellow-950 hover:bg-yellow-500 hover:scale-105 shadow-sm active:scale-95' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'}`}
+                      >
+                        1000 🪙
+                      </button>
+                    </div>
+
+                    {/* Item 3: Ícone Dourado */}
+                    <div className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:shadow-md transition-shadow">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-amber-100 flex items-center justify-center text-2xl shadow-inner border-2 border-amber-400">
+                          👑
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Borda Ouro</h4>
+                          <p className="text-[10px] text-neutral-500">Destaque no rank.</p>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-bold text-neutral-500 group-hover:text-amber-600">Crepúsculo</span>
-                    </button>
+                      <button 
+                        onClick={() => {
+                          if (studentData.coins >= 1500) {
+                            setStudentData(prev => ({...prev, coins: prev.coins - 1500}));
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-1 ${studentData.coins >= 1500 ? 'bg-yellow-400 text-yellow-950 hover:bg-yellow-500 hover:scale-105 shadow-sm active:scale-95' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'}`}
+                      >
+                        1500 🪙
+                      </button>
+                    </div>
+
                   </div>
                 </div>
 

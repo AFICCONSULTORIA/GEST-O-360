@@ -377,7 +377,7 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
                   <span className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest mb-4">
                     <Star fill="currentColor" size={12} /> Novo Curso Adicionado
                   </span>
-                  <h2 className="text-3xl md:text-4xl font-black mb-3 leading-tight">Formação Contínua EduMunicipa</h2>
+                  <h2 className="text-3xl md:text-4xl font-black mb-3 leading-tight">Formação Contínua Gestão 360 Educação</h2>
                   <p className="text-indigo-100 max-w-xl mb-8 text-sm md:text-base leading-relaxed">Aprimore suas habilidades com novos cursos de metodologias ativas, inclusão escolar e ferramentas digitais. Evolua seu nível pedagógico.</p>
                   <button className="bg-white text-indigo-600 font-bold px-6 py-3.5 rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center gap-2 max-w-max">
                     <Play fill="currentColor" size={18} />
@@ -629,7 +629,7 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider pl-2 flex items-center gap-1"><Mail size={12}/> E-mail Institucional</label>
-                      <input type="email" defaultValue="carlos.andrade@edumunicipa.gov.br" className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors text-sm font-medium text-neutral-900 dark:text-white" />
+                      <input type="email" defaultValue="carlos.andrade@gestao360.gov.br" className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors text-sm font-medium text-neutral-900 dark:text-white" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider pl-2">Disciplina(s) de Atuação</label>
@@ -729,7 +729,7 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
               <HelpCircle size={48} />
             </div>
             <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">Central de Ajuda</h2>
-            <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Base de conhecimento, tutoriais e contato direto com a equipe de suporte do EduMunicipa.</p>
+            <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Base de conhecimento, tutoriais e contato direto com a equipe de suporte do Gestão 360 Educação.</p>
           </div>
         )}
       </main>

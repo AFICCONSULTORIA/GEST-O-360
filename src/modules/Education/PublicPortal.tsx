@@ -508,7 +508,28 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
   );
 
   return (
-    <div className={`min-h-[100dvh] transition-colors ${darkMode ? 'dark' : ''} ${(activeTab === 'home' || activeTab === 'student-login' || activeTab === 'teacher-login') ? 'pt-24 pb-20 px-4 md:px-8 bg-[#F4F4F2] dark:bg-neutral-950' : 'bg-edu-background'}`}>
+    <div className={`min-h-[100dvh] transition-colors relative ${darkMode ? 'dark' : ''} ${(activeTab === 'home' || activeTab === 'student-login' || activeTab === 'teacher-login') ? 'pt-24 pb-20 px-4 md:px-8 bg-[#F4F4F2] dark:bg-neutral-950' : 'bg-edu-background'}`}>
+      
+      {['home', 'student-login', 'teacher-login'].includes(activeTab) && (
+        <div className="absolute top-10 left-6 sm:left-10 z-50">
+          <button 
+            onClick={() => {
+              if (activeTab === 'home') {
+                window.location.href = '/';
+              } else {
+                setActiveTab('home');
+              }
+            }}
+            className="flex items-center gap-2 p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-105 hover:text-sky-600 dark:hover:text-sky-400 transition-all group"
+          >
+            <ChevronLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
+            <span className="font-bold text-sm hidden sm:block">
+              {activeTab === 'home' ? 'Voltar ao Início' : 'Voltar'}
+            </span>
+          </button>
+        </div>
+      )}
+
       <AnimatePresence mode="wait">
         {activeTab === 'home' && renderHome()}
         {activeTab === 'student-login' && renderStudentLogin()}

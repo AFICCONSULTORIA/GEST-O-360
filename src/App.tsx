@@ -1092,7 +1092,7 @@ const SalesLandingPage = ({
                       <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-sky-500 flex items-center justify-center">
                         <Sparkles size={14} className="text-white" />
                       </div>
-                      <span className="font-black text-white text-sm">EduMunicipa</span>
+                      <span className="font-black text-white text-sm">Gestão 360 Educação</span>
                     </div>
                     <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full flex items-center gap-1">
                       <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping" />
