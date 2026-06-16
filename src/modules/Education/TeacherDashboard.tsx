@@ -44,8 +44,11 @@ import {
   Zap,
   Coins,
   Edit2,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react';
+import { TeacherEducationManager } from './TeacherEducationManager';
+
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
   const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt'>('dashboard');
@@ -202,6 +205,10 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         </header>
 
         {/* Dashboard Content */}
+        {activeView === 'student-portal-mgmt' && (
+          <TeacherEducationManager />
+        )}
+
         {activeView === 'dashboard' && (
           <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8">
           

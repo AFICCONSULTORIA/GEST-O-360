@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../../lib/supabase';
-import { fetchStudentProfile, awardStudent, spendCoins } from '../../lib/api/education';
+import { fetchStudentProfile, awardStudent, spendCoins, fetchCoursesWithProgress, completeLesson } from '../../lib/api/education';
 import { 
   ArrowLeft,
   LayoutDashboard,
@@ -43,23 +43,101 @@ import {
   Flame,
   Crown,
   PlayCircle,
-  Brain
+  Brain,
+  Check,
+  ChevronRight,
+  Video,
+  FileText
 } from 'lucide-react';
 
+// --- MOCK DATA (CONSUMER-FIRST) ---
+export interface QuizQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctAnswer: number;
+}
+
+export interface Lesson {
+  id: string;
+  type: 'video' | 'text' | 'quiz';
+  title: string;
+  duration?: string;
+  xp: number;
+  coins: number;
+  contentUrl?: string; // para video
+  contentBody?: string; // para texto
+  questions?: QuizQuestion[]; // para quiz
+  isCompleted?: boolean;
+}
+
+export interface Module {
+  id: string;
+  title: string;
+  description: string;
+  lessons: Lesson[];
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  subject: string;
+  description: string;
+  color: 'emerald' | 'sky' | 'rose' | 'amber' | 'purple';
+  icon: string;
+  modules: Module[];
+}
+
+// Mock temporário removido - agora usamos do Supabase
+
 export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support' | 'trail-map' | 'taking-assessment'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support' | 'trail-map' | 'lesson-player' | 'quiz-player'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
-  const [activeCourse, setActiveCourse] = useState<any>(null);
-  const [activeLesson, setActiveLesson] = useState<any>(null);
+  // -- Estado Profundo de Consumo --
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [activeCourse, setActiveCourse] = useState<Course | null>(null);
+  const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
 
+  // -- Backward compatibility para assessments antigos --
   const [assessmentStep, setAssessmentStep] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
 
-  const handleAccessCourse = (course: any) => {
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // -- Estado do Quiz --
+  const [quizState, setQuizState] = useState({
+    currentQuestionIndex: 0,
+    selectedOption: null as number | null,
+    isCorrect: null as boolean | null,
+    score: 0,
+    isFinished: false
+  });
+
+  const handleAccessCourse = (course: Course) => {
     setActiveCourse(course);
     setActiveView('trail-map');
+  };
+
+  const handleStartLesson = (lesson: Lesson) => {
+    setActiveLesson(lesson);
+    if (lesson.type === 'quiz') {
+      setQuizState({ currentQuestionIndex: 0, selectedOption: null, isCorrect: null, score: 0, isFinished: false });
+      setActiveView('quiz-player');
+    } else {
+      setActiveView('lesson-player');
+    }
+  };
+
+  const finishLesson = async () => {
+    if (activeLesson) {
+      handleAward(activeLesson.xp, activeLesson.coins);
+      await completeCurrentLesson(quizState.isFinished ? quizState.score : 0);
+      showToast(`Você ganhou ${activeLesson.xp} XP e ${activeLesson.coins} Moedas!`, 'success');
+    }
+    setActiveView('trail-map');
+    setActiveLesson(null);
   };
 
   // Student Global State
@@ -76,13 +154,19 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
 
   useEffect(() => {
     async function loadData() {
+      setIsLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
+      
+      // Carregar os cursos para o MVP independente de ter user
+      const coursesData = await fetchCoursesWithProgress(user ? user.id : undefined);
+      setCourses(coursesData);
+
       if (user) {
         const data = await fetchStudentProfile(user.id);
         if (data) {
           setStudentData(prev => ({
             ...prev,
-            id: data.id,
+            id: data.user_id || data.id, 
             name: data.name,
             level: data.level,
             title: data.title,
@@ -92,6 +176,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
           }));
         }
       }
+      setIsLoading(false);
     }
     loadData();
   }, []);
@@ -103,15 +188,40 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
+  const completeCurrentLesson = async (score: number = 0) => {
+    if (!activeLesson || !studentData.id) return;
+    await completeLesson(studentData.id, activeLesson.id, score);
+    
+    // Atualizar no estado local
+    setCourses(prev => prev.map(c => ({
+      ...c,
+      modules: c.modules.map(m => ({
+        ...m,
+        lessons: m.lessons.map(l => l.id === activeLesson.id ? { ...l, isCompleted: true } : l)
+      }))
+    })));
+  };
+
   const handleSpend = async (cost: number) => {
-    if (studentData.coins < cost) return;
+    if (studentData.coins < cost) {
+      showToast('Moedas insuficientes!', 'error');
+      return;
+    }
     setStudentData(prev => ({...prev, coins: prev.coins - cost}));
     if (studentData.id) {
       const success = await spendCoins(studentData.id, cost);
       if (!success) {
         setStudentData(prev => ({...prev, coins: prev.coins + cost}));
+        showToast('Erro ao processar compra.', 'error');
+      } else {
+        showToast('Compra realizada com sucesso!', 'success');
       }
     }
+  };
+
+  // Toast mockado
+  const showToast = (msg: string, type: string) => {
+    // Implementação mockada ou futura de UI de toast.
   };
 
   const xpPercentage = Math.round((studentData.xp / studentData.nextLevelXp) * 100);
@@ -369,66 +479,51 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
           {/* Bento Grid Content */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            {/* Left Column: My Assessments & Tests */}
+            {/* Left Column: My Trails & Courses */}
             <div className="lg:col-span-8 space-y-6">
               
-              {/* Minhas Avaliações */}
+              {/* Trilhas em Andamento */}
               <section>
                 <div className="flex justify-between items-end mb-4">
                   <div>
                     <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                      <Target className="text-emerald-500" size={24} />
-                      Minhas Avaliações
+                      <Compass className="text-emerald-500" size={24} />
+                      Trilhas em Andamento
                     </h3>
-                    <p className="text-sm text-neutral-500 mt-1">Acompanhe seu desempenho nas disciplinas.</p>
+                    <p className="text-sm text-neutral-500 mt-1">Continue de onde parou.</p>
                   </div>
-                  <a href="#" className="text-emerald-600 font-bold text-sm hover:underline">Ver todas</a>
+                  <button onClick={() => setActiveView('courses')} className="text-emerald-600 font-bold text-sm hover:underline">Ver todas</button>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* Assessment Card 1 */}
-                  <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-5 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm hover:shadow-xl hover:shadow-emerald-500/5 hover:-translate-y-1 hover:border-emerald-200 transition-all group">
-                    <div className="flex gap-4 mb-4">
-                      <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center shrink-0">
-                        <TrendingUp className="text-emerald-600 dark:text-emerald-400" size={24} />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-neutral-900 dark:text-white text-lg leading-tight mb-1">Matemática III</h4>
-                        <p className="text-xs text-neutral-500">4 de 5 tarefas concluídas</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 w-[80%] rounded-full"></div>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="font-bold text-emerald-600 dark:text-emerald-400">Quase lá!</span>
-                        <span className="font-medium text-neutral-400">80%</span>
-                      </div>
-                    </div>
-                  </div>
+                  {courses.slice(0, 2).map(course => {
+                    const totalLessons = course.modules.reduce((acc, mod) => acc + mod.lessons.length, 0);
+                    const completedLessons = course.modules.reduce((acc, mod) => acc + mod.lessons.filter(l => l.isCompleted).length, 0);
+                    const progress = Math.round((completedLessons / totalLessons) * 100) || 0;
 
-                  {/* Assessment Card 2 */}
-                  <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-5 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm hover:shadow-xl hover:shadow-sky-500/5 hover:-translate-y-1 hover:border-sky-200 transition-all group">
-                    <div className="flex gap-4 mb-4">
-                      <div className="w-14 h-14 rounded-2xl bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0">
-                        <BookOpen className="text-sky-600 dark:text-sky-400" size={24} />
+                    return (
+                      <div key={course.id} onClick={() => handleAccessCourse(course)} className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-5 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm hover:shadow-xl hover:shadow-emerald-500/5 hover:-translate-y-1 hover:border-emerald-200 cursor-pointer transition-all group">
+                        <div className="flex gap-4 mb-4">
+                          <div className={`w-14 h-14 rounded-2xl bg-${course.color}-50 dark:bg-${course.color}-500/10 flex items-center justify-center shrink-0`}>
+                            {course.icon === 'Calculator' ? <Calculator className={`text-${course.color}-600 dark:text-${course.color}-400`} size={24} /> : <BookOpen className={`text-${course.color}-600 dark:text-${course.color}-400`} size={24} />}
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-bold text-neutral-900 dark:text-white text-lg leading-tight mb-1">{course.title}</h4>
+                            <p className="text-xs text-neutral-500">{completedLessons} de {totalLessons} aulas</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                            <div className={`h-full bg-gradient-to-r from-${course.color}-400 to-${course.color}-500 rounded-full`} style={{ width: `${progress}%` }}></div>
+                          </div>
+                          <div className="flex justify-between items-center text-sm">
+                            <span className={`font-bold text-${course.color}-600 dark:text-${course.color}-400`}>Em andamento</span>
+                            <span className="font-medium text-neutral-400">{progress}%</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-neutral-900 dark:text-white text-lg leading-tight mb-1">Português: Leitura</h4>
-                        <p className="text-xs text-neutral-500">2 de 5 tarefas concluídas</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                        <div className="h-full bg-gradient-to-r from-sky-400 to-blue-500 w-[40%] rounded-full"></div>
-                      </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="font-bold text-sky-600 dark:text-sky-400">Em andamento</span>
-                        <span className="font-medium text-neutral-400">40%</span>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })}
                 </div>
               </section>
 
@@ -592,13 +687,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
                 </div>
                 
                 <button 
-                  onClick={() => handleAccessCourse({
-                    id: 'ciencias',
-                    title: 'Os Mistérios do Sistema Solar',
-                    bg: 'bg-indigo-500',
-                    color: 'indigo',
-                    icon: <Star size={32} className="text-indigo-500" />
-                  })}
+                  onClick={() => courses.length > 0 && handleAccessCourse(courses[0])}
                   className="bg-white text-indigo-600 hover:bg-neutral-50 font-black px-8 py-5 rounded-[20px] shadow-2xl hover:scale-105 hover:-translate-y-1 transition-all flex items-center gap-3 w-full md:w-auto justify-center group/btn">
                   <PlayCircle size={28} className="group-hover/btn:scale-110 transition-transform" />
                   Continuar Aventura
@@ -607,232 +696,358 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
             </div>
 
             {/* Grid de Trilhas */}
+            {isLoading ? (
+              <div className="flex justify-center p-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+              </div>
+            ) : courses.length === 0 ? (
+              <div className="text-center p-12 bg-white dark:bg-neutral-900 rounded-[28px] border border-neutral-200/50 dark:border-neutral-800/50">
+                <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Nenhuma Trilha Encontrada</h3>
+                <p className="text-neutral-500">Volte mais tarde para novas aventuras de conhecimento!</p>
+              </div>
+            ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              
-              {/* Matemática */}
-              <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 hover:shadow-xl hover:shadow-sky-500/10 hover:-translate-y-1 transition-all group">
-                <div className="flex items-start justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-sky-100 dark:bg-sky-500/20 text-sky-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform rotate-3">
-                    <Calculator size={28} />
-                  </div>
-                  <span className="text-xs font-bold text-neutral-400 flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded-lg">
-                    12 Fases
-                  </span>
-                </div>
-                <div>
-                  <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-1">Matemática</h4>
-                  <p className="text-xs text-neutral-500 font-medium">Reino dos Números e Lógica</p>
-                </div>
-                
-                <div className="space-y-1.5 mt-auto">
-                  <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-sky-500 rounded-full" style={{ width: '40%' }}></div>
-                  </div>
-                  <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 text-right">40% Concluído</p>
-                </div>
+              {courses.map(course => {
+                const totalLessons = course.modules.reduce((acc, mod) => acc + mod.lessons.length, 0);
+                const completedLessons = course.modules.reduce((acc, mod) => acc + mod.lessons.filter(l => l.isCompleted).length, 0);
+                const progress = Math.round((completedLessons / totalLessons) * 100) || 0;
 
-                <button 
-                  onClick={() => handleAccessCourse({
-                    id: 'matematica',
-                    title: 'Matemática',
-                    bg: 'bg-sky-500',
-                    color: 'sky',
-                    icon: <Calculator size={32} className="text-sky-500" />
-                  })}
-                  className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-sky-50 dark:hover:bg-sky-500/10 text-neutral-900 dark:text-white hover:text-sky-600 dark:hover:text-sky-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-sky-200 dark:hover:border-sky-500/30 flex items-center justify-center gap-2">
-                  <Compass size={18} /> Acessar Trilha
-                </button>
-              </div>
+                return (
+                  <div key={course.id} className={`bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 hover:shadow-xl hover:shadow-${course.color}-500/10 hover:-translate-y-1 transition-all group`}>
+                    <div className="flex items-start justify-between">
+                      <div className={`w-14 h-14 rounded-2xl bg-${course.color}-100 dark:bg-${course.color}-500/20 text-${course.color}-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform rotate-3`}>
+                        {course.icon === 'Calculator' ? <Calculator size={28} /> : <BookOpen size={28} />}
+                      </div>
+                      <span className="text-xs font-bold text-neutral-400 flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded-lg">
+                        {totalLessons} Fases
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-1">{course.title}</h4>
+                      <p className="text-xs text-neutral-500 font-medium">{course.description}</p>
+                    </div>
+                    
+                    <div className="space-y-1.5 mt-auto">
+                      <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                        <div className={`h-full bg-${course.color}-500 rounded-full`} style={{ width: `${progress}%` }}></div>
+                      </div>
+                      <p className={`text-[10px] font-bold text-${course.color}-600 dark:text-${course.color}-400 text-right`}>{progress}% Concluído</p>
+                    </div>
 
-              {/* Português */}
-              <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 hover:shadow-xl hover:shadow-fuchsia-500/10 hover:-translate-y-1 transition-all group">
-                <div className="flex items-start justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform -rotate-3">
-                    <BookOpen size={28} />
+                    <button 
+                      onClick={() => handleAccessCourse(course)}
+                      className={`w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-${course.color}-50 dark:hover:bg-${course.color}-500/10 text-neutral-900 dark:text-white hover:text-${course.color}-600 dark:hover:text-${course.color}-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-${course.color}-200 dark:hover:border-${course.color}-500/30 flex items-center justify-center gap-2`}
+                    >
+                      <Compass size={18} /> Acessar Trilha
+                    </button>
                   </div>
-                  <span className="text-xs font-bold text-neutral-400 flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded-lg">
-                    15 Fases
-                  </span>
-                </div>
-                <div>
-                  <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-1">Língua Portuguesa</h4>
-                  <p className="text-xs text-neutral-500 font-medium">Caverna das Palavras e Rimas</p>
-                </div>
-                
-                <div className="space-y-1.5 mt-auto">
-                  <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-fuchsia-500 rounded-full" style={{ width: '80%' }}></div>
-                  </div>
-                  <p className="text-[10px] font-bold text-fuchsia-600 dark:text-fuchsia-400 text-right">80% Concluído</p>
-                </div>
-
-                <button 
-                  onClick={() => handleAccessCourse({
-                    id: 'portugues',
-                    title: 'Língua Portuguesa',
-                    bg: 'bg-fuchsia-500',
-                    color: 'fuchsia',
-                    icon: <BookOpen size={32} className="text-fuchsia-500" />
-                  })}
-                  className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-500/10 text-neutral-900 dark:text-white hover:text-fuchsia-600 dark:hover:text-fuchsia-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-fuchsia-200 dark:hover:border-fuchsia-500/30 flex items-center justify-center gap-2">
-                  <Compass size={18} /> Acessar Trilha
-                </button>
-              </div>
-
-              {/* História */}
-              <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 hover:shadow-xl hover:shadow-emerald-500/10 hover:-translate-y-1 transition-all group">
-                <div className="flex items-start justify-between">
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-100 dark:bg-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform rotate-6">
-                    <Map size={28} />
-                  </div>
-                  <span className="text-xs font-bold text-neutral-400 flex items-center gap-1 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 rounded-lg">
-                    10 Fases
-                  </span>
-                </div>
-                <div>
-                  <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-1">História</h4>
-                  <p className="text-xs text-neutral-500 font-medium">Viagem no Tempo</p>
-                </div>
-                
-                <div className="space-y-1.5 mt-auto">
-                  <div className="w-full h-2 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: '15%' }}></div>
-                  </div>
-                  <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 text-right">15% Concluído</p>
-                </div>
-
-                <button 
-                  onClick={() => handleAccessCourse({
-                    id: 'historia',
-                    title: 'História',
-                    bg: 'bg-emerald-500',
-                    color: 'emerald',
-                    icon: <Map size={32} className="text-emerald-500" />
-                  })}
-                  className="w-full mt-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-neutral-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 font-bold py-3 rounded-xl transition-colors border border-transparent hover:border-emerald-200 dark:hover:border-emerald-500/30 flex items-center justify-center gap-2">
-                  <Compass size={18} /> Acessar Trilha
-                </button>
-              </div>
-
+                );
+              })}
             </div>
+            )}
           </div>
         )}
 
         {/* Trail Map UI */}
         {activeView === 'trail-map' && activeCourse && (
-          <div className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-right-8 duration-500">
-            {/* Header com botão voltar */}
+          <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto w-full pb-24 md:pb-8 min-h-screen">
+            {/* Cabecalho da Trilha */}
             <div className="flex items-center gap-4 mb-8">
-              <button onClick={() => setActiveView('courses')} className="p-2 bg-white dark:bg-neutral-900 rounded-full shadow-sm hover:scale-110 transition-transform text-neutral-600 dark:text-neutral-400">
-                <ArrowLeft size={24} />
+              <button onClick={() => setActiveView('dashboard')} className="p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl hover:scale-105 transition-transform shadow-sm">
+                <ArrowLeft size={20} />
               </button>
               <div>
-                <h2 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
-                  {activeCourse.icon}
-                  {activeCourse.title}
-                </h2>
-                <p className="text-neutral-500 font-medium">Trilha de Conhecimento</p>
+                <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">{activeCourse.title}</h2>
+                <p className="text-sm font-bold text-neutral-500 uppercase tracking-widest">{activeCourse.subject}</p>
               </div>
             </div>
 
-            {/* O Mapa (Caminho Zig-Zag) */}
-            <div className="relative py-10 flex flex-col items-center space-y-12 before:absolute before:inset-0 before:ml-[50%] before:-translate-x-1/2 before:w-4 before:bg-neutral-200 dark:before:bg-neutral-800 before:rounded-full before:-z-10">
-              
-              {/* Node 1 (Completed) */}
-              <div className="relative w-full flex justify-center translate-x-[-80px] hover:-translate-y-2 transition-transform cursor-pointer group" onClick={() => setActiveLesson({ id: 1, title: 'Introdução', type: 'video' })}>
-                <div className={`w-24 h-24 ${activeCourse.bg} rounded-full border-8 border-white dark:border-neutral-950 flex items-center justify-center shadow-xl relative z-10`}>
-                  <CheckCircle2 size={40} className="text-white" />
-                </div>
-                <div className="absolute top-full mt-2 text-center w-max">
-                  <p className="font-black text-neutral-900 dark:text-white text-lg">Fase 1</p>
-                  <p className="text-sm text-neutral-500">Introdução</p>
-                </div>
-              </div>
+            {/* Arvore de Progresso (estilo Duolingo) */}
+            <div className="space-y-16 py-8 relative">
+              {activeCourse.modules.map((mod, modIndex) => (
+                <div key={mod.id} className="relative z-10">
+                  {/* Module Header */}
+                  <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm mb-10 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-black text-neutral-900 dark:text-white">{mod.title}</h3>
+                      <p className="text-sm text-neutral-500 mt-1">{mod.description}</p>
+                    </div>
+                    <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center font-black text-neutral-400">
+                      {modIndex + 1}
+                    </div>
+                  </div>
 
-              {/* Node 2 (Current) */}
-              <div className="relative w-full flex justify-center translate-x-[80px] hover:-translate-y-2 transition-transform cursor-pointer group" onClick={() => setActiveLesson({ id: 2, title: 'O Desafio Principal', type: 'video' })}>
-                {/* Crown/Indicator */}
-                <div className="absolute -top-8 animate-bounce text-yellow-500">
-                  <Crown size={32} fill="currentColor" />
-                </div>
-                <div className={`w-28 h-28 ${activeCourse.bg} rounded-full border-8 border-white dark:border-neutral-950 flex items-center justify-center shadow-2xl relative z-10 ring-4 ring-offset-4 ring-offset-neutral-50 dark:ring-offset-neutral-950 ring-${activeCourse.color}-300 animate-pulse`}>
-                  <Star size={48} className="text-white" fill="currentColor" />
-                </div>
-                <div className="absolute top-full mt-2 text-center w-max">
-                  <p className={`font-black text-${activeCourse.color}-500 text-xl`}>Fase 2</p>
-                  <p className="text-sm font-bold text-neutral-600 dark:text-neutral-400">Em Andamento</p>
-                </div>
-              </div>
+                  {/* Lessons in a snaking path */}
+                  <div className="flex flex-col items-center gap-12 relative">
+                    {/* The Path Line */}
+                    <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-4 bg-neutral-100 dark:bg-neutral-800/50 rounded-full -z-10"></div>
+                    
+                    {mod.lessons.map((lesson, lessIndex) => {
+                      const isEven = lessIndex % 2 === 0;
+                      const offset = isEven ? '-translate-x-16' : 'translate-x-16';
+                      const isLocked = !lesson.isCompleted && lessIndex > 0 && !mod.lessons[lessIndex - 1].isCompleted;
+                      const isCurrent = !lesson.isCompleted && (lessIndex === 0 || mod.lessons[lessIndex - 1].isCompleted);
+                      const isDone = lesson.isCompleted;
 
-              {/* Node 3 (Locked) */}
-              <div className="relative w-full flex justify-center translate-x-[-60px] opacity-60 grayscale cursor-not-allowed">
-                <div className="w-20 h-20 bg-neutral-300 dark:bg-neutral-800 rounded-full border-8 border-white dark:border-neutral-950 flex items-center justify-center shadow-inner relative z-10">
-                  <Lock size={28} className="text-neutral-500" />
-                </div>
-                <div className="absolute top-full mt-2 text-center w-max">
-                  <p className="font-black text-neutral-500 text-lg">Fase 3</p>
-                  <p className="text-sm text-neutral-400">Bloqueado</p>
-                </div>
-              </div>
+                      let colorClass = 'bg-neutral-200 text-neutral-400';
+                      if (isDone) colorClass = 'bg-emerald-500 text-white shadow-emerald-500/40 shadow-xl border-4 border-emerald-200 dark:border-emerald-900';
+                      if (isCurrent) colorClass = 'bg-sky-500 text-white shadow-sky-500/40 shadow-xl border-4 border-sky-200 dark:border-sky-900 animate-bounce-slow';
 
+                      return (
+                        <div key={lesson.id} className={`relative flex flex-col items-center ${offset} transition-transform hover:scale-110`}>
+                          <button 
+                            disabled={isLocked}
+                            onClick={() => handleStartLesson(lesson)}
+                            className={`w-20 h-20 rounded-full flex items-center justify-center z-10 transition-all ${colorClass} ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:brightness-110'}`}
+                          >
+                            {isDone ? <Check size={32} strokeWidth={4} /> : 
+                             lesson.type === 'video' ? <Play size={32} strokeWidth={3} className="ml-1" /> :
+                             lesson.type === 'quiz' ? <Swords size={32} strokeWidth={3} /> :
+                             <FileText size={32} strokeWidth={3} />
+                            }
+                          </button>
+                          
+                          {/* Lesson tooltip/label */}
+                          <div className={`absolute top-full mt-3 w-max max-w-[140px] text-center ${isCurrent ? 'bg-white dark:bg-neutral-800 shadow-xl border border-neutral-200 dark:border-neutral-700 rounded-2xl p-3 z-20' : ''}`}>
+                            <p className={`text-xs font-black leading-tight ${isCurrent ? 'text-neutral-900 dark:text-white' : 'text-neutral-500'}`}>
+                              {lesson.title}
+                            </p>
+                            {isCurrent && (
+                              <div className="flex items-center justify-center gap-1 mt-2 text-[10px] font-bold text-amber-500 bg-amber-50 dark:bg-amber-500/10 rounded-lg py-1 px-2">
+                                <Zap size={10} /> +{lesson.xp} XP
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Lesson Modal */}
-        <AnimatePresence>
-          {activeLesson && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-neutral-900/80 backdrop-blur-sm"
-            >
-              <motion.div 
-                initial={{ scale: 0.9, y: 20 }}
-                animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col"
-              >
-                <div className={`p-6 ${activeCourse?.bg || 'bg-emerald-500'} flex justify-between items-center text-white`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-md">
-                      <Star size={20} fill="currentColor" />
-                    </div>
-                    <div>
-                      <h3 className="font-black text-xl">{activeLesson.title}</h3>
-                      <p className="text-sm font-medium text-white/80">Fase {activeLesson.id} • Desafio Prático</p>
+        {/* View: Player de Aula (Vídeo / Texto) */}
+        {activeView === 'lesson-player' && activeLesson && (
+          <div className="fixed inset-0 z-[100] bg-neutral-950 flex flex-col md:flex-row text-white animate-in slide-in-from-bottom-8 duration-500">
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col h-full overflow-y-auto">
+              {/* Header */}
+              <div className="px-6 py-4 flex items-center justify-between border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10">
+                <div className="flex items-center gap-4">
+                  <button onClick={() => { setActiveView('trail-map'); setActiveLesson(null); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                    <ArrowLeft size={24} />
+                  </button>
+                  <div>
+                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{activeCourse?.title}</p>
+                    <h2 className="text-lg font-black">{activeLesson.title}</h2>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 text-amber-400 rounded-lg text-xs font-bold">
+                    <Zap size={14} /> {activeLesson.xp} XP
+                  </span>
+                </div>
+              </div>
+
+              {/* Player Body */}
+              <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
+                {activeLesson.type === 'video' ? (
+                  <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative flex items-center justify-center group">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10"></div>
+                    <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200&auto=format&fit=crop" className="w-full h-full object-cover opacity-60" alt="Video cover" />
+                    <button className="absolute z-20 w-24 h-24 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-transform group-hover:scale-110">
+                      <Play size={40} className="ml-2" />
+                    </button>
+                    {/* Fake Video Controls */}
+                    <div className="absolute bottom-0 left-0 right-0 p-6 z-20 flex items-center gap-4">
+                      <button className="text-white hover:text-emerald-400"><Play size={24} /></button>
+                      <div className="flex-1 h-1.5 bg-white/30 rounded-full overflow-hidden cursor-pointer">
+                        <div className="w-1/3 h-full bg-emerald-500 rounded-full relative">
+                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow"></div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-mono">01:23 / 05:00</span>
                     </div>
                   </div>
-                  <button onClick={() => setActiveLesson(null)} className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-colors">
-                    <X size={20} />
+                ) : (
+                  <div className="w-full max-w-3xl bg-neutral-900 border border-white/10 rounded-3xl p-10 md:p-16 shadow-2xl">
+                    <h1 className="text-3xl font-black mb-6">{activeLesson.title}</h1>
+                    <div className="prose prose-invert prose-emerald max-w-none">
+                      <p className="text-lg leading-relaxed text-neutral-300">
+                        {activeLesson.contentBody || 'O conteúdo textual da aula será exibido aqui. Pode conter parágrafos ricos, imagens, destaques e fórmulas.'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Action Bar */}
+              <div className="px-6 py-6 border-t border-white/10 bg-black/40 backdrop-blur-md flex justify-end sticky bottom-0 z-10">
+                <button 
+                  onClick={finishLesson}
+                  className="px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase tracking-widest flex items-center gap-3 transition-transform hover:scale-105 active:scale-95 shadow-xl shadow-emerald-500/20"
+                >
+                  Concluir e Ganhar Recompensas
+                  <CheckCircle2 size={20} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* View: Player de Quiz (Desafio) */}
+        {activeView === 'quiz-player' && activeLesson && activeLesson.type === 'quiz' && (
+          <div className="fixed inset-0 z-[100] bg-neutral-50 dark:bg-neutral-950 flex flex-col">
+            {/* Header */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
+              <button onClick={() => { setActiveView('trail-map'); setActiveLesson(null); }} className="p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                <X size={24} />
+              </button>
+              <div className="flex-1 max-w-xl mx-8">
+                {/* Progress Bar */}
+                <div className="w-full h-3 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
+                    style={{ width: `${((quizState.currentQuestionIndex) / (activeLesson.questions?.length || 1)) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Shield className="text-rose-500" size={24} />
+              </div>
+            </div>
+
+            {/* Quiz Body */}
+            <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6">
+              {!quizState.isFinished ? (() => {
+                const q = activeLesson.questions![quizState.currentQuestionIndex];
+                return (
+                  <div className="w-full max-w-2xl animate-in slide-in-from-right-8 duration-500">
+                    <h2 className="text-2xl md:text-4xl font-black text-neutral-900 dark:text-white mb-10 text-center leading-tight">
+                      {q.question}
+                    </h2>
+                    <div className="grid grid-cols-1 gap-4">
+                      {q.options.map((opt, idx) => {
+                        const isSelected = quizState.selectedOption === idx;
+                        const isCorrectAnswer = q.correctAnswer === idx;
+                        const showResult = quizState.isCorrect !== null;
+                        
+                        let btnClass = "border-2 border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:border-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/20";
+                        
+                        if (showResult) {
+                          if (isCorrectAnswer) {
+                            btnClass = "border-2 border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400";
+                          } else if (isSelected && !isCorrectAnswer) {
+                            btnClass = "border-2 border-rose-500 bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400";
+                          } else {
+                            btnClass = "border-2 border-neutral-200 dark:border-neutral-800 opacity-50";
+                          }
+                        } else if (isSelected) {
+                          btnClass = "border-2 border-sky-500 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-400";
+                        }
+
+                        return (
+                          <button 
+                            key={idx}
+                            disabled={showResult}
+                            onClick={() => setQuizState(prev => ({...prev, selectedOption: idx}))}
+                            className={`p-5 rounded-2xl text-left font-bold text-lg transition-all ${btnClass}`}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })() : (
+                <div className="text-center animate-in zoom-in-95 duration-500">
+                  <div className="w-32 h-32 mx-auto bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6 border-4 border-amber-400">
+                    <Trophy size={64} className="text-amber-500" />
+                  </div>
+                  <h2 className="text-4xl font-black text-neutral-900 dark:text-white mb-4">Desafio Concluído!</h2>
+                  <p className="text-xl text-neutral-600 dark:text-neutral-400 mb-8">
+                    Você acertou {quizState.score} de {activeLesson.questions?.length} perguntas.
+                  </p>
+                  <button 
+                    onClick={finishLesson}
+                    className="px-10 py-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg uppercase tracking-widest transition-transform hover:scale-105 shadow-xl shadow-emerald-500/20"
+                  >
+                    Resgatar XP e Continuar
                   </button>
+                </div>
+              )}
+            </div>
+
+            {/* Bottom Validation Bar */}
+            {!quizState.isFinished && (
+              <div className={`border-t p-6 flex justify-between items-center transition-colors duration-300 ${
+                quizState.isCorrect === true ? 'bg-emerald-100 dark:bg-emerald-900/40 border-emerald-200 dark:border-emerald-800' :
+                quizState.isCorrect === false ? 'bg-rose-100 dark:bg-rose-900/40 border-rose-200 dark:border-rose-800' :
+                'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800'
+              }`}>
+                <div>
+                  {quizState.isCorrect === true && (
+                    <div className="flex items-center gap-3 text-emerald-600 dark:text-emerald-400">
+                      <div className="w-10 h-10 bg-emerald-200 dark:bg-emerald-800 rounded-full flex items-center justify-center"><Check size={24} /></div>
+                      <div>
+                        <h4 className="font-black text-xl leading-none">Incrível!</h4>
+                        <p className="text-sm font-bold opacity-80">Resposta correta.</p>
+                      </div>
+                    </div>
+                  )}
+                  {quizState.isCorrect === false && (
+                    <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+                      <div className="w-10 h-10 bg-rose-200 dark:bg-rose-800 rounded-full flex items-center justify-center"><X size={24} /></div>
+                      <div>
+                        <h4 className="font-black text-xl leading-none">Quase!</h4>
+                        <p className="text-sm font-bold opacity-80">A resposta correta era a outra.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
-                <div className="p-8 space-y-6 flex-1 flex flex-col items-center text-center">
-                  <div className="w-full aspect-video bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center relative group overflow-hidden cursor-pointer">
-                    <div className="absolute inset-0 bg-black/10 group-hover:bg-black/20 transition-colors"></div>
-                    <PlayCircle size={64} className="text-white drop-shadow-md group-hover:scale-110 transition-transform z-10" />
-                    <img src="https://images.unsplash.com/photo-1596495578065-6e0763fa1178?q=80&w=800&auto=format&fit=crop" alt="Video Thumbnail" className="absolute inset-0 w-full h-full object-cover opacity-60 mix-blend-multiply" />
-                  </div>
-                  
-                  <h4 className="text-2xl font-black text-neutral-900 dark:text-white">Pronto para começar?</h4>
-                  <p className="text-neutral-500 dark:text-neutral-400">Assista ao vídeo e depois responda ao quiz para ganhar 50 Moedas e 100 XP!</p>
-                  
-                  <button 
-                    onClick={() => {
-                      handleAward(100, 50);
-                      setActiveLesson(null);
-                    }}
-                    className={`w-full py-4 ${activeCourse?.bg || 'bg-emerald-500'} text-white rounded-2xl font-black text-lg hover:-translate-y-1 hover:shadow-lg transition-all active:scale-95`}
-                  >
-                    Concluir Aula e Ganhar Recompensas
-                  </button>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                <button 
+                  disabled={quizState.selectedOption === null}
+                  onClick={() => {
+                    const q = activeLesson.questions![quizState.currentQuestionIndex];
+                    if (quizState.isCorrect === null) {
+                      // Check answer
+                      const correct = quizState.selectedOption === q.correctAnswer;
+                      setQuizState(prev => ({
+                        ...prev, 
+                        isCorrect: correct,
+                        score: correct ? prev.score + 1 : prev.score
+                      }));
+                    } else {
+                      // Next question
+                      if (quizState.currentQuestionIndex + 1 < activeLesson.questions!.length) {
+                        setQuizState(prev => ({
+                          ...prev,
+                          currentQuestionIndex: prev.currentQuestionIndex + 1,
+                          selectedOption: null,
+                          isCorrect: null
+                        }));
+                      } else {
+                        setQuizState(prev => ({...prev, isFinished: true}));
+                      }
+                    }
+                  }}
+                  className={`px-8 py-4 rounded-2xl font-black uppercase tracking-widest transition-all ${
+                    quizState.selectedOption === null ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 cursor-not-allowed' :
+                    quizState.isCorrect === true ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' :
+                    quizState.isCorrect === false ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/20' :
+                    'bg-sky-500 hover:bg-sky-600 text-white shadow-lg shadow-sky-500/20'
+                  }`}
+                >
+                  {quizState.isCorrect === null ? 'Verificar' : 'Continuar'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Avaliações List */}
         {activeView === 'assessments' && (
