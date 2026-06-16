@@ -703,18 +703,7 @@ export const SettingsModule = ({
                       className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
                     />
                   </div>
-                  {!editingUser && (
-                    <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Senha Temporária</label>
-                      <input 
-                        required={!editingUser}
-                        type="password" 
-                        value={formData.password}
-                        onChange={e => setFormData({...formData, password: e.target.value})}
-                        className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
-                      />
-                    </div>
-                  )}
+
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Instituição</label>
                     <select 
