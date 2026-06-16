@@ -2349,7 +2349,7 @@ export default function App() {
               permissions: AVAILABLE_PERMISSIONS.map(p => p.id)
             });
           } else {
-            const { data } = await supabase.from('admin_users').select('*').eq('email', session.user.email).single();
+            const { data } = await supabase.from('admin_users').select('*').eq('email', session.user.email).maybeSingle();
             if (data) {
               // Bloqueio de Segurança para o Portal SaaS (Subdomínio 'admin')
               if (isSaaSAdmin && data.role !== 'Super Admin') {

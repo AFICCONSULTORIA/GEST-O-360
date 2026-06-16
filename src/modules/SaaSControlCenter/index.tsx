@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell 
 } from 'recharts';
-import { supabase } from '../../lib/supabase';
+import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { AdminUser, Institution, Department, View } from '../../types';
 import { SaaSControlCenterSupport } from './SaaSControlCenterSupport';
@@ -172,17 +172,21 @@ export const SaaSControlCenter = ({
       let finalUserId: string = crypto.randomUUID();
       
       try {
-        const { data, error } = await supabase.auth.signUp({
-          email: userFormData.email,
-          password: userFormData.password
-        });
+        const { data, error } = await signUpNewUser(userFormData.email, userFormData.password);
+        
         if (error) {
-          showToast('Erro Supabase Auth: ' + error.message, 'error');
-          return;
+          // Se o usuário já existir no Auth, prosseguimos para cadastrá-lo na admin_users.
+          if (error.message.toLowerCase().includes('already registered')) {
+            console.log('Usuário já existe no Auth. Prosseguindo para vinculação na admin_users.');
+          } else {
+            showToast('Aviso Supabase Auth: ' + error.message, 'error');
+            return;
+          }
+        } else if (data?.user) {
+          finalUserId = data.user.id;
         }
-        if (data.user) finalUserId = data.user.id;
       } catch (err) {
-        console.error(err);
+        console.error('Erro na criação de usuário no Auth:', err);
       }
 
       const newUser: AdminUser = {

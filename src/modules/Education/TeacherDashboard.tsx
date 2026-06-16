@@ -37,13 +37,40 @@ import {
   Calendar as CalendarIcon,
   Key,
   ToggleRight,
-  ToggleLeft
+  ToggleLeft,
+  Compass,
+  Map,
+  Flame,
+  Zap,
+  Coins,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // --- Gestão de Alunos State ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [contentTab, setContentTab] = useState<'ativos' | 'atividade' | 'trilha' | 'material'>('ativos');
+  const [selectedContent, setSelectedContent] = useState<any>(null);
+  const [isEditingContent, setIsEditingContent] = useState(false);
+
+  const [students] = useState([
+    { id: 1, name: 'Arthur da Silva', level: 7, xp: 1850, coins: 450, streak: 12, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v', status: 'Excelente' },
+    { id: 2, name: 'Lucas Oliveira', level: 5, xp: 1200, coins: 200, streak: 4, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBLv-9O5hBlmU5_LkR_8IxwSqLjfUT9l1f-b2DqKQdrRe1NmcBQQhxXv1x2Zyhk1oK7XYmwbFBs8sK8-sJY38OictlRSFj1rm3eG6zc9i9cqHsKlLPQ3_qDIGfUuPYVcXnKhWtMfDOlt1HKGQl28oO-O53I9ErFFsSECp_vberifEfzMYXQ9h2y0WuZXthEq0RDCGn7zjLbr2nbQIFvkPlcidyjXLZVvk_nJK71rD4CCDkYT2brei8pIy8MflsJr6qBXpEi0-eN-zKp', status: 'Atenção' },
+    { id: 3, name: 'Mariana Santos', level: 8, xp: 2100, coins: 650, streak: 21, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCnnyLKW0EKdD-3a9_Ki-2ePeEPYn_-aHYBmwPrJ-0YC5mwsgc9JGY5ABaWdwKGRtqZ7nRtUY7Ga081pqIaC55W0zFGzKk3cIzq-r2oSkoJKOe7fGOnhkbkOKR3yizGPn-9oysGSfAGQ0jJ_N0ZTzRFNJuyX7iR92YyK_FFwN7xaGwh7gEI2soTtGtCrznm5Q87EnFDayT0mKpSii6802d-mztafH4O1irxwjjHfakV6o3zQKn_SbBEz-v2C10MjzY7wRLz_GbaAe0Z', status: 'Excelente' },
+    { id: 4, name: 'Enzo Costa', level: 3, xp: 500, coins: 50, streak: 1, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDef6yKWmbZWbYLRyfSOhIQlmeg6V4JneJiJocAYmvHIIIfVDaNVv_xCDlVDB8Grfi6H3yYdPIkQ8eXY0PdHsgQ8sYnzzgY7LMXAyvN-ElPWrzIoUcwKPnHoRk--fMrPmQFx9cfrpZGmzwZMEzVmAigs3HDTeAvaJYBfw0yvfFHqCPPjFqHJINsJ3EuD7cESzeRjgx8a97jb5KeAIA-cbD_vY2UKV7AIHDUD3NDb_jE7hT4saIVqMyG9fw6V6ikuizwuAUe3E7bOWjL', status: 'Em Risco' },
+  ]);
+
+  const [activeContents, setActiveContents] = useState([
+    { id: 1, type: 'atividade', title: 'Quiz de Frações', subject: 'Matemática', stats: '18/28 entregas', icon: Target, color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10' },
+    { id: 2, type: 'trilha', title: 'Os Mistérios do Sistema Solar', subject: 'Ciências', stats: '65% conclusão média', icon: Compass, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-500/10' },
+    { id: 3, type: 'material', title: 'Mapa Mundi Interativo', subject: 'Geografia', stats: '24 acessos hoje', icon: Map, color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10' },
+  ]);
 
   return (
     <div className="min-h-[100dvh] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex flex-col md:flex-row selection:bg-indigo-500/20 overflow-x-hidden">
@@ -89,11 +116,11 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         {/* Navigation Links */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           <button 
-            onClick={onBack}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white font-medium transition-all group"
+            onClick={() => setActiveView('student-portal-mgmt')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'student-portal-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
-            <GraduationCap size={20} className="group-hover:scale-110 transition-transform" />
-            <span>Portal do Aluno</span>
+            <GraduationCap size={20} className={activeView !== 'student-portal-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Portal do Aluno (Gestão)</span>
           </button>
           <button 
             onClick={() => setActiveView('dashboard')}
@@ -730,6 +757,494 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
             </div>
             <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">Central de Ajuda</h2>
             <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Base de conhecimento, tutoriais e contato direto com a equipe de suporte do Gestão 360 Educação.</p>
+          </div>
+        )}
+
+        {/* Gestão do Aluno UI - Premium Design */}
+        {activeView === 'student-portal-mgmt' && (
+          <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Header com Gradiente */}
+            <div className="flex flex-col gap-3 mb-10">
+              <h2 className="text-4xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-purple-600 to-sky-600 flex items-center gap-4">
+                <div className="p-3 bg-white/50 dark:bg-neutral-900/50 backdrop-blur-md rounded-2xl shadow-sm border border-white/20 dark:border-white/5">
+                  <GraduationCap className="text-indigo-600 dark:text-indigo-400" size={36} />
+                </div>
+                Gestão de Conteúdos & Alunos
+              </h2>
+              <p className="text-lg text-neutral-500 dark:text-neutral-400 max-w-2xl">Acompanhe o desempenho, envie atividades interativas e crie trilhas gamificadas para elevar o engajamento das suas turmas.</p>
+            </div>
+
+            {/* Top Stats - Glassmorphism & Glow */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-10">
+              <div className="bg-white/70 dark:bg-neutral-900/70 backdrop-blur-2xl rounded-[32px] p-6 border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(99,102,241,0.1)] hover:-translate-y-1 transition-all duration-500 flex flex-col justify-between group">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-black text-neutral-500 uppercase tracking-[0.2em]">Total de Alunos</span>
+                  <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                    <Users size={20} className="text-indigo-600 dark:text-indigo-400" />
+                  </div>
+                </div>
+                <span className="text-4xl font-black text-neutral-900 dark:text-white">28</span>
+              </div>
+              <div className="bg-white/70 dark:bg-neutral-900/70 backdrop-blur-2xl rounded-[32px] p-6 border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(244,63,94,0.1)] hover:-translate-y-1 transition-all duration-500 flex flex-col justify-between group">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-black text-neutral-500 uppercase tracking-[0.2em]">Atividades</span>
+                  <div className="w-10 h-10 rounded-full bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                    <Target size={20} className="text-rose-600 dark:text-rose-400" />
+                  </div>
+                </div>
+                <span className="text-4xl font-black text-neutral-900 dark:text-white">14</span>
+              </div>
+              <div className="bg-white/70 dark:bg-neutral-900/70 backdrop-blur-2xl rounded-[32px] p-6 border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(16,185,129,0.1)] hover:-translate-y-1 transition-all duration-500 flex flex-col justify-between group">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-black text-neutral-500 uppercase tracking-[0.2em]">Conclusão Média</span>
+                  <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                    <TrendingUp size={20} className="text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                </div>
+                <span className="text-4xl font-black text-neutral-900 dark:text-white">82%</span>
+              </div>
+              <div className="bg-white/70 dark:bg-neutral-900/70 backdrop-blur-2xl rounded-[32px] p-6 border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(14,165,233,0.1)] hover:-translate-y-1 transition-all duration-500 flex flex-col justify-between group">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-xs font-black text-neutral-500 uppercase tracking-[0.2em]">Trilhas Ativas</span>
+                  <div className="w-10 h-10 rounded-full bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center group-hover:scale-110 transition-transform duration-500">
+                    <Compass size={20} className="text-sky-600 dark:text-sky-400" />
+                  </div>
+                </div>
+                <span className="text-4xl font-black text-neutral-900 dark:text-white">4</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              {/* Left Column: Students List (Bento Box 1) */}
+              <div className="lg:col-span-5 flex flex-col gap-6">
+                <div className="bg-white/70 dark:bg-neutral-900/70 backdrop-blur-2xl rounded-[40px] p-6 md:p-8 border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex flex-col h-full min-h-[600px] relative overflow-hidden">
+                  {/* Decorative Gradient Blur */}
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 dark:bg-indigo-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+                  <h3 className="text-2xl font-black text-neutral-900 dark:text-white mb-6 flex items-center gap-3 relative z-10">
+                    <Users className="text-indigo-500" size={28} />
+                    Meus Alunos
+                  </h3>
+                  
+                  {/* Search Bar - Modern */}
+                  <div className="relative mb-6 z-10 group">
+                    <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none transition-transform group-focus-within:scale-110 group-focus-within:text-indigo-500">
+                      <Search size={18} className="text-neutral-400 transition-colors" />
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="Pesquisar aluno..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-12 pr-5 py-4 bg-white/50 dark:bg-neutral-950/50 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all text-sm font-bold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-medium shadow-inner"
+                    />
+                  </div>
+
+                  {/* Student List */}
+                  <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar z-10 relative">
+                    {students.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase())).map(student => (
+                      <div 
+                        key={student.id} 
+                        onClick={() => setSelectedStudent(student)}
+                        className={`flex items-center gap-4 p-4 rounded-[24px] cursor-pointer transition-all duration-300 relative overflow-hidden group ${selectedStudent?.id === student.id ? 'bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border-indigo-200 dark:border-indigo-500/30' : 'bg-white/40 dark:bg-neutral-800/40 border-transparent hover:bg-white/80 dark:hover:bg-neutral-800/80 hover:shadow-md'}`}
+                        style={{ borderWidth: '1.5px' }}
+                      >
+                        {/* Selected Indicator Bar */}
+                        {selectedStudent?.id === student.id && (
+                          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1.5 h-1/2 bg-indigo-500 rounded-r-full shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                        )}
+
+                        <div className="w-14 h-14 rounded-[18px] overflow-hidden shrink-0 border-2 border-white/50 dark:border-neutral-700/50 shadow-sm relative">
+                          <img src={student.avatar} alt={student.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className={`font-black text-base truncate transition-colors ${selectedStudent?.id === student.id ? 'text-indigo-700 dark:text-indigo-400' : 'text-neutral-900 dark:text-white'}`}>{student.name}</h4>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-neutral-200/50 dark:bg-neutral-700/50 text-neutral-600 dark:text-neutral-300 backdrop-blur-sm">Nível {student.level}</span>
+                            <span className="text-[11px] font-black text-orange-500 flex items-center gap-1 drop-shadow-sm"><Flame size={12} fill="currentColor" /> {student.streak}</span>
+                            {student.status === 'Em Risco' && <span className="text-[10px] font-black text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-2 py-0.5 rounded-full ml-auto animate-pulse">EM RISCO</span>}
+                          </div>
+                        </div>
+                        <ChevronRight size={20} className={`transition-all duration-300 ${selectedStudent?.id === student.id ? 'text-indigo-500 translate-x-1' : 'text-neutral-300 group-hover:text-neutral-400 group-hover:translate-x-1'}`} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column: Selected Student Details OR Content Creation (Bento Box 2) */}
+              <div className="lg:col-span-7 flex flex-col gap-6">
+                
+                {/* Switcher Tabs - Floating Pill Style */}
+                <div className="flex bg-white/60 dark:bg-neutral-900/60 backdrop-blur-xl p-2 rounded-[28px] w-full overflow-x-auto no-scrollbar border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.02)]">
+                  {['ativos', 'atividade', 'trilha', 'material'].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => { setContentTab(tab as any); setSelectedStudent(null); setSelectedContent(null); setIsEditingContent(false); }}
+                      className={`flex-1 py-3 px-5 rounded-[20px] text-sm font-black capitalize transition-all duration-300 whitespace-nowrap ${contentTab === tab && !selectedStudent && !selectedContent ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 -translate-y-0.5' : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-white/50 dark:hover:bg-neutral-800/50'}`}
+                    >
+                      {tab === 'ativos' ? 'Conteúdos Ativos' : `Nova ${tab}`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Dynamic Content Area - Glass Card */}
+                <div className="bg-white/70 dark:bg-neutral-900/70 backdrop-blur-2xl rounded-[40px] p-8 md:p-10 border border-white/40 dark:border-white/10 shadow-[0_8px_30px_rgb(0,0,0,0.04)] flex-1 min-h-[600px] relative overflow-hidden">
+                  
+                  {/* Decorative Gradient Blur Top Right */}
+                  <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-indigo-500/10 via-purple-500/5 to-transparent rounded-full blur-3xl pointer-events-none"></div>
+
+                  {/* View: Selected Student Details (Dashboard Pessoal) */}
+                  {selectedStudent && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700 relative z-10">
+                      
+                      {/* Profile Header Style Videogame */}
+                      <div className="flex flex-col md:flex-row items-center md:items-start gap-6 bg-gradient-to-br from-white/50 to-neutral-50/10 dark:from-neutral-800/50 dark:to-neutral-900/10 p-6 rounded-[32px] border border-white/50 dark:border-white/5 shadow-inner backdrop-blur-sm">
+                        <div className="relative">
+                          <div className="w-28 h-28 rounded-[24px] overflow-hidden shrink-0 border-4 border-white dark:border-neutral-800 shadow-xl relative z-10">
+                            <img src={selectedStudent.avatar} alt={selectedStudent.name} className="w-full h-full object-cover" />
+                          </div>
+                          <div className="absolute -bottom-3 -right-3 w-10 h-10 bg-indigo-600 text-white font-black text-sm flex items-center justify-center rounded-xl shadow-lg border-2 border-white dark:border-neutral-900 z-20 transform rotate-12 hover:rotate-0 transition-transform">
+                            L{selectedStudent.level}
+                          </div>
+                        </div>
+                        <div className="flex-1 text-center md:text-left flex flex-col justify-center">
+                          <h3 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">{selectedStudent.name}</h3>
+                          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                            <div className="flex items-center gap-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 px-3 py-1.5 rounded-xl font-bold text-sm text-neutral-700 dark:text-neutral-300 shadow-sm">
+                              <Zap size={16} className="text-amber-500" />
+                              {selectedStudent.xp} XP
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 px-3 py-1.5 rounded-xl font-bold text-sm text-neutral-700 dark:text-neutral-300 shadow-sm">
+                              <Coins size={16} className="text-yellow-500" />
+                              {selectedStudent.coins} Moedas
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedStudent(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 text-neutral-400 transition-colors">
+                          <X size={24} />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <button className="flex items-center justify-center gap-3 py-4 bg-indigo-50/80 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-[24px] font-black hover:bg-indigo-600 hover:text-white transition-all duration-300 group shadow-sm">
+                          <MessageSquare size={20} className="group-hover:scale-110 transition-transform" />
+                          Enviar Mensagem
+                        </button>
+                        <button className="flex items-center justify-center gap-3 py-4 bg-amber-50/80 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-[24px] font-black hover:bg-amber-500 hover:text-white transition-all duration-300 group shadow-sm">
+                          <Coins size={20} className="group-hover:scale-110 transition-transform" />
+                          Bonificar Aluno
+                        </button>
+                      </div>
+
+                      <div className="pt-6 border-t border-neutral-200/50 dark:border-neutral-800/50">
+                        <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-6 flex items-center gap-2">
+                          <Target size={24} className="text-indigo-500" />
+                          Desempenho Recente
+                        </h4>
+                        <div className="space-y-5">
+                          <div className="group bg-white/50 dark:bg-neutral-800/30 p-4 rounded-[24px] border border-white/50 dark:border-neutral-700/50 hover:shadow-md transition-all">
+                            <div className="flex items-center gap-5">
+                              <div className="w-14 h-14 rounded-[18px] bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                                <CheckCircle2 size={28} />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-end mb-2">
+                                  <h5 className="font-black text-base">Quiz de Ciências</h5>
+                                  <span className="font-black text-emerald-500 text-lg">90%</span>
+                                </div>
+                                <div className="w-full h-2.5 bg-neutral-200/50 dark:bg-neutral-700/50 rounded-full overflow-hidden shadow-inner">
+                                  <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full w-[90%] shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="group bg-white/50 dark:bg-neutral-800/30 p-4 rounded-[24px] border border-white/50 dark:border-neutral-700/50 hover:shadow-md transition-all">
+                            <div className="flex items-center gap-5">
+                              <div className="w-14 h-14 rounded-[18px] bg-rose-50 dark:bg-rose-500/10 text-rose-500 flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
+                                <AlertTriangle size={28} />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex justify-between items-end mb-2">
+                                  <h5 className="font-black text-base">Prova de Matemática</h5>
+                                  <span className="font-black text-rose-500 text-lg">45%</span>
+                                </div>
+                                <div className="w-full h-2.5 bg-neutral-200/50 dark:bg-neutral-700/50 rounded-full overflow-hidden shadow-inner">
+                                  <div className="h-full bg-gradient-to-r from-rose-400 to-rose-500 rounded-full w-[45%] shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View: Tracking do Conteúdo */}
+                  {!selectedStudent && selectedContent && !isEditingContent && (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-700 relative z-10">
+                      {/* Dashboard Header do Conteúdo */}
+                      <div className="flex flex-col md:flex-row items-center md:items-start gap-6 bg-gradient-to-br from-white/50 to-neutral-50/10 dark:from-neutral-800/50 dark:to-neutral-900/10 p-6 rounded-[32px] border border-white/50 dark:border-white/5 shadow-inner backdrop-blur-sm relative">
+                        <div className={`w-24 h-24 rounded-[24px] ${selectedContent.bg} ${selectedContent.color} flex items-center justify-center shrink-0 border-4 border-white dark:border-neutral-800 shadow-xl z-10`}>
+                          <selectedContent.icon size={40} />
+                        </div>
+                        <div className="flex-1 text-center md:text-left flex flex-col justify-center">
+                          <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 backdrop-blur-sm">{selectedContent.type}</span>
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-neutral-200/50 text-neutral-600 dark:bg-neutral-700/50 dark:text-neutral-300 backdrop-blur-sm">{selectedContent.subject}</span>
+                          </div>
+                          <h3 className="text-3xl font-black text-neutral-900 dark:text-white mb-3">{selectedContent.title}</h3>
+                          <div className="flex flex-wrap items-center justify-center md:justify-start gap-3">
+                            <div className="flex items-center gap-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 px-3 py-1.5 rounded-xl font-bold text-sm text-neutral-700 dark:text-neutral-300 shadow-sm">
+                              <Target size={16} className="text-indigo-500" />
+                              {selectedContent.stats}
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-neutral-100/80 dark:bg-neutral-800/80 px-3 py-1.5 rounded-xl font-bold text-sm text-neutral-700 dark:text-neutral-300 shadow-sm">
+                              <Zap size={16} className="text-amber-500" />
+                              100 XP Recompensa
+                            </div>
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedContent(null)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 text-neutral-400 transition-colors">
+                          <X size={24} />
+                        </button>
+                      </div>
+
+                      {/* Ações */}
+                      <div className="flex items-center gap-4">
+                        <button onClick={() => setIsEditingContent(true)} className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[24px] font-black flex items-center justify-center gap-2 transition-colors shadow-lg shadow-indigo-500/30">
+                          <Edit2 size={20} />
+                          Editar Conteúdo
+                        </button>
+                        <button onClick={() => { setSelectedContent(null); setActiveContents(prev => prev.filter(c => c.id !== selectedContent.id)); }} className="px-6 py-4 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 rounded-[24px] font-black flex items-center justify-center gap-2 transition-colors">
+                          <Trash2 size={20} />
+                          Excluir
+                        </button>
+                      </div>
+
+                      {/* Tabela de Acompanhamento (Mock) */}
+                      <div className="pt-6 border-t border-neutral-200/50 dark:border-neutral-800/50">
+                        <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-6 flex items-center gap-2">
+                          <Users size={24} className="text-indigo-500" />
+                          Progresso dos Alunos
+                        </h4>
+                        <div className="space-y-3">
+                          {students.slice(0, 3).map((student, i) => (
+                            <div key={student.id} className="flex items-center gap-4 p-4 bg-white/50 dark:bg-neutral-800/30 rounded-[20px] border border-white/50 dark:border-neutral-700/50 hover:bg-white hover:shadow-md transition-all">
+                              <img src={student.avatar} alt={student.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                              <div className="flex-1">
+                                <h5 className="font-black text-sm text-neutral-900 dark:text-white">{student.name}</h5>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${i === 0 ? 'w-full bg-emerald-500' : i === 1 ? 'w-1/2 bg-amber-500' : 'w-0'}`}></div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <span className={`text-xs font-black px-2.5 py-1 rounded-lg ${i === 0 ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20' : i === 1 ? 'bg-amber-100 text-amber-600 dark:bg-amber-500/20' : 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800'}`}>
+                                  {i === 0 ? 'Concluído' : i === 1 ? 'Em Andamento' : 'Pendente'}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View: Edição do Conteúdo */}
+                  {!selectedStudent && selectedContent && isEditingContent && (
+                    <div className="space-y-8 animate-in fade-in duration-500 relative z-10">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+                          <Edit2 className="text-indigo-500" size={32} />
+                          Editar {selectedContent.type === 'atividade' ? 'Atividade' : selectedContent.type === 'trilha' ? 'Trilha' : 'Material'}
+                        </h3>
+                        <button onClick={() => setIsEditingContent(false)} className="p-2 rounded-full hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 text-neutral-400 transition-colors">
+                          <X size={24} />
+                        </button>
+                      </div>
+                      
+                      <div className="space-y-6">
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Título</label>
+                          <input type="text" defaultValue={selectedContent.title} className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all" />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Matéria</label>
+                            <select defaultValue={selectedContent.subject} className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all">
+                              <option>Matemática</option>
+                              <option>Ciências</option>
+                              <option>Português</option>
+                              <option>Geografia</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Recompensa (XP)</label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                                <Zap size={18} className="text-amber-500" />
+                              </div>
+                              <input type="number" defaultValue={100} className="w-full pl-14 pr-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all" />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Descrição / Instruções</label>
+                          <textarea rows={4} defaultValue="Instruções atuais do conteúdo..." className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all resize-none"></textarea>
+                        </div>
+                        <button onClick={() => setIsEditingContent(false)} className="w-full py-5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-lg rounded-[24px] shadow-[0_8px_30px_rgb(16,185,129,0.3)] hover:shadow-[0_8px_40px_rgb(16,185,129,0.5)] hover:-translate-y-1 transition-all duration-300 flex justify-center items-center gap-3 mt-4">
+                          <CheckCircle2 size={24} /> Salvar Alterações
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View: Conteúdos Ativos */}
+                  {!selectedStudent && !selectedContent && contentTab === 'ativos' && (
+                    <div className="space-y-6 animate-in fade-in duration-500 relative z-10">
+                      <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-2xl font-black text-neutral-900 dark:text-white">Conteúdos Ativos</h3>
+                        <span className="text-sm font-black text-indigo-600 bg-indigo-100 dark:bg-indigo-500/20 px-4 py-1.5 rounded-full shadow-sm">{activeContents.length} items</span>
+                      </div>
+                      <div className="space-y-4">
+                        {activeContents.map(content => (
+                          <div 
+                            key={content.id} 
+                            onClick={() => setSelectedContent(content)}
+                            className="flex items-center justify-between p-5 rounded-[24px] bg-white/60 dark:bg-neutral-800/40 border border-white/60 dark:border-neutral-700/50 hover:bg-white dark:hover:bg-neutral-800 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group cursor-pointer backdrop-blur-sm"
+                          >
+                            <div className="flex items-center gap-5">
+                              <div className={`w-14 h-14 rounded-[20px] ${content.bg} ${content.color} flex items-center justify-center shrink-0 shadow-inner group-hover:scale-110 transition-transform duration-500`}>
+                                <content.icon size={28} />
+                              </div>
+                              <div>
+                                <h4 className="font-black text-lg text-neutral-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{content.title}</h4>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-[11px] font-black uppercase tracking-widest text-neutral-400 bg-neutral-100 dark:bg-neutral-700/50 px-2 py-0.5 rounded-md">{content.subject}</span>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-neutral-300 dark:bg-neutral-600"></span>
+                                  <span className="text-xs font-bold text-neutral-500">{content.stats}</span>
+                                </div>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setActiveContents(prev => prev.filter(c => c.id !== content.id)); }}
+                              className="w-10 h-10 rounded-full bg-white dark:bg-neutral-700 shadow-sm border border-neutral-100 dark:border-neutral-600 flex items-center justify-center text-neutral-400 hover:text-white hover:bg-rose-500 hover:border-rose-500 hover:shadow-lg hover:shadow-rose-500/30 hover:scale-110 transition-all duration-300"
+                            >
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View: Adicionar Atividade */}
+                  {!selectedStudent && !selectedContent && contentTab === 'atividade' && (
+                    <div className="space-y-8 animate-in fade-in duration-500 relative z-10">
+                      <h3 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 flex items-center gap-3">
+                        <Target className="text-indigo-500" size={32} />
+                        Criar Nova Atividade
+                      </h3>
+                      <div className="space-y-6">
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Título da Atividade</label>
+                          <input type="text" placeholder="Ex: Quiz de Biologia Celular" className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all placeholder:text-neutral-400 placeholder:font-medium" />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Matéria</label>
+                            <select className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all">
+                              <option>Matemática</option>
+                              <option>Ciências</option>
+                              <option>Português</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Recompensa (XP)</label>
+                            <div className="relative">
+                              <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none">
+                                <Zap size={18} className="text-amber-500" />
+                              </div>
+                              <input type="number" placeholder="100" className="w-full pl-14 pr-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all placeholder:text-neutral-400 placeholder:font-medium" />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Descrição / Instruções</label>
+                          <textarea rows={4} placeholder="Descreva o que o aluno deve fazer..." className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all resize-none placeholder:text-neutral-400 placeholder:font-medium"></textarea>
+                        </div>
+                        <button className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-lg rounded-[24px] shadow-[0_8px_30px_rgb(99,102,241,0.3)] hover:shadow-[0_8px_40px_rgb(99,102,241,0.5)] hover:-translate-y-1 transition-all duration-300 flex justify-center items-center gap-3 mt-4">
+                          <Plus size={24} /> Criar Atividade
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View: Adicionar Trilha */}
+                  {!selectedStudent && !selectedContent && contentTab === 'trilha' && (
+                    <div className="space-y-8 animate-in fade-in duration-500 relative z-10">
+                      <h3 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 flex items-center gap-3">
+                        <Compass className="text-indigo-500" size={32} />
+                        Criar Trilha Gamificada
+                      </h3>
+                      <div className="space-y-6">
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Nome da Trilha</label>
+                          <input type="text" placeholder="Ex: A Jornada do Sistema Solar" className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all placeholder:text-neutral-400 placeholder:font-medium" />
+                        </div>
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Fases / Aulas</label>
+                          <div className="mt-2 border-2 border-dashed border-indigo-200 dark:border-indigo-800/50 bg-indigo-50/50 dark:bg-indigo-900/10 rounded-[32px] p-10 text-center hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300 dark:hover:border-indigo-700 cursor-pointer transition-all duration-300 group">
+                            <div className="w-16 h-16 rounded-full bg-white dark:bg-neutral-800 shadow-md flex items-center justify-center mx-auto mb-4 group-hover:scale-110 group-hover:shadow-lg group-hover:shadow-indigo-500/20 transition-all duration-300">
+                              <PlusCircle size={32} className="text-indigo-400 group-hover:text-indigo-600 transition-colors" />
+                            </div>
+                            <p className="text-lg font-black text-indigo-900 dark:text-indigo-100">Adicionar Fase à Trilha</p>
+                            <p className="text-sm font-medium text-indigo-500/70 mt-2">Clique ou arraste módulos para cá</p>
+                          </div>
+                        </div>
+                        <button className="w-full py-5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-black text-lg rounded-[24px] shadow-[0_8px_30px_rgb(14,165,233,0.3)] hover:shadow-[0_8px_40px_rgb(14,165,233,0.5)] hover:-translate-y-1 transition-all duration-300 flex justify-center items-center gap-3 mt-4">
+                          <Plus size={24} /> Salvar Trilha
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* View: Adicionar Material */}
+                  {!selectedStudent && !selectedContent && contentTab === 'material' && (
+                    <div className="space-y-8 animate-in fade-in duration-500 relative z-10">
+                      <h3 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 flex items-center gap-3">
+                        <Map className="text-indigo-500" size={32} />
+                        Disponibilizar Material
+                      </h3>
+                      <div className="space-y-6">
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Título do Material</label>
+                          <input type="text" placeholder="Ex: PDF - Regras da Acentuação" className="w-full px-6 py-4 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md border border-white/50 dark:border-neutral-700/50 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold text-neutral-900 dark:text-white shadow-inner transition-all placeholder:text-neutral-400 placeholder:font-medium" />
+                        </div>
+                        <div>
+                          <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Arquivo ou Link</label>
+                          <div className="mt-2 border-2 border-dashed border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-[32px] p-12 text-center hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 dark:hover:border-emerald-700 cursor-pointer transition-all duration-300 group relative overflow-hidden">
+                            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                            <div className="w-20 h-20 rounded-[24px] bg-white dark:bg-neutral-800 shadow-md flex items-center justify-center mx-auto mb-6 group-hover:-translate-y-2 group-hover:shadow-xl group-hover:shadow-emerald-500/20 transition-all duration-500 relative z-10">
+                              <FileText size={40} className="text-emerald-500" />
+                            </div>
+                            <p className="text-xl font-black text-emerald-900 dark:text-emerald-100 relative z-10">Arraste seu arquivo aqui</p>
+                            <p className="text-sm font-bold text-emerald-600/70 dark:text-emerald-400/70 mt-2 relative z-10">ou clique para procurar no computador</p>
+                          </div>
+                        </div>
+                        <button className="w-full py-5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-lg rounded-[24px] shadow-[0_8px_30px_rgb(16,185,129,0.3)] hover:shadow-[0_8px_40px_rgb(16,185,129,0.5)] hover:-translate-y-1 transition-all duration-300 flex justify-center items-center gap-3 mt-4">
+                          <Plus size={24} /> Publicar Material
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </main>
