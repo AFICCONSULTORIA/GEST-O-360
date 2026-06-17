@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as LucideIcons from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { RADAR_DATA } from '../../App';
+import { RADAR_DATA } from '../../lib/mockData';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { 
   CheckItem, Protocol, PatrimonioItem, DocumentRecord, OrderItem,

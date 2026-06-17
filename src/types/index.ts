@@ -181,10 +181,13 @@ export interface DocumentTemplate {
   title: string;
   description: string;
   category: string;
-  format: 'Word' | 'Excel' | 'PDF' | 'PowerPoint';
+  format: 'Word' | 'Excel' | 'PDF' | 'PowerPoint' | 'Editor Web' | 'Outro';
   fileUrl: string;
   updatedAt?: string;
   downloads?: number;
+  content?: string;
+  header?: string;
+  footer?: string;
 }
 
 export interface Contract {

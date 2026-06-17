@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as LucideIcons from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { MOCK_TEMPLATES } from '../../App';
+import { MOCK_TEMPLATES } from '../../lib/mockData';
 import { DocumentTemplate } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 
