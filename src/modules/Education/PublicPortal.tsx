@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   GraduationCap, BookOpen, Brain, Star, Award, 
@@ -49,7 +49,13 @@ const MOCK_QUESTIONS = [
 ];
 
 export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEducacaoPortalProps) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'student' | 'teacher' | 'student-login' | 'teacher-login'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'student' | 'teacher' | 'student-login' | 'teacher-login'>(() => {
+    return (localStorage.getItem('edu_active_tab') as any) || 'home';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('edu_active_tab', activeTab);
+  }, [activeTab]);
   
   // Student Login State
   const [loginPhase, setLoginPhase] = useState<'idle' | 'loading' | 'exploding'>('idle');
