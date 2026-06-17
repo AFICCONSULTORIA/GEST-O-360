@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, BookOpen, Compass, Map, Calculator, PlayCircle, Layers, CheckCircle2, X, ChevronDown, ChevronUp, Video, FileText, HelpCircle, Save, GripVertical, Zap, Coins } from 'lucide-react';
+import { Plus, Edit2, Trash2, BookOpen, Compass, Map, Calculator, PlayCircle, Layers, CheckCircle2, X, ChevronDown, ChevronUp, Video, FileText, HelpCircle, Save, GripVertical, Zap, Coins, ArrowUp, ArrowDown } from 'lucide-react';
 import { Course, Module, Lesson } from '../../lib/api/education';
 
 export const TeacherEducationManager = () => {
@@ -290,6 +290,33 @@ export const TeacherEducationManager = () => {
       console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleReorderLesson = async (moduleId: string, lessonIndex: number, direction: 'up' | 'down') => {
+    if (!selectedCourse) return;
+    
+    const course = { ...selectedCourse };
+    const mod = course.modules?.find(m => m.id === moduleId);
+    if (!mod || !mod.lessons) return;
+    
+    const targetIndex = direction === 'up' ? lessonIndex - 1 : lessonIndex + 1;
+    if (targetIndex < 0 || targetIndex >= mod.lessons.length) return;
+    
+    const lessons = [...mod.lessons];
+    const temp = lessons[lessonIndex];
+    lessons[lessonIndex] = lessons[targetIndex];
+    lessons[targetIndex] = temp;
+    
+    mod.lessons = lessons;
+    setSelectedCourse(course);
+    
+    try {
+      await supabase.from('edu_lessons').update({ position_index: targetIndex }).eq('id', lessons[lessonIndex].id);
+      await supabase.from('edu_lessons').update({ position_index: lessonIndex }).eq('id', lessons[targetIndex].id);
+      loadCourses();
+    } catch (err) {
+      console.error('Erro ao reordenar:', err);
     }
   };
 
@@ -598,6 +625,12 @@ export const TeacherEducationManager = () => {
                                   </div>
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  {lIdx > 0 && (
+                                    <button onClick={() => handleReorderLesson(module.id, lIdx, 'up')} className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 flex items-center justify-center hover:text-indigo-500 transition-colors" title="Mover para cima"><ArrowUp size={14} /></button>
+                                  )}
+                                  {lIdx < (module.lessons?.length || 0) - 1 && (
+                                    <button onClick={() => handleReorderLesson(module.id, lIdx, 'down')} className="w-8 h-8 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-500 flex items-center justify-center hover:text-indigo-500 transition-colors" title="Mover para baixo"><ArrowDown size={14} /></button>
+                                  )}
                                   <button onClick={() => {
                                     const q = lesson.questions && lesson.questions.length > 0 ? lesson.questions[0] : null;
                                     setEditLessonData({

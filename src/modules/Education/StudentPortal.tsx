@@ -189,10 +189,12 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
   };
 
   const completeCurrentLesson = async (score: number = 0) => {
-    if (!activeLesson || !studentData.id) return;
-    await completeLesson(studentData.id, activeLesson.id, score);
+    if (!activeLesson) return;
+    if (studentData.id) {
+      await completeLesson(studentData.id, activeLesson.id, score);
+    }
     
-    // Atualizar no estado local
+    // Atualizar no estado local (cursos gerais)
     setCourses(prev => prev.map(c => ({
       ...c,
       modules: c.modules.map(m => ({
@@ -200,6 +202,18 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
         lessons: m.lessons.map(l => l.id === activeLesson.id ? { ...l, isCompleted: true } : l)
       }))
     })));
+
+    // Atualizar no estado do curso ativo (para refletir na view da trilha imediatamente)
+    setActiveCourse(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        modules: prev.modules.map(m => ({
+          ...m,
+          lessons: m.lessons.map(l => l.id === activeLesson.id ? { ...l, isCompleted: true } : l)
+        }))
+      };
+    });
   };
 
   const handleSpend = async (cost: number) => {
@@ -854,23 +868,50 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
               {/* Player Body */}
               <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
                 {activeLesson.type === 'video' ? (
-                  <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative flex items-center justify-center group">
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10"></div>
-                    <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200&auto=format&fit=crop" className="w-full h-full object-cover opacity-60" alt="Video cover" />
-                    <button className="absolute z-20 w-24 h-24 bg-white/20 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white transition-transform group-hover:scale-110">
-                      <Play size={40} className="ml-2" />
-                    </button>
-                    {/* Fake Video Controls */}
-                    <div className="absolute bottom-0 left-0 right-0 p-6 z-20 flex items-center gap-4">
-                      <button className="text-white hover:text-emerald-400"><Play size={24} /></button>
-                      <div className="flex-1 h-1.5 bg-white/30 rounded-full overflow-hidden cursor-pointer">
-                        <div className="w-1/3 h-full bg-emerald-500 rounded-full relative">
-                          <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow"></div>
+                  (() => {
+                    const url = activeLesson.contentUrl;
+                    if (!url) {
+                      return (
+                        <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative flex items-center justify-center group text-center px-4">
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10"></div>
+                          <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200&auto=format&fit=crop" className="w-full h-full object-cover opacity-30" alt="Video cover" />
+                          <div className="z-20 flex flex-col items-center">
+                            <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white mb-4">
+                              <Video size={32} />
+                            </div>
+                            <h3 className="text-white font-bold text-xl">Nenhum vídeo disponível</h3>
+                            <p className="text-white/60 text-sm mt-2 max-w-md">O professor ainda não configurou o link para o vídeo desta aula.</p>
+                          </div>
                         </div>
+                      );
+                    }
+                    const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+                    if (ytMatch) {
+                      return (
+                        <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative">
+                          <iframe 
+                            src={`https://www.youtube.com/embed/${ytMatch[1]}?autoplay=0&rel=0`} 
+                            title="YouTube video player" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowFullScreen
+                            className="w-full h-full border-0"
+                          ></iframe>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative">
+                        <video 
+                          src={url} 
+                          controls 
+                          className="w-full h-full outline-none"
+                          controlsList="nodownload"
+                        >
+                          Seu navegador não suporta a tag de vídeo.
+                        </video>
                       </div>
-                      <span className="text-xs font-mono">01:23 / 05:00</span>
-                    </div>
-                  </div>
+                    );
+                  })()
                 ) : (
                   <div className="w-full max-w-3xl bg-neutral-900 border border-white/10 rounded-3xl p-10 md:p-16 shadow-2xl">
                     <h1 className="text-3xl font-black mb-6">{activeLesson.title}</h1>
