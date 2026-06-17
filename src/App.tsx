@@ -2549,7 +2549,7 @@ export default function App() {
 
   if (loadingInstitution) {
     return (
-      <div className="min-h-screen bg-[#F9F9F8] dark:bg-neutral-950 flex items-center justify-center">
+      <div className="min-h-dvh bg-[#F9F9F8] dark:bg-neutral-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-neutral-900/10 dark:border-white/10 border-t-neutral-900 dark:border-t-white rounded-full animate-spin" />
           <p className="text-xs font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500">Carregando Gestão 360...</p>
@@ -2749,7 +2749,7 @@ export default function App() {
 
   return (
     <div className={darkMode ? 'dark' : ''}>
-      <div className="min-h-screen bg-[#F9F9F8] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex transition-colors duration-500 print:bg-white">
+      <div className="min-h-dvh bg-[#F9F9F8] dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex transition-colors duration-500 print:bg-white">
       {/* New Control Modal */}
       <AnimatePresence>
         {isNewControlModalOpen && (
@@ -2872,7 +2872,7 @@ export default function App() {
       </AnimatePresence>
 
                         {/* Top Navbar Component */}
-      <div className="flex-1 flex flex-col min-h-screen print:min-h-0 print:h-auto print:block relative z-10 transition-all duration-300 w-full overflow-x-hidden print:overflow-visible bg-neutral-50 dark:bg-neutral-950">
+      <div className="flex-1 flex flex-col min-h-dvh print:min-h-0 print:h-auto print:block relative z-10 transition-all duration-300 w-full overflow-x-hidden print:overflow-visible bg-neutral-50 dark:bg-neutral-950">
         <nav className="bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 sticky top-0 z-40 transition-colors shadow-sm w-full print:hidden">
           <div className="max-w-[1400px] mx-auto px-6">
             <div className="flex items-center justify-between h-20">

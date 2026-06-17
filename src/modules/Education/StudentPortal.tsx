@@ -764,7 +764,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
 
         {/* Trail Map UI */}
         {activeView === 'trail-map' && activeCourse && (
-          <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto w-full pb-24 md:pb-8 min-h-screen">
+          <div className="p-4 md:p-8 space-y-8 max-w-5xl mx-auto w-full pb-24 md:pb-8 min-h-dvh">
             {/* Cabecalho da Trilha */}
             <div className="flex items-center gap-4 mb-8">
               <button onClick={() => setActiveView('dashboard')} className="p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl hover:scale-105 transition-transform shadow-sm">
