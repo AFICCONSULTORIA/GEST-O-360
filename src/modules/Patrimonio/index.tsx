@@ -494,9 +494,13 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                       id: crypto.randomUUID()
                     } as PatrimonioItem);
                   }
-                  setIsModalOpen(false);
-                  setEditingItemId(null);
-                  setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: userDepartment || '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });
+                  
+                  // Evita bug do iOS Safari que recarrega a página se o form for destruído sincronicamente no onSubmit
+                  setTimeout(() => {
+                    setIsModalOpen(false);
+                    setEditingItemId(null);
+                    setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: userDepartment || '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });
+                  }, 10);
                 }}
                 className="space-y-6"
               >
