@@ -28,7 +28,7 @@
   /* Reset for iOS input fields to prevent zooming and fix rounded corners */
   input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"], textarea, select {
     -webkit-appearance: none;
-    border-radius: inherit;
+    border-radius: 0;
   }
 }
 

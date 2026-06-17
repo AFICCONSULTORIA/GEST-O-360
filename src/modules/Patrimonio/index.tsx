@@ -27,6 +27,24 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('grid');
   const [editingItemId, setEditingItemId] = React.useState<string | null>(null);
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
+  const formRef = React.useRef<HTMLFormElement>(null);
+
+  const handleSave = () => {
+    if (formRef.current && !formRef.current.reportValidity()) return;
+    
+    if (editingItemId && onEdit) {
+      onEdit({ ...formData, id: editingItemId } as PatrimonioItem);
+    } else {
+      onAdd({
+        ...formData,
+        id: crypto.randomUUID()
+      } as PatrimonioItem);
+    }
+    
+    setIsModalOpen(false);
+    setEditingItemId(null);
+    setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: userDepartment || '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });
+  };
 
   const openImageModal = (item: PatrimonioItem) => {
     setActiveImageIdx(0);
@@ -484,24 +502,8 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
               </div>
 
               <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (editingItemId && onEdit) {
-                    onEdit({ ...formData, id: editingItemId } as PatrimonioItem);
-                  } else {
-                    onAdd({
-                      ...formData,
-                      id: crypto.randomUUID()
-                    } as PatrimonioItem);
-                  }
-                  
-                  // Evita bug do iOS Safari que recarrega a página se o form for destruído sincronicamente no onSubmit
-                  setTimeout(() => {
-                    setIsModalOpen(false);
-                    setEditingItemId(null);
-                    setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: userDepartment || '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });
-                  }, 10);
-                }}
+                ref={formRef}
+                onSubmit={(e) => e.preventDefault()}
                 className="space-y-6"
               >
                 <div>
@@ -732,7 +734,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
 
                 <div className="pt-4 flex flex-col md:flex-row gap-3">
                   <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3.5 md:py-4 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all">Cancelar</button>
-                  <button type="submit" className="flex-1 py-3.5 md:py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 md:hover:scale-105 transition-all">
+                  <button type="button" onClick={handleSave} className="flex-1 py-3.5 md:py-4 rounded-2xl font-bold text-xs uppercase tracking-widest bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xl shadow-neutral-900/20 md:hover:scale-105 transition-all">
                     {editingItemId ? 'Atualizar Item' : 'Salvar Item'}
                   </button>
                 </div>
