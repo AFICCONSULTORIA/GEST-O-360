@@ -922,7 +922,20 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
             {/* Quiz Body */}
             <div className="flex-1 overflow-y-auto flex flex-col items-center justify-center p-6">
               {!quizState.isFinished ? (() => {
-                const q = activeLesson.questions![quizState.currentQuestionIndex];
+                if (!activeLesson.questions || activeLesson.questions.length === 0) {
+                  return (
+                    <div className="text-center animate-in zoom-in-95 duration-500">
+                      <div className="w-24 h-24 mx-auto bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mb-6 border border-neutral-200 dark:border-neutral-700">
+                        <HelpCircle size={48} className="text-neutral-400" />
+                      </div>
+                      <h2 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">Ops! Sem perguntas</h2>
+                      <p className="text-neutral-500 mb-8 max-w-sm mx-auto">Parece que o professor ainda não adicionou as perguntas para este desafio.</p>
+                      <button onClick={() => { setActiveView('trail-map'); setActiveLesson(null); }} className="px-8 py-3 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold transition-colors">Voltar para o Mapa</button>
+                    </div>
+                  );
+                }
+
+                const q = activeLesson.questions[quizState.currentQuestionIndex];
                 return (
                   <div className="w-full max-w-2xl animate-in slide-in-from-right-8 duration-500">
                     <h2 className="text-2xl md:text-4xl font-black text-neutral-900 dark:text-white mb-10 text-center leading-tight">

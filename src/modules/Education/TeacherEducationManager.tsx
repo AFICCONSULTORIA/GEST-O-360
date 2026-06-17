@@ -20,10 +20,10 @@ export const TeacherEducationManager = () => {
   const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
   
   const [addingLessonTo, setAddingLessonTo] = useState<string | null>(null);
-  const [newLesson, setNewLesson] = useState({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '' });
+  const [newLesson, setNewLesson] = useState({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0 });
 
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
-  const [editLessonData, setEditLessonData] = useState({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '' });
+  const [editLessonData, setEditLessonData] = useState({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0, quizId: '' });
 
   useEffect(() => {
     loadCourses();
@@ -186,7 +186,7 @@ export const TeacherEducationManager = () => {
       const mod = selectedCourse?.modules.find(m => m.id === addingLessonTo);
       const positionIndex = mod ? mod.lessons.length : 0;
       
-      const { error } = await supabase.from('edu_lessons').insert([{
+      const { data: newLessonData, error } = await supabase.from('edu_lessons').insert([{
         module_id: addingLessonTo,
         type: newLesson.type,
         title: newLesson.title,
@@ -196,13 +196,24 @@ export const TeacherEducationManager = () => {
         content_url: newLesson.type === 'video' ? newLesson.contentUrl : null,
         content_body: newLesson.type === 'text' ? newLesson.contentBody : null,
         position_index: positionIndex
-      }]);
+      }]).select().single();
 
       if (error) {
         console.error("Erro ao criar aula:", error);
         alert(`Erro ao criar Aula. Detalhes: ${error.message}`);
       } else {
-        setNewLesson({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '' });
+        if (newLesson.type === 'quiz' && newLessonData) {
+          const { error: quizError } = await supabase.from('edu_quiz_questions').insert([{
+            lesson_id: newLessonData.id,
+            question: newLesson.quizQuestion,
+            options: newLesson.quizOptions,
+            correct_answer_index: newLesson.quizCorrectAnswer,
+            position_index: 0
+          }]);
+          if (quizError) console.error("Erro ao salvar pergunta do quiz:", quizError);
+        }
+
+        setNewLesson({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0 });
         setAddingLessonTo(null);
         loadCourses();
       }
@@ -230,10 +241,33 @@ export const TeacherEducationManager = () => {
       if (error) {
         console.error("Erro ao atualizar aula:", error);
         alert(`Erro ao atualizar Aula. Detalhes: ${error.message}`);
-      } else {
-        setEditingLessonId(null);
-        loadCourses();
+        return;
       }
+
+      if (editLessonData.type === 'quiz') {
+        if (editLessonData.quizId) {
+          // Update existing question
+          const { error: quizError } = await supabase.from('edu_quiz_questions').update({
+            question: editLessonData.quizQuestion,
+            options: editLessonData.quizOptions,
+            correct_answer_index: editLessonData.quizCorrectAnswer
+          }).eq('id', editLessonData.quizId);
+          if (quizError) console.error("Erro ao atualizar quiz:", quizError);
+        } else {
+          // Insert new question (if they changed type to quiz just now)
+          const { error: quizError } = await supabase.from('edu_quiz_questions').insert([{
+            lesson_id: lessonId,
+            question: editLessonData.quizQuestion,
+            options: editLessonData.quizOptions,
+            correct_answer_index: editLessonData.quizCorrectAnswer,
+            position_index: 0
+          }]);
+          if (quizError) console.error("Erro ao inserir quiz:", quizError);
+        }
+      }
+
+      setEditingLessonId(null);
+      loadCourses();
     } catch (err) {
       console.error(err);
     } finally {
@@ -504,9 +538,9 @@ export const TeacherEducationManager = () => {
                                 <h5 className="font-bold text-neutral-900 dark:text-white mb-4">Editando Aula: {lesson.title}</h5>
                                 <div className="space-y-4">
                                   <div className="flex gap-2">
-                                    {['video', 'text'].map(type => (
+                                    {['video', 'text', 'quiz'].map(type => (
                                       <button key={type} onClick={() => setEditLessonData({...editLessonData, type})} className={`flex-1 py-2 text-sm font-bold rounded-lg border transition-all ${editLessonData.type === type ? 'bg-indigo-50 dark:bg-indigo-500/20 border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'}`}>
-                                        {type === 'video' ? 'Vídeo (YouTube)' : 'Leitura (Texto)'}
+                                        {type === 'video' ? 'Vídeo (YouTube)' : type === 'quiz' ? 'Desafio (Quiz)' : 'Leitura (Texto)'}
                                       </button>
                                     ))}
                                   </div>
@@ -521,6 +555,23 @@ export const TeacherEducationManager = () => {
 
                                   {editLessonData.type === 'video' ? (
                                     <input type="text" placeholder="Link do Vídeo (Youtube ou MP4)" value={editLessonData.contentUrl} onChange={e => setEditLessonData({...editLessonData, contentUrl: e.target.value})} className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-sm" />
+                                  ) : editLessonData.type === 'quiz' ? (
+                                    <div className="space-y-4 bg-amber-50 dark:bg-amber-500/5 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20">
+                                      <textarea placeholder="Digite a Pergunta do Desafio..." rows={2} value={editLessonData.quizQuestion} onChange={e => setEditLessonData({...editLessonData, quizQuestion: e.target.value})} className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none resize-none font-bold text-sm"></textarea>
+                                      <div className="space-y-2">
+                                        <label className="text-xs font-bold text-neutral-500 uppercase">Alternativas (Marque a correta)</label>
+                                        {editLessonData.quizOptions.map((opt, oIdx) => (
+                                          <div key={oIdx} className="flex items-center gap-3">
+                                            <input type="radio" name="editQuizCorrect" checked={editLessonData.quizCorrectAnswer === oIdx} onChange={() => setEditLessonData({...editLessonData, quizCorrectAnswer: oIdx})} className="w-5 h-5 text-amber-500 focus:ring-amber-500 dark:bg-neutral-800 dark:border-neutral-600" />
+                                            <input type="text" placeholder={`Opção ${['A', 'B', 'C', 'D'][oIdx]}`} value={opt} onChange={e => {
+                                              const newOpts = [...editLessonData.quizOptions];
+                                              newOpts[oIdx] = e.target.value;
+                                              setEditLessonData({...editLessonData, quizOptions: newOpts});
+                                            }} className="flex-1 px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-amber-500/20 outline-none text-sm font-medium" />
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
                                   ) : (
                                     <textarea placeholder="Conteúdo da leitura..." rows={4} value={editLessonData.contentBody} onChange={e => setEditLessonData({...editLessonData, contentBody: e.target.value})} className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none font-medium text-sm"></textarea>
                                   )}
@@ -548,6 +599,7 @@ export const TeacherEducationManager = () => {
                                 </div>
                                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button onClick={() => {
+                                    const q = lesson.questions && lesson.questions.length > 0 ? lesson.questions[0] : null;
                                     setEditLessonData({
                                       type: lesson.type,
                                       title: lesson.title,
@@ -555,7 +607,11 @@ export const TeacherEducationManager = () => {
                                       xp: lesson.xp,
                                       coins: lesson.coins,
                                       contentUrl: lesson.contentUrl || '',
-                                      contentBody: lesson.contentBody || ''
+                                      contentBody: lesson.contentBody || '',
+                                      quizQuestion: q?.question || '',
+                                      quizOptions: q?.options || ['', '', '', ''],
+                                      quizCorrectAnswer: q?.correctAnswer ?? 0,
+                                      quizId: q?.id || ''
                                     });
                                     setEditingLessonId(lesson.id);
                                     setAddingLessonTo(null);
@@ -576,9 +632,9 @@ export const TeacherEducationManager = () => {
                           <h5 className="font-bold text-neutral-900 dark:text-white mb-4">Adicionar Nova Aula</h5>
                           <div className="space-y-4">
                             <div className="flex gap-2">
-                              {['video', 'text'].map(type => (
+                              {['video', 'text', 'quiz'].map(type => (
                                 <button key={type} onClick={() => setNewLesson({...newLesson, type})} className={`flex-1 py-2 text-sm font-bold rounded-lg border transition-all ${newLesson.type === type ? 'bg-indigo-50 dark:bg-indigo-500/20 border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'border-neutral-200 dark:border-neutral-700 bg-transparent text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'}`}>
-                                  {type === 'video' ? 'Vídeo (YouTube)' : 'Leitura (Texto)'}
+                                  {type === 'video' ? 'Vídeo (YouTube)' : type === 'quiz' ? 'Desafio (Quiz)' : 'Leitura (Texto)'}
                                 </button>
                               ))}
                             </div>
@@ -593,6 +649,23 @@ export const TeacherEducationManager = () => {
 
                             {newLesson.type === 'video' ? (
                               <input type="text" placeholder="Link do Vídeo (Youtube ou MP4)" value={newLesson.contentUrl} onChange={e => setNewLesson({...newLesson, contentUrl: e.target.value})} className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium text-sm" />
+                            ) : newLesson.type === 'quiz' ? (
+                              <div className="space-y-4 bg-amber-50 dark:bg-amber-500/5 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20">
+                                <textarea placeholder="Digite a Pergunta do Desafio..." rows={2} value={newLesson.quizQuestion} onChange={e => setNewLesson({...newLesson, quizQuestion: e.target.value})} className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none resize-none font-bold text-sm"></textarea>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-bold text-neutral-500 uppercase">Alternativas (Marque a correta)</label>
+                                  {newLesson.quizOptions.map((opt, oIdx) => (
+                                    <div key={oIdx} className="flex items-center gap-3">
+                                      <input type="radio" name="newQuizCorrect" checked={newLesson.quizCorrectAnswer === oIdx} onChange={() => setNewLesson({...newLesson, quizCorrectAnswer: oIdx})} className="w-5 h-5 text-amber-500 focus:ring-amber-500 dark:bg-neutral-800 dark:border-neutral-600" />
+                                      <input type="text" placeholder={`Opção ${['A', 'B', 'C', 'D'][oIdx]}`} value={opt} onChange={e => {
+                                        const newOpts = [...newLesson.quizOptions];
+                                        newOpts[oIdx] = e.target.value;
+                                        setNewLesson({...newLesson, quizOptions: newOpts});
+                                      }} className="flex-1 px-4 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-amber-500/20 outline-none text-sm font-medium" />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             ) : (
                               <textarea placeholder="Conteúdo da leitura..." rows={4} value={newLesson.contentBody} onChange={e => setNewLesson({...newLesson, contentBody: e.target.value})} className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none resize-none font-medium text-sm"></textarea>
                             )}
