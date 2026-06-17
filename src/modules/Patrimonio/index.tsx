@@ -51,23 +51,27 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
     itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: ''
   });
   
-  const filteredItems = items.filter(i => {
-    if (filterDept !== 'Todos' && i.department !== filterDept) return false;
-    if (filterCond !== 'Todos' && i.condition !== filterCond) return false;
-    if (filterStatus !== 'Todos' && i.status !== filterStatus) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      if (!i.objectName.toLowerCase().includes(s) && 
-          !i.code.toLowerCase().includes(s) &&
-          !i.department.toLowerCase().includes(s) &&
-          !i.location.toLowerCase().includes(s) &&
-          !(i.plate && i.plate.toLowerCase().includes(s)) &&
-          !(i.model && i.model.toLowerCase().includes(s))) return false;
-    }
-    return true;
-  });
+  const filteredItems = React.useMemo(() => {
+    return items.filter(i => {
+      if (filterDept !== 'Todos' && i.department !== filterDept) return false;
+      if (filterCond !== 'Todos' && i.condition !== filterCond) return false;
+      if (filterStatus !== 'Todos' && i.status !== filterStatus) return false;
+      if (search) {
+        const s = search.toLowerCase();
+        if (!i.objectName.toLowerCase().includes(s) && 
+            !i.code.toLowerCase().includes(s) &&
+            !i.department.toLowerCase().includes(s) &&
+            !i.location.toLowerCase().includes(s) &&
+            !(i.plate && i.plate.toLowerCase().includes(s)) &&
+            !(i.model && i.model.toLowerCase().includes(s))) return false;
+      }
+      return true;
+    });
+  }, [items, filterDept, filterCond, filterStatus, search]);
 
-  const uniqueDepts = Array.from(new Set(items.map(i => i.department)));
+  const uniqueDepts = React.useMemo(() => {
+    return Array.from(new Set(items.map(i => i.department)));
+  }, [items]);
 
   return (
     <>
@@ -185,7 +189,6 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredItems.map(item => (
               <motion.div 
-                layout
                 key={item.id}
                 className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden group flex flex-col h-full hover:shadow-md hover:border-neutral-200 dark:hover:border-neutral-700 transition-all duration-300 relative"
               >
@@ -596,8 +599,8 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                       placeholder="Ex: Administração"
                       value={formData.department}
                       onChange={e => setFormData({...formData, department: e.target.value})}
-                      readOnly={!!userDepartment}
-                      className={`w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none transition-all ${userDepartment ? 'opacity-60 cursor-not-allowed font-semibold' : 'focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white'}`}
+                      readOnly={!canDelete}
+                      className={`w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none transition-all ${!canDelete ? 'opacity-60 cursor-not-allowed font-semibold' : 'focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white'}`}
                     />
                   </div>
                   <div>
