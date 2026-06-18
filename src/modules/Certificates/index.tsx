@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2, Printer
+  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2, Printer, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '../../lib/supabase';
@@ -669,6 +669,8 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   const [editingCompany, setEditingCompany] = React.useState<CompanyCertificates | null>(null);
   const [isConfiguringLinks, setIsConfiguringLinks] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 10;
 
   const [certLinks, setCertLinks] = React.useState<Record<string, string>>(() => {
     if (institution?.cert_links) return typeof institution.cert_links === 'string' ? JSON.parse(institution.cert_links) : institution.cert_links;
@@ -726,6 +728,13 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
     const matchCnpj = searchCnpj === '' || cCnpj.includes(searchCnpj) || (cleanSearchCnpj.length > 0 && cleanCompCnpj.includes(cleanSearchCnpj));
     return matchName && matchCnpj;
   });
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchName, searchCnpj]);
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedItems = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const renderCertBadge = (cert: { expiryDate: string } | null) => {
     if (!cert) return <span className="text-xs text-neutral-400 font-medium italic">Ausente</span>;
@@ -842,7 +851,7 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800">
-              {filtered.map(comp => {
+              {paginatedItems.map(comp => {
                 return (
                   <tr key={comp.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
                     <td className="px-4 py-4">
@@ -922,6 +931,78 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row items-center justify-between mt-6 bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm gap-4">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium text-center sm:text-left">
+              Mostrando <strong className="text-neutral-900 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</strong> a <strong className="text-neutral-900 dark:text-white">{Math.min(currentPage * itemsPerPage, filtered.length)}</strong> de <strong className="text-neutral-900 dark:text-white">{filtered.length}</strong> certidões
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center justify-center hidden sm:flex"
+                title="Primeira Página"
+              >
+                <ChevronsLeft size={18} />
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center justify-center"
+                title="Página Anterior"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-10 h-10 rounded-xl text-sm font-bold transition-all flex items-center justify-center ${
+                        currentPage === pageNum
+                          ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-md'
+                          : 'border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hidden sm:flex'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center justify-center"
+                title="Próxima Página"
+              >
+                <ChevronRight size={18} />
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center justify-center hidden sm:flex"
+                title="Última Página"
+              >
+                <ChevronsRight size={18} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <AnimatePresence>

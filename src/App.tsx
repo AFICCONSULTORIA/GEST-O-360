@@ -819,7 +819,7 @@ export default function App() {
                     setIsAuthenticated(false);
                     window.location.href = '/';
                   }}
-                  className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
+                  className="hidden sm:block p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
                   title="Sair"
                 >
                   <LogOut size={20} />
@@ -878,7 +878,7 @@ export default function App() {
                               }}
                               className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-bold transition-all ${
                                 activeView === item.id 
-                                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' 
+                                  ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-md' 
                                   : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-white'
                               }`}
                             >
@@ -889,6 +889,32 @@ export default function App() {
                         </div>
                       </div>
                     )})}
+                  </div>
+                  
+                  {/* Mobile Drawer Footer (User & Logout) */}
+                  <div className="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
+                    {currentUser && (
+                      <div className="flex items-center gap-3 px-3 py-2 mb-3">
+                        <div className="w-10 h-10 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
+                          <UserCircle size={20} className="text-neutral-500 dark:text-neutral-400" />
+                        </div>
+                        <div className="flex flex-col overflow-hidden">
+                          <span className="text-sm font-bold text-neutral-900 dark:text-white truncate">{currentUser.name || currentUser.email}</span>
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{currentUser.role}</span>
+                        </div>
+                      </div>
+                    )}
+                    <button 
+                      onClick={async () => {
+                        await supabase.auth.signOut();
+                        setIsAuthenticated(false);
+                        window.location.href = '/';
+                      }}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 rounded-xl font-bold transition-colors"
+                    >
+                      <LogOut size={18} />
+                      Sair do Sistema
+                    </button>
                   </div>
                 </motion.div>
               </>
