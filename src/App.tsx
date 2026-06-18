@@ -258,7 +258,7 @@ export default function App() {
         let ordsQuery = supabase.from('orders').select('*');
         let ctrlsQuery = supabase.from('controls').select('*');
         let instsQuery = supabase.from('institutions').select('*');
-        let patsQuery = supabase.from('patrimonio').select('*');
+        let patsQuery = supabase.from('patrimonio').select('*').order('created_at', { ascending: false });
         let deptsQuery = supabase.from('departments').select('*');
 
         if (currentInstitution) {

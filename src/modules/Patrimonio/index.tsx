@@ -13,7 +13,7 @@ import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 
 const { 
-  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy
+  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy, RotateCw, Loader2
 } = LucideIcons;
 
 const compressImage = async (file: File): Promise<File> => {
@@ -73,6 +73,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('grid');
   const [editingItemId, setEditingItemId] = React.useState<string | null>(null);
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
+  const [isRotating, setIsRotating] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
   const itemsPerPage = 12;
   const formRef = React.useRef<HTMLFormElement>(null);
@@ -93,9 +94,73 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
       } as PatrimonioItem);
     }
     
+    
     setIsModalOpen(false);
     setEditingItemId(null);
     setFormData({ itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: userDepartment || '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: '' });
+  };
+
+  const handleRotateImage = async (item: PatrimonioItem, idx: number) => {
+    setIsRotating(true);
+    try {
+      const url = item.imageUrls![idx];
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const file = new File([blob], 'image.webp', { type: blob.type });
+
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.height;
+      canvas.height = bitmap.width; 
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Sem suporte a Canvas');
+      
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((90 * Math.PI) / 180);
+      ctx.drawImage(bitmap, -bitmap.width / 2, -bitmap.height / 2);
+      
+      const newBlob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/webp', 0.8));
+      if (!newBlob) throw new Error('Falha ao processar imagem');
+      
+      const newFile = new File([newBlob], `rotated-${Date.now()}.webp`, { type: 'image/webp' });
+      
+      showToast('Salvando foto rotacionada...', 'info');
+      
+      const filename = `patrimonio/${Date.now()}-rotated.webp`;
+      const { error: uploadError } = await supabase.storage.from('certidoes').upload(filename, newFile);
+      if (uploadError) throw uploadError;
+      
+      const { data: publicData } = supabase.storage.from('certidoes').getPublicUrl(filename);
+      const newUrl = publicData.publicUrl;
+      
+      const newUrls = [...item.imageUrls!];
+      newUrls[idx] = newUrl;
+      
+      const { error: updateError } = await supabase.from('patrimonio').update({ image_urls: newUrls }).eq('id', item.id);
+      if (updateError) throw updateError;
+      
+      const oldPath = url.split('/certidoes/')[1];
+      if (oldPath) {
+        supabase.storage.from('certidoes').remove([oldPath]).catch(console.error);
+      }
+      
+      if (onEdit) onEdit({ ...item, imageUrls: newUrls });
+      setImageModalItem({ ...item, imageUrls: newUrls });
+      
+      // Update the local items state manually since we are not directly mutating the global state here if onEdit wasn't enough
+      const itemIndex = items.findIndex(i => i.id === item.id);
+      if (itemIndex > -1) {
+         items[itemIndex].imageUrls = newUrls;
+      }
+      
+      showToast('Foto rotacionada e salva!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao rotacionar a foto', 'error');
+    } finally {
+      setIsRotating(false);
+    }
   };
 
   const openImageModal = (item: PatrimonioItem) => {
@@ -891,6 +956,18 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
               className="relative w-full max-w-4xl flex flex-col items-center gap-4 p-4"
               onClick={e => e.stopPropagation()}
             >
+              {/* Rotate Button */}
+              {canEdit && (
+                <button 
+                  onClick={() => handleRotateImage(imageModalItem, activeImageIdx)}
+                  disabled={isRotating}
+                  className="absolute top-0 right-16 p-3 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-all z-20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  title="Rotacionar foto (90°)"
+                >
+                  {isRotating ? <Loader2 size={20} className="animate-spin" /> : <RotateCw size={20} />}
+                </button>
+              )}
+              
               {/* Close Button */}
               <button 
                 onClick={() => setImageModalItem(null)} 
