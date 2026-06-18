@@ -294,7 +294,8 @@ export default function App() {
           ...p,
           itemType: p.item_type,
           objectName: p.object_name,
-          imageUrls: p.image_urls
+          imageUrls: p.image_urls,
+          createdByName: p.created_by_name
         } as PatrimonioItem)));
       } catch (err) {
         console.error('Erro ao buscar dados do Supabase:', err);
@@ -943,6 +944,7 @@ export default function App() {
                     chassis: item.chassis,
                     model: item.model,
                     description: item.description,
+                    created_by_name: currentUser?.name || currentUser?.email || 'Usuário Desconhecido',
                     institution_id: currentInstitution?.id || null
                   };
                   try {
@@ -954,7 +956,8 @@ export default function App() {
                         itemType: data.item_type,
                         objectName: data.object_name,
                         imageUrls: data.image_urls,
-                        description: data.description
+                        description: data.description,
+                        createdByName: data.created_by_name
                       } as PatrimonioItem, ...patrimonioItems]);
                       showToast('Item de patrimônio salvo com sucesso', 'success');
                     }
@@ -988,7 +991,8 @@ export default function App() {
                         itemType: data.item_type,
                         objectName: data.object_name,
                         imageUrls: data.image_urls,
-                        description: data.description
+                        description: data.description,
+                        createdByName: data.created_by_name
                       } as PatrimonioItem : p));
                       showToast('Item atualizado com sucesso', 'success');
                     }

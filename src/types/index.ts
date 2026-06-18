@@ -112,6 +112,7 @@ export interface PatrimonioItem {
   chassis?: string;
   model?: string;
   description?: string;
+  createdByName?: string;
 }
 
 export interface Evidence {

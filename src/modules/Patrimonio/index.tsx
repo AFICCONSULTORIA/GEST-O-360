@@ -355,6 +355,11 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                         <Home size={13} className="text-neutral-400" />
                         {item.location}
                       </p>
+                      {canDelete && item.createdByName && (
+                        <p className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mt-2 bg-neutral-100 dark:bg-neutral-800/50 p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 inline-block w-full truncate">
+                          👤 Registrado por: <span className="text-neutral-700 dark:text-neutral-300">{item.createdByName}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -469,6 +474,13 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                           <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-2">Descrição</p>
                           <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">{item.description || 'Nenhuma descrição fornecida para este item.'}</p>
                         </div>
+                        
+                        {canDelete && item.createdByName && (
+                          <div className="lg:col-span-4 space-y-1 bg-emerald-50 dark:bg-emerald-500/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">👤 Registrado por</p>
+                            <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{item.createdByName}</p>
+                          </div>
+                        )}
                         
                         <div className="space-y-1">
                           <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Código</p>
