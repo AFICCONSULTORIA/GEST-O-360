@@ -13,7 +13,7 @@ import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 
 const { 
-  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy, RotateCw, Loader2
+  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy, RotateCw, Loader2, ImageOff
 } = LucideIcons;
 
 const compressImage = async (file: File): Promise<File> => {
@@ -355,11 +355,22 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                       )}
                     </>
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-neutral-400 dark:text-neutral-500 gap-2 p-6">
-                      <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-2xl">
-                        {item.itemType === 'Veículo' ? <Truck size={24} /> : <Package size={24} />}
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-neutral-100 to-neutral-200 dark:from-neutral-800 dark:to-neutral-900 relative overflow-hidden group-hover:scale-105 transition-transform duration-700 ease-out">
+                      {/* Padrão de bolinhas sutil no fundo */}
+                      <div className="absolute inset-0 opacity-[0.04] dark:opacity-[0.06]" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, currentColor 1px, transparent 0)', backgroundSize: '20px 20px' }} />
+                      
+                      {/* Ícone com Glassmorphism */}
+                      <div className="relative z-10 p-5 bg-white/60 dark:bg-black/30 backdrop-blur-md rounded-full shadow-lg border border-white/50 dark:border-white/10 mb-4 group-hover:scale-110 group-hover:-translate-y-1 transition-all duration-500 ease-out">
+                        {item.itemType === 'Veículo' ? (
+                          <Truck size={36} strokeWidth={1.5} className="text-neutral-400 dark:text-neutral-500" />
+                        ) : (
+                          <ImageOff size={36} strokeWidth={1.5} className="text-neutral-400 dark:text-neutral-500" />
+                        )}
                       </div>
-                      <span className="text-[10px] font-black uppercase tracking-wider opacity-60">Sem Fotos Anexadas</span>
+                      
+                      <span className="relative z-10 text-[9px] font-black uppercase tracking-widest text-neutral-500 dark:text-neutral-400 bg-white/60 dark:bg-black/30 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/50 dark:border-white/10 shadow-sm">
+                        Foto Indisponível
+                      </span>
                     </div>
                   )}
 
