@@ -16,53 +16,50 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy
 } = LucideIcons;
 
-const compressImage = (file: File): Promise<File> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1280;
-        const MAX_HEIGHT = 1280;
-        let width = img.width;
-        let height = img.height;
+const compressImage = async (file: File): Promise<File> => {
+  try {
+    // createImageBitmap automaticamente respeita a orientação EXIF das fotos de celular
+    const bitmap = await createImageBitmap(file);
+    const MAX_WIDTH = 1280;
+    const MAX_HEIGHT = 1280;
+    let width = bitmap.width;
+    let height = bitmap.height;
 
-        if (width > height) {
-          if (width > MAX_WIDTH) {
-            height = Math.round((height *= MAX_WIDTH / width));
-            width = MAX_WIDTH;
-          }
+    if (width > height) {
+      if (width > MAX_WIDTH) {
+        height = Math.round((height *= MAX_WIDTH / width));
+        width = MAX_WIDTH;
+      }
+    } else {
+      if (height > MAX_HEIGHT) {
+        width = Math.round((width *= MAX_HEIGHT / height));
+        height = MAX_HEIGHT;
+      }
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx?.drawImage(bitmap, 0, 0, width, height);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+            type: 'image/webp',
+            lastModified: Date.now(),
+          });
+          resolve(compressedFile);
         } else {
-          if (height > MAX_HEIGHT) {
-            width = Math.round((width *= MAX_HEIGHT / height));
-            height = MAX_HEIGHT;
-          }
+          resolve(file);
         }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob((blob) => {
-          if (blob) {
-            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
-              type: 'image/webp',
-              lastModified: Date.now(),
-            });
-            resolve(compressedFile);
-          } else {
-            resolve(file);
-          }
-        }, 'image/webp', 0.8);
-      };
-      img.onerror = (error) => reject(error);
-    };
-    reader.onerror = (error) => reject(error);
-  });
+      }, 'image/webp', 0.8);
+    });
+  } catch (err) {
+    console.error('Erro ao comprimir imagem, enviando original:', err);
+    return file; // Fallback se o navegador não suportar createImageBitmap
+  }
 };
 
 const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string }) => {
