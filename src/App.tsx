@@ -915,6 +915,7 @@ export default function App() {
                 canDelete={hasPermission(currentUser, 'patrimonio', 'admin')}
                 canEdit={hasPermission(currentUser, 'patrimonio', 'edit')}
                 userDepartment={hasPermission(currentUser, 'patrimonio', 'admin') ? '' : (departments.find(d => d.id === currentUser?.department_id)?.name || 'Sem Lotação Vinculada')}
+                availableDepartments={departments.map(d => d.name)}
 
                 onDelete={async (id) => {
                   try {

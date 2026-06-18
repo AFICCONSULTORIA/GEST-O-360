@@ -62,7 +62,7 @@ const compressImage = async (file: File): Promise<File> => {
   }
 };
 
-const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string }) => {
+const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment, availableDepartments = [] }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[] }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
@@ -74,6 +74,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const [editingItemId, setEditingItemId] = React.useState<string | null>(null);
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
   const [isRotating, setIsRotating] = React.useState(false);
+  const [showDeptDropdown, setShowDeptDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
   const itemsPerPage = 12;
   const formRef = React.useRef<HTMLFormElement>(null);
@@ -787,7 +788,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                  <div>
+                  <div className="relative">
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Secretaria</label>
                     <input 
                       required
@@ -795,9 +796,29 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                       placeholder="Ex: Administração"
                       value={formData.department}
                       onChange={e => setFormData({...formData, department: e.target.value})}
+                      onFocus={() => setShowDeptDropdown(true)}
+                      onBlur={() => setTimeout(() => setShowDeptDropdown(false), 200)}
                       readOnly={!canDelete}
                       className={`w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none transition-all ${!canDelete ? 'opacity-60 cursor-not-allowed font-semibold' : 'focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white'}`}
                     />
+                    {showDeptDropdown && canDelete && availableDepartments.length > 0 && (
+                      <div className="absolute z-[60] w-full mt-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-2xl max-h-48 overflow-y-auto py-2 custom-scrollbar">
+                        {availableDepartments.map(d => (
+                          <button
+                            key={d}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setFormData({...formData, department: d});
+                              setShowDeptDropdown(false);
+                            }}
+                            className="w-full text-left px-5 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-700/50 text-sm font-medium transition-colors text-neutral-700 dark:text-neutral-200"
+                          >
+                            {d}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 ml-1">Localização Específica</label>
