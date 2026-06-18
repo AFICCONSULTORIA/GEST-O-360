@@ -274,15 +274,13 @@ export default function App() {
           }
         }
 
-        const [{ data: users }, { data: docs }, { data: ords }, { data: ctrls }, { data: insts }, { data: pats }, { data: depts }] = await Promise.all([
-          usersQuery,
-          docsQuery,
-          ordsQuery,
-          ctrlsQuery,
-          instsQuery,
-          patsQuery,
-          deptsQuery
-        ]);
+        const { data: users } = await usersQuery;
+        const { data: docs } = await docsQuery;
+        const { data: ords } = await ordsQuery;
+        const { data: ctrls } = await ctrlsQuery;
+        const { data: insts } = await instsQuery;
+        const { data: pats } = await patsQuery;
+        const { data: depts } = await deptsQuery;
 
         if (users) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
         if (docs) setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
