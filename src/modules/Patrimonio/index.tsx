@@ -16,6 +16,55 @@ const {
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy
 } = LucideIcons;
 
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 1280;
+        const MAX_HEIGHT = 1280;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height = Math.round((height *= MAX_WIDTH / width));
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width = Math.round((width *= MAX_HEIGHT / height));
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+              type: 'image/webp',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          } else {
+            resolve(file);
+          }
+        }, 'image/webp', 0.8);
+      };
+      img.onerror = (error) => reject(error);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
@@ -233,6 +282,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                       <img 
                         src={item.imageUrls[0]} 
                         alt={item.objectName} 
+                        loading="lazy"
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
                       />
                       {item.imageUrls.length > 1 && (
@@ -365,7 +415,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 shrink-0 relative">
                     {item.imageUrls && item.imageUrls.length > 0 ? (
                       <div className="w-full h-full relative cursor-pointer group" onClick={(e) => { e.stopPropagation(); openImageModal(item); }}>
-                        <img src={item.imageUrls[0]} alt={item.objectName} className="w-full h-full object-cover rounded-2xl group-hover:opacity-80 transition-opacity" />
+                        <img src={item.imageUrls[0]} alt={item.objectName} loading="lazy" className="w-full h-full object-cover rounded-2xl group-hover:opacity-80 transition-opacity" />
                         {item.imageUrls.length > 1 && (
                           <div className="absolute -bottom-1 -right-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-[9px] font-black w-5 h-5 flex items-center justify-center rounded-full border-2 border-white dark:border-neutral-900 z-10 shadow-sm">
                             +{item.imageUrls.length - 1}
@@ -461,8 +511,9 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                             <div className="flex gap-3 overflow-x-auto pb-4 snap-x">
                               {item.imageUrls.map((url, idx) => (
                                 <img 
-                                  key={idx} 
+                                  key={url} 
                                   src={url} 
+                                  loading="lazy"
                                   onClick={(e) => { e.stopPropagation(); setActiveImageIdx(idx); setImageModalItem(item); }}
                                   className="h-24 w-32 object-cover rounded-xl shrink-0 cursor-pointer hover:opacity-80 transition-opacity border border-neutral-200 dark:border-neutral-700 snap-start shadow-sm" 
                                 />
@@ -753,15 +804,21 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
 
                             const newImageUrls: string[] = [];
                             for (const file of filesToProcess) {
-                               const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
-                               const filename = `patrimonio/${Date.now()}-${safeName}`;
-                               const { error } = await supabase.storage.from('certidoes').upload(filename, file);
-                               if (!error) {
-                                 const { data } = supabase.storage.from('certidoes').getPublicUrl(filename);
-                                 newImageUrls.push(data.publicUrl);
-                               } else {
-                                 console.error("Erro no upload", error);
-                                 showToast(`Erro ao enviar a imagem ${file.name}`, 'error');
+                               try {
+                                 const compressedFile = await compressImage(file);
+                                 const safeName = compressedFile.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
+                                 const filename = `patrimonio/${Date.now()}-${safeName}`;
+                                 const { error } = await supabase.storage.from('certidoes').upload(filename, compressedFile);
+                                 if (!error) {
+                                   const { data } = supabase.storage.from('certidoes').getPublicUrl(filename);
+                                   newImageUrls.push(data.publicUrl);
+                                 } else {
+                                   console.error("Erro no upload", error);
+                                   showToast(`Erro ao enviar a imagem ${file.name}`, 'error');
+                                 }
+                               } catch (err) {
+                                 console.error("Erro na compressão", err);
+                                 showToast(`Erro ao processar a imagem ${file.name}`, 'error');
                                }
                             }
 
@@ -776,8 +833,8 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                     {formData.imageUrls && formData.imageUrls.length > 0 && (
                       <div className="flex gap-3 overflow-x-auto pb-2">
                         {formData.imageUrls.map((url, idx) => (
-                          <div key={idx} className="relative w-24 h-24 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-700 shadow-sm shrink-0">
-                            <img src={url} alt={`Preview ${idx + 1}`} className="w-full h-full object-cover" />
+                          <div key={url} className="relative w-24 h-24 rounded-2xl overflow-hidden border border-neutral-200 dark:border-neutral-700 shadow-sm shrink-0">
+                            <img src={url} alt={`Preview ${idx + 1}`} loading="lazy" className="w-full h-full object-cover" />
                             <button 
                               type="button"
                               onClick={(e) => {
@@ -883,11 +940,11 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                 <div className="flex gap-2.5 overflow-x-auto max-w-full px-4 py-2 custom-scrollbar">
                   {imageModalItem.imageUrls.map((url, idx) => (
                     <button 
-                      key={idx}
+                      key={url}
                       onClick={() => setActiveImageIdx(idx)}
                       className={`relative w-16 h-16 rounded-xl overflow-hidden border-2 transition-all shrink-0 ${activeImageIdx === idx ? 'border-emerald-500 scale-105 shadow-md shadow-emerald-500/20' : 'border-transparent opacity-50 hover:opacity-100'}`}
                     >
-                      <img src={url} alt={`Miniatura ${idx + 1}`} className="w-full h-full object-cover" />
+                      <img src={url} alt={`Miniatura ${idx + 1}`} loading="lazy" className="w-full h-full object-cover" />
                     </button>
                   ))}
                 </div>
