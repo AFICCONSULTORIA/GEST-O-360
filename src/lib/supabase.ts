@@ -7,7 +7,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('As variáveis de ambiente do Supabase estão ausentes. Certifique-se de configurar o arquivo .env');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    fetch: (url, options) => {
+      return fetch(url, { ...options, cache: 'no-store' });
+    }
+  }
+});
 
 export const signUpNewUser = async (email: string, password?: string) => {
   const secondary = createClient(supabaseUrl, supabaseAnonKey, {
