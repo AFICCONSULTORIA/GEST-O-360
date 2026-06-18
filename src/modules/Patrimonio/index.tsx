@@ -27,7 +27,13 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('grid');
   const [editingItemId, setEditingItemId] = React.useState<string | null>(null);
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const itemsPerPage = 12;
   const formRef = React.useRef<HTMLFormElement>(null);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterDept, filterCond, filterStatus, viewMode]);
 
   const handleSave = () => {
     if (formRef.current && !formRef.current.reportValidity()) return;
@@ -90,6 +96,9 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const uniqueDepts = React.useMemo(() => {
     return Array.from(new Set(items.map(i => i.department)));
   }, [items]);
+
+  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
+  const paginatedItems = filteredItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <>
@@ -205,7 +214,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
       {viewMode === 'grid' ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredItems.map(item => (
+            {paginatedItems.map(item => (
               <motion.div 
                 key={item.id}
                 className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden group flex flex-col h-full hover:shadow-md hover:border-neutral-200 dark:hover:border-neutral-700 transition-all duration-300 relative"
@@ -338,7 +347,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
               </motion.div>
             ))}
           </div>
-          {filteredItems.length === 0 && (
+          {paginatedItems.length === 0 && (
             <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-12 text-center text-neutral-500">
               Nenhum item encontrado.
             </div>
@@ -346,7 +355,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
         </div>
       ) : (
         <div className="space-y-4">
-          {filteredItems.map(item => (
+          {paginatedItems.map(item => (
             <div key={item.id} className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden transition-all">
               <div 
                 className="px-6 py-5 flex flex-col md:flex-row md:items-center justify-between cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors gap-4"
@@ -468,11 +477,67 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
               </AnimatePresence>
             </div>
           ))}
-          {filteredItems.length === 0 && (
+          {paginatedItems.length === 0 && (
             <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-12 text-center text-neutral-500">
               Nenhum item encontrado.
             </div>
           )}
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between mt-6 bg-white dark:bg-neutral-900 p-4 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm gap-4">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 font-medium text-center sm:text-left">
+            Mostrando <strong className="text-neutral-900 dark:text-white">{(currentPage - 1) * itemsPerPage + 1}</strong> a <strong className="text-neutral-900 dark:text-white">{Math.min(currentPage * itemsPerPage, filteredItems.length)}</strong> de <strong className="text-neutral-900 dark:text-white">{filteredItems.length}</strong> itens
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center justify-center"
+              title="Página Anterior"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }).map((_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-10 h-10 rounded-xl text-sm font-bold transition-all flex items-center justify-center ${
+                      currentPage === pageNum
+                        ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-md'
+                        : 'border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800 hidden sm:flex'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center justify-center"
+              title="Próxima Página"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       )}
 
