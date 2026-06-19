@@ -253,34 +253,49 @@ export default function App() {
 
     const fetchGlobalData = async () => {
       try {
-        let usersQuery = supabase.from('admin_users').select('*').limit(50000);
-        let docsQuery = supabase.from('documents').select('*').limit(50000);
-        let ordsQuery = supabase.from('orders').select('*').limit(50000);
-        let ctrlsQuery = supabase.from('controls').select('*').limit(50000);
-        let instsQuery = supabase.from('institutions').select('*').limit(50000);
-        let patsQuery = supabase.from('patrimonio').select('*').order('created_at', { ascending: false }).limit(50000);
-        let deptsQuery = supabase.from('departments').select('*').limit(50000);
+        const fetchPaginated = async (table: string, applyFilters?: (q: any) => any) => {
+          let allData: any[] = [];
+          let from = 0;
+          let to = 999;
+          let hasMore = true;
 
-        if (currentInstitution) {
-          usersQuery = usersQuery.eq('institution_id', currentInstitution.id);
-          docsQuery = docsQuery.eq('institution_id', currentInstitution.id);
-          ordsQuery = ordsQuery.eq('institution_id', currentInstitution.id);
-          ctrlsQuery = ctrlsQuery.eq('institution_id', currentInstitution.id);
-          patsQuery = patsQuery.eq('institution_id', currentInstitution.id);
-          deptsQuery = deptsQuery.eq('institution_id', currentInstitution.id);
-          
-          if (currentUser?.role !== 'Super Admin') {
-            instsQuery = instsQuery.eq('id', currentInstitution.id);
+          while (hasMore) {
+            let q = supabase.from(table).select('*').range(from, to);
+            if (applyFilters) q = applyFilters(q);
+            
+            const { data, error } = await q;
+            if (error || !data) {
+              console.error(`Erro ao buscar ${table}:`, error);
+              break;
+            }
+            
+            allData = [...allData, ...data];
+            if (data.length < 1000) {
+              hasMore = false;
+            } else {
+              from += 1000;
+              to += 1000;
+            }
           }
-        }
+          return { data: allData };
+        };
 
-        const { data: users } = await usersQuery;
-        const { data: docs } = await docsQuery;
-        const { data: ords } = await ordsQuery;
-        const { data: ctrls } = await ctrlsQuery;
-        const { data: insts } = await instsQuery;
-        const { data: pats } = await patsQuery;
-        const { data: depts } = await deptsQuery;
+        const { data: users } = await fetchPaginated('admin_users', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
+        const { data: docs } = await fetchPaginated('documents', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
+        const { data: ords } = await fetchPaginated('orders', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
+        const { data: ctrls } = await fetchPaginated('controls', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
+        const { data: insts } = await fetchPaginated('institutions', q => {
+          if (currentInstitution && currentUser?.role !== 'Super Admin') {
+            return q.eq('id', currentInstitution.id);
+          }
+          return q;
+        });
+        const { data: pats } = await fetchPaginated('patrimonio', q => {
+          let query = q.order('created_at', { ascending: false });
+          if (currentInstitution) query = query.eq('institution_id', currentInstitution.id);
+          return query;
+        });
+        const { data: depts } = await fetchPaginated('departments', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
 
         if (users) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
         if (docs) setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
