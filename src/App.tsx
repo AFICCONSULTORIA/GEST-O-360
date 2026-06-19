@@ -253,13 +253,13 @@ export default function App() {
 
     const fetchGlobalData = async () => {
       try {
-        let usersQuery = supabase.from('admin_users').select('*');
-        let docsQuery = supabase.from('documents').select('*');
-        let ordsQuery = supabase.from('orders').select('*');
-        let ctrlsQuery = supabase.from('controls').select('*');
-        let instsQuery = supabase.from('institutions').select('*');
-        let patsQuery = supabase.from('patrimonio').select('*').order('created_at', { ascending: false });
-        let deptsQuery = supabase.from('departments').select('*');
+        let usersQuery = supabase.from('admin_users').select('*').limit(50000);
+        let docsQuery = supabase.from('documents').select('*').limit(50000);
+        let ordsQuery = supabase.from('orders').select('*').limit(50000);
+        let ctrlsQuery = supabase.from('controls').select('*').limit(50000);
+        let instsQuery = supabase.from('institutions').select('*').limit(50000);
+        let patsQuery = supabase.from('patrimonio').select('*').order('created_at', { ascending: false }).limit(50000);
+        let deptsQuery = supabase.from('departments').select('*').limit(50000);
 
         if (currentInstitution) {
           usersQuery = usersQuery.eq('institution_id', currentInstitution.id);
