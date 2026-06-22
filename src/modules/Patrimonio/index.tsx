@@ -404,7 +404,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                     </div>
 
                     <div>
-                      <h3 className="font-bold text-sm text-neutral-900 dark:text-neutral-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2" title={item.objectName}>
+                      <h3 className="font-bold text-sm text-neutral-900 dark:text-neutral-100 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2 uppercase" title={item.objectName}>
                         {item.objectName}
                       </h3>
 
@@ -506,7 +506,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                     )}
                   </div>
                   <div>
-                    <h3 className="font-bold text-base text-neutral-900 dark:text-neutral-100">{item.objectName}</h3>
+                    <h3 className="font-bold text-base text-neutral-900 dark:text-neutral-100 uppercase">{item.objectName}</h3>
                   </div>
                 </div>
                 
@@ -759,8 +759,8 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                       type="text"
                       placeholder="Ex: Cadeira Giratória / Ambulância"
                       value={formData.objectName}
-                      onChange={e => setFormData({...formData, objectName: e.target.value})}
-                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all"
+                      onChange={e => setFormData({...formData, objectName: e.target.value.toUpperCase()})}
+                      className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white transition-all uppercase"
                     />
                   </div>
                 </div>
