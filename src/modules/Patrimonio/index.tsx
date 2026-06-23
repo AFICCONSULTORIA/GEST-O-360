@@ -62,7 +62,7 @@ const compressImage = async (file: File): Promise<File> => {
   }
 };
 
-const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment, availableDepartments = [] }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[] }) => {
+const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment, availableDepartments = [], currentUserName }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[], currentUserName?: string }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
@@ -73,6 +73,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const [viewMode, setViewMode] = React.useState<'grid' | 'table'>('grid');
   const [editingItemId, setEditingItemId] = React.useState<string | null>(null);
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
+  const [itemToDelete, setItemToDelete] = React.useState<PatrimonioItem | null>(null);
   const [isRotating, setIsRotating] = React.useState(false);
   const [showDeptDropdown, setShowDeptDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -429,7 +430,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                         <Home size={13} className="text-neutral-400" />
                         {item.location}
                       </p>
-                      {canDelete && item.createdByName && (
+                      {(canDelete || canEdit) && item.createdByName && (
                         <p className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mt-2 bg-neutral-100 dark:bg-neutral-800/50 p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-800 inline-block w-full truncate">
                           👤 Registrado por: <span className="text-neutral-700 dark:text-neutral-300">{item.createdByName}</span>
                         </p>
@@ -457,13 +458,9 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                           </button>
                         </>
                       )}
-                      {canDelete && (
+                      {(canDelete || (currentUserName && item.createdByName === currentUserName)) && (
                         <button
-                          onClick={() => {
-                            if (window.confirm('Tem certeza que deseja excluir este item?')) {
-                              onDelete?.(item.id);
-                            }
-                          }}
+                          onClick={() => setItemToDelete(item)}
                           className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all"
                           title="Excluir item"
                         >
@@ -523,8 +520,8 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                           </button>
                         </>
                       )}
-                      {canDelete && (
-                        <button onClick={() => { if (window.confirm('Tem certeza que deseja excluir este item?')) onDelete?.(item.id); }} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all" title="Excluir item">
+                      {(canDelete || (currentUserName && item.createdByName === currentUserName)) && (
+                        <button onClick={() => setItemToDelete(item)} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all" title="Excluir item">
                           <Trash2 size={16} />
                         </button>
                       )}
@@ -549,7 +546,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                           <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">{item.description || 'Nenhuma descrição fornecida para este item.'}</p>
                         </div>
                         
-                        {canDelete && item.createdByName && (
+                        {(canDelete || canEdit) && item.createdByName && (
                           <div className="lg:col-span-4 space-y-1 bg-emerald-50 dark:bg-emerald-500/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800/50">
                             <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">👤 Registrado por</p>
                             <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">{item.createdByName}</p>
@@ -1083,6 +1080,52 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                   ))}
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {itemToDelete && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] p-8 shadow-2xl space-y-6 text-center"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-20 h-20 bg-rose-50 dark:bg-rose-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-rose-500">
+                <Trash2 size={32} />
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Excluir Item</h3>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
+                  Você está prestes a excluir o item <strong className="text-neutral-900 dark:text-white uppercase">{itemToDelete.objectName}</strong>. Esta ação não pode ser desfeita. Tem certeza que deseja prosseguir?
+                </p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 pt-4">
+                <button 
+                  onClick={() => setItemToDelete(null)}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold text-sm bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-900 dark:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={() => {
+                    onDelete?.(itemToDelete.id);
+                    setItemToDelete(null);
+                  }}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold text-sm bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/25 transition-colors"
+                >
+                  Sim, excluir item
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
