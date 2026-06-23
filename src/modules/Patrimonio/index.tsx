@@ -217,9 +217,11 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
     <>
     <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500 relative print:hidden">
       <WhatsNewBanner 
-        version="2.2.0"
+        version="2.3.0"
         title="Atualizações no Patrimônio"
         features={[
+          "Exclusão Própria: Editores agora podem excluir os itens que eles mesmos cadastraram.",
+          "Novo Modal de Exclusão: Substituímos o alerta padrão por uma janela mais amigável e segura.",
           "Duplicação Rápida: Novo botão para clonar um item idêntico, poupando tempo na digitação.",
           "Modo Lista Limpo: A tabela foi substituída por caixinhas organizadas e expansíveis.",
           "Cores de Status: Status e condições voltaram a exibir cores para facilitar a identificação.",
