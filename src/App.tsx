@@ -145,7 +145,7 @@ export default function App() {
           if (session.user.email === 'aficconsultoria@gmail.com') {
             setCurrentUser({
               id: session.user.id,
-              name: 'AFIC Consultoria',
+              name: 'Gestão 360',
               email: session.user.email,
               role: 'Super Admin',
               status: 'Ativo',
