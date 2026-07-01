@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { StudentPortal } from './StudentPortal';
 import { TeacherDashboard } from './TeacherDashboard';
+import { loginStudent } from '../../lib/api/education';
 
 interface PublicEducacaoPortalProps {
   darkMode: boolean;
@@ -49,19 +50,11 @@ const MOCK_QUESTIONS = [
 ];
 
 export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEducacaoPortalProps) => {
-  const [activeTab, setActiveTab] = useState<'home' | 'student' | 'teacher' | 'student-login' | 'teacher-login'>(() => {
-    return (localStorage.getItem('edu_active_tab') as any) || 'home';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('edu_active_tab', activeTab);
-  }, [activeTab]);
+  const [activeTab, setActiveTab] = useState<'home' | 'student' | 'teacher' | 'student-login' | 'teacher-login'>('home');
   
   // Student Login State
   const [loginPhase, setLoginPhase] = useState<'idle' | 'loading' | 'exploding'>('idle');
-  const [selectedSchool, setSelectedSchool] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [studentPassword, setStudentPassword] = useState('');
+  const [enrollmentCode, setEnrollmentCode] = useState('');
 
   // Teacher Login State
   const [isTeacherLoggingIn, setIsTeacherLoggingIn] = useState(false);
@@ -74,11 +67,21 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
   const [quizScore, setQuizScore] = useState(0);
   const [quizFinished, setQuizFinished] = useState(false);
 
-  const handleStudentLogin = (e: React.FormEvent) => {
+  const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSchool || !studentName || !studentPassword) return;
+    if (!enrollmentCode) return;
     
     setLoginPhase('loading');
+    
+    const student = await loginStudent(enrollmentCode, currentInstitution?.id);
+    if (!student) {
+      alert("Código de matrícula inválido ou não encontrado!");
+      setLoginPhase('idle');
+      return;
+    }
+
+    // Armazena a sessão do aluno localmente
+    localStorage.setItem('edu_student_id', student.id);
     
     setTimeout(() => {
       setLoginPhase('exploding');
@@ -86,7 +89,7 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
         setLoginPhase('idle');
         setActiveTab('student');
       }, 3000); // Explosion effect duration
-    }, 2000); // 2s loading + 3s explosion = 5s total
+    }, 1000); // 1s loading
   };
 
   const handleTeacherLogin = (e: React.FormEvent) => {
@@ -356,49 +359,16 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
 
                 <form onSubmit={handleStudentLogin} className="space-y-6">
                   <div className="space-y-2">
-                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">🏰 Sua Escola</label>
-                    <div className="relative group">
-                      <School size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
-                      <select 
-                        required
-                        value={selectedSchool}
-                        onChange={(e) => setSelectedSchool(e.target.value)}
-                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 focus:ring-0 outline-none transition-all appearance-none font-black text-neutral-700 dark:text-neutral-200 text-lg shadow-inner cursor-pointer"
-                      >
-                        <option value="" disabled>Escolha sua escola...</option>
-                        <option value="1">Escola Municipal Maria Quitéria</option>
-                        <option value="2">Centro Educacional Crescer</option>
-                        <option value="3">Escola Setor Rural Boa Vista</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">👤 Seu Nome de Herói</label>
+                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">🎟️ Código de Matrícula</label>
                     <div className="relative group">
                       <User size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
                       <input 
                         type="text" 
                         required
-                        value={studentName}
-                        onChange={(e) => setStudentName(e.target.value)}
-                        placeholder="Como você se chama?"
-                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">🔑 Senha Secreta</label>
-                    <div className="relative group">
-                      <Lock size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
-                      <input 
-                        type="password" 
-                        required
-                        value={studentPassword}
-                        onChange={(e) => setStudentPassword(e.target.value)}
-                        placeholder="* * * * * *"
-                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-rose-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-xl placeholder:text-neutral-400/70 placeholder:font-bold tracking-[0.3em] shadow-inner"
+                        value={enrollmentCode}
+                        onChange={(e) => setEnrollmentCode(e.target.value.toUpperCase())}
+                        placeholder="Ex: ALUNO123"
+                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner uppercase"
                       />
                     </div>
                   </div>

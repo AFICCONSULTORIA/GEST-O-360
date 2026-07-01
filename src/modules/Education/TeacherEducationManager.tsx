@@ -1,15 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, BookOpen, Compass, Map, Calculator, PlayCircle, Layers, CheckCircle2, X, ChevronDown, ChevronUp, Video, FileText, HelpCircle, Save, GripVertical, Zap, Coins, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, BookOpen, Compass, Map, Calculator, PlayCircle, Layers, CheckCircle2, X, ChevronDown, ChevronUp, Video, FileText, HelpCircle, Save, GripVertical, Zap, Coins, ArrowUp, ArrowDown, ArrowRight } from 'lucide-react';
 import { Course, Module, Lesson } from '../../lib/api/education';
+import { StudentPortal } from './StudentPortal';
 
 export const TeacherEducationManager = () => {
   const [courses, setCourses] = useState<Course[]>([]);
+  const [previewCourseId, setPreviewCourseId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
   // Views: 'list' | 'create-course' | 'edit-course'
   const [view, setView] = useState<'list' | 'create-course' | 'edit-course'>('list');
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+
+  // Success Modal State
+  const [successModal, setSuccessModal] = useState<{show: boolean, message: string}>({ show: false, message: '' });
+
+  // Wizard States
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [wizardCourse, setWizardCourse] = useState({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
+  const [wizardModule, setWizardModule] = useState({ title: '', description: '' });
+  const [wizardLesson, setWizardLesson] = useState({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0 });
 
   // Form states
   const [newCourse, setNewCourse] = useState({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
@@ -42,11 +53,11 @@ export const TeacherEducationManager = () => {
         .select(`
           id, title, subject, description, color, icon,
           edu_modules (
-            id, title, description, position_index,
+            id, title, description, order_index,
             edu_lessons (
-              id, type, title, duration, xp, coins, content_url, content_body, position_index,
+              id, type, title, xp_reward, coin_reward, content_url, content_body, order_index,
               edu_quiz_questions (
-                id, question, options, correct_answer_index, position_index
+                id, question_text, options, correct_answer_index, order_index
               )
             )
           )
@@ -64,25 +75,25 @@ export const TeacherEducationManager = () => {
           description: c.description,
           color: c.color,
           icon: c.icon,
-          modules: (c.edu_modules || []).sort((a:any, b:any) => a.position_index - b.position_index).map((m: any) => ({
+          modules: (c.edu_modules || []).sort((a:any, b:any) => a.order_index - b.order_index).map((m: any) => ({
             id: m.id,
             course_id: c.id,
             title: m.title,
             description: m.description,
-            lessons: (m.edu_lessons || []).sort((a:any, b:any) => a.position_index - b.position_index).map((l: any) => ({
+            lessons: (m.edu_lessons || []).sort((a:any, b:any) => a.order_index - b.order_index).map((l: any) => ({
               id: l.id,
               module_id: m.id,
               type: l.type,
               title: l.title,
-              duration: l.duration,
-              xp: l.xp,
-              coins: l.coins,
+              duration: null,
+              xp: l.xp_reward,
+              coins: l.coin_reward,
               contentUrl: l.content_url,
               contentBody: l.content_body,
-              questions: (l.edu_quiz_questions || []).sort((a:any, b:any) => a.position_index - b.position_index).map((q: any) => ({
+              questions: (l.edu_quiz_questions || []).sort((a:any, b:any) => a.order_index - b.order_index).map((q: any) => ({
                 id: q.id,
                 lesson_id: l.id,
-                question: q.question,
+                question: q.question_text,
                 options: q.options,
                 correctAnswer: q.correct_answer_index
               }))
@@ -99,30 +110,88 @@ export const TeacherEducationManager = () => {
   };
 
   const handleCreateCourse = async () => {
-    console.log("Iniciando publicação de trilha...");
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    
-    // Bypass: Permite testar mesmo sem sessão (Mock Mode)
-    const userId = user ? user.id : null;
+    // Legacy fallback (now mostly handled by wizard)
+  };
 
-    console.log("Tentando inserir no banco sem created_by...");
-    const { error } = await supabase.from('edu_courses').insert([{
-      title: newCourse.title,
-      subject: newCourse.subject,
-      description: newCourse.description,
-      color: newCourse.color,
-      icon: newCourse.icon
-    }]);
+  const handleWizardSubmit = async () => {
+    if (!wizardCourse.title || !wizardModule.title || !wizardLesson.title) return;
+    setIsLoading(true);
 
-    if (!error) {
-      console.log("Trilha criada com sucesso!");
-      alert("Trilha criada com sucesso!");
+    try {
+      console.log("Iniciando publicação em lote...");
+      // 1. Inserir Trilha
+      console.log("Criando Trilha:", wizardCourse);
+      const { data: courseDataArr, error: courseError } = await supabase.from('edu_courses').insert([{
+        title: wizardCourse.title,
+        subject: wizardCourse.subject,
+        description: wizardCourse.description,
+        color: wizardCourse.color,
+        icon: wizardCourse.icon
+      }]).select();
+
+      if (courseError) throw new Error(courseError.message || "Erro ao criar trilha");
+      const courseData = courseDataArr?.[0];
+      if (!courseData) throw new Error("Trilha criada, mas nenhum dado retornado (RLS?)");
+
+      // 2. Inserir Fase
+      console.log("Criando Fase:", wizardModule);
+      const { data: moduleDataArr, error: moduleError } = await supabase.from('edu_modules').insert([{
+        course_id: courseData.id,
+        title: wizardModule.title,
+        description: wizardModule.description,
+        order_index: 0
+      }]).select();
+
+      if (moduleError) throw new Error(moduleError.message || "Erro ao criar fase");
+      const moduleData = moduleDataArr?.[0];
+      if (!moduleData) throw new Error("Fase criada, mas nenhum dado retornado");
+
+      // 3. Inserir Aula
+      console.log("Criando Aula:", wizardLesson);
+      const { data: lessonDataArr, error: lessonError } = await supabase.from('edu_lessons').insert([{
+        module_id: moduleData.id,
+        type: wizardLesson.type,
+        title: wizardLesson.title,
+        xp_reward: Number(wizardLesson.xp),
+        coin_reward: Number(wizardLesson.coins),
+        content_url: wizardLesson.type === 'video' ? wizardLesson.contentUrl : null,
+        content_body: wizardLesson.type === 'text' ? wizardLesson.contentBody : null,
+        order_index: 0
+      }]).select();
+
+      if (lessonError) throw new Error(lessonError.message || "Erro ao criar aula");
+      const lessonData = lessonDataArr?.[0];
+      if (!lessonData) throw new Error("Aula criada, mas nenhum dado retornado");
+
+      // 4. Se for quiz, inserir pergunta
+      if (wizardLesson.type === 'quiz') {
+        console.log("Criando Quiz...");
+        const { error: quizError } = await supabase.from('edu_quiz_questions').insert([{
+          lesson_id: lessonData.id,
+          question_text: wizardLesson.quizQuestion,
+          options: wizardLesson.quizOptions,
+          correct_answer_index: wizardLesson.quizCorrectAnswer,
+          order_index: 0
+        }]);
+        if (quizError) throw new Error(quizError.message || "Erro ao salvar pergunta do quiz");
+      }
+
+      console.log("Criação em lote concluída com sucesso!");
+
+      // Sucesso total
+      setSuccessModal({ show: true, message: "A trilha foi criada com sucesso e já possui a primeira fase e aula cadastradas!" });
       setView('list');
-      setNewCourse({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
+      setWizardStep(1);
+      setWizardCourse({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
+      setWizardModule({ title: '', description: '' });
+      setWizardLesson({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0 });
       loadCourses();
-    } else {
-      console.error("Supabase Insert Error:", error);
-      alert(`Erro ao criar trilha. Detalhes: ${error.message || JSON.stringify(error)}`);
+
+    } catch (err: any) {
+      console.error(err);
+      alert(`Erro na criação em lote: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -157,7 +226,7 @@ export const TeacherEducationManager = () => {
         course_id: selectedCourse.id,
         title: newModule.title,
         description: newModule.description,
-        position_index: positionIndex
+        order_index: positionIndex
       }]);
 
       if (error) {
@@ -190,12 +259,11 @@ export const TeacherEducationManager = () => {
         module_id: addingLessonTo,
         type: newLesson.type,
         title: newLesson.title,
-        duration: newLesson.duration || null,
-        xp: Number(newLesson.xp),
-        coins: Number(newLesson.coins),
+        xp_reward: Number(newLesson.xp),
+        coin_reward: Number(newLesson.coins),
         content_url: newLesson.type === 'video' ? newLesson.contentUrl : null,
         content_body: newLesson.type === 'text' ? newLesson.contentBody : null,
-        position_index: positionIndex
+        order_index: positionIndex
       }]).select().single();
 
       if (error) {
@@ -205,10 +273,10 @@ export const TeacherEducationManager = () => {
         if (newLesson.type === 'quiz' && newLessonData) {
           const { error: quizError } = await supabase.from('edu_quiz_questions').insert([{
             lesson_id: newLessonData.id,
-            question: newLesson.quizQuestion,
+            question_text: newLesson.quizQuestion,
             options: newLesson.quizOptions,
             correct_answer_index: newLesson.quizCorrectAnswer,
-            position_index: 0
+            order_index: 0
           }]);
           if (quizError) console.error("Erro ao salvar pergunta do quiz:", quizError);
         }
@@ -231,9 +299,8 @@ export const TeacherEducationManager = () => {
       const { error } = await supabase.from('edu_lessons').update({
         type: editLessonData.type,
         title: editLessonData.title,
-        duration: editLessonData.duration || null,
-        xp: Number(editLessonData.xp),
-        coins: Number(editLessonData.coins),
+        xp_reward: Number(editLessonData.xp),
+        coin_reward: Number(editLessonData.coins),
         content_url: editLessonData.type === 'video' ? editLessonData.contentUrl : null,
         content_body: editLessonData.type === 'text' ? editLessonData.contentBody : null
       }).eq('id', lessonId);
@@ -248,7 +315,7 @@ export const TeacherEducationManager = () => {
         if (editLessonData.quizId) {
           // Update existing question
           const { error: quizError } = await supabase.from('edu_quiz_questions').update({
-            question: editLessonData.quizQuestion,
+            question_text: editLessonData.quizQuestion,
             options: editLessonData.quizOptions,
             correct_answer_index: editLessonData.quizCorrectAnswer
           }).eq('id', editLessonData.quizId);
@@ -257,10 +324,10 @@ export const TeacherEducationManager = () => {
           // Insert new question (if they changed type to quiz just now)
           const { error: quizError } = await supabase.from('edu_quiz_questions').insert([{
             lesson_id: lessonId,
-            question: editLessonData.quizQuestion,
+            question_text: editLessonData.quizQuestion,
             options: editLessonData.quizOptions,
             correct_answer_index: editLessonData.quizCorrectAnswer,
-            position_index: 0
+            order_index: 0
           }]);
           if (quizError) console.error("Erro ao inserir quiz:", quizError);
         }
@@ -332,6 +399,36 @@ export const TeacherEducationManager = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 relative">
+
+      {/* Preview Modal */}
+      {previewCourseId && (
+        <div className="fixed inset-0 z-[100] bg-white dark:bg-neutral-950 overflow-hidden">
+          <StudentPortal onBack={() => setPreviewCourseId(null)} previewCourseId={previewCourseId} />
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {successModal.show && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/40 dark:bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSuccessModal({ show: false, message: '' })}></div>
+          <div className="relative w-full max-w-sm bg-white dark:bg-neutral-900 rounded-[32px] p-8 shadow-2xl border border-neutral-200/50 dark:border-neutral-800 animate-in zoom-in-95 duration-300">
+            <div className="w-20 h-20 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 flex items-center justify-center mx-auto mb-6">
+              <CheckCircle2 size={40} className="animate-[bounce_2s_ease-in-out_infinite]" />
+            </div>
+            <h3 className="text-2xl font-black text-center text-neutral-900 dark:text-white mb-3">Tudo Pronto!</h3>
+            <p className="text-center text-neutral-500 dark:text-neutral-400 mb-8 font-medium">
+              {successModal.message}
+            </p>
+            <button 
+              onClick={() => setSuccessModal({ show: false, message: '' })}
+              className="w-full py-4 font-bold rounded-2xl bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 transition-all active:scale-95 flex items-center justify-center gap-2 group"
+            >
+              Continuar
+              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {courseToDelete && (
@@ -410,6 +507,13 @@ export const TeacherEducationManager = () => {
                   
                   <div className="flex gap-2 mt-auto pt-4 border-t border-neutral-100 dark:border-neutral-800">
                     <button 
+                      onClick={() => setPreviewCourseId(course.id)}
+                      className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center hover:bg-sky-100 transition-colors shrink-0"
+                      title="Visualizar como Aluno"
+                    >
+                      <PlayCircle size={16} />
+                    </button>
+                    <button 
                       onClick={() => { setSelectedCourse(course); setView('edit-course'); }}
                       className="flex-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold py-2.5 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors flex items-center justify-center gap-2"
                     >
@@ -431,52 +535,198 @@ export const TeacherEducationManager = () => {
       )}
 
       {view === 'create-course' && (
-        <div className="animate-in fade-in slide-in-from-right-8 duration-500 max-w-3xl mx-auto">
-          <div className="flex items-center justify-between mb-8">
-            <h3 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
-              <Compass className="text-indigo-500" size={32} />
-              Criar Nova Trilha Gamificada
-            </h3>
-            <button onClick={() => setView('list')} className="p-2 rounded-full hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 text-neutral-400 transition-colors">
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md rounded-[32px] p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-xl">
-            <div className="space-y-6">
-              <div>
-                <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Nome da Trilha</label>
-                <input type="text" value={newCourse.title} onChange={e => setNewCourse({...newCourse, title: e.target.value})} placeholder="Ex: A Jornada do Sistema Solar" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Matéria</label>
-                  <select value={newCourse.subject} onChange={e => setNewCourse({...newCourse, subject: e.target.value})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all">
-                    <option>Matemática</option>
-                    <option>Ciências</option>
-                    <option>Português</option>
-                    <option>História</option>
-                    <option>Geografia</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Cor do Tema</label>
-                  <select value={newCourse.color} onChange={e => setNewCourse({...newCourse, color: e.target.value})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all">
-                    <option value="emerald">Verde (Emerald)</option>
-                    <option value="sky">Azul (Sky)</option>
-                    <option value="rose">Rosa (Rose)</option>
-                    <option value="amber">Amarelo (Amber)</option>
-                    <option value="purple">Roxo (Purple)</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Descrição Breve</label>
-                <textarea value={newCourse.description} onChange={e => setNewCourse({...newCourse, description: e.target.value})} rows={3} placeholder="Descreva sobre o que é esta trilha..." className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all resize-none"></textarea>
-              </div>
-              <button disabled={!newCourse.title} onClick={handleCreateCourse} className="w-full py-5 bg-gradient-to-r from-indigo-600 to-sky-600 disabled:opacity-50 hover:from-indigo-500 hover:to-sky-500 text-white font-black text-lg rounded-[24px] shadow-lg transition-all flex justify-center items-center gap-3 mt-4">
-                <CheckCircle2 size={24} /> Publicar Nova Trilha
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 md:p-8">
+          <div className="absolute inset-0 bg-neutral-900/60 dark:bg-black/80 backdrop-blur-md transition-opacity" onClick={() => {
+              setView('list');
+              setWizardStep(1);
+          }}></div>
+          
+          <div className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl rounded-[32px] p-6 md:p-10 border border-neutral-200/50 dark:border-neutral-800/50 shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="flex items-center justify-between mb-8 flex-shrink-0">
+              <h3 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
+                <Compass className="text-indigo-500" size={32} />
+                Criador de Trilhas
+              </h3>
+              <button onClick={() => {
+                setView('list');
+                setWizardStep(1);
+              }} className="p-2 rounded-full bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-500 transition-colors">
+                <X size={24} />
               </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+              {/* Progresso do Wizard */}
+            <div className="flex items-center justify-between mb-8 relative z-10">
+              {[1, 2, 3].map((step) => (
+                <div key={step} className={`flex-1 flex flex-col items-center gap-2 relative ${step !== 3 ? 'after:content-[\'\'] after:absolute after:top-5 after:left-[50%] after:w-full after:h-1' : ''} ${step < wizardStep ? 'after:bg-emerald-500' : 'after:bg-neutral-200 dark:after:bg-neutral-800'}`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black z-10 transition-colors duration-300 ${wizardStep === step ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 ring-4 ring-indigo-500/20' : wizardStep > step ? 'bg-emerald-500 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400'}`}>
+                    {wizardStep > step ? <CheckCircle2 size={20} /> : step}
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-widest mt-1 ${wizardStep === step ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'}`}>
+                    {step === 1 ? '1. A Trilha' : step === 2 ? '2. A Fase' : '3. A Aula'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-6 relative z-10 min-h-[350px]">
+              {/* Step 1 */}
+              {wizardStep === 1 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+                  <div>
+                    <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Nome da Trilha</label>
+                    <input type="text" value={wizardCourse.title} onChange={e => setWizardCourse({...wizardCourse, title: e.target.value})} placeholder="Ex: A Jornada do Sistema Solar" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Matéria</label>
+                      <select value={wizardCourse.subject} onChange={e => setWizardCourse({...wizardCourse, subject: e.target.value})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all">
+                        <option>Matemática</option>
+                        <option>Ciências</option>
+                        <option>Português</option>
+                        <option>História</option>
+                        <option>Geografia</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Cor do Tema</label>
+                      <select value={wizardCourse.color} onChange={e => setWizardCourse({...wizardCourse, color: e.target.value})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all">
+                        <option value="emerald">Verde (Emerald)</option>
+                        <option value="sky">Azul (Sky)</option>
+                        <option value="rose">Rosa (Rose)</option>
+                        <option value="amber">Amarelo (Amber)</option>
+                        <option value="purple">Roxo (Purple)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Descrição Breve</label>
+                    <textarea value={wizardCourse.description} onChange={e => setWizardCourse({...wizardCourse, description: e.target.value})} rows={3} placeholder="Descreva sobre o que é esta trilha..." className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all resize-none"></textarea>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2 */}
+              {wizardStep === 2 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+                  <div>
+                    <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Nome da Primeira Fase (Módulo)</label>
+                    <input type="text" value={wizardModule.title} onChange={e => setWizardModule({...wizardModule, title: e.target.value})} placeholder="Ex: Introdução ao Tema" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Descrição da Fase (Opcional)</label>
+                    <textarea value={wizardModule.description} onChange={e => setWizardModule({...wizardModule, description: e.target.value})} rows={3} placeholder="O que os alunos vão aprender nesta fase?" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all resize-none"></textarea>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3 */}
+              {wizardStep === 3 && (
+                <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
+                  <div className="flex items-center gap-4 p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+                    {['video', 'text', 'quiz'].map((type) => (
+                      <button 
+                        key={type}
+                        onClick={() => setWizardLesson({...wizardLesson, type: type as any})}
+                        className={`flex-1 py-3 px-2 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${wizardLesson.type === type ? 'bg-white dark:bg-neutral-900 shadow-md text-indigo-600 dark:text-indigo-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
+                      >
+                        {type === 'video' && <Video size={18} />}
+                        {type === 'text' && <FileText size={18} />}
+                        {type === 'quiz' && <HelpCircle size={18} />}
+                        <span className="capitalize">{type}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Título da Primeira Aula</label>
+                    <input type="text" value={wizardLesson.title} onChange={e => setWizardLesson({...wizardLesson, title: e.target.value})} placeholder="Ex: O que é o Sistema Solar?" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                  </div>
+
+                  {wizardLesson.type === 'video' && (
+                    <div>
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">URL do Vídeo (YouTube)</label>
+                      <input type="url" value={wizardLesson.contentUrl} onChange={e => setWizardLesson({...wizardLesson, contentUrl: e.target.value})} placeholder="https://youtube.com/watch?v=..." className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                    </div>
+                  )}
+
+                  {wizardLesson.type === 'text' && (
+                    <div>
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Conteúdo em Texto</label>
+                      <textarea value={wizardLesson.contentBody} onChange={e => setWizardLesson({...wizardLesson, contentBody: e.target.value})} rows={4} placeholder="Escreva o conteúdo da aula..." className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all resize-none"></textarea>
+                    </div>
+                  )}
+
+                  {wizardLesson.type === 'quiz' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Pergunta do Quiz</label>
+                        <input type="text" value={wizardLesson.quizQuestion} onChange={e => setWizardLesson({...wizardLesson, quizQuestion: e.target.value})} placeholder="Ex: Qual é o maior planeta do Sistema Solar?" className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[0, 1, 2, 3].map((index) => (
+                          <div key={index} className="flex items-center gap-3">
+                            <button 
+                              onClick={() => setWizardLesson({...wizardLesson, quizCorrectAnswer: index})}
+                              className={`w-6 h-6 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors ${wizardLesson.quizCorrectAnswer === index ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600'}`}
+                            >
+                              {wizardLesson.quizCorrectAnswer === index && <CheckCircle2 size={14} />}
+                            </button>
+                            <input type="text" value={wizardLesson.quizOptions[index]} onChange={e => {
+                              const newOpts = [...wizardLesson.quizOptions];
+                              newOpts[index] = e.target.value;
+                              setWizardLesson({...wizardLesson, quizOptions: newOpts});
+                            }} placeholder={`Opção ${index + 1}`} className={`flex-1 px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border-2 rounded-xl outline-none font-bold transition-colors ${wizardLesson.quizCorrectAnswer === index ? 'border-emerald-500/50 focus:border-emerald-500' : 'border-neutral-200 dark:border-neutral-700 focus:border-indigo-500'}`} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block flex items-center gap-1"><Zap size={14} className="text-amber-500"/> Recompensa (XP)</label>
+                      <input type="number" value={wizardLesson.xp} onChange={e => setWizardLesson({...wizardLesson, xp: e.target.value as any})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block flex items-center gap-1"><Coins size={14} className="text-amber-500"/> Moedas Edu</label>
+                      <input type="number" value={wizardLesson.coins} onChange={e => setWizardLesson({...wizardLesson, coins: e.target.value as any})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all" />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex items-center gap-4 mt-10 pt-6 border-t border-neutral-200/50 dark:border-neutral-800/50">
+              {wizardStep > 1 && (
+                <button 
+                  onClick={() => setWizardStep(wizardStep - 1 as any)} 
+                  className="px-6 py-4 rounded-[24px] font-bold text-neutral-500 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 transition-colors"
+                >
+                  Voltar
+                </button>
+              )}
+              
+              {wizardStep < 3 ? (
+                <button 
+                  disabled={(wizardStep === 1 && !wizardCourse.title) || (wizardStep === 2 && !wizardModule.title)} 
+                  onClick={() => setWizardStep(wizardStep + 1 as any)} 
+                  className="flex-1 py-4 bg-gradient-to-r from-indigo-600 to-sky-600 disabled:opacity-50 hover:from-indigo-500 hover:to-sky-500 text-white font-black text-lg rounded-[24px] shadow-lg transition-all flex justify-center items-center gap-2"
+                >
+                  Próximo Passo <ArrowRight size={20} />
+                </button>
+              ) : (
+                <button 
+                  disabled={!wizardLesson.title || isLoading} 
+                  onClick={handleWizardSubmit} 
+                  className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:opacity-50 hover:from-emerald-400 hover:to-teal-400 text-white font-black text-lg rounded-[24px] shadow-lg shadow-emerald-500/20 transition-all flex justify-center items-center gap-2"
+                >
+                  <CheckCircle2 size={24} /> {isLoading ? "Publicando..." : "Concluir e Publicar Trilha"}
+                </button>
+              )}
             </div>
           </div>
         </div>

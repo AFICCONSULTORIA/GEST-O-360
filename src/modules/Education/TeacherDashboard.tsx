@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft,
   LayoutDashboard,
@@ -48,12 +48,148 @@ import {
   Plus
 } from 'lucide-react';
 import { TeacherEducationManager } from './TeacherEducationManager';
+import { TeacherStudentManager } from './TeacherStudentManager';
 
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt'>('dashboard');
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // --- Global Chat State ---
+  const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
+  const [selectedChatStudent, setSelectedChatStudent] = useState<any>(null);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [chatStudents, setChatStudents] = useState<any[]>([]);
+
+  const LOGGED_IN_TEACHER_ID = 1; // Simulando Prof. Carlos
+
+  const totalUnreadCount = chatStudents.reduce((acc, student) => {
+    const unread = (student.messages || []).filter((m: any) => m.sender === 'student' && !m.read && m.teacherId === LOGGED_IN_TEACHER_ID).length;
+    return acc + unread;
+  }, 0);
+
+  useEffect(() => {
+    if (isGlobalChatOpen && selectedChatStudent) {
+      const saved = localStorage.getItem('gestao360_students');
+      if (saved) {
+        let currentStudents = JSON.parse(saved);
+        let updated = false;
+        
+        currentStudents = currentStudents.map((s: any) => {
+          if (s.id === selectedChatStudent.id) {
+            let sUpdated = false;
+            const newMessages = (s.messages || []).map((m: any) => {
+              if (m.sender === 'student' && !m.read && m.teacherId === LOGGED_IN_TEACHER_ID) {
+                sUpdated = true;
+                return { ...m, read: true };
+              }
+              return m;
+            });
+            if (sUpdated) {
+              updated = true;
+              return { ...s, messages: newMessages };
+            }
+          }
+          return s;
+        });
+
+        if (updated) {
+          localStorage.setItem('gestao360_students', JSON.stringify(currentStudents));
+          setChatStudents(currentStudents);
+          window.dispatchEvent(new CustomEvent('students-updated'));
+        }
+      }
+    }
+  }, [isGlobalChatOpen, selectedChatStudent, chatStudents]);
+
+  useEffect(() => {
+    const loadStudents = () => {
+      const saved = localStorage.getItem('gestao360_students');
+      if (saved) {
+        setChatStudents(JSON.parse(saved));
+      }
+    };
+    loadStudents();
+
+    const handleOpenChat = (e: any) => {
+      setIsGlobalChatOpen(true);
+      const saved = localStorage.getItem('gestao360_students');
+      let currentStudents = [];
+      if (saved) {
+        currentStudents = JSON.parse(saved);
+        setChatStudents(currentStudents);
+      }
+      
+      const studentId = e.detail;
+      const student = currentStudents.find((s: any) => s.id === studentId);
+      if (student) {
+        setSelectedChatStudent(student);
+      }
+    };
+
+    const handleStudentsUpdated = () => {
+      loadStudents();
+      setSelectedChatStudent((current: any) => {
+        if (!current) return current;
+        const saved = localStorage.getItem('gestao360_students');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const updated = parsed.find((s: any) => s.id === current.id);
+          return updated || current;
+        }
+        return current;
+      });
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'gestao360_students') {
+        handleStudentsUpdated();
+      }
+    };
+
+    window.addEventListener('open-teacher-chat', handleOpenChat);
+    window.addEventListener('students-updated', handleStudentsUpdated);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('open-teacher-chat', handleOpenChat);
+      window.removeEventListener('students-updated', handleStudentsUpdated);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  const handleSendChatMessage = () => {
+    if (!newMessageText.trim() || !selectedChatStudent) return;
+
+    const newMessage = {
+      sender: 'teacher',
+      teacherId: LOGGED_IN_TEACHER_ID,
+      text: newMessageText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const saved = localStorage.getItem('gestao360_students');
+    if (saved) {
+      let currentStudents = JSON.parse(saved);
+      currentStudents = currentStudents.map((s: any) => 
+        s.id === selectedChatStudent.id 
+          ? { ...s, messages: [...(s.messages || []), newMessage] }
+          : s
+      );
+      
+      localStorage.setItem('gestao360_students', JSON.stringify(currentStudents));
+      setChatStudents(currentStudents);
+      
+      setSelectedChatStudent((current: any) => ({
+        ...current,
+        messages: [...(current.messages || []), newMessage]
+      }));
+
+      window.dispatchEvent(new CustomEvent('students-updated'));
+    }
+
+    setNewMessageText('');
+  };
 
   // --- Gestão de Alunos State ---
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,7 +212,7 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
   ]);
 
   return (
-    <div className="min-h-[100dvh] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex flex-col md:flex-row selection:bg-indigo-500/20 overflow-x-hidden">
+    <div className="min-h-[100dvh] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex flex-col md:flex-row selection:bg-indigo-500/20">
       
       {/* Mobile Header */}
       <header className="md:hidden sticky top-0 z-40 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-200/50 dark:border-neutral-800/50 px-4 py-3 flex items-center justify-between">
@@ -99,21 +235,25 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
       </header>
 
       {/* Desktop Sidebar (Navigation Rail + Drawer) */}
-      <aside className={`fixed md:sticky top-0 left-0 h-[100dvh] z-50 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl border-r border-neutral-200/50 dark:border-neutral-800/50 transition-all duration-300 flex flex-col ${isMobileMenuOpen ? 'w-72 translate-x-0' : 'w-72 -translate-x-full md:translate-x-0'}`}>
+      <aside className={`fixed md:sticky self-start top-0 left-0 h-[100dvh] z-50 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-2xl border-r border-neutral-200/50 dark:border-neutral-800/50 transition-all duration-300 flex flex-col ${isMobileMenuOpen ? 'w-72 translate-x-0' : 'w-72 -translate-x-full md:translate-x-0'}`}>
         {/* Sidebar Header */}
-        <div className="p-6 flex items-center justify-between border-b border-neutral-200/50 dark:border-neutral-800/50">
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={onBack}>
-            <div className="w-10 h-10 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center group-hover:bg-indigo-50 dark:group-hover:bg-indigo-900/20 group-hover:scale-105 transition-all">
-              <ArrowLeft size={20} className="text-neutral-600 dark:text-neutral-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="font-bold text-sm text-neutral-900 dark:text-white group-hover:text-indigo-600 transition-colors">Voltar</h2>
-              <p className="text-xs text-neutral-500">Menu Principal</p>
-            </div>
-          </div>
-          <button className="md:hidden p-2 text-neutral-500" onClick={() => setIsMobileMenuOpen(false)}>
+        {/* Sidebar Header: Perfil do Professor */}
+        <div className="p-6 flex flex-col items-center justify-center border-b border-neutral-200/50 dark:border-neutral-800/50 relative">
+          <button className="md:hidden absolute top-4 right-4 p-2 text-neutral-500" onClick={() => setIsMobileMenuOpen(false)}>
             <X size={20} />
           </button>
+          
+          <div 
+            onClick={() => setActiveView('profile')}
+            className="w-20 h-20 rounded-full p-0.5 bg-gradient-to-tr from-indigo-500 to-sky-500 cursor-pointer hover:scale-105 transition-transform shadow-md mb-3"
+          >
+            <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-950">
+              <img alt="Perfil do professor" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAKGNQ1RqllZrdQWLVoyEd3sUlx6DjnRN7R4W5HYuDzn1cKbA6zH8U3l8BC9orZfHjP6uWrz_jfxoz03tJqU2tDGM4Y8kvi-ghLELJN0mRDQecwTL3Gkda0oI8w9yNGw2UAPT5nGJZcOzHapTXE5R7Zb9oCSrY6-9tUR-HPD85-Uv3-zZqomRuqIJiYX9BQsYEmni2gg-frSkXAmHT6hGXlVbrvagfePQfnHGH4qP7ftUjkbTGjBXA-Scp-Z6LuHwupqJoYG7iRgjM" className="w-full h-full object-cover" />
+            </div>
+          </div>
+          
+          <h2 className="font-black text-lg text-neutral-900 dark:text-white text-center">Prof. Carlos</h2>
+          <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mt-1">Matemática</p>
         </div>
 
         {/* Navigation Links */}
@@ -122,8 +262,15 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
             onClick={() => setActiveView('student-portal-mgmt')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'student-portal-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
-            <GraduationCap size={20} className={activeView !== 'student-portal-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
-            <span>Portal do Aluno (Gestão)</span>
+            <Compass size={20} className={activeView !== 'student-portal-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Gestão de Trilhas EaD</span>
+          </button>
+          <button 
+            onClick={() => setActiveView('student-mgmt')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'student-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <Users size={20} className={activeView !== 'student-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Gestão de Alunos</span>
           </button>
           <button 
             onClick={() => setActiveView('dashboard')}
@@ -151,62 +298,66 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         {/* Sidebar Footer */}
         <div className="p-4 border-t border-neutral-200/50 dark:border-neutral-800/50 space-y-2">
           <button 
-            onClick={() => setActiveView('settings')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'settings' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
-          >
-            <Settings size={20} className={activeView !== 'settings' ? "group-hover:rotate-45 transition-transform" : ""} />
-            <span>Configurações</span>
-          </button>
-          <button 
             onClick={() => setActiveView('support')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'support' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
             <HelpCircle size={20} className={activeView !== 'support' ? "group-hover:scale-110 transition-transform" : ""} />
             <span>Suporte</span>
           </button>
+          
+          <div className="pt-2">
+            <button 
+              onClick={onBack}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all group"
+            >
+              <X size={20} className="group-hover:scale-110 transition-transform" />
+              <span>Sair / Logoff</span>
+            </button>
+          </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-[100dvh] relative overflow-x-hidden">
         
-        {/* Desktop Top Header */}
-        <header className="hidden md:flex sticky top-0 z-30 w-full px-8 py-5 bg-neutral-50/80 dark:bg-neutral-950/80 backdrop-blur-md justify-between items-center">
-          <div className="flex items-center gap-4">
-            <button className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm tracking-wide rounded-full shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30 transition-all flex items-center gap-2 hover:-translate-y-0.5">
-              <PlusCircle size={18} />
-              Nova Avaliação
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Search size={16} className="text-neutral-400 group-focus-within:text-indigo-500 transition-colors" />
-              </div>
-              <input 
-                type="text" 
-                placeholder="Pesquisar dados..." 
-                className="pl-10 pr-4 py-2.5 w-64 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-sm"
-              />
-            </div>
-            
-            <button className="w-10 h-10 flex items-center justify-center rounded-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-600 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-all shadow-sm relative">
-              <Bell size={18} />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border-2 border-white dark:border-neutral-900 animate-pulse"></span>
-            </button>
-            
-            <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-indigo-500 to-sky-500 cursor-pointer hover:scale-105 transition-transform shadow-md">
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-950">
-                <img alt="Perfil do professor" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAKGNQ1RqllZrdQWLVoyEd3sUlx6DjnRN7R4W5HYuDzn1cKbA6zH8U3l8BC9orZfHjP6uWrz_jfxoz03tJqU2tDGM4Y8kvi-ghLELJN0mRDQecwTL3Gkda0oI8w9yNGw2UAPT5nGJZcOzHapTXE5R7Zb9oCSrY6-9tUR-HPD85-Uv3-zZqomRuqIJiYX9BQsYEmni2gg-frSkXAmHT6hGXlVbrvagfePQfnHGH4qP7ftUjkbTGjBXA-Scp-Z6LuHwupqJoYG7iRgjM" className="w-full h-full object-cover" />
-              </div>
-            </div>
-          </div>
-        </header>
-
         {/* Dashboard Content */}
         {activeView === 'student-portal-mgmt' && (
           <TeacherEducationManager />
+        )}
+
+        {activeView === 'student-mgmt' && (
+          <TeacherStudentManager />
+        )}
+
+        {activeView === 'profile' && (
+          <div className="p-4 md:p-8 space-y-8 max-w-4xl mx-auto w-full pb-24 md:pb-8 flex flex-col items-center">
+            <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-10 rounded-[32px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-lg w-full flex flex-col items-center gap-6 mt-10">
+              <div className="w-32 h-32 rounded-full p-1 bg-gradient-to-tr from-indigo-500 to-sky-500 shadow-xl">
+                <div className="w-full h-full rounded-full overflow-hidden border-4 border-white dark:border-neutral-950">
+                  <img alt="Perfil do professor" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAKGNQ1RqllZrdQWLVoyEd3sUlx6DjnRN7R4W5HYuDzn1cKbA6zH8U3l8BC9orZfHjP6uWrz_jfxoz03tJqU2tDGM4Y8kvi-ghLELJN0mRDQecwTL3Gkda0oI8w9yNGw2UAPT5nGJZcOzHapTXE5R7Zb9oCSrY6-9tUR-HPD85-Uv3-zZqomRuqIJiYX9BQsYEmni2gg-frSkXAmHT6hGXlVbrvagfePQfnHGH4qP7ftUjkbTGjBXA-Scp-Z6LuHwupqJoYG7iRgjM" className="w-full h-full object-cover" />
+                </div>
+              </div>
+              <div className="text-center">
+                <h2 className="text-3xl font-black text-neutral-900 dark:text-white">Prof. Carlos</h2>
+                <p className="text-lg font-medium text-neutral-500 dark:text-neutral-400 mt-1">carlos@escola.gov.br</p>
+                <div className="mt-4 flex gap-2 justify-center">
+                  <span className="px-3 py-1 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-full text-xs font-bold uppercase tracking-widest">Matemática</span>
+                  <span className="px-3 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full text-xs font-bold uppercase tracking-widest">Ensino Fundamental</span>
+                </div>
+              </div>
+              
+              <div className="w-full mt-8 pt-8 border-t border-neutral-100 dark:border-neutral-800 grid grid-cols-2 gap-4">
+                <button className="py-4 bg-neutral-100 dark:bg-neutral-800 rounded-2xl font-bold text-neutral-600 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2">
+                  <Settings size={18} />
+                  Configurações do Perfil
+                </button>
+                <button onClick={onBack} className="py-4 bg-rose-50 dark:bg-rose-500/10 rounded-2xl font-bold text-rose-600 hover:bg-rose-100 transition-colors flex items-center justify-center gap-2">
+                  <X size={18} />
+                  Sair / Logoff
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {activeView === 'dashboard' && (
@@ -1256,70 +1407,147 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         )}
       </main>
 
-      {/* Floating Chat Button & Window */}
-      <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-50 flex flex-col items-end gap-4 pointer-events-none">
-        
-        {/* Chat Window */}
-        <div className={`w-[calc(100vw-2rem)] md:w-96 h-[450px] bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl rounded-[32px] shadow-2xl border border-neutral-200/50 dark:border-neutral-800/50 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right pointer-events-auto ${isChatOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-10 pointer-events-none'}`}>
+      {/* Botão Flutuante de Chat Global */}
+      <div className="fixed bottom-6 right-6 z-[150] print:hidden">
+        <div className="relative">
+          <button 
+            className="w-14 h-14 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg shadow-indigo-500/30 flex items-center justify-center transition-transform hover:scale-110 active:scale-95"
+            onClick={() => {
+              setIsGlobalChatOpen(!isGlobalChatOpen);
+              if (isGlobalChatOpen) setSelectedChatStudent(null);
+            }}
+          >
+            {isGlobalChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+          </button>
           
-          {/* Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-sky-600 p-4 flex justify-between items-center text-white shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-full border border-white/30 flex items-center justify-center backdrop-blur-sm overflow-hidden">
-                  <img alt="Aluno" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBLv-9O5hBlmU5_LkR_8IxwSqLjfUT9l1f-b2DqKQdrRe1NmcBQQhxXv1x2Zyhk1oK7XYmwbFBs8sK8-sJY38OictlRSFj1rm3eG6zc9i9cqHsKlLPQ3_qDIGfUuPYVcXnKhWtMfDOlt1HKGQl28oO-O53I9ErFFsSECp_vberifEfzMYXQ9h2y0WuZXthEq0RDCGn7zjLbr2nbQIFvkPlcidyjXLZVvk_nJK71rD4CCDkYT2brei8pIy8MflsJr6qBXpEi0-eN-zKp" />
-                </div>
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 rounded-full border-2 border-indigo-600"></div>
-              </div>
-              <div>
-                <h4 className="font-bold text-sm tracking-wide">Lucas Oliveira</h4>
-                <p className="text-[10px] text-indigo-100 uppercase tracking-widest font-bold">Aluno Online</p>
-              </div>
+          {totalUnreadCount > 0 && !isGlobalChatOpen && (
+            <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white dark:border-neutral-900 shadow-sm animate-bounce">
+              {totalUnreadCount}
             </div>
-            <button className="hover:bg-white/20 p-2 rounded-full transition-colors" onClick={() => setIsChatOpen(false)}>
-              <X size={20} />
-            </button>
-          </div>
-          
-          {/* Message History */}
-          <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-neutral-50/50 dark:bg-neutral-950/50">
-            <div className="flex flex-col items-start">
-              <div className="bg-white dark:bg-neutral-800 p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-neutral-100 dark:border-neutral-700 max-w-[85%]">
-                <p className="text-sm text-neutral-700 dark:text-neutral-200">Professor, eu não entendi como fazer a divisão na questão 2.</p>
-              </div>
-              <span className="text-[10px] text-neutral-400 mt-1 ml-1 font-medium">09:15</span>
-            </div>
-            <div className="flex flex-col items-end">
-              <div className="bg-indigo-600 p-3.5 rounded-2xl rounded-tr-sm shadow-sm max-w-[85%] text-white">
-                <p className="text-sm">Olá Lucas! Lembre-se de separar os números por partes. Vamos revisar juntos amanhã na aula, combinado?</p>
-              </div>
-              <span className="text-[10px] text-neutral-400 mt-1 mr-1 font-medium">09:20</span>
-            </div>
-          </div>
-          
-          {/* Input Area */}
-          <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200/50 dark:border-neutral-800/50 flex items-center gap-2 shrink-0">
-            <button className="p-2.5 text-neutral-400 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-full transition-colors">
-              <Paperclip size={18} />
-            </button>
-            <input 
-              className="flex-1 bg-neutral-100 dark:bg-neutral-800 border-none outline-none focus:ring-0 rounded-full px-4 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400" 
-              placeholder="Responder Lucas..." 
-              type="text" 
-            />
-            <button className="bg-indigo-600 text-white p-2.5 rounded-full hover:bg-indigo-700 hover:scale-105 active:scale-95 transition-all shadow-md shadow-indigo-500/20">
-              <Send size={18} className="ml-0.5" />
-            </button>
-          </div>
+          )}
         </div>
+      </div>
+
+      {/* Global Chat Window */}
+      <div className={`fixed bottom-24 right-6 w-[380px] h-[600px] max-h-[80vh] bg-white dark:bg-neutral-900 rounded-[32px] shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col overflow-hidden transition-all duration-300 origin-bottom-right z-[140] print:hidden ${isGlobalChatOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-10 pointer-events-none'}`}>
         
-        {/* Floating Action Button */}
-        <button 
-          className="w-14 h-14 bg-gradient-to-r from-indigo-600 to-sky-600 text-white rounded-full shadow-xl shadow-indigo-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all pointer-events-auto" 
-          onClick={() => setIsChatOpen(!isChatOpen)}
-        >
-          {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
-        </button>
+        {!selectedChatStudent ? (
+          /* Lista de Alunos (Contatos) */
+          <>
+            <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-indigo-600 text-white shrink-0">
+              <h3 className="font-black text-xl mb-1">Mensagens</h3>
+              <p className="text-indigo-200 text-sm font-medium">Selecione um aluno para conversar</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-1 bg-white dark:bg-neutral-900">
+              {chatStudents.map(student => {
+                const teacherMessages = (student.messages || []).filter((m: any) => m.teacherId === LOGGED_IN_TEACHER_ID || m.teacherId === undefined);
+                const lastMsg = teacherMessages.length > 0 
+                  ? teacherMessages[teacherMessages.length - 1] 
+                  : null;
+                  
+                return (
+                  <div 
+                    key={student.id}
+                    onClick={() => setSelectedChatStudent(student)}
+                    className="flex items-center gap-4 p-3 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-2xl cursor-pointer transition-colors"
+                  >
+                    <div className="relative">
+                      <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-neutral-200 dark:border-neutral-700">
+                        <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-neutral-900"></div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between items-baseline mb-1">
+                        <h4 className="font-bold text-neutral-900 dark:text-white truncate">{student.name}</h4>
+                        {lastMsg && <span className="text-[10px] font-bold text-neutral-400 shrink-0 ml-2">{lastMsg.time}</span>}
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <p className={`text-sm truncate ${teacherMessages.some((m:any) => m.sender === 'student' && !m.read) ? 'font-bold text-neutral-900 dark:text-white' : 'text-neutral-500'}`}>
+                          {lastMsg ? (lastMsg.sender === 'teacher' ? `Você: ${lastMsg.text}` : lastMsg.text) : 'Nenhuma mensagem'}
+                        </p>
+                        {teacherMessages.filter((m:any) => m.sender === 'student' && !m.read).length > 0 && (
+                          <div className="w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0 ml-2 shadow-sm">
+                            {teacherMessages.filter((m:any) => m.sender === 'student' && !m.read).length}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          /* Chat Individual */
+          <>
+            {/* Chat Header */}
+            <div className="shrink-0 border-b border-neutral-100 dark:border-neutral-800 p-4 flex items-center gap-3 bg-white dark:bg-neutral-900 relative z-10 shadow-sm">
+              <button 
+                onClick={() => setSelectedChatStudent(null)}
+                className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 flex items-center justify-center transition-colors shrink-0"
+              >
+                <ArrowLeft size={18} />
+              </button>
+              <div className="flex gap-3 items-center flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-full overflow-hidden border border-neutral-200 dark:border-neutral-700 shrink-0">
+                  <img src={selectedChatStudent.avatar} alt={selectedChatStudent.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="truncate">
+                  <h3 className="font-black text-neutral-900 dark:text-white text-sm leading-tight truncate">{selectedChatStudent.name}</h3>
+                  <span className="text-[10px] font-bold text-emerald-500 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    Online agora
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/50 flex flex-col">
+              <div className="text-center text-xs font-bold text-neutral-400 mb-2">Hoje</div>
+              
+              {((selectedChatStudent.messages || []).filter((m: any) => m.teacherId === LOGGED_IN_TEACHER_ID || m.teacherId === undefined).length === 0) && (
+                <div className="flex-1 flex flex-col items-center justify-center text-neutral-400 gap-2">
+                  <MessageSquare size={32} className="opacity-20" />
+                  <p className="text-sm font-medium">Inicie a conversa!</p>
+                </div>
+              )}
+              
+              {(selectedChatStudent.messages || []).filter((m: any) => m.teacherId === LOGGED_IN_TEACHER_ID || m.teacherId === undefined).map((msg: any, idx: number) => (
+                <div key={idx} className={`flex ${msg.sender === 'teacher' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] rounded-2xl p-3.5 ${msg.sender === 'teacher' ? 'bg-indigo-600 text-white rounded-tr-sm shadow-indigo-500/20 shadow-md' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-tl-sm shadow-sm'}`}>
+                    <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
+                    <span className={`text-[10px] font-bold mt-1.5 block text-right ${msg.sender === 'teacher' ? 'text-indigo-200' : 'text-neutral-400'}`}>{msg.time}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Chat Input */}
+            <div className="shrink-0 border-t border-neutral-100 dark:border-neutral-800 p-3 bg-white dark:bg-neutral-900">
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={newMessageText}
+                  onChange={(e) => setNewMessageText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSendChatMessage();
+                  }}
+                  placeholder="Mensagem..."
+                  className="flex-1 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-2xl px-4 py-2.5 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-neutral-900 dark:text-white text-sm font-medium"
+                />
+                <button 
+                  onClick={handleSendChatMessage}
+                  disabled={!newMessageText.trim()}
+                  className="w-10 h-10 shrink-0 bg-indigo-600 hover:bg-indigo-700 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl flex items-center justify-center transition-colors disabled:cursor-not-allowed"
+                >
+                  <Send size={16} className="ml-0.5" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
     </div>

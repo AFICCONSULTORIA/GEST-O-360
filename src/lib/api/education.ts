@@ -2,7 +2,8 @@ import { supabase } from '../supabase';
 
 export interface StudentData {
   id: string;
-  user_id: string;
+  institution_id?: string;
+  enrollment_code: string;
   name: string;
   level: number;
   title: string;
@@ -52,83 +53,78 @@ export interface Course {
 }
 
 /**
- * Busca os dados do aluno associados ao usuário logado.
- * Cria o perfil do aluno automaticamente se não existir.
+ * Busca o aluno pelo código de matrícula (Login de Aluno)
  */
-export async function fetchStudentProfile(userId: string, defaultName: string = 'Aluno GESTÃO 360'): Promise<StudentData | null> {
-  if (!userId) return null;
+export async function loginStudent(enrollmentCode: string, institutionId?: string): Promise<StudentData | null> {
+  if (!enrollmentCode) return null;
 
   try {
-    const { data: student, error } = await supabase
-      .from('edu_students')
-      .select('*')
-      .eq('user_id', userId)
-      .single();
+    const query = supabase.from('edu_students').select('*').eq('enrollment_code', enrollmentCode);
+    if (institutionId) {
+      query.eq('institution_id', institutionId);
+    }
+    
+    const { data: student, error } = await query.single();
 
-    if (error && error.code !== 'PGRST116') {
-      console.error('Error fetching student:', error);
+    if (error) {
+      console.error('Error logging in student:', error);
       return null;
     }
 
-    if (student) return student as StudentData;
-
-    const { data: newStudent, error: insertError } = await supabase
-      .from('edu_students')
-      .insert([
-        { 
-          user_id: userId, 
-          name: defaultName,
-          level: 1,
-          title: 'Iniciante',
-          xp: 0,
-          coins: 0,
-          streak: 0
-        }
-      ])
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Error creating student profile:', insertError);
-      return null;
-    }
-    return newStudent as StudentData;
+    return student as StudentData;
   } catch (err) {
-    console.error('Unexpected error in fetchStudentProfile:', err);
+    console.error('Unexpected error in loginStudent:', err);
     return null;
   }
 }
 
 /**
- * Busca todos os cursos, incluindo seus módulos, aulas e o progresso do aluno logado.
+ * Retorna os dados atualizados do perfil do aluno usando o ID interno da tabela edu_students
  */
-export async function fetchCoursesWithProgress(userId?: string): Promise<Course[]> {
+export async function fetchStudentProfile(studentId: string): Promise<StudentData | null> {
+  if (!studentId) return null;
   try {
-    const { data: coursesData, error: coursesError } = await supabase
-      .from('edu_courses')
-      .select(`
+    const { data, error } = await supabase.from('edu_students').select('*').eq('id', studentId).single();
+    if (error) return null;
+    return data as StudentData;
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Busca todos os cursos para o aluno, calculando o progresso.
+ */
+export async function fetchCoursesWithProgress(studentId?: string, institutionId?: string): Promise<Course[]> {
+  try {
+    const query = supabase.from('edu_courses').select(`
         id, title, subject, description, color, icon,
         edu_modules (
-          id, title, description, position_index,
+          id, title, description, order_index,
           edu_lessons (
-            id, type, title, duration, xp, coins, content_url, content_body, position_index,
+            id, type, title, xp_reward, coin_reward, content_url, content_body, order_index,
             edu_quiz_questions (
-              id, question, options, correct_answer_index, position_index
+              id, question_text, options, correct_answer_index, order_index
             )
           )
         )
-      `)
-      .order('created_at', { ascending: true });
+      `).order('created_at', { ascending: true });
+
+    if (institutionId) {
+      query.eq('institution_id', institutionId);
+    }
+
+    const { data: coursesData, error: coursesError } = await query;
 
     if (coursesError) throw coursesError;
 
     let progressMap: Record<string, boolean> = {};
 
-    if (userId) {
+    if (studentId) {
       const { data: progressData } = await supabase
         .from('edu_student_progress')
         .select('lesson_id')
-        .eq('student_id', userId);
+        .eq('student_id', studentId);
         
       if (progressData) {
         progressData.forEach(p => progressMap[p.lesson_id] = true);
@@ -143,26 +139,25 @@ export async function fetchCoursesWithProgress(userId?: string): Promise<Course[
       description: c.description,
       color: c.color,
       icon: c.icon,
-      modules: (c.edu_modules || []).sort((a:any, b:any) => a.position_index - b.position_index).map((m: any) => ({
+      modules: (c.edu_modules || []).sort((a:any, b:any) => a.order_index - b.order_index).map((m: any) => ({
         id: m.id,
         course_id: c.id,
         title: m.title,
         description: m.description,
-        lessons: (m.edu_lessons || []).sort((a:any, b:any) => a.position_index - b.position_index).map((l: any) => ({
+        lessons: (m.edu_lessons || []).sort((a:any, b:any) => a.order_index - b.order_index).map((l: any) => ({
           id: l.id,
           module_id: m.id,
           type: l.type,
           title: l.title,
-          duration: l.duration,
-          xp: l.xp,
-          coins: l.coins,
+          xp: l.xp_reward,
+          coins: l.coin_reward,
           contentUrl: l.content_url,
           contentBody: l.content_body,
           isCompleted: progressMap[l.id] || false,
-          questions: (l.edu_quiz_questions || []).sort((a:any, b:any) => a.position_index - b.position_index).map((q: any) => ({
+          questions: (l.edu_quiz_questions || []).sort((a:any, b:any) => a.order_index - b.order_index).map((q: any) => ({
             id: q.id,
             lesson_id: l.id,
-            question: q.question,
+            question: q.question_text,
             options: q.options,
             correctAnswer: q.correct_answer_index
           }))
@@ -177,9 +172,6 @@ export async function fetchCoursesWithProgress(userId?: string): Promise<Course[
   }
 }
 
-/**
- * Marca uma lição como concluída para um aluno
- */
 export async function completeLesson(studentId: string, lessonId: string, score: number = 0) {
   try {
     const { error } = await supabase
@@ -204,7 +196,7 @@ export async function awardStudent(studentId: string, addedXp: number, addedCoin
     const { data: current, error: fetchError } = await supabase
       .from('edu_students')
       .select('xp, coins')
-      .eq('user_id', studentId) // usar user_id
+      .eq('id', studentId)
       .single();
 
     if (fetchError) throw fetchError;
@@ -215,7 +207,7 @@ export async function awardStudent(studentId: string, addedXp: number, addedCoin
     const { data, error } = await supabase
       .from('edu_students')
       .update({ xp: newXp, coins: newCoins })
-      .eq('user_id', studentId)
+      .eq('id', studentId)
       .select()
       .single();
 
@@ -232,7 +224,7 @@ export async function spendCoins(studentId: string, cost: number) {
     const { data: current, error: fetchError } = await supabase
       .from('edu_students')
       .select('coins')
-      .eq('user_id', studentId)
+      .eq('id', studentId)
       .single();
 
     if (fetchError) throw fetchError;
@@ -241,7 +233,7 @@ export async function spendCoins(studentId: string, cost: number) {
     const { error } = await supabase
       .from('edu_students')
       .update({ coins: current.coins - cost })
-      .eq('user_id', studentId);
+      .eq('id', studentId);
 
     if (error) throw error;
     return true;
@@ -249,4 +241,59 @@ export async function spendCoins(studentId: string, cost: number) {
     console.error('Error spending coins:', err);
     return false;
   }
+}
+
+// ==========================================
+// FUNÇÕES DO PAINEL DO PROFESSOR (CRUD)
+// ==========================================
+
+export async function createCourse(institutionId: string | null, courseData: Partial<Course>) {
+  const { data, error } = await supabase.from('edu_courses').insert([{
+    institution_id: institutionId,
+    title: courseData.title,
+    subject: courseData.subject,
+    description: courseData.description,
+    color: courseData.color || 'emerald',
+    icon: courseData.icon || 'BookOpen'
+  }]).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createModule(courseId: string, moduleData: Partial<Module>) {
+  const { data, error } = await supabase.from('edu_modules').insert([{
+    course_id: courseId,
+    title: moduleData.title,
+    description: moduleData.description,
+    order_index: 0
+  }]).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createLesson(moduleId: string, lessonData: Partial<Lesson>) {
+  const { data, error } = await supabase.from('edu_lessons').insert([{
+    module_id: moduleId,
+    title: lessonData.title,
+    type: lessonData.type,
+    xp_reward: lessonData.xp || 50,
+    coin_reward: lessonData.coins || 10,
+    content_url: lessonData.contentUrl,
+    content_body: lessonData.contentBody,
+    order_index: 0
+  }]).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function createQuizQuestion(lessonId: string, questionData: Partial<QuizQuestion>) {
+  const { data, error } = await supabase.from('edu_quiz_questions').insert([{
+    lesson_id: lessonId,
+    question_text: questionData.question,
+    options: questionData.options,
+    correct_answer_index: questionData.correctAnswer,
+    order_index: 0
+  }]).select().single();
+  if (error) throw error;
+  return data;
 }

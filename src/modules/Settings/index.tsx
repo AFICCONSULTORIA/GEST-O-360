@@ -138,7 +138,9 @@ export const SettingsModule = ({
     password: '',
     permissions: [] as View[],
     institution_id: '',
-    department_id: ''
+    department_id: '',
+    subject: '',
+    classes: [] as string[]
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -155,6 +157,9 @@ export const SettingsModule = ({
         permissions: updatedUser.permissions,
         institution_id: updatedUser.institution_id || null,
         department_id: updatedUser.department_id || null
+        // TODO: Migrar banco para adicionar subject e classes
+        // subject: updatedUser.subject || null,
+        // classes: updatedUser.classes || null
       }).eq('id', updatedUser.id);
       
       if (error) {
@@ -198,6 +203,9 @@ export const SettingsModule = ({
         permissions: newUser.permissions,
         institution_id: newUser.institution_id || null,
         department_id: newUser.department_id || null
+        // TODO: Migrar banco para adicionar subject e classes
+        // subject: newUser.subject || null,
+        // classes: newUser.classes || null
       });
     }
     setIsModalOpen(false);
@@ -214,7 +222,9 @@ export const SettingsModule = ({
       password: '', 
       permissions: u.permissions || [], 
       institution_id: u.institution_id || '',
-      department_id: u.department_id || ''
+      department_id: u.department_id || '',
+      subject: u.subject || '',
+      classes: u.classes || []
     });
     setIsModalOpen(true);
   };
@@ -329,7 +339,7 @@ export const SettingsModule = ({
           onClick={() => {
             if (activeTab === 'users') {
               setEditingUser(null);
-              setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [], institution_id: currentUser?.institution_id || '', department_id: '' });
+              setFormData({ name: '', email: '', role: 'Visualizador', status: 'Ativo', password: '', permissions: [], institution_id: currentUser?.institution_id || '', department_id: '', subject: '', classes: [] });
               setIsModalOpen(true);
             } else if (activeTab === 'departments') {
               setEditingDept(null);
@@ -746,6 +756,7 @@ export const SettingsModule = ({
                         <option value="Admin">Admin</option>
                         <option value="Editor">Editor</option>
                         <option value="Visualizador">Visualizador</option>
+                        <option value="Professor">Professor</option>
                       </select>
                     </div>
                     <div>
@@ -760,6 +771,31 @@ export const SettingsModule = ({
                       </select>
                     </div>
                   </div>
+                  
+                  {formData.role === 'Professor' && (
+                    <div className="grid grid-cols-2 gap-4 border-t border-neutral-100 dark:border-neutral-800 pt-4 mt-2">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Disciplina</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: Matemática"
+                          value={formData.subject}
+                          onChange={e => setFormData({...formData, subject: e.target.value})}
+                          className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Turmas (separadas por vírgula)</label>
+                        <input 
+                          type="text" 
+                          placeholder="Ex: 4A, 5B"
+                          value={formData.classes.join(', ')}
+                          onChange={e => setFormData({...formData, classes: e.target.value.split(',').map(s => s.trim()).filter(Boolean)})}
+                          className="w-full mt-1 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-5 py-3.5 rounded-2xl text-sm outline-none focus:ring-4 focus:ring-neutral-900/5 dark:focus:ring-white/5 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-4 flex gap-3">

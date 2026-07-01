@@ -167,12 +167,14 @@ export interface AdminUser {
   id: string;
   name: string;
   email: string;
-  role: 'Super Admin' | 'Admin' | 'Visualizador' | 'Editor';
+  role: 'Super Admin' | 'Admin' | 'Visualizador' | 'Editor' | 'Professor';
   status: 'Ativo' | 'Inativo';
   lastLogin: string;
   permissions: View[];
   institution_id?: string;
   department_id?: string;
+  subject?: string;
+  classes?: string[];
 }
 
 

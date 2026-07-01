@@ -90,10 +90,124 @@ export interface Course {
 
 // Mock temporário removido - agora usamos do Supabase
 
-export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
+export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void, previewCourseId?: string }) => {
   const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support' | 'trail-map' | 'lesson-player' | 'quiz-player'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  
+  // -- Chat State --
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [newMessageText, setNewMessageText] = useState('');
+  const studentId = 2; // Simulando Arthur da Silva (ID 2)
+  const [selectedChatTeacher, setSelectedChatTeacher] = useState<any>(null);
+
+  const mockTeachers = [
+    { id: 1, name: 'Prof. Carlos (Matemática)', avatar: 'https://i.pravatar.cc/150?img=11', status: 'Online agora' },
+    { id: 2, name: 'Profa. Sofia (Português)', avatar: 'https://i.pravatar.cc/150?img=5', status: 'Visto por último às 14:00' }
+  ];
+
+  const totalUnreadCount = chatMessages.filter((m: any) => m.sender === 'teacher' && !m.read).length;
+
+  useEffect(() => {
+    if (isChatOpen && selectedChatTeacher) {
+      const saved = localStorage.getItem('gestao360_students');
+      if (saved) {
+        let students = JSON.parse(saved);
+        let updated = false;
+        
+        students = students.map((s: any) => {
+          if (s.id === studentId) {
+            let sUpdated = false;
+            const newMessages = (s.messages || []).map((m: any) => {
+              if (m.sender === 'teacher' && !m.read && m.teacherId === selectedChatTeacher.id) {
+                sUpdated = true;
+                return { ...m, read: true };
+              }
+              return m;
+            });
+            if (sUpdated) {
+              updated = true;
+              return { ...s, messages: newMessages };
+            }
+          }
+          return s;
+        });
+
+        if (updated) {
+          localStorage.setItem('gestao360_students', JSON.stringify(students));
+          const me = students.find((s: any) => s.id === studentId);
+          if (me) {
+            setChatMessages(me.messages || []);
+          }
+          window.dispatchEvent(new CustomEvent('students-updated'));
+        }
+      }
+    }
+  }, [isChatOpen, chatMessages, selectedChatTeacher]);
+
+  useEffect(() => {
+    const loadMessages = () => {
+      const saved = localStorage.getItem('gestao360_students');
+      if (saved) {
+        const students = JSON.parse(saved);
+        const me = students.find((s: any) => s.id === studentId);
+        if (me) {
+          setChatMessages(me.messages || []);
+        }
+      }
+    };
+    loadMessages();
+
+    const handleStudentsUpdated = () => {
+      loadMessages();
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'gestao360_students') {
+        handleStudentsUpdated();
+      }
+    };
+
+    window.addEventListener('students-updated', handleStudentsUpdated);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('students-updated', handleStudentsUpdated);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  const handleSendChatMessage = () => {
+    if (!newMessageText.trim() || !selectedChatTeacher) return;
+
+    const newMessage = {
+      sender: 'student',
+      teacherId: selectedChatTeacher.id,
+      text: newMessageText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const saved = localStorage.getItem('gestao360_students');
+    if (saved) {
+      let students = JSON.parse(saved);
+      students = students.map((s: any) => 
+        s.id === studentId 
+          ? { ...s, messages: [...(s.messages || []), newMessage] }
+          : s
+      );
+      
+      localStorage.setItem('gestao360_students', JSON.stringify(students));
+      
+      const me = students.find((s: any) => s.id === studentId);
+      if (me) {
+        setChatMessages(me.messages || []);
+      }
+
+      window.dispatchEvent(new CustomEvent('students-updated'));
+    }
+
+    setNewMessageText('');
+  };
   
   // -- Estado Profundo de Consumo --
   const [courses, setCourses] = useState<Course[]>([]);
@@ -155,18 +269,25 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const studentId = localStorage.getItem('edu_student_id');
       
-      // Carregar os cursos para o MVP independente de ter user
-      const coursesData = await fetchCoursesWithProgress(user ? user.id : undefined);
+      const coursesData = await fetchCoursesWithProgress(studentId || undefined);
       setCourses(coursesData);
 
-      if (user) {
-        const data = await fetchStudentProfile(user.id);
+      if (previewCourseId) {
+        const pCourse = coursesData.find((c: any) => c.id === previewCourseId);
+        if (pCourse) {
+          setActiveCourse(pCourse);
+          setActiveView('trail-map');
+        }
+      }
+
+      if (studentId) {
+        const data = await fetchStudentProfile(studentId);
         if (data) {
           setStudentData(prev => ({
             ...prev,
-            id: data.user_id || data.id, 
+            id: data.id, 
             name: data.name,
             level: data.level,
             title: data.title,
@@ -270,7 +391,7 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
       </header>
 
       {/* Sidebar */}
-      <aside className={`fixed md:sticky top-0 left-0 h-[100dvh] z-50 flex flex-col transition-all duration-300 ${isMobileMenuOpen ? 'w-72 translate-x-0' : 'w-72 -translate-x-full md:translate-x-0'}`}
+      <aside className={`fixed md:sticky self-start top-0 left-0 h-[100dvh] z-50 flex flex-col transition-all duration-300 ${isMobileMenuOpen ? 'w-72 translate-x-0' : 'w-72 -translate-x-full md:translate-x-0'}`}
         style={{ background: 'linear-gradient(160deg, #f0fdf4 0%, #ecfeff 50%, #f0f9ff 100%)' }}>
         {/* Dark mode overlay */}
         <div className="absolute inset-0 bg-neutral-900/95 dark:opacity-100 opacity-0 transition-opacity duration-300 pointer-events-none"></div>
@@ -278,6 +399,12 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
 
         {/* Sidebar Brand Header */}
         <div className="relative z-10 px-5 pt-6 pb-4">
+          {previewCourseId && (
+            <button onClick={onBack} className="w-full flex items-center justify-center gap-2 mb-6 py-2.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold rounded-xl hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors shadow-sm">
+              <ArrowLeft size={18} />
+              Sair da Visualização
+            </button>
+          )}
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-sky-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
@@ -294,7 +421,13 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
           </div>
 
           {/* Student Profile Card */}
-          <div className="bg-white/70 dark:bg-neutral-800/60 backdrop-blur-sm rounded-2xl p-4 border border-neutral-200/60 dark:border-neutral-700/40 shadow-sm">
+          <div 
+            className="bg-white/70 dark:bg-neutral-800/60 backdrop-blur-sm rounded-2xl p-4 border border-neutral-200/60 dark:border-neutral-700/40 shadow-sm cursor-pointer hover:bg-white/90 dark:hover:bg-neutral-800/90 transition-all hover:scale-[1.02]"
+            onClick={() => {
+              setActiveView('settings');
+              setIsMobileMenuOpen(false);
+            }}
+          >
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-md shrink-0">
                 <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-900">
@@ -437,7 +570,10 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
             </button>
             
             {/* Profile avatar */}
-            <button className="flex items-center gap-2.5 bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-700/80 rounded-xl px-2.5 py-1.5 transition-all group">
+            <button 
+              className="flex items-center gap-2.5 bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-700/80 rounded-xl px-2.5 py-1.5 transition-all group active:scale-95"
+              onClick={() => setActiveView('settings')}
+            >
               <div className="w-7 h-7 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-sm">
                 <div className="w-full h-full rounded-full overflow-hidden border border-white dark:border-neutral-900">
                   <img alt="Arthur" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v" className="w-full h-full object-cover" />
@@ -1922,6 +2058,17 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
           </div>
         )}
 
+        {/* Settings/Profile Placeholder */}
+        {activeView === 'settings' && (
+          <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-24 h-24 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 rounded-full flex items-center justify-center mb-6 shadow-sm overflow-hidden border-4 border-white dark:border-neutral-900 shadow-xl shadow-neutral-200/50 dark:shadow-neutral-900/50">
+              <img alt="Arthur" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v" className="w-full h-full object-cover" />
+            </div>
+            <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">Meu Perfil</h2>
+            <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Em breve você poderá editar seus dados pessoais, alterar o avatar e ajustar suas preferências de notificação aqui.</p>
+          </div>
+        )}
+
         {/* Suporte Placeholder */}
         {activeView === 'support' && (
           <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1935,69 +2082,154 @@ export const StudentPortal = ({ onBack }: { onBack: () => void }) => {
       </main>
 
       {/* Floating Chat Button & Window */}
-      <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-50 flex flex-col items-end gap-4 pointer-events-none">
+      <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[150] flex flex-col items-end gap-4 print:hidden pointer-events-none">
         
         {/* Chat Window */}
-        <div className={`w-[calc(100vw-2rem)] md:w-96 h-[450px] bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl rounded-[32px] shadow-2xl border border-neutral-200/50 dark:border-neutral-800/50 flex flex-col overflow-hidden transition-all duration-300 transform origin-bottom-right pointer-events-auto ${isChatOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-10 pointer-events-none'}`}>
+        <div className={`w-[calc(100vw-2rem)] md:w-96 h-[500px] max-h-[80vh] bg-white dark:bg-neutral-900 rounded-[32px] shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col overflow-hidden transition-all duration-300 origin-bottom-right pointer-events-auto ${isChatOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-10 pointer-events-none'}`}>
           
-          {/* Header */}
-          <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-4 flex justify-between items-center text-white shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-                  <User size={20} className="text-white" />
+          {!selectedChatTeacher ? (
+            /* Lista de Professores */
+            <>
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-5 text-white shrink-0">
+                <h3 className="font-black text-xl mb-1">Meus Professores</h3>
+                <p className="text-emerald-100 text-sm font-medium">Com quem você quer falar?</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-1 bg-white dark:bg-neutral-900">
+                {mockTeachers.map(teacher => {
+                  const teacherMessages = chatMessages.filter((m: any) => m.teacherId === teacher.id || m.teacherId === undefined);
+                  const lastMsg = teacherMessages.length > 0 
+                    ? teacherMessages[teacherMessages.length - 1] 
+                    : null;
+                  const unread = teacherMessages.filter((m: any) => m.sender === 'teacher' && !m.read).length;
+                    
+                  return (
+                    <div 
+                      key={teacher.id}
+                      onClick={() => setSelectedChatTeacher(teacher)}
+                      className="flex items-center gap-4 p-3 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-2xl cursor-pointer transition-colors"
+                    >
+                      <div className="relative">
+                        <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-neutral-200 dark:border-neutral-700">
+                          <img src={teacher.avatar} alt={teacher.name} className="w-full h-full object-cover" />
+                        </div>
+                        {teacher.id === 1 && (
+                          <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-neutral-900"></div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline mb-1">
+                          <h4 className="font-bold text-neutral-900 dark:text-white truncate">{teacher.name}</h4>
+                          {lastMsg && <span className="text-[10px] font-bold text-neutral-400 shrink-0 ml-2">{lastMsg.time}</span>}
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <p className={`text-sm truncate ${unread > 0 ? 'font-bold text-neutral-900 dark:text-white' : 'text-neutral-500'}`}>
+                            {lastMsg ? (lastMsg.sender === 'student' ? `Você: ${lastMsg.text}` : lastMsg.text) : 'Nenhuma mensagem'}
+                          </p>
+                          {unread > 0 && (
+                            <div className="w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shrink-0 ml-2 shadow-sm">
+                              {unread}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            /* Chat Individual com o Professor */
+            <>
+              {/* Header */}
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-4 flex items-center gap-3 text-white shrink-0 shadow-sm relative z-10">
+                <button 
+                  onClick={() => setSelectedChatTeacher(null)}
+                  className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors shrink-0"
+                >
+                  <ArrowLeft size={18} />
+                </button>
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="relative shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden border border-white/30">
+                      <img src={selectedChatTeacher.avatar} alt={selectedChatTeacher.name} className="w-full h-full object-cover" />
+                    </div>
+                    {selectedChatTeacher.id === 1 && (
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-300 rounded-full border-2 border-emerald-600"></div>
+                    )}
+                  </div>
+                  <div className="truncate">
+                    <h4 className="font-bold text-sm tracking-wide truncate">{selectedChatTeacher.name}</h4>
+                    <p className="text-[10px] text-emerald-100 uppercase tracking-widest font-bold truncate">{selectedChatTeacher.status}</p>
+                  </div>
                 </div>
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-300 rounded-full border-2 border-emerald-600"></div>
               </div>
-              <div>
-                <h4 className="font-bold text-sm tracking-wide">Professor AI</h4>
-                <p className="text-[10px] text-emerald-100 uppercase tracking-widest font-bold">Online</p>
+              
+              {/* Message History */}
+              <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-neutral-50/50 dark:bg-neutral-950/50 flex flex-col">
+                <div className="text-center text-xs font-bold text-neutral-400 mb-2">Hoje</div>
+                
+                {chatMessages.filter((m: any) => m.teacherId === selectedChatTeacher.id || m.teacherId === undefined).length === 0 && (
+                  <div className="flex-1 flex flex-col items-center justify-center text-neutral-400 gap-2">
+                    <MessageSquare size={32} className="opacity-20" />
+                    <p className="text-sm font-medium">Nenhuma mensagem com {selectedChatTeacher.name.split(' ')[0]}.</p>
+                  </div>
+                )}
+                
+                {chatMessages.filter((m: any) => m.teacherId === selectedChatTeacher.id || m.teacherId === undefined).map((msg: any, idx: number) => (
+                  <div key={idx} className={`flex ${msg.sender === 'student' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] rounded-2xl p-3.5 ${msg.sender === 'student' ? 'bg-emerald-600 text-white rounded-tr-sm shadow-emerald-500/20 shadow-md' : 'bg-white dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-tl-sm shadow-sm'}`}>
+                      <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
+                      <span className={`text-[10px] font-bold mt-1.5 block text-right ${msg.sender === 'student' ? 'text-emerald-200' : 'text-neutral-400'}`}>{msg.time}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-            <button className="hover:bg-white/20 p-2 rounded-full transition-colors" onClick={() => setIsChatOpen(false)}>
-              <X size={20} />
-            </button>
-          </div>
-          
-          {/* Message History */}
-          <div className="flex-1 p-5 overflow-y-auto space-y-4 bg-neutral-50/50 dark:bg-neutral-950/50">
-            <div className="flex flex-col items-start">
-              <div className="bg-white dark:bg-neutral-800 p-3.5 rounded-2xl rounded-tl-sm shadow-sm border border-neutral-100 dark:border-neutral-700 max-w-[85%]">
-                <p className="text-sm text-neutral-700 dark:text-neutral-200">Olá Arthur! Como posso te ajudar com os exercícios de Matemática hoje?</p>
+              
+              {/* Input Area */}
+              <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200/50 dark:border-neutral-800/50 flex items-center gap-2 shrink-0">
+                <button className="p-2.5 text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-full transition-colors shrink-0">
+                  <Paperclip size={18} />
+                </button>
+                <input 
+                  className="flex-1 bg-neutral-100 dark:bg-neutral-800 border-none outline-none focus:ring-0 rounded-full px-4 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400" 
+                  placeholder="Digite sua mensagem..." 
+                  type="text" 
+                  value={newMessageText}
+                  onChange={(e) => setNewMessageText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSendChatMessage();
+                  }}
+                />
+                <button 
+                  onClick={handleSendChatMessage}
+                  disabled={!newMessageText.trim()}
+                  className="bg-emerald-600 text-white p-2.5 rounded-full hover:bg-emerald-700 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 hover:scale-105 active:scale-95 transition-all shadow-md shadow-emerald-500/20 disabled:hover:scale-100 shrink-0"
+                >
+                  <Send size={18} className="ml-0.5" />
+                </button>
               </div>
-              <span className="text-[10px] text-neutral-400 mt-1 ml-1 font-medium">10:30</span>
-            </div>
-            <div className="flex flex-col items-end">
-              <div className="bg-emerald-600 p-3.5 rounded-2xl rounded-tr-sm shadow-sm max-w-[85%] text-white">
-                <p className="text-sm">Oi professor! Estou com dúvida na questão 4 do diagnóstico.</p>
-              </div>
-              <span className="text-[10px] text-neutral-400 mt-1 mr-1 font-medium">10:32</span>
-            </div>
-          </div>
-          
-          {/* Input Area */}
-          <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200/50 dark:border-neutral-800/50 flex items-center gap-2 shrink-0">
-            <button className="p-2.5 text-neutral-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-full transition-colors">
-              <Paperclip size={18} />
-            </button>
-            <input 
-              className="flex-1 bg-neutral-100 dark:bg-neutral-800 border-none outline-none focus:ring-0 rounded-full px-4 py-2.5 text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400" 
-              placeholder="Digite sua dúvida..." 
-              type="text" 
-            />
-            <button className="bg-emerald-600 text-white p-2.5 rounded-full hover:bg-emerald-700 hover:scale-105 active:scale-95 transition-all shadow-md shadow-emerald-500/20">
-              <Send size={18} className="ml-0.5" />
-            </button>
-          </div>
+            </>
+          )}
         </div>
         
         {/* Floating Action Button */}
-        <button 
-          className="w-14 h-14 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-full shadow-xl shadow-emerald-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all pointer-events-auto" 
-          onClick={() => setIsChatOpen(!isChatOpen)}
-        >
-          {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
-        </button>
+        <div className="relative">
+          <button 
+            className="w-14 h-14 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-full shadow-xl shadow-emerald-500/30 flex items-center justify-center hover:scale-105 active:scale-95 transition-all pointer-events-auto" 
+            onClick={() => {
+              setIsChatOpen(!isChatOpen);
+              if (isChatOpen) setSelectedChatTeacher(null);
+            }}
+          >
+            {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+          </button>
+          
+          {totalUnreadCount > 0 && !isChatOpen && (
+            <div className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white dark:border-neutral-900 shadow-sm animate-bounce">
+              {totalUnreadCount}
+            </div>
+          )}
+        </div>
       </div>
 
     </div>
