@@ -45,7 +45,13 @@ import {
   Coins,
   Edit2,
   Trash2,
-  Plus
+  Plus,
+  LifeBuoy,
+  MessageCircle,
+  Phone,
+  ChevronDown,
+  ExternalLink,
+  Book
 } from 'lucide-react';
 import { TeacherEducationManager } from './TeacherEducationManager';
 import { TeacherStudentManager } from './TeacherStudentManager';
@@ -907,14 +913,134 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
           </div>
         )}
 
-        {/* Suporte Placeholder */}
+        {/* Suporte UI */}
         {activeView === 'support' && (
-          <div className="p-4 md:p-8 max-w-7xl mx-auto w-full flex-1 flex flex-col items-center justify-center text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="w-24 h-24 bg-rose-100 dark:bg-rose-900/30 text-rose-500 rounded-full flex items-center justify-center mb-6 shadow-sm">
-              <HelpCircle size={48} />
+          <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-neutral-900 p-6 md:p-8 rounded-3xl border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
+              <div className="relative z-10 flex items-center gap-5">
+                <div className="p-4 bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 rounded-2xl shadow-inner border border-rose-200/50 dark:border-rose-800/50">
+                  <LifeBuoy size={32} />
+                </div>
+                <div>
+                  <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">Central de Ajuda</h2>
+                  <p className="text-neutral-500 dark:text-neutral-400 mt-1">Como podemos ajudar você hoje?</p>
+                </div>
+              </div>
             </div>
-            <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2">Central de Ajuda</h2>
-            <p className="text-neutral-500 dark:text-neutral-400 max-w-md">Base de conhecimento, tutoriais e contato direto com a equipe de suporte do Gestão 360 Educação.</p>
+
+            {/* Busca */}
+            <div className="relative group max-w-2xl mx-auto">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <Search className="h-6 w-6 text-neutral-400 group-focus-within:text-rose-500 transition-colors" />
+              </div>
+              <input
+                type="text"
+                placeholder="Busque por artigos, tutoriais ou dúvidas frequentes..."
+                className="w-full pl-12 pr-32 py-4 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-800 rounded-2xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 dark:focus:border-rose-500 transition-all text-neutral-900 dark:text-white placeholder-neutral-400 shadow-sm text-lg"
+              />
+              <button className="absolute inset-y-2 right-2 px-6 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-colors">
+                Buscar
+              </button>
+            </div>
+
+            {/* Quick Links */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              {[
+                { icon: Book, title: 'Artigos', desc: 'Base de conhecimento', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+                { icon: Video, title: 'Tutoriais', desc: 'Passo a passo em vídeo', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
+                { icon: Users, title: 'Comunidade', desc: 'Fórum de professores', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+                { icon: FileCheck, title: 'Chamados', desc: 'Acompanhe seus tickets', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' }
+              ].map((item, idx) => (
+                <button key={idx} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200/50 dark:border-neutral-800/50 flex flex-col items-center text-center hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-900/5 transition-all group">
+                  <div className={`p-4 rounded-2xl mb-4 transition-transform group-hover:scale-110 ${item.color}`}>
+                    <item.icon size={28} />
+                  </div>
+                  <h3 className="font-bold text-neutral-900 dark:text-white mb-1">{item.title}</h3>
+                  <p className="text-sm text-neutral-500">{item.desc}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* FAQs */}
+              <div className="lg:col-span-2 space-y-4">
+                <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2 mb-6">
+                  <MessageSquare className="text-rose-500" />
+                  Dúvidas Frequentes
+                </h3>
+                
+                {[
+                  { q: 'Como lançar notas para uma turma inteira?', a: 'Acesse "Gestão de Alunos", selecione a turma desejada e clique em "Lançamento em Lote". Você poderá importar uma planilha ou preencher diretamente no sistema.' },
+                  { q: 'Onde encontro os relatórios de engajamento?', a: 'No Dashboard principal, role até a seção "Desempenho Geral". Lá você encontrará gráficos interativos e a opção de exportar relatórios detalhados em PDF.' },
+                  { q: 'Como enviar um comunicado para os pais?', a: 'Utilize a ferramenta "Comunicações" no menu lateral. Você pode selecionar "Pais e Responsáveis" como destinatários e acompanhar quem visualizou a mensagem.' },
+                  { q: 'Esqueci minha senha, como recuperar?', a: 'Na tela de login, clique em "Esqueci minha senha". Enviaremos um link de recuperação para seu e-mail institucional cadastrado.' },
+                ].map((faq, idx) => (
+                  <details key={idx} className="group bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200/50 dark:border-neutral-800/50 overflow-hidden [&_summary::-webkit-details-marker]:hidden">
+                    <summary className="flex items-center justify-between p-5 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                      <span className="font-semibold text-neutral-900 dark:text-white pr-4">{faq.q}</span>
+                      <ChevronDown size={20} className="text-neutral-400 group-open:-rotate-180 transition-transform duration-300 flex-shrink-0" />
+                    </summary>
+                    <div className="p-5 pt-0 text-neutral-600 dark:text-neutral-400 leading-relaxed border-t border-neutral-100 dark:border-neutral-800">
+                      {faq.a}
+                    </div>
+                  </details>
+                ))}
+              </div>
+
+              {/* Contato Direto */}
+              <div className="space-y-4">
+                <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2 mb-6">
+                  <Phone className="text-rose-500" />
+                  Fale com a Gente
+                </h3>
+
+                <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-3xl p-6 text-white shadow-lg shadow-rose-500/20 relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-all hover:shadow-rose-500/40">
+                  <div className="absolute top-0 right-0 p-4 opacity-20 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform">
+                    <MessageCircle size={100} />
+                  </div>
+                  <div className="relative z-10">
+                    <h4 className="font-black text-xl mb-2">Chat ao Vivo</h4>
+                    <p className="text-rose-100 text-sm mb-6 max-w-[200px]">Atendimento imediato com nossa equipe especializada.</p>
+                    <button className="bg-white text-rose-600 font-bold px-5 py-2.5 rounded-xl text-sm w-full hover:bg-rose-50 transition-colors shadow-sm">
+                      Iniciar Conversa
+                    </button>
+                    <p className="text-[10px] text-rose-200 text-center mt-3 flex items-center justify-center gap-1">
+                      <Clock size={12} /> Tempo de resposta: ~2 min
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors cursor-pointer group">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-300 group-hover:bg-rose-100 dark:group-hover:bg-rose-900/30 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                      <Mail size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-neutral-900 dark:text-white mb-1">E-mail</h4>
+                      <p className="text-sm text-neutral-500 mb-3">suporte@gestao360.com.br</p>
+                      <button className="text-rose-600 dark:text-rose-400 text-sm font-bold flex items-center gap-1 hover:underline">
+                        Enviar mensagem <ChevronRight size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors cursor-pointer group">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-300 group-hover:bg-rose-100 dark:group-hover:bg-rose-900/30 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                      <Phone size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-neutral-900 dark:text-white mb-1">Telefone</h4>
+                      <p className="text-sm text-neutral-500 mb-3">0800 123 4567</p>
+                      <p className="text-[11px] text-neutral-400">Seg. a Sex. das 08h às 18h</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
