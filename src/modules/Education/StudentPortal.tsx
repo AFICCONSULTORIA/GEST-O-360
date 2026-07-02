@@ -685,37 +685,47 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
                 </h3>
                 
                 <div className="space-y-3">
-                  {/* Test Row 1 */}
-                  <div className="flex items-center justify-between p-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md rounded-[20px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-800 transition-all cursor-pointer group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-teal-50 dark:bg-teal-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                        <span className="text-teal-600 font-black text-lg">C</span>
+                  {[
+                    {
+                      id: 'test-1',
+                      title: 'Diagnóstico de Ciências Naturais',
+                      type: 'quiz' as const,
+                      duration: '45 min',
+                      xp: 150,
+                      coins: 50,
+                      questions: [
+                        { id: 'q1', question: 'Qual planeta é conhecido como o Planeta Vermelho?', options: ['Vênus', 'Marte', 'Júpiter', 'Saturno'], correctAnswer: 1 },
+                        { id: 'q2', question: 'Qual é o maior oceano da Terra?', options: ['Oceano Atlântico', 'Oceano Índico', 'Oceano Pacífico', 'Oceano Ártico'], correctAnswer: 2 }
+                      ]
+                    },
+                    {
+                      id: 'test-2',
+                      title: 'Geografia: Mapa Mundi',
+                      type: 'quiz' as const,
+                      duration: '30 min',
+                      xp: 100,
+                      coins: 30,
+                      questions: [
+                        { id: 'q1', question: 'Qual é o maior país do mundo em extensão territorial?', options: ['China', 'EUA', 'Canadá', 'Rússia'], correctAnswer: 3 },
+                        { id: 'q2', question: 'Em qual continente fica o Egito?', options: ['África', 'Ásia', 'Europa', 'América do Sul'], correctAnswer: 0 }
+                      ]
+                    }
+                  ].map((test, index) => (
+                    <div key={test.id} onClick={() => handleStartLesson(test)} className={`flex items-center justify-between p-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md rounded-[20px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm hover:shadow-md ${index === 0 ? 'hover:border-emerald-200 dark:hover:border-emerald-800' : 'hover:border-sky-200 dark:hover:border-sky-800'} transition-all cursor-pointer group`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-xl ${index === 0 ? 'bg-teal-50 dark:bg-teal-500/10' : 'bg-sky-50 dark:bg-sky-500/10'} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform`}>
+                          <span className={`${index === 0 ? 'text-teal-600' : 'text-sky-600'} font-black text-lg`}>{test.title.charAt(0)}</span>
+                        </div>
+                        <div>
+                          <h5 className={`font-bold text-neutral-900 dark:text-white ${index === 0 ? 'group-hover:text-teal-600' : 'group-hover:text-sky-600'} transition-colors`}>{test.title}</h5>
+                          <p className="text-xs text-neutral-500 mt-0.5">Duração: {test.duration} • {test.questions.length} questões</p>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="font-bold text-neutral-900 dark:text-white group-hover:text-teal-600 transition-colors">Diagnóstico de Ciências Naturais</h5>
-                        <p className="text-xs text-neutral-500 mt-0.5">Duração: 45 min • 15 questões</p>
-                      </div>
+                      <button className={`w-10 h-10 rounded-full bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 ${index === 0 ? 'group-hover:bg-teal-500' : 'group-hover:bg-sky-500'} group-hover:text-white transition-all`}>
+                        <Play size={16} className="ml-1" />
+                      </button>
                     </div>
-                    <button className="w-10 h-10 rounded-full bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 group-hover:bg-teal-500 group-hover:text-white transition-all">
-                      <Play size={16} className="ml-1" />
-                    </button>
-                  </div>
-
-                  {/* Test Row 2 */}
-                  <div className="flex items-center justify-between p-4 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md rounded-[20px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm hover:shadow-md hover:border-sky-200 dark:hover:border-sky-800 transition-all cursor-pointer group">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                        <span className="text-sky-600 font-black text-lg">G</span>
-                      </div>
-                      <div>
-                        <h5 className="font-bold text-neutral-900 dark:text-white group-hover:text-sky-600 transition-colors">Geografia: Mapa Mundi</h5>
-                        <p className="text-xs text-neutral-500 mt-0.5">Duração: 30 min • 10 questões</p>
-                      </div>
-                    </div>
-                    <button className="w-10 h-10 rounded-full bg-neutral-50 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 group-hover:bg-sky-500 group-hover:text-white transition-all">
-                      <Play size={16} className="ml-1" />
-                    </button>
-                  </div>
+                  ))}
                 </div>
               </section>
             </div>
@@ -1816,7 +1826,20 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-bold text-rose-500 flex items-center gap-1"><Clock size={14}/> Expira em 2 dias</p>
-                          <button className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black px-6 py-2.5 rounded-full hover:bg-rose-500 dark:hover:bg-rose-500 hover:text-white transition-all shadow-md">
+                          <button 
+                            onClick={() => handleStartLesson({
+                              id: 'missao-1',
+                              title: 'O Mistério das Frações Perdidas',
+                              type: 'quiz',
+                              duration: '40 min',
+                              xp: 200,
+                              coins: 100,
+                              questions: [
+                                { id: 'q1', question: 'Quanto é 1/2 + 1/4?', options: ['3/4', '1/6', '2/4', '1/8'], correctAnswer: 0 },
+                                { id: 'q2', question: 'Qual fração é equivalente a 0.5?', options: ['1/4', '1/2', '3/4', '1/3'], correctAnswer: 1 }
+                              ]
+                            })}
+                            className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black px-6 py-2.5 rounded-full hover:bg-rose-500 dark:hover:bg-rose-500 hover:text-white transition-all shadow-md">
                             Iniciar Missão
                           </button>
                         </div>
@@ -1849,7 +1872,20 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
                         <div className="flex items-center justify-between">
                           <p className="text-xs font-bold text-neutral-400 flex items-center gap-1"><Clock size={14}/> Faltam 5 dias</p>
-                          <button className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black px-6 py-2.5 rounded-full hover:bg-emerald-500 dark:hover:bg-emerald-500 hover:text-white transition-all shadow-md">
+                          <button 
+                            onClick={() => handleStartLesson({
+                              id: 'missao-2',
+                              title: 'A Viagem no Tempo: Egito Antigo',
+                              type: 'quiz',
+                              duration: '30 min',
+                              xp: 150,
+                              coins: 80,
+                              questions: [
+                                { id: 'q1', question: 'Qual rio foi fundamental para o desenvolvimento do Egito Antigo?', options: ['Rio Tigre', 'Rio Eufrates', 'Rio Nilo', 'Rio Amazonas'], correctAnswer: 2 },
+                                { id: 'q2', question: 'Quais construções famosas serviam como túmulos para os faraós?', options: ['Coliseu', 'Pirâmides', 'Acrópole', 'Templos Hindus'], correctAnswer: 1 }
+                              ]
+                            })}
+                            className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black px-6 py-2.5 rounded-full hover:bg-emerald-500 dark:hover:bg-emerald-500 hover:text-white transition-all shadow-md">
                             Iniciar Missão
                           </button>
                         </div>
