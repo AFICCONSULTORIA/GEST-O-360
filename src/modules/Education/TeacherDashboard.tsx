@@ -55,11 +55,37 @@ import {
 } from 'lucide-react';
 import { TeacherEducationManager } from './TeacherEducationManager';
 import { TeacherStudentManager } from './TeacherStudentManager';
+import { SupportArticlesManager } from './SupportArticlesManager';
+import { SupportTutorialsManager } from './SupportTutorialsManager';
+import { SupportCommunityManager } from './SupportCommunityManager';
+import { SupportTicketsManager } from './SupportTicketsManager';
 
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
   const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt'>('dashboard');
+  const [activeSupportTab, setActiveSupportTab] = useState<'home' | 'articles' | 'tutorials' | 'community' | 'tickets'>('home');
+  const [selectedArticleCategory, setSelectedArticleCategory] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // --- Support Chat & Contact State ---
+  const [supportLiveChatOpen, setSupportLiveChatOpen] = useState(false);
+  const [supportLiveChatMessages, setSupportLiveChatMessages] = useState<{sender: 'user' | 'support', text: string}[]>([
+    { sender: 'support', text: 'Olá! Como posso ajudar você hoje?' }
+  ]);
+  const [supportLiveChatInput, setSupportLiveChatInput] = useState('');
+  const [supportContact, setSupportContact] = useState(() => {
+    const saved = localStorage.getItem('gestao360_support_contact');
+    return saved ? JSON.parse(saved) : {
+      email: 'suporte@gestao360.com.br',
+      phone: '0800 123 4567'
+    };
+  });
+  const [isEditingSupportContact, setIsEditingSupportContact] = useState(false);
+  const [tempSupportContact, setTempSupportContact] = useState(supportContact);
+
+  useEffect(() => {
+    localStorage.setItem('gestao360_support_contact', JSON.stringify(supportContact));
+  }, [supportContact]);
 
   // --- Global Chat State ---
   const [isGlobalChatOpen, setIsGlobalChatOpen] = useState(false);
@@ -916,6 +942,8 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         {/* Suporte UI */}
         {activeView === 'support' && (
           <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {activeSupportTab === 'home' && (
+              <>
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-neutral-900 p-6 md:p-8 rounded-3xl border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none" />
@@ -940,7 +968,7 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
                 placeholder="Busque por artigos, tutoriais ou dúvidas frequentes..."
                 className="w-full pl-12 pr-32 py-4 bg-white dark:bg-neutral-900 border-2 border-neutral-200 dark:border-neutral-800 rounded-2xl focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 dark:focus:border-rose-500 transition-all text-neutral-900 dark:text-white placeholder-neutral-400 shadow-sm text-lg"
               />
-              <button className="absolute inset-y-2 right-2 px-6 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-colors">
+              <button onClick={() => alert('Funcionalidade de busca em desenvolvimento.')} className="absolute inset-y-2 right-2 px-6 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition-colors">
                 Buscar
               </button>
             </div>
@@ -948,12 +976,12 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
             {/* Quick Links */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               {[
-                { icon: Book, title: 'Artigos', desc: 'Base de conhecimento', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
-                { icon: Video, title: 'Tutoriais', desc: 'Passo a passo em vídeo', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
-                { icon: Users, title: 'Comunidade', desc: 'Fórum de professores', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
-                { icon: FileCheck, title: 'Chamados', desc: 'Acompanhe seus tickets', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' }
+                { id: 'articles', icon: Book, title: 'Artigos', desc: 'Base de conhecimento', color: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+                { id: 'tutorials', icon: Video, title: 'Tutoriais', desc: 'Passo a passo em vídeo', color: 'bg-purple-500/10 text-purple-600 dark:text-purple-400' },
+                { id: 'community', icon: Users, title: 'Comunidade', desc: 'Fórum de professores', color: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' },
+                { id: 'tickets', icon: FileCheck, title: 'Chamados', desc: 'Acompanhe seus tickets', color: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' }
               ].map((item, idx) => (
-                <button key={idx} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200/50 dark:border-neutral-800/50 flex flex-col items-center text-center hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-900/5 transition-all group">
+                <button key={idx} onClick={() => setActiveSupportTab(item.id as any)} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200/50 dark:border-neutral-800/50 flex flex-col items-center text-center hover:-translate-y-1 hover:shadow-xl hover:shadow-neutral-900/5 transition-all group">
                   <div className={`p-4 rounded-2xl mb-4 transition-transform group-hover:scale-110 ${item.color}`}>
                     <item.icon size={28} />
                   </div>
@@ -991,12 +1019,44 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
 
               {/* Contato Direto */}
               <div className="space-y-4">
-                <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2 mb-6">
-                  <Phone className="text-rose-500" />
-                  Fale com a Gente
-                </h3>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Phone className="text-rose-500" />
+                    Fale com a Gente
+                  </h3>
+                  {!isEditingSupportContact ? (
+                    <button 
+                      onClick={() => {
+                        setTempSupportContact(supportContact);
+                        setIsEditingSupportContact(true);
+                      }}
+                      className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Edit2 size={16} />
+                      Editar
+                    </button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          setSupportContact(tempSupportContact);
+                          setIsEditingSupportContact(false);
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <CheckCircle2 size={16} /> Salvar
+                      </button>
+                      <button 
+                        onClick={() => setIsEditingSupportContact(false)}
+                        className="px-3 py-1.5 text-sm font-medium text-neutral-500 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 rounded-lg transition-colors flex items-center gap-1"
+                      >
+                        <X size={16} /> Cancelar
+                      </button>
+                    </div>
+                  )}
+                </div>
 
-                <div className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-3xl p-6 text-white shadow-lg shadow-rose-500/20 relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-all hover:shadow-rose-500/40">
+                <div onClick={() => setSupportLiveChatOpen(true)} className="bg-gradient-to-br from-rose-500 to-pink-600 rounded-3xl p-6 text-white shadow-lg shadow-rose-500/20 relative overflow-hidden group cursor-pointer hover:-translate-y-1 transition-all hover:shadow-rose-500/40">
                   <div className="absolute top-0 right-0 p-4 opacity-20 transform translate-x-4 -translate-y-4 group-hover:scale-110 transition-transform">
                     <MessageCircle size={100} />
                   </div>
@@ -1012,35 +1072,136 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
                   </div>
                 </div>
 
-                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors cursor-pointer group">
+                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200/50 dark:border-neutral-800/50 transition-colors group">
                   <div className="flex items-start gap-4">
-                    <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-300 group-hover:bg-rose-100 dark:group-hover:bg-rose-900/30 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                    <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-300">
                       <Mail size={24} />
                     </div>
-                    <div>
+                    <div className="w-full">
                       <h4 className="font-bold text-neutral-900 dark:text-white mb-1">E-mail</h4>
-                      <p className="text-sm text-neutral-500 mb-3">suporte@gestao360.com.br</p>
-                      <button className="text-rose-600 dark:text-rose-400 text-sm font-bold flex items-center gap-1 hover:underline">
-                        Enviar mensagem <ChevronRight size={16} />
-                      </button>
+                      {isEditingSupportContact ? (
+                        <input 
+                          type="email"
+                          value={tempSupportContact.email}
+                          onChange={(e) => setTempSupportContact({...tempSupportContact, email: e.target.value})}
+                          className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-rose-500 mb-2"
+                        />
+                      ) : (
+                        <p className="text-sm text-neutral-500 mb-3">{supportContact.email}</p>
+                      )}
+                      {!isEditingSupportContact && (
+                        <a 
+                          href={`https://mail.google.com/mail/?view=cm&fs=1&to=${supportContact.email}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-rose-600 dark:text-rose-400 text-sm font-bold flex items-center gap-1 hover:underline w-fit"
+                        >
+                          Enviar mensagem <ChevronRight size={16} />
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200/50 dark:border-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-700 transition-colors cursor-pointer group">
+                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-200/50 dark:border-neutral-800/50 transition-colors group">
                   <div className="flex items-start gap-4">
-                    <div className="p-3 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-300 group-hover:bg-rose-100 dark:group-hover:bg-rose-900/30 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                    <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl text-emerald-600 dark:text-emerald-400">
                       <Phone size={24} />
                     </div>
-                    <div>
-                      <h4 className="font-bold text-neutral-900 dark:text-white mb-1">Telefone</h4>
-                      <p className="text-sm text-neutral-500 mb-3">0800 123 4567</p>
-                      <p className="text-[11px] text-neutral-400">Seg. a Sex. das 08h às 18h</p>
+                    <div className="w-full">
+                      <h4 className="font-bold text-neutral-900 dark:text-white mb-1">WhatsApp</h4>
+                      {isEditingSupportContact ? (
+                        <input 
+                          type="text"
+                          value={tempSupportContact.phone}
+                          onChange={(e) => setTempSupportContact({...tempSupportContact, phone: e.target.value})}
+                          className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2"
+                        />
+                      ) : (
+                        <p className="text-sm text-neutral-500 mb-3">{supportContact.phone}</p>
+                      )}
+                      <p className="text-[11px] text-neutral-400 mb-2">Seg. a Sex. das 08h às 18h</p>
+                      {!isEditingSupportContact && (
+                        <a 
+                          href={`https://wa.me/55${supportContact.phone.replace(/\D/g, '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-600 dark:text-emerald-400 text-sm font-bold flex items-center gap-1 hover:underline w-fit"
+                        >
+                          Enviar mensagem <ChevronRight size={16} />
+                        </a>
+                      )}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
+              </>
+            )}
+
+            {/* Artigos */}
+            {activeSupportTab === 'articles' && (
+              selectedArticleCategory ? (
+                <SupportArticlesManager 
+                  categoryId={selectedArticleCategory}
+                  onBack={() => setSelectedArticleCategory(null)}
+                />
+              ) : (
+                <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                  <div className="flex items-center gap-4 mb-8">
+                    <button onClick={() => setActiveSupportTab('home')} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors">
+                      <ArrowLeft size={24} className="text-neutral-600 dark:text-neutral-400" />
+                    </button>
+                    <div>
+                      <h2 className="text-3xl font-black text-neutral-900 dark:text-white">Base de Conhecimento</h2>
+                      <p className="text-neutral-500 dark:text-neutral-400">Encontre artigos e guias completos.</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[
+                      { id: 'primeiros-passos', title: "Primeiros Passos", count: 12, icon: Compass },
+                      { id: 'gestao-notas', title: "Gestão de Notas e Frequência", count: 8, icon: BookOpen },
+                      { id: 'comunicacao', title: "Comunicação com Alunos", count: 5, icon: MessageSquare },
+                      { id: 'relatorios', title: "Relatórios e Análises", count: 15, icon: TrendingUp },
+                      { id: 'configuracoes', title: "Configurações da Conta", count: 4, icon: Settings },
+                      { id: 'troubleshooting', title: "Troubleshooting", count: 9, icon: AlertTriangle }
+                    ].map((cat, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => setSelectedArticleCategory(cat.id)}
+                        className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200/50 dark:border-neutral-800/50 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className="p-3 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-xl group-hover:scale-110 transition-transform">
+                            <cat.icon size={24} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-neutral-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{cat.title}</h3>
+                            <p className="text-sm text-neutral-500">{cat.count} artigos</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* Tutoriais */}
+            {activeSupportTab === 'tutorials' && (
+              <SupportTutorialsManager onBack={() => setActiveSupportTab('home')} />
+            )}
+
+            {/* Comunidade */}
+            {activeSupportTab === 'community' && (
+              <SupportCommunityManager onBack={() => setActiveSupportTab('home')} />
+            )}
+
+            {/* Chamados */}
+            {activeSupportTab === 'tickets' && (
+              <SupportTicketsManager onBack={() => setActiveSupportTab('home')} />
+            )}
           </div>
         )}
 
@@ -1676,6 +1837,76 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         )}
       </div>
 
+      {/* Support Live Chat Window */}
+      <div className={`fixed bottom-24 right-6 w-[350px] h-[500px] max-h-[80vh] bg-white dark:bg-neutral-900 rounded-[32px] shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col overflow-hidden transition-all duration-300 origin-bottom-right z-[140] print:hidden ${supportLiveChatOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-10 pointer-events-none'}`}>
+        <div className="shrink-0 border-b border-neutral-100 dark:border-neutral-800 p-4 flex items-center justify-between bg-gradient-to-r from-rose-500 to-pink-600 text-white relative z-10 shadow-sm">
+          <div className="flex gap-3 items-center">
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+              <LifeBuoy size={20} />
+            </div>
+            <div>
+              <h3 className="font-black text-sm leading-tight">Suporte 360</h3>
+              <span className="text-[10px] font-bold text-rose-100 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                Online
+              </span>
+            </div>
+          </div>
+          <button 
+            onClick={() => setSupportLiveChatOpen(false)}
+            className="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition-colors shrink-0"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-neutral-50/50 dark:bg-neutral-900/50 flex flex-col">
+          <div className="text-center text-xs font-bold text-neutral-400 mb-2">Hoje</div>
+          {supportLiveChatMessages.map((msg, idx) => (
+            <div key={idx} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+              <div className={`max-w-[85%] rounded-2xl p-3.5 ${msg.sender === 'user' ? 'bg-rose-600 text-white rounded-tr-sm shadow-rose-500/20 shadow-md' : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white rounded-tl-sm shadow-sm'}`}>
+                <p className="text-sm font-medium leading-relaxed">{msg.text}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="shrink-0 border-t border-neutral-100 dark:border-neutral-800 p-3 bg-white dark:bg-neutral-900">
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              value={supportLiveChatInput}
+              onChange={(e) => setSupportLiveChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && supportLiveChatInput.trim()) {
+                  setSupportLiveChatMessages([...supportLiveChatMessages, { sender: 'user', text: supportLiveChatInput }]);
+                  setSupportLiveChatInput('');
+                  setTimeout(() => {
+                    setSupportLiveChatMessages(prev => [...prev, { sender: 'support', text: 'Nossa equipe está analisando sua mensagem e responderá em breve.' }]);
+                  }, 1000);
+                }
+              }}
+              placeholder="Digite sua mensagem..."
+              className="flex-1 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-[24px] px-4 py-2.5 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 text-neutral-900 dark:text-white text-sm font-medium"
+            />
+            <button 
+              onClick={() => {
+                if (supportLiveChatInput.trim()) {
+                  setSupportLiveChatMessages([...supportLiveChatMessages, { sender: 'user', text: supportLiveChatInput }]);
+                  setSupportLiveChatInput('');
+                  setTimeout(() => {
+                    setSupportLiveChatMessages(prev => [...prev, { sender: 'support', text: 'Nossa equipe está analisando sua mensagem e responderá em breve.' }]);
+                  }, 1000);
+                }
+              }}
+              disabled={!supportLiveChatInput.trim()}
+              className="w-10 h-10 shrink-0 bg-rose-600 hover:bg-rose-700 disabled:bg-neutral-300 dark:disabled:bg-neutral-700 text-white rounded-xl flex items-center justify-center transition-colors disabled:cursor-not-allowed"
+            >
+              <Send size={16} className="ml-0.5" />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
