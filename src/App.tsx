@@ -389,17 +389,7 @@ export default function App() {
   if (isSuperAdminPortal) {
     if (!isAuthenticated) {
       return (
-        <div className={darkMode ? 'dark' : ''}>
-           <div className="absolute top-10 right-10 z-50">
-             <button 
-               onClick={() => setDarkMode(!darkMode)}
-               className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
-             >
-               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-             </button>
-           </div>
-           <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setIsAuthenticated(true); setCurrentUser(MOCK_USERS[0]); }} darkMode={darkMode} currentInstitution={null} isSaaSAdmin={true} />
-        </div>
+        <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setIsAuthenticated(true); setCurrentUser(MOCK_USERS[0]); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={null} isSaaSAdmin={true} />
       );
     }
 
@@ -507,17 +497,7 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <div className={darkMode ? 'dark' : ''}>
-         <div className="absolute top-10 right-10 z-50">
-           <button 
-             onClick={() => setDarkMode(!darkMode)}
-             className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
-           >
-             {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-           </button>
-         </div>
-         <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setIsAuthenticated(true); setCurrentUser(MOCK_USERS[0]); }} darkMode={darkMode} currentInstitution={currentInstitution} />
-      </div>
+      <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setIsAuthenticated(true); setCurrentUser(MOCK_USERS[0]); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
     );
   }
 
