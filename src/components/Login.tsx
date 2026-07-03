@@ -9,7 +9,8 @@ import { LogoCompass } from './LogoCompass';
 
 // Chapada dos Guimarães / Pantanal — Mato Grosso
 const BG_IMAGE = 'https://images.unsplash.com/photo-1596706935833-28c0b2f90a59?q=80&w=1920&auto=format&fit=crop';
-const VIDEO_SOURCE = 'https://res.cloudinary.com/demo/video/upload/docs/waterfall.mp4';
+// Optimizations: w_1280 (resize), q_auto (auto quality), f_auto (auto format like webm), ac_none (remove audio)
+const VIDEO_SOURCE = 'https://res.cloudinary.com/demo/video/upload/w_1280,q_auto,f_auto,ac_none/docs/waterfall.mp4';
 
 export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInstitution, isSaaSAdmin = false }: { onLogin: () => void, onDemoLogin?: () => void, darkMode: boolean, setDarkMode?: (v: boolean) => void, currentInstitution?: Institution | null, isSaaSAdmin?: boolean }) => {
   const [username, setUsername] = React.useState('');
