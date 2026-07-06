@@ -133,7 +133,6 @@ export default function App() {
       }
 
       const handleAuthSession = async (session: any, resolvedInst: Institution | null, isSaaSAdmin: boolean, event?: string) => {
-        setIsAuthenticated(!!session);
         if (session?.user?.email) {
           // Prevenção de deadlocks e loop recursivo: evitamos chamadas ao Supabase
           // em eventos secundários (ex: alteração de senha 'USER_UPDATED' ou refresh de token).
@@ -152,8 +151,19 @@ export default function App() {
               lastLogin: new Date().toISOString(),
               permissions: AVAILABLE_PERMISSIONS.map(p => p.id)
             });
+            setIsAuthenticated(true);
           } else {
-            const { data } = await supabase.from('admin_users').select('*').eq('email', session.user.email).maybeSingle();
+            const { data, error } = await supabase.from('admin_users').select('*').eq('email', session.user.email).maybeSingle();
+            
+            if (error) {
+              console.error('[Auth] Erro ao carregar perfil do usuário no banco:', error);
+              showToast('Erro de conexão ao carregar perfil. Verifique sua rede.', 'error');
+              // Mantém o estado atual, mas não chama signOut para evitar deslogar em caso de erro temporário
+              setIsAuthenticated(false);
+              setCurrentUser(null);
+              return;
+            }
+
             if (data) {
               // Bloqueio de Segurança para o Portal SaaS (Subdomínio 'admin')
               if (isSaaSAdmin && data.role !== 'Super Admin') {
@@ -177,6 +187,7 @@ export default function App() {
               console.log('[Auth] User loaded:', data.email, 'last_login:', data.last_login, 'event:', event, 'hasChangedPassword:', hasChangedPassword);
 
               setCurrentUser({ ...data, lastLogin: data.last_login } as AdminUser);
+              setIsAuthenticated(true);
               
               // Se o usuário já mudou a senha nesta sessão ou o evento é de atualização, ignora o estado 'Nunca' defasado (Race Condition fix)
               if (data.last_login === 'Nunca' && !hasChangedPassword && event !== 'USER_UPDATED') {
@@ -193,12 +204,21 @@ export default function App() {
             }
           }
         } else {
+          setIsAuthenticated(false);
           setCurrentUser(null);
         }
       };
 
-      const { data: { session } } = await supabase.auth.getSession();
-      await handleAuthSession(session, activeInst, isSaaS, 'INITIAL_SESSION');
+      const checkSession = async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          await handleAuthSession(session, activeInst, isSaaS, 'INITIAL_SESSION');
+        } catch (e) {
+          console.error('[Auth] Erro ao carregar sessão:', e);
+        }
+      };
+
+      await checkSession();
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         // Executamos no próximo tick para desempilhar a execução e evitar deadlocks internos do cliente Supabase
@@ -207,10 +227,18 @@ export default function App() {
         }, 0);
       });
 
+      // Tenta re-checar a sessão caso o navegador volte a ficar online (útil para dispositivos móveis)
+      const handleOnline = () => {
+        console.log('[Auth] Conexão restaurada. Re-verificando sessão...');
+        checkSession();
+      };
+      window.addEventListener('online', handleOnline);
+
       setLoadingInstitution(false);
 
       return () => {
         subscription.unsubscribe();
+        window.removeEventListener('online', handleOnline);
       };
     };
 
