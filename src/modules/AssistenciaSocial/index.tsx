@@ -8,6 +8,7 @@ import { showToast } from '../../components/ui/Toast';
 import { RelatoriosTab } from './Relatorios';
 import { ProntuariosTab } from './Prontuarios';
 import { EncaminhamentosTab } from './Encaminhamentos';
+import { DinamicasTab } from './Dinamicas';
 
 export const AssistenciaSocialModule = () => {
   const [activeTab, setActiveTab] = useState<'geral' | 'psicologia'>('psicologia');
@@ -15,7 +16,7 @@ export const AssistenciaSocialModule = () => {
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 print:hidden">
         <div>
           <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight flex items-center gap-3">
             <HeartHandshake className="text-rose-500" size={32} />
@@ -28,7 +29,7 @@ export const AssistenciaSocialModule = () => {
       </div>
 
       {/* Main Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+      <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar print:hidden">
         <button
           onClick={() => setActiveTab('geral')}
           className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all whitespace-nowrap ${
@@ -82,7 +83,7 @@ export const AssistenciaSocialModule = () => {
             className="space-y-6"
           >
             {/* Psicologia Sub-tabs */}
-            <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex gap-2 overflow-x-auto custom-scrollbar shadow-sm">
+            <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex gap-2 overflow-x-auto custom-scrollbar shadow-sm print:hidden">
               <button
                 onClick={() => setPsicologiaSubTab('relatorios')}
                 className={`flex-1 flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${
@@ -126,22 +127,11 @@ export const AssistenciaSocialModule = () => {
             </div>
 
             {/* Sub-tab Content */}
-            <div className="bg-white dark:bg-neutral-900 rounded-[32px] border border-neutral-100 dark:border-neutral-800 p-8 shadow-sm min-h-[400px]">
+            <div className="bg-white dark:bg-neutral-900 rounded-[32px] border border-neutral-100 dark:border-neutral-800 p-8 shadow-sm min-h-[400px] print:border-none print:shadow-none print:p-0 print:bg-transparent">
               {psicologiaSubTab === 'relatorios' && <RelatoriosTab />}
               {psicologiaSubTab === 'prontuarios' && <ProntuariosTab />}
               {psicologiaSubTab === 'encaminhamentos' && <EncaminhamentosTab />}
-              {psicologiaSubTab === 'dinamicas' && (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-4 py-12">
-                  <div className="w-16 h-16 bg-rose-50 dark:bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center">
-                    <Lightbulb size={32} />
-                  </div>
-                  <h3 className="text-xl font-black">Banco de Dinâmicas e Oficinas</h3>
-                  <p className="text-neutral-500 max-w-md">Repositório de ideias para grupos terapêuticos, palestras socioeducativas, campanhas (ex: Setembro Amarelo) e oficinas.</p>
-                  <button onClick={() => showToast('Em desenvolvimento')} className="px-6 py-3 bg-rose-500 text-white rounded-xl font-bold text-sm hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20">
-                    Explorar Banco de Ideias
-                  </button>
-                </div>
-              )}
+              {psicologiaSubTab === 'dinamicas' && <DinamicasTab />}
             </div>
           </motion.div>
         )}
