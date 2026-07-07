@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Search, FileText, User, Calendar, Clock, ChevronLeft, X, Edit2, Trash2, ShieldAlert } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { showToast } from '../../components/ui/Toast';
+import { formatCPF, formatPhone } from '../../lib/masks';
 
 export interface PsychologySession {
   id: string;
@@ -68,6 +69,7 @@ export const RelatoriosTab = () => {
 
   // Modals
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<PsychologySession | null>(null);
 
@@ -82,18 +84,43 @@ export const RelatoriosTab = () => {
       showToast('O nome do paciente é obrigatório', 'error');
       return;
     }
-    const newPatient: Patient = {
-      id: crypto.randomUUID(),
-      name: patientForm.name,
-      cpf: patientForm.cpf,
-      phone: patientForm.phone,
-      startDate: new Date().toISOString().split('T')[0],
-      sessions: []
-    };
-    setPatients([newPatient, ...patients]);
+    
+    if (editingPatient) {
+      const updatedPatients = patients.map(p => p.id === editingPatient.id ? { ...p, name: patientForm.name, cpf: patientForm.cpf, phone: patientForm.phone } : p);
+      MOCK_PATIENTS.length = 0;
+      MOCK_PATIENTS.push(...updatedPatients);
+      setPatients([...MOCK_PATIENTS]);
+      if (selectedPatient?.id === editingPatient.id) {
+        setSelectedPatient({ ...selectedPatient, name: patientForm.name, cpf: patientForm.cpf, phone: patientForm.phone });
+      }
+      showToast('Paciente atualizado!', 'success');
+    } else {
+      const newPatient: Patient = {
+        id: crypto.randomUUID(),
+        name: patientForm.name,
+        cpf: patientForm.cpf,
+        phone: patientForm.phone,
+        startDate: new Date().toISOString().split('T')[0],
+        sessions: []
+      };
+      MOCK_PATIENTS.unshift(newPatient);
+      setPatients([...MOCK_PATIENTS]);
+      showToast('Paciente cadastrado!', 'success');
+    }
+    
     setIsNewPatientModalOpen(false);
+    setEditingPatient(null);
     setPatientForm({ name: '', cpf: '', phone: '' });
-    showToast('Paciente cadastrado!', 'success');
+  };
+
+  const handleDeletePatient = (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este paciente e todo o seu dossiê?')) {
+      const updatedPatients = patients.filter(p => p.id !== id);
+      MOCK_PATIENTS.length = 0;
+      MOCK_PATIENTS.push(...updatedPatients);
+      setPatients([...MOCK_PATIENTS]);
+      showToast('Paciente excluído', 'info');
+    }
   };
 
   const handleSaveSession = () => {
@@ -120,7 +147,10 @@ export const RelatoriosTab = () => {
       return p;
     });
 
-    setPatients(updatedPatients);
+    MOCK_PATIENTS.length = 0;
+    MOCK_PATIENTS.push(...updatedPatients);
+
+    setPatients([...MOCK_PATIENTS]);
     setIsSessionModalOpen(false);
     setEditingSession(null);
     setSessionForm({ date: new Date().toISOString().split('T')[0], type: 'Acompanhamento', summary: '' });
@@ -138,7 +168,11 @@ export const RelatoriosTab = () => {
         }
         return p;
       });
-      setPatients(updatedPatients);
+      
+      MOCK_PATIENTS.length = 0;
+      MOCK_PATIENTS.push(...updatedPatients);
+      
+      setPatients([...MOCK_PATIENTS]);
       showToast('Sessão excluída', 'info');
     }
   };
@@ -315,7 +349,11 @@ export const RelatoriosTab = () => {
           />
         </div>
         <button
-          onClick={() => setIsNewPatientModalOpen(true)}
+          onClick={() => {
+            setEditingPatient(null);
+            setPatientForm({ name: '', cpf: '', phone: '' });
+            setIsNewPatientModalOpen(true);
+          }}
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-rose-500 text-white rounded-xl font-bold text-sm hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20"
         >
           <Plus size={18} /> Iniciar Acompanhamento
@@ -331,8 +369,18 @@ export const RelatoriosTab = () => {
               <div className="w-14 h-14 bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 rounded-2xl flex items-center justify-center shrink-0 shadow-inner group-hover:bg-rose-50 dark:group-hover:bg-rose-500/10 group-hover:text-rose-500 transition-colors">
                 <User size={28} />
               </div>
-              <div className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-neutral-500 border border-neutral-100 dark:border-neutral-700">
-                {patient.sessions.length} {patient.sessions.length === 1 ? 'Sessão' : 'Sessões'}
+              <div className="flex flex-col items-end gap-2">
+                <div className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-neutral-500 border border-neutral-100 dark:border-neutral-700">
+                  {patient.sessions.length} {patient.sessions.length === 1 ? 'Sessão' : 'Sessões'}
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setEditingPatient(patient); setPatientForm({ name: patient.name, cpf: patient.cpf, phone: patient.phone }); setIsNewPatientModalOpen(true); }} className="p-1.5 text-neutral-400 hover:text-rose-500 rounded-lg bg-neutral-50 dark:bg-neutral-800" title="Editar">
+                    <Edit2 size={14} />
+                  </button>
+                  <button onClick={() => handleDeletePatient(patient.id)} className="p-1.5 text-neutral-400 hover:text-red-500 rounded-lg bg-neutral-50 dark:bg-neutral-800" title="Excluir">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
             </div>
             
@@ -377,7 +425,7 @@ export const RelatoriosTab = () => {
                   <div className="w-12 h-12 bg-rose-50 dark:bg-rose-500/10 text-rose-500 rounded-2xl flex items-center justify-center">
                     <User size={24} />
                   </div>
-                  Novo Acompanhamento
+                  {editingPatient ? 'Editar Paciente' : 'Novo Acompanhamento'}
                 </h3>
                 <button onClick={() => setIsNewPatientModalOpen(false)} className="p-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-500 rounded-full transition-colors">
                   <X size={20} />
@@ -401,8 +449,9 @@ export const RelatoriosTab = () => {
                     <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">CPF</label>
                     <input
                       type="text"
+                      maxLength={14}
                       value={patientForm.cpf}
-                      onChange={e => setPatientForm({ ...patientForm, cpf: e.target.value })}
+                      onChange={e => setPatientForm({ ...patientForm, cpf: formatCPF(e.target.value) })}
                       className="w-full px-4 py-3.5 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none text-neutral-900 dark:text-white"
                       placeholder="000.000.000-00"
                     />
@@ -411,8 +460,9 @@ export const RelatoriosTab = () => {
                     <label className="block text-[10px] font-black text-neutral-400 uppercase tracking-widest mb-2">Telefone / WhatsApp</label>
                     <input
                       type="text"
+                      maxLength={15}
                       value={patientForm.phone}
-                      onChange={e => setPatientForm({ ...patientForm, phone: e.target.value })}
+                      onChange={e => setPatientForm({ ...patientForm, phone: formatPhone(e.target.value) })}
                       className="w-full px-4 py-3.5 bg-neutral-50 dark:bg-neutral-800 border-none rounded-2xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none text-neutral-900 dark:text-white"
                       placeholder="(00) 00000-0000"
                     />
@@ -425,7 +475,7 @@ export const RelatoriosTab = () => {
                   Cancelar
                 </button>
                 <button onClick={handleSavePatient} className="flex-1 py-4 bg-rose-500 text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-rose-600 transition-colors shadow-lg shadow-rose-500/20">
-                  Cadastrar
+                  {editingPatient ? 'Salvar Edição' : 'Cadastrar'}
                 </button>
               </div>
             </motion.div>

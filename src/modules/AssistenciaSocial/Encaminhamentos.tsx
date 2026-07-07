@@ -62,13 +62,18 @@ export const EncaminhamentosTab = () => {
     }
 
     if (editingReferral) {
-      setReferrals(referrals.map(r => r.id === editingReferral.id ? { ...r, ...formData } as Referral : r));
+      const updatedReferrals = referrals.map(r => r.id === editingReferral.id ? { ...r, ...formData } as Referral : r);
+      MOCK_REFERRALS.length = 0;
+      MOCK_REFERRALS.push(...updatedReferrals);
+      setReferrals([...MOCK_REFERRALS]);
+      
       if (selectedReferral?.id === editingReferral.id) {
         setSelectedReferral({ ...selectedReferral, ...formData } as Referral);
       }
       showToast('Encaminhamento atualizado!', 'success');
     } else {
-      setReferrals([{ id: crypto.randomUUID(), ...formData } as Referral, ...referrals]);
+      MOCK_REFERRALS.unshift({ id: crypto.randomUUID(), ...formData } as Referral);
+      setReferrals([...MOCK_REFERRALS]);
       showToast('Encaminhamento registrado!', 'success');
     }
     
@@ -79,7 +84,11 @@ export const EncaminhamentosTab = () => {
 
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir este encaminhamento?')) {
-      setReferrals(referrals.filter(r => r.id !== id));
+      const updatedReferrals = referrals.filter(r => r.id !== id);
+      MOCK_REFERRALS.length = 0;
+      MOCK_REFERRALS.push(...updatedReferrals);
+      setReferrals([...MOCK_REFERRALS]);
+      
       if (selectedReferral?.id === id) {
         setActiveView('list');
       }

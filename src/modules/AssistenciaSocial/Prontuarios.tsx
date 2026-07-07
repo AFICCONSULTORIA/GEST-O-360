@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, ClipboardList, User, ChevronLeft, Save, Edit2, AlertCircle, FileText, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { showToast } from '../../components/ui/Toast';
+import { formatCPF, formatPhone, formatNIS } from '../../lib/masks';
 
 export interface MedicalRecord {
   id: string;
@@ -84,7 +85,11 @@ export const ProntuariosTab = () => {
       return;
     }
     
-    setRecords(records.map(r => r.id === selectedRecord?.id ? { ...r, ...formData } as MedicalRecord : r));
+    const updatedRecords = records.map(r => r.id === selectedRecord?.id ? { ...r, ...formData } as MedicalRecord : r);
+    MOCK_RECORDS.length = 0;
+    MOCK_RECORDS.push(...updatedRecords);
+    
+    setRecords([...MOCK_RECORDS]);
     setSelectedRecord({ ...selectedRecord, ...formData } as MedicalRecord);
     setIsEditing(false);
     showToast('Prontuário atualizado com sucesso!', 'success');
@@ -170,8 +175,9 @@ export const ProntuariosTab = () => {
                   <input
                     type="text"
                     disabled={!isEditing}
+                    maxLength={14}
                     value={formData.cpf || ''}
-                    onChange={e => setFormData({ ...formData, cpf: e.target.value })}
+                    onChange={e => setFormData({ ...formData, cpf: formatCPF(e.target.value) })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none disabled:opacity-70 disabled:cursor-not-allowed text-neutral-900 dark:text-white"
                   />
                 </div>
@@ -210,8 +216,9 @@ export const ProntuariosTab = () => {
                   <input
                     type="text"
                     disabled={!isEditing}
+                    maxLength={15}
                     value={formData.phone || ''}
-                    onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={e => setFormData({ ...formData, phone: formatPhone(e.target.value) })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none disabled:opacity-70 disabled:cursor-not-allowed text-neutral-900 dark:text-white"
                   />
                 </div>
@@ -220,8 +227,9 @@ export const ProntuariosTab = () => {
                   <input
                     type="text"
                     disabled={!isEditing}
+                    maxLength={14}
                     value={formData.nis || ''}
-                    onChange={e => setFormData({ ...formData, nis: e.target.value })}
+                    onChange={e => setFormData({ ...formData, nis: formatNIS(e.target.value) })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none disabled:opacity-70 disabled:cursor-not-allowed text-neutral-900 dark:text-white"
                   />
                 </div>
@@ -251,8 +259,9 @@ export const ProntuariosTab = () => {
                   <input
                     type="text"
                     disabled={!isEditing}
+                    maxLength={15}
                     value={formData.emergencyPhone || ''}
-                    onChange={e => setFormData({ ...formData, emergencyPhone: e.target.value })}
+                    onChange={e => setFormData({ ...formData, emergencyPhone: formatPhone(e.target.value) })}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-rose-500 outline-none disabled:opacity-70 disabled:cursor-not-allowed text-neutral-900 dark:text-white"
                   />
                 </div>

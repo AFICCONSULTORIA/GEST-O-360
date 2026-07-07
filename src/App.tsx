@@ -29,6 +29,8 @@ import { CalendarModule } from './modules/Calendar';
 import { NormsModule } from './modules/Norms';
 import { SupportModule } from './modules/Support';
 import { AssistenciaSocialModule } from './modules/AssistenciaSocial';
+import { FinanceModules } from './modules/AdminFinancas';
+import { AdministracaoModule } from './modules/Administracao';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -1183,7 +1185,9 @@ export default function App() {
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} currentInstitution={currentInstitution} />}
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
-            {activeView === 'admin_financas' && <PlaceholderModule title="Secretaria de Administração e Finanças" />}
+            {activeView === 'admin_financas' && <FinanceModules />}
+            {activeView === 'administracao' && <AdministracaoModule />}
+            {activeView === 'financas' && <FinanceModules />}
             {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} />}
             {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}
             {activeView === 'meio_ambiente' && <PlaceholderModule title="Secretaria de Meio Ambiente" />}

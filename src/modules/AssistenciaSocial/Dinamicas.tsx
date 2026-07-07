@@ -70,13 +70,18 @@ export const DinamicasTab = () => {
     }
 
     if (editingDynamic) {
-      setDynamics(dynamics.map(d => d.id === editingDynamic.id ? { ...d, ...formData } as DynamicActivity : d));
+      const updatedDynamics = dynamics.map(d => d.id === editingDynamic.id ? { ...d, ...formData } as DynamicActivity : d);
+      MOCK_DYNAMICS.length = 0;
+      MOCK_DYNAMICS.push(...updatedDynamics);
+      setDynamics([...MOCK_DYNAMICS]);
+      
       if (selectedDynamic?.id === editingDynamic.id) {
         setSelectedDynamic({ ...selectedDynamic, ...formData } as DynamicActivity);
       }
       showToast('Atividade atualizada!', 'success');
     } else {
-      setDynamics([{ id: crypto.randomUUID(), ...formData } as DynamicActivity, ...dynamics]);
+      MOCK_DYNAMICS.unshift({ id: crypto.randomUUID(), ...formData } as DynamicActivity);
+      setDynamics([...MOCK_DYNAMICS]);
       showToast('Atividade adicionada ao Banco de Ideias!', 'success');
     }
     
@@ -86,7 +91,11 @@ export const DinamicasTab = () => {
 
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir esta atividade do banco de ideias?')) {
-      setDynamics(dynamics.filter(d => d.id !== id));
+      const updatedDynamics = dynamics.filter(d => d.id !== id);
+      MOCK_DYNAMICS.length = 0;
+      MOCK_DYNAMICS.push(...updatedDynamics);
+      setDynamics([...MOCK_DYNAMICS]);
+      
       if (selectedDynamic?.id === id) {
         setActiveView('list');
       }

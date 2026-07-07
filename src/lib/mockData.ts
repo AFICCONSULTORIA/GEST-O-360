@@ -176,7 +176,8 @@ export const NAVBAR_CATEGORIES = [
     items: [
       { id: 'education', label: 'Educação', icon: GraduationCap },
       { id: 'obras', label: 'Viação e Obras', icon: HardHat },
-      { id: 'admin_financas', label: 'Administração e Finanças', icon: Briefcase },
+      { id: 'administracao', label: 'Administração', icon: Briefcase },
+      { id: 'financas', label: 'Finanças', icon: Landmark },
       { id: 'saude', label: 'Saúde', icon: HeartPulse },
       { id: 'servicos_publicos', label: 'Serviços Públicos', icon: Wrench },
       { id: 'meio_ambiente', label: 'Meio Ambiente', icon: TreePine },
@@ -212,7 +213,8 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'reports', label: 'Relatórios' },
   { id: 'certificates', label: 'Certidões' },
   { id: 'obras', label: 'Obras e Inf.' },
-  { id: 'admin_financas', label: 'Administração/Finanças' },
+  { id: 'administracao', label: 'Administração' },
+  { id: 'financas', label: 'Finanças' },
   { id: 'saude', label: 'Saúde' },
   { id: 'servicos_publicos', label: 'Serviços Públicos' },
   { id: 'meio_ambiente', label: 'Meio Ambiente' },
@@ -230,7 +232,7 @@ export const MOCK_INSTITUTIONS: Institution[] = [
 ];
 
 export const MOCK_USERS: AdminUser[] = [
-  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'admin_financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara'], institution_id: 'inst_1' },
+  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara'], institution_id: 'inst_1' },
   { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'], institution_id: 'inst_1' },
   { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'], institution_id: 'inst_2' }
 ];
