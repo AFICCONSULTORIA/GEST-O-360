@@ -27,12 +27,12 @@ const compressImage = async (file: File): Promise<File> => {
 
     if (width > height) {
       if (width > MAX_WIDTH) {
-        height = Math.round((height *= MAX_WIDTH / width));
+        height = Math.round(height * (MAX_WIDTH / width));
         width = MAX_WIDTH;
       }
     } else {
       if (height > MAX_HEIGHT) {
-        width = Math.round((width *= MAX_HEIGHT / height));
+        width = Math.round(width * (MAX_HEIGHT / height));
         height = MAX_HEIGHT;
       }
     }
@@ -46,11 +46,27 @@ const compressImage = async (file: File): Promise<File> => {
     return new Promise((resolve) => {
       canvas.toBlob((blob) => {
         if (blob) {
-          const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
-            type: 'image/webp',
-            lastModified: Date.now(),
-          });
-          resolve(compressedFile);
+          // Se o navegador não suportar WebP no canvas, ele retorna image/png.
+          // PNG para fotos reais fica enorme, então fazemos fallback para JPEG.
+          if (blob.type === 'image/png') {
+            canvas.toBlob((jpegBlob) => {
+              if (jpegBlob) {
+                const compressedFile = new File([jpegBlob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                });
+                resolve(compressedFile);
+              } else {
+                resolve(file);
+              }
+            }, 'image/jpeg', 0.8);
+          } else {
+            const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+              type: 'image/webp',
+              lastModified: Date.now(),
+            });
+            resolve(compressedFile);
+          }
         } else {
           resolve(file);
         }
@@ -923,28 +939,36 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
 
                             showToast('Enviando imagens...', 'info');
 
-                            const newImageUrls: string[] = [];
-                            for (const file of filesToProcess) {
-                               try {
-                                 const compressedFile = await compressImage(file);
-                                 const safeName = compressedFile.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
-                                 const filename = `patrimonio/${Date.now()}-${safeName}`;
-                                 const { error } = await supabase.storage.from('certidoes').upload(filename, compressedFile);
-                                 if (!error) {
-                                   const { data } = supabase.storage.from('certidoes').getPublicUrl(filename);
-                                   newImageUrls.push(data.publicUrl);
-                                 } else {
-                                   console.error("Erro no upload", error);
-                                   showToast(`Erro ao enviar a imagem ${file.name}`, 'error');
-                                 }
-                               } catch (err) {
-                                 console.error("Erro na compressão", err);
-                                 showToast(`Erro ao processar a imagem ${file.name}`, 'error');
-                               }
-                            }
+                            try {
+                              const uploadPromises = filesToProcess.map(async (file) => {
+                                try {
+                                  const compressedFile = await compressImage(file);
+                                  const safeName = compressedFile.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
+                                  const filename = `patrimonio/${Date.now()}-${safeName}`;
+                                  
+                                  const { error } = await supabase.storage.from('certidoes').upload(filename, compressedFile);
+                                  if (error) throw error;
+                                  
+                                  const { data } = supabase.storage.from('certidoes').getPublicUrl(filename);
+                                  return data.publicUrl;
+                                } catch (err) {
+                                  console.error("Erro no processamento/upload do arquivo:", file.name, err);
+                                  showToast(`Erro ao enviar a imagem ${file.name}`, 'error');
+                                  return null;
+                                }
+                              });
 
-                            setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...newImageUrls] }));
-                            showToast('Imagens anexadas!', 'success');
+                              const newUrls = await Promise.all(uploadPromises);
+                              const validUrls = newUrls.filter((url): url is string => url !== null);
+
+                              if (validUrls.length > 0) {
+                                setFormData(prev => ({ ...prev, imageUrls: [...(prev.imageUrls || []), ...validUrls] }));
+                                showToast('Imagens anexadas!', 'success');
+                              }
+                            } catch (globalErr) {
+                              console.error("Erro no processamento de imagens", globalErr);
+                              showToast('Erro ao processar as imagens.', 'error');
+                            }
                           }}
                         />
                         <Package size={24} className="text-neutral-400" />

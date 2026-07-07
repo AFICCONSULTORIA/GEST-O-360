@@ -28,6 +28,7 @@ import { EducationModule } from './modules/Education';
 import { CalendarModule } from './modules/Calendar';
 import { NormsModule } from './modules/Norms';
 import { SupportModule } from './modules/Support';
+import { AssistenciaSocialModule } from './modules/AssistenciaSocial';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -1188,7 +1189,7 @@ export default function App() {
             {activeView === 'meio_ambiente' && <PlaceholderModule title="Secretaria de Meio Ambiente" />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}
             {activeView === 'agricultura' && <PlaceholderModule title="Secretaria de Agricultura" />}
-            {activeView === 'assistencia_social' && <PlaceholderModule title="Secretaria de Assistência Social" />}
+            {activeView === 'assistencia_social' && <AssistenciaSocialModule />}
             {activeView === 'esporte' && <PlaceholderModule title="Secretaria de Esporte" />}
             {activeView === 'planejamento' && <PlaceholderModule title="Secretaria de Planejamento" />}
             {activeView === 'camara' && <CamaraModule />}
