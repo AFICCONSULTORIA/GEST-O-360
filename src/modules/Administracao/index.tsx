@@ -25,6 +25,8 @@ export interface Employee {
   role: string;
   department: string;
   status: 'Ativo' | 'Afastado' | 'Férias';
+  agencia?: string;
+  conta?: string;
 }
 
 export interface Vehicle {
@@ -79,8 +81,8 @@ const MOCK_REQUESTS: EmployeeRequest[] = [
 ];
 
 const MOCK_EMPLOYEES: Employee[] = [
-  { id: 'emp_1', name: 'Ana Souza', cpf: '123.456.789-00', phone: '(11) 98765-4321', role: 'Assistente Administrativo', department: 'Gabinete', status: 'Ativo' },
-  { id: 'emp_2', name: 'Carlos Lima', cpf: '987.654.321-11', phone: '(11) 91234-5678', role: 'Motorista', department: 'Frota', status: 'Férias' },
+  { id: 'emp_1', name: 'Ana Souza', cpf: '123.456.789-00', phone: '(11) 98765-4321', role: 'Assistente Administrativo', department: 'Gabinete', status: 'Ativo', agencia: '0001', conta: '12345-6' },
+  { id: 'emp_2', name: 'Carlos Lima', cpf: '987.654.321-11', phone: '(11) 91234-5678', role: 'Motorista', department: 'Frota', status: 'Férias', agencia: '0001', conta: '98765-4' },
 ];
 
 const MOCK_VEHICLES: Vehicle[] = [
@@ -104,6 +106,8 @@ export const AdministracaoModule = () => {
   const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
   const [newEmployee, setNewEmployee] = useState<Partial<Employee>>({ status: 'Ativo' });
   const [requests, setRequests] = useState<EmployeeRequest[]>(MOCK_REQUESTS);
+  const [isAddRequestOpen, setIsAddRequestOpen] = useState(false);
+  const [newRequest, setNewRequest] = useState<Partial<EmployeeRequest>>({ type: 'Férias', status: 'Pendente' });
   const [vehicles, setVehicles] = useState<Vehicle[]>(MOCK_VEHICLES);
   const [supplies, setSupplies] = useState<SupplyItem[]>(MOCK_SUPPLIES);
 
@@ -202,6 +206,29 @@ export const AdministracaoModule = () => {
     setIsAddEmployeeOpen(false);
     setNewEmployee({ status: 'Ativo' });
     showToast('Servidor cadastrado com sucesso!', 'success');
+  };
+
+  const handleAddRequest = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRequest.name || !newRequest.role || !newRequest.period) {
+      showToast('Preencha os campos obrigatórios', 'error');
+      return;
+    }
+    const req: EmployeeRequest = {
+      id: `req_${Date.now()}`,
+      name: newRequest.name,
+      role: newRequest.role,
+      type: (newRequest.type as any) || 'Férias',
+      period: newRequest.period,
+      status: 'Pendente',
+    };
+    const updated = [...requests, req];
+    MOCK_REQUESTS.length = 0;
+    MOCK_REQUESTS.push(...updated);
+    setRequests(updated);
+    setIsAddRequestOpen(false);
+    setNewRequest({ type: 'Férias', status: 'Pendente' });
+    showToast('Solicitação cadastrada com sucesso!', 'success');
   };
 
   // Almoxarifado Actions
@@ -419,6 +446,7 @@ export const AdministracaoModule = () => {
                         <th className="py-4 px-4">CPF</th>
                         <th className="py-4 px-4">Cargo / Setor</th>
                         <th className="py-4 px-4">Contato</th>
+                        <th className="py-4 px-4">Dados Bancários</th>
                         <th className="py-4 px-4 text-right">Status</th>
                       </tr>
                     </thead>
@@ -432,6 +460,10 @@ export const AdministracaoModule = () => {
                             <p className="text-xs text-neutral-500">{emp.department}</p>
                           </td>
                           <td className="py-4 px-4 text-neutral-600 dark:text-neutral-300 text-sm">{emp.phone || '-'}</td>
+                          <td className="py-4 px-4">
+                            <p className="text-sm font-bold text-neutral-900 dark:text-white">Ag: {emp.agencia || '-'}</p>
+                            <p className="text-xs text-neutral-500">C/C: {emp.conta || '-'}</p>
+                          </td>
                           <td className="py-4 px-4 text-right">
                             <span className={`px-2.5 py-1 text-[10px] font-black uppercase tracking-widest rounded-lg border inline-block ${
                               emp.status === 'Ativo' ? 'bg-emerald-50 text-emerald-600 border-[#00A86B]/20 dark:bg-[#00A86B]/10 dark:text-[#00A86B]' :
@@ -449,6 +481,12 @@ export const AdministracaoModule = () => {
 
                 <div className="flex justify-between items-center mt-12">
                   <h3 className="text-xl font-black text-[#003B6F] dark:text-white">Solicitações de Férias e Licenças</h3>
+                  <button
+                    onClick={() => setIsAddRequestOpen(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#00A86B] text-white rounded-xl font-bold hover:bg-[#008f5b] transition-colors shadow-sm"
+                  >
+                    <Plus size={16} /> <span className="hidden sm:inline">Nova Solicitação</span>
+                  </button>
                 </div>
                 
                 <div className="overflow-x-auto">
@@ -469,7 +507,7 @@ export const AdministracaoModule = () => {
                           <td className="py-4 font-bold text-neutral-900 dark:text-white">{req.name}</td>
                           <td className="py-4 text-neutral-600 dark:text-neutral-300 text-sm">{req.role}</td>
                           <td className="py-4">
-                            <span className="px-2 py-1 bg-neutral-100 dark:bg-neutral-850 rounded-lg text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                            <span className="px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-xs font-semibold text-neutral-700 dark:text-neutral-100">
                               {req.type}
                             </span>
                           </td>
@@ -836,12 +874,74 @@ export const AdministracaoModule = () => {
                     <input type="text" value={newEmployee.department || ''} onChange={e => setNewEmployee({...newEmployee, department: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all" placeholder="Ex: RH" />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Agência</label>
+                    <input type="text" value={newEmployee.agencia || ''} onChange={e => setNewEmployee({...newEmployee, agencia: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all" placeholder="Ex: 0001" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Conta Corrente</label>
+                    <input type="text" value={newEmployee.conta || ''} onChange={e => setNewEmployee({...newEmployee, conta: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all" placeholder="Ex: 12345-6" />
+                  </div>
+                </div>
                 <div className="pt-4 flex justify-end gap-3">
                   <button type="button" onClick={() => setIsAddEmployeeOpen(false)} className="px-6 py-2.5 rounded-xl text-neutral-600 dark:text-neutral-400 font-bold hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
                     Cancelar
                   </button>
                   <button type="submit" className="px-6 py-2.5 rounded-xl bg-[#00A86B] text-white font-bold hover:bg-[#008f5b] transition-colors shadow-sm">
                     Salvar Servidor
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Modal Adicionar Solicitação */}
+      <AnimatePresence>
+        {isAddRequestOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-[#171717] w-full max-w-md rounded-3xl shadow-xl overflow-hidden"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-neutral-100 dark:border-neutral-800">
+                <h3 className="text-xl font-black text-[#003B6F] dark:text-white font-['Montserrat']">Nova Solicitação</h3>
+                <button onClick={() => setIsAddRequestOpen(false)} className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors">
+                  <XCircle size={24} />
+                </button>
+              </div>
+              <form onSubmit={handleAddRequest} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Nome do Servidor</label>
+                  <input required type="text" value={newRequest.name || ''} onChange={e => setNewRequest({...newRequest, name: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all" placeholder="Ex: João da Silva" />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Cargo</label>
+                  <input required type="text" value={newRequest.role || ''} onChange={e => setNewRequest({...newRequest, role: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all" placeholder="Ex: Analista" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Tipo</label>
+                    <select required value={newRequest.type || 'Férias'} onChange={e => setNewRequest({...newRequest, type: e.target.value as any})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all appearance-none cursor-pointer">
+                      <option value="Férias" className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">Férias</option>
+                      <option value="Licença Prêmio" className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">Licença Prêmio</option>
+                      <option value="Licença Médica" className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white">Licença Médica</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Período</label>
+                    <input required type="text" value={newRequest.period || ''} onChange={e => setNewRequest({...newRequest, period: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#00A86B]/50 transition-all" placeholder="Ex: 01/08 a 30/08" />
+                  </div>
+                </div>
+                <div className="pt-4 flex justify-end gap-3">
+                  <button type="button" onClick={() => setIsAddRequestOpen(false)} className="px-6 py-2.5 rounded-xl text-neutral-600 dark:text-neutral-400 font-bold hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors">
+                    Cancelar
+                  </button>
+                  <button type="submit" className="px-6 py-2.5 rounded-xl bg-[#00A86B] text-white font-bold hover:bg-[#008f5b] transition-colors shadow-sm">
+                    Salvar
                   </button>
                 </div>
               </form>

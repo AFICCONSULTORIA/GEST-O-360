@@ -174,8 +174,62 @@ const CertificateUploadModal = ({ title, onClose, onConfirm }: { title: string, 
   );
 };
 
+const CertificateEditDateModal = ({ title, currentExpiryDate, onClose, onConfirm }: { title: string, currentExpiryDate: string, onClose: () => void, onConfirm: (expiryDate: string) => void }) => {
+  const [expiryDate, setExpiryDate] = React.useState(currentExpiryDate);
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
+    >
+      <motion.div 
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="bg-white dark:bg-neutral-900 w-full max-w-lg rounded-[40px] p-10 shadow-2xl space-y-8"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="text-center space-y-2">
+          <div className="w-20 h-20 bg-neutral-50 dark:bg-neutral-800 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-neutral-100 dark:border-neutral-700">
+            <Edit2 size={32} className="text-neutral-400 dark:text-neutral-500" />
+          </div>
+          <h3 className="text-2xl font-black text-neutral-900 dark:text-neutral-100">Editar Validade</h3>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">{title}</p>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-bold text-neutral-900 dark:text-neutral-100 mb-2">Nova Data de Vencimento</label>
+            <input 
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white outline-none dark:text-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-4">
+          <button 
+            disabled={!expiryDate}
+            onClick={() => onConfirm(expiryDate)}
+            className="flex-1 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 py-4 rounded-[20px] font-black uppercase tracking-widest text-xs disabled:opacity-50 hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all"
+          >
+            Salvar Alteração
+          </button>
+          <button 
+            onClick={onClose}
+            className="px-8 py-4 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 rounded-[20px] font-bold text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all"
+          >
+            Cancelar
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUpdate, canEdit = true }: { company: CompanyCertificates, certLinks: Record<string, string>, stateLinks: Record<string, string>, onClose: () => void, onUpdate: (comp: CompanyCertificates) => void, canEdit?: boolean }) => {
   const [uploadingCert, setUploadingCert] = React.useState<string | null>(null);
+  const [editingDateCert, setEditingDateCert] = React.useState<string | null>(null);
   const [isStateModalOpen, setIsStateModalOpen] = React.useState(false);
   const [isPrintingAll, setIsPrintingAll] = React.useState(false);
   const [selectedCerts, setSelectedCerts] = React.useState<string[]>([]);
@@ -276,6 +330,28 @@ const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUp
     );
   }
 
+  if (editingDateCert) {
+    const cert = company.certificates[editingDateCert as keyof typeof company.certificates];
+    if (cert) {
+      return (
+        <CertificateEditDateModal 
+          title={editingDateCert}
+          currentExpiryDate={cert.expiryDate}
+          onClose={() => setEditingDateCert(null)}
+          onConfirm={(newExpiryDate) => {
+            const updated = { ...company };
+            updated.certificates = { 
+              ...updated.certificates, 
+              [editingDateCert]: { ...cert, expiryDate: newExpiryDate } 
+            };
+            onUpdate(updated);
+            setEditingDateCert(null);
+          }}
+        />
+      );
+    }
+  }
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -345,7 +421,18 @@ const ManageCertificatesModal = ({ company, certLinks, stateLinks, onClose, onUp
                        )}
                      </div>
                      {isPresent ? (
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold mt-0.5">Válida até {new Date(cert.expiryDate).toLocaleDateString('pt-BR')}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">Válida até {new Date(cert.expiryDate + 'T12:00:00').toLocaleDateString('pt-BR')}</p>
+                          {canEdit && (
+                            <button 
+                              onClick={() => setEditingDateCert(certType)} 
+                              title="Editar Validade"
+                              className="text-neutral-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors bg-neutral-100 dark:bg-neutral-800 hover:bg-sky-50 dark:hover:bg-sky-500/10 p-1 rounded border border-transparent hover:border-sky-200 dark:hover:border-sky-500/30"
+                            >
+                              <Edit2 size={12} />
+                            </button>
+                          )}
+                        </div>
                      ) : (
                         <p className="text-xs text-rose-500 dark:text-rose-400 font-bold mt-0.5">Ausente / Não cadastrada</p>
                      )}
@@ -706,7 +793,7 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   const getStatusInfo = (expiryDate: string) => {
     const today = new Date();
     today.setHours(0,0,0,0);
-    const exp = new Date(expiryDate);
+    const exp = new Date(expiryDate + 'T12:00:00');
     const diffTime = exp.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -742,7 +829,7 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
     return (
       <div className="flex flex-col gap-1 w-max">
         <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-          {new Date(cert.expiryDate).toLocaleDateString('pt-BR')}
+          {new Date(cert.expiryDate + 'T12:00:00').toLocaleDateString('pt-BR')}
         </span>
         <div className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${status.bg} ${status.color}`}>
           <status.icon size={10} />
