@@ -192,7 +192,22 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
               <div className="mt-6">
                 <h4 className="text-xl font-black leading-tight mb-2">O Mistério da Equação Perdida</h4>
                 <p className="text-indigo-100 text-sm opacity-90 mb-4">Resolva e ganhe 50 moedas!</p>
-                <button className="w-full py-2.5 bg-white text-indigo-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-colors shadow-md cursor-pointer">
+                <button 
+                  onClick={() => handleStartLesson({
+                    id: 'daily-' + new Date().toISOString().split('T')[0],
+                    title: 'O Mistério da Equação Perdida',
+                    type: 'quiz',
+                    duration: '10 min',
+                    xp: 200,
+                    coins: 50,
+                    questions: [
+                      { id: 'q1', question: 'Qual é o valor de x na equação 2x + 5 = 15?', options: ['5', '10', '15', '20'], correctAnswer: 0 },
+                      { id: 'q2', question: 'Se uma pizza é dividida em 8 pedaços e você come 3, que fração da pizza restou?', options: ['3/8', '5/8', '1/2', '8/3'], correctAnswer: 1 },
+                      { id: 'q3', question: 'Qual é a raiz quadrada de 144?', options: ['10', '11', '12', '14'], correctAnswer: 2 }
+                    ]
+                  })}
+                  className="w-full py-2.5 bg-white text-indigo-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-colors shadow-md cursor-pointer"
+                >
                   Jogar Agora
                 </button>
               </div>
