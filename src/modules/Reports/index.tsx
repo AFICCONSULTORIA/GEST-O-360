@@ -166,7 +166,7 @@ const SaudePrintLayout = ({ filteredItems, filters, loading }: { filteredItems: 
   const atendidosCount = filteredItems.filter(item => item.status === 'Atendido').length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Agendamentos (Saúde)</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -348,7 +348,7 @@ const ServicosPublicosPrintLayout = ({ filteredItems, filters, loading }: { filt
   const concluidosCount = filteredItems.filter(item => item.status === 'Concluído').length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Demandas (Serviços Públicos)</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -611,7 +611,7 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
   const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
   
   return (
-    <div className="max-w-[210mm] print:max-w-none mx-auto p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
+    <div className="max-w-[210mm] print:max-w-none mx-auto p-10 bg-white min-h-[297mm] print:min-h-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -829,7 +829,7 @@ const MedicamentosPrintLayout = ({ filteredItems, filters, loading }: { filtered
   const expiredCount = filteredItems.filter(item => isExpired(item.expiration_date)).length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Medicamentos (Farmácia SUS)</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -1062,7 +1062,7 @@ const PedidosPrintLayout = ({ filteredItems, filters, loading }: { filteredItems
   const cotacaoCount = filteredItems.filter(item => item.status === 'em_cotacao').length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Pedidos</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
