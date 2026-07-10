@@ -14,6 +14,7 @@ interface StudentHeaderProps {
     level: number;
     streak: number;
     coins: number;
+    avatar: string;
   };
   setActiveView: (view: any) => void;
 }
@@ -84,9 +85,9 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
           className="flex items-center gap-2.5 bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-700/80 rounded-xl px-2.5 py-1.5 transition-all group active:scale-95"
           onClick={() => setActiveView('settings')}
         >
-          <div className="w-7 h-7 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-sm">
-            <div className="w-full h-full rounded-full overflow-hidden border border-white dark:border-neutral-900">
-              <img alt="Arthur" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v" className="w-full h-full object-cover" />
+          <div className="w-7 h-7 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-sm shrink-0">
+            <div className="w-full h-full rounded-full overflow-hidden border border-white dark:border-neutral-900 bg-white">
+              <img alt={studentData.name} src={studentData.avatar} className="w-full h-full object-cover" />
             </div>
           </div>
           <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300 hidden lg:block group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">{studentData.name.split(' ')[0]}</span>

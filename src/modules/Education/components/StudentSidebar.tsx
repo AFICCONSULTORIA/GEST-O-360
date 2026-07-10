@@ -6,7 +6,7 @@ import {
   Target, 
   Award, 
   Settings, 
-  HelpCircle, 
+  Store,
   X, 
   Sparkles
 } from 'lucide-react';
@@ -77,8 +77,8 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
         >
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-md shrink-0">
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-900">
-                <img alt="Arthur" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v" className="w-full h-full object-cover" />
+              <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-900 bg-white">
+                <img alt="Avatar" src={studentData.avatar || "https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v"} className="w-full h-full object-cover" />
               </div>
             </div>
             <div className="flex-1 min-w-0">
@@ -132,8 +132,8 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
       <div className="relative z-10 px-4 pb-5 pt-2 border-t border-neutral-200/60 dark:border-neutral-800/40 space-y-1">
         <p className="text-[9px] font-black text-neutral-400 dark:text-neutral-600 uppercase tracking-[0.15em] px-3 pb-2 pt-1">Sistema</p>
         {[
+          { view: 'store', icon: <Store size={18} />, label: 'Loja', emoji: '🛒' },
           { view: 'settings', icon: <Settings size={18} />, label: 'Configurações', emoji: '⚙️' },
-          { view: 'support', icon: <HelpCircle size={18} />, label: 'Suporte', emoji: '💬' },
         ].map(({ view, icon, label, emoji }) => (
           <button
             key={view}

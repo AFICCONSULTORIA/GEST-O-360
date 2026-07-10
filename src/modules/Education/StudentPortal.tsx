@@ -22,7 +22,7 @@ import { StudentQuizPlayer } from './components/StudentQuizPlayer';
 import { StudentAssessments } from './components/StudentAssessments';
 import { StudentAchievements } from './components/StudentAchievements';
 import { StudentSettings } from './components/StudentSettings';
-import { StudentSupport } from './components/StudentSupport';
+import { StudentStore } from './components/StudentStore';
 import { StreakAnimationOverlay } from './components/StreakAnimationOverlay';
 
 // --- TYPES ---
@@ -239,7 +239,9 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
     coins: 450,
     highestStreak: 12,
     streakFreezes: 0,
-    weeklyActivity: [false, false, false, false, false, false, false]
+    weeklyActivity: [false, false, false, false, false, false, false],
+    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v',
+    inventory: [] as string[]
   });
 
   // Animação de Sequência (Streak)
@@ -263,11 +265,11 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
       }
 
       // Carregar Streak e atividade local
-      let localActivity = { dates: [] as string[], freezes: 0, highestStreak: 0 };
+      let localActivity = { dates: [] as string[], freezes: 0, highestStreak: 0, avatar: '', inventory: [] as string[] };
       if (studentId) {
         const storedAct = localStorage.getItem(`edu_activity_${studentId}`);
         if (storedAct) {
-          localActivity = JSON.parse(storedAct);
+          localActivity = { ...localActivity, ...JSON.parse(storedAct) };
         }
       }
 
@@ -329,14 +331,31 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             streak: currentStreak > 0 ? currentStreak : data.streak,
             highestStreak: Math.max(localActivity.highestStreak, currentStreak),
             streakFreezes: localActivity.freezes,
-            weeklyActivity
+            weeklyActivity,
+            avatar: localActivity.avatar || prev.avatar,
+            inventory: localActivity.inventory || prev.inventory
           }));
         }
       }
       setIsLoading(false);
     }
     loadData();
-  }, []);
+  }, [previewCourseId]);
+
+  // Salvar avatar e inventário sempre que mudarem
+  useEffect(() => {
+    if (studentData.id) {
+      const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
+      let localActivity = { dates: [] as string[], freezes: 0, highestStreak: 0, avatar: '', inventory: [] as string[] };
+      if (storedAct) {
+        localActivity = { ...localActivity, ...JSON.parse(storedAct) };
+      }
+      localActivity.avatar = studentData.avatar;
+      localActivity.inventory = studentData.inventory;
+      localActivity.freezes = studentData.streakFreezes;
+      localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
+    }
+  }, [studentData.avatar, studentData.inventory, studentData.streakFreezes, studentData.id]);
 
   const registerStudentActivity = (studentId: string) => {
     const storedAct = localStorage.getItem(`edu_activity_${studentId}`);
@@ -451,7 +470,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
     });
   };
 
-  const xpPercentage = Math.round((studentData.xp / studentData.nextLevelXp) * 100);
+  const xpPercentage = Math.min(100, Math.round((studentData.xp / studentData.nextLevelXp) * 100));
 
   return (
     <div className="min-h-[100dvh] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20">
@@ -543,6 +562,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
         {activeView === 'quiz-player' && activeLesson && (
           <StudentQuizPlayer
+            activeCourse={activeCourse}
             activeLesson={activeLesson}
             setActiveView={setActiveView}
             setActiveLesson={setActiveLesson}
@@ -573,8 +593,11 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
           />
         )}
 
-        {activeView === 'support' && (
-          <StudentSupport />
+        {activeView === 'store' && (
+          <StudentStore 
+            studentData={studentData}
+            setStudentData={setStudentData}
+          />
         )}
 
         {/* Modal de Animação de Streak (Sempre visível após uma atividade) */}

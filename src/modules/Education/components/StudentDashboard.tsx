@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -8,7 +8,8 @@ import {
   Clock, 
   Play, 
   Award, 
-  User
+  User,
+  Target
 } from 'lucide-react';
 import { Course } from '../StudentPortal';
 
@@ -20,6 +21,12 @@ interface StudentDashboardProps {
   handleStartLesson: (lesson: any) => void;
 }
 
+const ONLINE_FRIENDS = [
+  { id: 1, name: 'Gael', status: 'Estudando Álgebra', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD67XhB0DJ40aaTrcWE9Iu_CcFYker9wsK8fJp4A7tzRdu9BapL31HGEWE1YNiLn0vGagwV83hToRXj61oJHwqa90jNR9WsRsmG3nfD2pkzQbohLj66VPCTSk5ZgEEIr7s-KDWO0w3dGS9shn0V2SiFXd5iEDWQqlK76AiiDEsS5dkMZO5pxzNAt30M4FdnuuDXFNVVg797dlHMBDUiIpllNfDj8CTg1sGQSelXwDbN03csF-YcHbv5tjK3HL8OvXoSpjanR_rgKewT' },
+  { id: 2, name: 'Lívia', status: 'Fazendo Teste de Inglês', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDllRObvU5JxFTVh5peqsNKPqwOqP1l8lebIwbcOdWvzvHUyxWhDg43f0OcCFOnycftt_-hr-wNyLYuGKNAh6GHqpMby3k04-V7DZlITdVNLGB21dKL50vmm7l20NHjDpfO5mVgsqP9p8WskMxObv699qRM9aApARfS64JeVrxkhH7WIu9ioZMXSFXdgNd0A1K0Yd64IhHTrIQeSneQl-04iEuBW5ABmM_Va3_iVbWnsrdHQ1jMh8T7vzz8r_4inEwnTz4gQyLMte8j' },
+  { id: 3, name: 'Theo', status: 'No Mural de Conquistas', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDo0IL9p_Y9Mj9wmvRO8KmKUHwshNw8UEloqwmyKnzot8sffi7PYbE1E5zqtuYOkmxtL6IzO4FpE_OhmvAQ4lh2FGNIfGf25TeVpqrdttCCIYPOEDj-cxlMiYj3NsekfPLGjRYkFvL3sBtz541gu01UvLdC0OaGcEYOOdk6tbnoOj06DQQ_Go_41ng-Sr_j8SUedGt0w4ohI9oFlK2dQIwxMcrz5KW1CvGNBnfWNvE1sCInRc8D1EllM0C2GFssg5OEWMPAQXhPVBWj' }
+];
+
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   xpPercentage,
   courses,
@@ -27,6 +34,15 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   handleAccessCourse,
   handleStartLesson,
 }) => {
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [activeFriendId, setActiveFriendId] = useState<number | null>(null);
+
+  const handleInteract = (friendName: string, emoji: string) => {
+    setToastMessage(`Você mandou um ${emoji} para ${friendName}!`);
+    setActiveFriendId(null);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8">
       {/* Hero Premium Section */}
@@ -65,16 +81,49 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
                 <span className="text-3xl md:text-4xl font-black tracking-tighter">{xpPercentage}%</span>
               </div>
             </div>
-            <p className="mt-3 font-bold text-emerald-50 tracking-wide text-sm">Progresso Semanal</p>
+            <p className="mt-3 font-bold text-emerald-50 tracking-wide text-sm">Rumo ao Próximo Nível</p>
           </div>
         </div>
       </section>
 
       {/* Bento Grid Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column: My Trails & Courses */}
-        <div className="lg:col-span-8 space-y-6">
+      {/* Desafio do Dia */}
+      <section className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-[32px] p-6 md:p-8 text-white shadow-lg relative overflow-hidden group">
+        <div className="absolute -right-10 -top-10 opacity-20 group-hover:scale-110 transition-transform duration-500 pointer-events-none">
+          <Sparkles size={160} />
+        </div>
+        <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-widest mb-3">
+              <Target size={12} className="text-amber-100" />
+              Desafio do Dia
+            </div>
+            <h3 className="text-2xl font-black mb-2">Mestre das Equações</h3>
+            <p className="text-amber-50 text-sm max-w-sm mb-4">Resolva 5 exercícios de álgebra para ganhar a recompensa diária exclusiva!</p>
+            <div className="flex items-center gap-4">
+              <div className="w-48 h-2 bg-black/20 rounded-full overflow-hidden">
+                <div className="h-full bg-white rounded-full w-2/5"></div>
+              </div>
+              <span className="text-xs font-bold">2/5 concluidos</span>
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex items-center gap-2 bg-black/20 px-4 py-2 rounded-2xl font-black">
+              <span className="text-yellow-300">🪙 +150 Moedas</span>
+            </div>
+            <button 
+              onClick={() => setActiveView('assessments')}
+              className="px-6 py-3 bg-white text-orange-600 font-black text-sm uppercase tracking-widest rounded-2xl hover:scale-[1.05] active:scale-95 shadow-xl transition-all cursor-pointer whitespace-nowrap"
+            >
+              Jogar Agora
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Main Content Column */}
+        <div className="lg:col-span-2 space-y-8">
           
           {/* Trilhas em Andamento */}
           <section>
@@ -175,45 +224,8 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
 
         {/* Right Column: Achievements & Social */}
-        <aside className="lg:col-span-4 space-y-6">
+        <aside className="lg:col-span-1 space-y-6">
           
-          {/* Daily Challenge */}
-          <div className="bg-gradient-to-br from-violet-600 to-indigo-700 p-6 rounded-[24px] shadow-lg relative overflow-hidden text-white group">
-            <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[120%] bg-white/10 blur-[40px] rounded-full group-hover:scale-110 transition-transform duration-700 pointer-events-none"></div>
-            
-            <div className="relative z-10 flex flex-col h-full min-h-[160px] justify-between">
-              <div className="flex items-start justify-between">
-                <span className="inline-flex items-center gap-1.5 bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest">
-                  <Award size={12} />
-                  Desafio do Dia
-                </span>
-                <span className="text-2xl">🧩</span>
-              </div>
-              <div className="mt-6">
-                <h4 className="text-xl font-black leading-tight mb-2">O Mistério da Equação Perdida</h4>
-                <p className="text-indigo-100 text-sm opacity-90 mb-4">Resolva e ganhe 50 moedas!</p>
-                <button 
-                  onClick={() => handleStartLesson({
-                    id: 'daily-' + new Date().toISOString().split('T')[0],
-                    title: 'O Mistério da Equação Perdida',
-                    type: 'quiz',
-                    duration: '10 min',
-                    xp: 200,
-                    coins: 50,
-                    questions: [
-                      { id: 'q1', question: 'Qual é o valor de x na equação 2x + 5 = 15?', options: ['5', '10', '15', '20'], correctAnswer: 0 },
-                      { id: 'q2', question: 'Se uma pizza é dividida em 8 pedaços e você come 3, que fração da pizza restou?', options: ['3/8', '5/8', '1/2', '8/3'], correctAnswer: 1 },
-                      { id: 'q3', question: 'Qual é a raiz quadrada de 144?', options: ['10', '11', '12', '14'], correctAnswer: 2 }
-                    ]
-                  })}
-                  className="w-full py-2.5 bg-white text-indigo-700 font-bold text-xs uppercase tracking-widest rounded-xl hover:bg-indigo-50 transition-colors shadow-md cursor-pointer"
-                >
-                  Jogar Agora
-                </button>
-              </div>
-            </div>
-          </div>
-
           {/* Últimas Conquistas */}
           <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
             <h3 className="font-black text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
@@ -246,18 +258,52 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
 
           {/* Amigos Online */}
-          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm">
+          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm relative">
             <h3 className="font-black text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
               <User className="text-sky-500" size={20} />
               Amigos Online
             </h3>
-            <div className="flex -space-x-3 overflow-hidden mb-3 p-1">
-              <img alt="Friend 1" className="inline-block h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD67XhB0DJ40aaTrcWE9Iu_CcFYker9wsK8fJp4A7tzRdu9BapL31HGEWE1YNiLn0vGagwV83hToRXj61oJHwqa90jNR9WsRsmG3nfD2pkzQbohLj66VPCTSk5ZgEEIr7s-KDWO0w3dGS9shn0V2SiFXd5iEDWQqlK76AiiDEsS5dkMZO5pxzNAt30M4FdnuuDXFNVVg797dlHMBDUiIpllNfDj8CTg1sGQSelXwDbN03csF-YcHbv5tjK3HL8OvXoSpjanR_rgKewT" />
-              <img alt="Friend 2" className="inline-block h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDllRObvU5JxFTVh5peqsNKPqwOqP1l8lebIwbcOdWvzvHUyxWhDg43f0OcCFOnycftt_-hr-wNyLYuGKNAh6GHqpMby3k04-V7DZlITdVNLGB21dKL50vmm7l20NHjDpfO5mVgsqP9p8WskMxObv699qRM9aApARfS64JeVrxkhH7WIu9ioZMXSFXdgNd0A1K0Yd64IhHTrIQeSneQl-04iEuBW5ABmM_Va3_iVbWnsrdHQ1jMh8T7vzz8r_4inEwnTz4gQyLMte8j" />
-              <img alt="Friend 3" className="inline-block h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDo0IL9p_Y9Mj9wmvRO8KmKUHwshNw8UEloqwmyKnzot8sffi7PYbE1E5zqtuYOkmxtL6IzO4FpE_OhmvAQ4lh2FGNIfGf25TeVpqrdttCCIYPOEDj-cxlMiYj3NsekfPLGjRYkFvL3sBtz541gu01UvLdC0OaGcEYOOdk6tbnoOj06DQQ_Go_41ng-Sr_j8SUedGt0w4ohI9oFlK2dQIwxMcrz5KW1CvGNBnfWNvE1sCInRc8D1EllM0C2GFssg5OEWMPAQXhPVBWj" />
-              <div className="flex items-center justify-center h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 text-xs font-bold shadow-sm">+5</div>
+            
+            <div className="flex flex-col gap-4 mb-3">
+              {ONLINE_FRIENDS.map((friend) => (
+                <div key={friend.id} className="relative group">
+                  <div 
+                    onClick={() => setActiveFriendId(activeFriendId === friend.id ? null : friend.id)}
+                    className="flex items-center gap-3 cursor-pointer p-2 rounded-2xl hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
+                  >
+                    <div className="relative">
+                      <img alt={friend.name} className="h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm object-cover" src={friend.avatar} />
+                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm border border-emerald-400"></div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-neutral-900 dark:text-white leading-tight">{friend.name}</p>
+                      <p className="text-[10px] text-neutral-500 font-bold">{friend.status}</p>
+                    </div>
+                  </div>
+
+                  {/* Interações Popover */}
+                  {activeFriendId === friend.id && (
+                    <div className="absolute top-12 left-10 bg-white dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 shadow-xl rounded-2xl p-2 flex items-center gap-2 z-20 animate-in zoom-in-95 duration-200">
+                      <button onClick={() => handleInteract(friend.name, '🚀')} className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-sky-50 dark:hover:bg-sky-500/20 hover:scale-110 transition-all cursor-pointer">🚀</button>
+                      <button onClick={() => handleInteract(friend.name, '🔥')} className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-500/20 hover:scale-110 transition-all cursor-pointer">🔥</button>
+                      <button onClick={() => handleInteract(friend.name, '👊')} className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-500/20 hover:scale-110 transition-all cursor-pointer">👊</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+              
+              <div className="flex items-center gap-3 p-2">
+                <div className="flex items-center justify-center h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 text-xs font-bold shadow-sm">+5</div>
+                <p className="text-xs text-neutral-500 font-bold">outros alunos estão na plataforma.</p>
+              </div>
             </div>
-            <p className="text-xs text-neutral-500 font-medium">Gael e outros 4 estão estudando agora.</p>
+
+            {/* Toast Flutuante de Confirmação */}
+            {toastMessage && (
+              <div className="absolute bottom-4 left-0 right-0 mx-auto w-max px-4 py-2 bg-neutral-900 text-white text-xs font-bold rounded-full shadow-xl animate-in slide-in-from-bottom-2 fade-in duration-300 z-30">
+                {toastMessage}
+              </div>
+            )}
           </div>
 
         </aside>

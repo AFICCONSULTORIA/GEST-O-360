@@ -28,6 +28,7 @@ interface StudentQuizPlayerProps {
     isFinished: boolean;
   }>>;
   finishLesson: () => void;
+  activeCourse?: any;
 }
 
 export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
@@ -37,12 +38,13 @@ export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
   quizState,
   setQuizState,
   finishLesson,
+  activeCourse,
 }) => {
   return (
     <div className="fixed inset-0 z-[100] bg-neutral-50 dark:bg-neutral-950 flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900">
-        <button onClick={() => { setActiveView('trail-map'); setActiveLesson(null); }} className="p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer">
+        <button onClick={() => { setActiveView(activeCourse ? 'trail-map' : 'assessments'); setActiveLesson(null); }} className="p-2 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer">
           <X size={24} />
         </button>
         <div className="flex-1 max-w-xl mx-8">
@@ -70,7 +72,9 @@ export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
                 </div>
                 <h2 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">Ops! Sem perguntas</h2>
                 <p className="text-neutral-500 mb-8 max-w-sm mx-auto">Parece que o professor ainda não adicionou as perguntas para este desafio.</p>
-                <button onClick={() => { setActiveView('trail-map'); setActiveLesson(null); }} className="px-8 py-3 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold transition-colors cursor-pointer">Voltar para o Mapa</button>
+                <div className="mt-8">
+                <button onClick={() => { setActiveView(activeCourse ? 'trail-map' : 'assessments'); setActiveLesson(null); }} className="px-8 py-3 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold transition-colors cursor-pointer">Voltar</button>
+              </div>
               </div>
             );
           }

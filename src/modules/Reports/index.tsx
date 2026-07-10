@@ -151,7 +151,7 @@ const SaudePrintView = ({ onClose, institutionId }: { onClose: () => void, insti
         </div>
       </div>
       <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
-        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
+        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0">
           <SaudePrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, status: filterStatus, specialty: filterSpecialty, startDate: filterStartDate, endDate: filterEndDate }} loading={loading} />
         </div>
       </div>
@@ -166,7 +166,7 @@ const SaudePrintLayout = ({ filteredItems, filters, loading }: { filteredItems: 
   const atendidosCount = filteredItems.filter(item => item.status === 'Atendido').length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Agendamentos (Saúde)</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -333,7 +333,7 @@ const ServicosPublicosPrintView = ({ onClose, institutionId }: { onClose: () => 
         </div>
       </div>
       <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
-        <div className="bg-white shadow-2xl print:shadow-none w-full print:w-full max-w-[210mm] min-h-[297mm]">
+        <div className="bg-white shadow-2xl print:shadow-none w-full print:w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0">
           <ServicosPublicosPrintLayout filteredItems={filteredItems} filters={{ status: filterStatus, category: filterCategory }} loading={loading} />
         </div>
       </div>
@@ -348,7 +348,7 @@ const ServicosPublicosPrintLayout = ({ filteredItems, filters, loading }: { filt
   const concluidosCount = filteredItems.filter(item => item.status === 'Concluído').length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Demandas (Serviços Públicos)</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -598,7 +598,7 @@ const PatrimonioPrintView = ({ patrimonioItems, onClose }: { patrimonioItems: Pa
         </div>
       </div>
       <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
-        <div className="bg-white shadow-2xl print:shadow-none w-full print:w-full max-w-[210mm] min-h-[297mm]">
+        <div className="bg-white shadow-2xl print:shadow-none w-full print:w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0">
           <PatrimonioPrintLayout filteredItems={filteredItems} filters={{ dept: filterDept, cond: filterCond, status: filterStatus, search: filterSearch }} />
         </div>
       </div>
@@ -611,7 +611,7 @@ const PatrimonioPrintLayout = ({ filteredItems, filters }: { filteredItems: Patr
   const servivelCount = filteredItems.filter(item => item.status === 'Servível').length;
   
   return (
-    <div className="max-w-[210mm] mx-auto p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+    <div className="max-w-[210mm] print:max-w-none mx-auto p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Controle Patrimonial</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -812,7 +812,7 @@ const MedicamentosPrintView = ({ onClose, institutionId }: { onClose: () => void
         </div>
       </div>
       <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
-        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
+        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0">
           <MedicamentosPrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, stock: filterStock, validity: filterValidity }} loading={loading} />
         </div>
       </div>
@@ -829,7 +829,7 @@ const MedicamentosPrintLayout = ({ filteredItems, filters, loading }: { filtered
   const expiredCount = filteredItems.filter(item => isExpired(item.expiration_date)).length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Medicamentos (Farmácia SUS)</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>
@@ -1045,7 +1045,7 @@ const PedidosPrintView = ({ onClose, institutionId }: { onClose: () => void, ins
         </div>
       </div>
       <div className="flex-1 overflow-auto p-4 sm:p-8 print:p-0 flex justify-center items-start print:overflow-visible print:block">
-        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] min-h-[297mm]">
+        <div className="bg-white shadow-2xl print:shadow-none print:w-full w-full max-w-[210mm] print:max-w-none min-h-[297mm] print:min-h-0">
           <PedidosPrintLayout filteredItems={filteredItems} filters={{ search: filterSearch, status: filterStatus, type: filterType, startDate: filterStartDate, endDate: filterEndDate }} loading={loading} />
         </div>
       </div>
@@ -1062,7 +1062,7 @@ const PedidosPrintLayout = ({ filteredItems, filters, loading }: { filteredItems
   const cotacaoCount = filteredItems.filter(item => item.status === 'em_cotacao').length;
   
   return (
-    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:p-0 print:m-0 text-black">
+    <div className="mx-auto p-6 sm:p-10 bg-white min-h-[297mm] print:min-h-0 print:p-0 print:m-0 text-black">
       <div className="text-center mb-10 border-b-2 border-neutral-200 pb-6">
         <h1 className="text-2xl font-black uppercase tracking-widest">Relatório de Pedidos</h1>
         <p className="text-sm text-neutral-500 mt-2">Plataforma Gestão 360 - Emitido em {new Date().toLocaleDateString('pt-BR')}</p>

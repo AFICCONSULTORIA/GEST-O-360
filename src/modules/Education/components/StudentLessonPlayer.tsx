@@ -29,7 +29,7 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            <button onClick={() => { setActiveView('trail-map'); setActiveLesson(null); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors cursor-pointer">
+            <button onClick={() => { setActiveView(activeCourse ? 'trail-map' : 'assessments'); setActiveLesson(null); }} className="p-2 hover:bg-white/10 rounded-xl transition-colors cursor-pointer">
               <ArrowLeft size={24} />
             </button>
             <div>
