@@ -22,6 +22,8 @@ import { PublicFarmaciaPortal } from './modules/Saude/PublicFarmacia';
 import { ServicosPublicosModule } from './modules/ServicosPublicos';
 import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
 import { PublicEducacaoPortal } from './modules/Education/PublicPortal';
+import { MeioAmbienteModule } from './modules/MeioAmbiente';
+import { PublicMeioAmbientePortal } from './modules/MeioAmbiente/PublicPortal';
 import { CamaraModule } from './modules/Camara';
 import { ContractsModule } from './modules/Contracts';
 import { EducationModule } from './modules/Education';
@@ -412,6 +414,7 @@ export default function App() {
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isEducacaoPortal = currentPath === '/educacao';
+  const isMeioAmbientePortal = currentPath === '/meio-ambiente';
   const isAdminRoute = currentPath === '/servidores' || currentPath.startsWith('/servidores/');
   const isLandingPage = currentPath === '/';
   const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
@@ -516,6 +519,22 @@ export default function App() {
             </button>
           </div>
           <PublicEducacaoPortal darkMode={darkMode} currentInstitution={currentInstitution} />
+      </div>
+    );
+  }
+
+  if (isMeioAmbientePortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+         <div className="absolute top-10 right-10 z-50">
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+          <PublicMeioAmbientePortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }
@@ -1190,7 +1209,7 @@ export default function App() {
             {activeView === 'financas' && <FinanceModules />}
             {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} />}
             {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}
-            {activeView === 'meio_ambiente' && <PlaceholderModule title="Secretaria de Meio Ambiente" />}
+            {activeView === 'meio_ambiente' && <MeioAmbienteModule currentInstitution={currentInstitution} />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}
             {activeView === 'agricultura' && <PlaceholderModule title="Secretaria de Agricultura" />}
             {activeView === 'assistencia_social' && <AssistenciaSocialModule />}

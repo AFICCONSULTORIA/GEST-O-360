@@ -204,3 +204,17 @@ export interface Contract {
   department: string;
   alertSent: boolean;
 }
+
+export interface EnvironmentalReport {
+  id: string;
+  description: string;
+  location: string;
+  referencePoint?: string;
+  isAnonymous: boolean;
+  reporterName?: string;
+  reporterContact?: string;
+  photoUrl?: string;
+  status: 'Pendente' | 'Em Análise' | 'Resolvido';
+  dateReported: string;
+  institution_id?: string;
+}
