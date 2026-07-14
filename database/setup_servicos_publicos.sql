@@ -15,7 +15,15 @@ CREATE TABLE IF NOT EXISTS public.servicos_publicos_demandas (
 ALTER TABLE public.servicos_publicos_demandas ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de acesso
+-- Políticas de acesso
+DROP POLICY IF EXISTS "Permitir leitura para todos" ON public.servicos_publicos_demandas;
 CREATE POLICY "Permitir leitura para todos" ON public.servicos_publicos_demandas FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Permitir inserção anônima" ON public.servicos_publicos_demandas;
 CREATE POLICY "Permitir inserção anônima" ON public.servicos_publicos_demandas FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir atualização para todos" ON public.servicos_publicos_demandas;
 CREATE POLICY "Permitir atualização para todos" ON public.servicos_publicos_demandas FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Permitir deleção para todos" ON public.servicos_publicos_demandas;
 CREATE POLICY "Permitir deleção para todos" ON public.servicos_publicos_demandas FOR DELETE USING (true);

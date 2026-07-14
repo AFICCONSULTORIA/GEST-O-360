@@ -3,13 +3,14 @@ import { Camera, MapPin, AlertCircle, Send, FileText, CheckCircle2 } from 'lucid
 import { motion } from 'framer-motion';
 
 interface ReportFormProps {
-  onSubmit: (data: any) => Promise<void>;
+  onSubmit: (data: any) => Promise<string | undefined>;
 }
 
 export const ReportForm = ({ onSubmit }: ReportFormProps) => {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [protocol, setProtocol] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     description: '',
     location: '',
@@ -22,7 +23,10 @@ export const ReportForm = ({ onSubmit }: ReportFormProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
-    await onSubmit(formData);
+    const result = await onSubmit(formData);
+    if (result) {
+      setProtocol(result);
+    }
     setIsSubmitting(false);
     setSuccess(true);
   };
@@ -38,12 +42,19 @@ export const ReportForm = ({ onSubmit }: ReportFormProps) => {
           <CheckCircle2 size={40} />
         </div>
         <h3 className="text-2xl font-black tracking-tight text-emerald-900 dark:text-emerald-100 mb-2">Denúncia Enviada!</h3>
-        <p className="text-emerald-700 dark:text-emerald-300 mb-8 max-w-md mx-auto">
+        <p className="text-emerald-700 dark:text-emerald-300 mb-6 max-w-md mx-auto">
           Sua denúncia foi registrada com sucesso e encaminhada para a equipe de fiscalização ambiental. Agradecemos sua colaboração em proteger nossa cidade.
         </p>
+        {protocol && (
+          <div className="bg-white/50 dark:bg-black/20 p-4 rounded-xl mb-8 inline-block">
+            <p className="text-sm text-emerald-800 dark:text-emerald-400 font-bold mb-1">Protocolo de Acompanhamento</p>
+            <p className="text-2xl font-black text-emerald-900 dark:text-emerald-100 tracking-wider">{protocol}</p>
+          </div>
+        )}
         <button 
           onClick={() => {
             setSuccess(false);
+            setProtocol(null);
             setStep(1);
             setFormData({
               description: '',

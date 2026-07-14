@@ -11,13 +11,31 @@ interface PublicMeioAmbientePortalProps {
 
 export const PublicMeioAmbientePortal = ({ darkMode, currentInstitution }: PublicMeioAmbientePortalProps) => {
   const handleReportSubmit = async (data: any) => {
-    // Simulação de envio da denúncia para o banco de dados
-    console.log('Enviando denúncia simulada:', data);
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        resolve();
-      }, 1500);
-    });
+    try {
+      // Import dynamic to avoid breaking if not configured
+      const { supabase } = await import('@/lib/supabase');
+      const protocolo = `MA-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
+      
+      const { error } = await supabase
+        .from('meio_ambiente_denuncias')
+        .insert([{
+          protocolo,
+          description: data.description,
+          location: data.location,
+          reference_point: data.referencePoint || null,
+          is_anonymous: data.isAnonymous,
+          reporter_name: data.reporterName || null,
+          reporter_contact: data.reporterContact || null,
+        }]);
+
+      if (error) throw error;
+      
+      console.log('Denúncia enviada com sucesso:', protocolo);
+      return protocolo;
+    } catch (error) {
+      console.error('Erro ao enviar denúncia:', error);
+      alert('Erro ao enviar denúncia. Tente novamente.');
+    }
   };
 
   return (
