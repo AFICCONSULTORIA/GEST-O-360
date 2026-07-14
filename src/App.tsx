@@ -265,6 +265,31 @@ export default function App() {
   const [orders, setOrders] = React.useState<OrderItem[]>(MOCK_ORDERS);
   const [docRecords, setDocRecords] = React.useState<DocumentRecord[]>(MOCK_DOCUMENTS);
   const [departments, setDepartments] = React.useState<Department[]>([]);
+  const [pendingReportsCount, setPendingReportsCount] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+    
+    const fetchPendingReportsCount = async () => {
+      const { count } = await supabase
+        .from('meio_ambiente_denuncias')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'Nova');
+      if (count !== null) setPendingReportsCount(count);
+    };
+    
+    fetchPendingReportsCount();
+    
+    const reportsSub = supabase.channel('reports-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meio_ambiente_denuncias' }, payload => {
+        fetchPendingReportsCount();
+      })
+      .subscribe();
+      
+    return () => {
+      reportsSub.unsubscribe();
+    };
+  }, [isAuthenticated]);
 
   React.useEffect(() => {
     // Busca pública das prefeituras para exibir a logo na Landing Page
@@ -784,6 +809,11 @@ export default function App() {
                                   >
                                     <item.icon size={16} className="shrink-0" />
                                     {item.label}
+                                    {item.id === 'meio_ambiente' && pendingReportsCount > 0 && (
+                                      <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-sm">
+                                        {pendingReportsCount}
+                                      </span>
+                                    )}
                                   </button>
                                 ))}
                               </div>
@@ -929,6 +959,11 @@ export default function App() {
                             >
                               <item.icon size={16} />
                               {item.label}
+                              {item.id === 'meio_ambiente' && pendingReportsCount > 0 && (
+                                <span className="ml-auto bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center shadow-sm">
+                                  {pendingReportsCount}
+                                </span>
+                              )}
                             </button>
                           ))}
                         </div>
