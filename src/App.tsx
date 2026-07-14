@@ -1209,7 +1209,7 @@ export default function App() {
             {activeView === 'financas' && <FinanceModules />}
             {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} />}
             {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}
-            {activeView === 'meio_ambiente' && <MeioAmbienteModule currentInstitution={currentInstitution} />}
+            {activeView === 'meio_ambiente' && <MeioAmbienteModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}
             {activeView === 'agricultura' && <PlaceholderModule title="Secretaria de Agricultura" />}
             {activeView === 'assistencia_social' && <AssistenciaSocialModule />}

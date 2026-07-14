@@ -207,6 +207,7 @@ export interface Contract {
 
 export interface EnvironmentalReport {
   id: string;
+  protocolo?: string;
   description: string;
   location: string;
   referencePoint?: string;

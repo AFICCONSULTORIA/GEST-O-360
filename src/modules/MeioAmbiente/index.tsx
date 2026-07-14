@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Leaf, Search, MapPin, AlertTriangle, CheckCircle2, XCircle, FileText, Image as ImageIcon, Camera, User, Calendar, Filter } from 'lucide-react';
-import { EnvironmentalReport } from '../../types';
+import { EnvironmentalReport, AdminUser } from '../../types';
 import { showToast } from '../../components/ui/Toast';
+import { supabase } from '../../lib/supabase';
 
 const MOCK_REPORTS: EnvironmentalReport[] = [
   {
@@ -35,15 +36,90 @@ const MOCK_REPORTS: EnvironmentalReport[] = [
   }
 ];
 
-export const MeioAmbienteModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
-  const [reports, setReports] = useState<EnvironmentalReport[]>(MOCK_REPORTS);
+export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { currentInstitution?: { id: string } | null, currentUser?: AdminUser | null }) => {
+  const [reports, setReports] = useState<EnvironmentalReport[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('Todos');
   const [selectedReport, setSelectedReport] = useState<EnvironmentalReport | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const updateStatus = (id: string, newStatus: 'Pendente' | 'Em Análise' | 'Resolvido') => {
-    setReports(reports.map(r => r.id === id ? { ...r, status: newStatus } : r));
-    showToast('Status atualizado!', 'success');
+  const fetchReports = async () => {
+    try {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('meio_ambiente_denuncias')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const mappedReports: EnvironmentalReport[] = data.map(d => ({
+          id: d.id,
+          protocolo: d.protocolo,
+          description: d.description,
+          location: d.location,
+          referencePoint: d.reference_point,
+          isAnonymous: d.is_anonymous,
+          reporterName: d.reporter_name,
+          reporterContact: d.reporter_contact,
+          status: d.status === 'Nova' ? 'Pendente' : d.status as 'Pendente' | 'Em Análise' | 'Resolvido',
+          dateReported: d.created_at,
+          photoUrl: d.photo_url,
+        }));
+        setReports(mappedReports);
+      }
+    } catch (error) {
+      console.error('Erro ao buscar denúncias:', error);
+      showToast('Erro ao carregar denúncias', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReports();
+  }, []);
+
+  const updateStatus = async (id: string, newStatus: 'Pendente' | 'Em Análise' | 'Resolvido') => {
+    try {
+      const dbStatus = newStatus === 'Pendente' ? 'Nova' : newStatus;
+      const { error } = await supabase
+        .from('meio_ambiente_denuncias')
+        .update({ status: dbStatus })
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      setReports(reports.map(r => r.id === id ? { ...r, status: newStatus } : r));
+      if (selectedReport?.id === id) {
+        setSelectedReport({ ...selectedReport, status: newStatus });
+      }
+      showToast('Status atualizado com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao atualizar status:', error);
+      showToast('Erro ao atualizar status', 'error');
+    }
+  };
+
+  const deleteReport = async (id: string) => {
+    if (!confirm('Tem certeza que deseja excluir esta denúncia? Esta ação não pode ser desfeita.')) return;
+    
+    try {
+      const { error } = await supabase
+        .from('meio_ambiente_denuncias')
+        .delete()
+        .eq('id', id);
+        
+      if (error) throw error;
+      
+      setReports(reports.filter(r => r.id !== id));
+      setSelectedReport(null);
+      showToast('Denúncia excluída com sucesso!', 'success');
+    } catch (error) {
+      console.error('Erro ao excluir denúncia:', error);
+      showToast('Erro ao excluir denúncia', 'error');
+    }
   };
 
   const filtered = reports.filter(r => {
@@ -109,9 +185,16 @@ export const MeioAmbienteModule = ({ currentInstitution }: { currentInstitution?
             }`} />
             
             <div className="flex justify-between items-start mb-4">
-              <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border ${getStatusColor(report.status)}`}>
-                {report.status}
-              </span>
+              <div className="flex flex-col gap-1">
+                 <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full border w-fit ${getStatusColor(report.status)}`}>
+                   {report.status}
+                 </span>
+                 {report.protocolo && (
+                   <span className="text-[10px] font-bold text-neutral-400 dark:text-neutral-500">
+                     Protocolo: {report.protocolo}
+                   </span>
+                 )}
+              </div>
               <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                  {report.status !== 'Resolvido' && (
                     <button onClick={(e) => { e.stopPropagation(); updateStatus(report.id, 'Resolvido'); }} className="p-1.5 text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20" title="Marcar como Resolvido"><CheckCircle2 size={16} /></button>
@@ -162,7 +245,7 @@ export const MeioAmbienteModule = ({ currentInstitution }: { currentInstitution?
               <div className="p-8 pb-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
                 <div>
                   <h2 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-white">Detalhes da Denúncia</h2>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">ID: {selectedReport.id}</p>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Protocolo: {selectedReport.protocolo || selectedReport.id}</p>
                 </div>
                 <button onClick={() => setSelectedReport(null)} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-500 dark:text-neutral-400">
                   <XCircle size={24} />
@@ -255,6 +338,11 @@ export const MeioAmbienteModule = ({ currentInstitution }: { currentInstitution?
                   {selectedReport.status === 'Pendente' && (
                      <button onClick={() => updateStatus(selectedReport.id, 'Em Análise')} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-amber-500/20">
                         Iniciar Análise
+                     </button>
+                  )}
+                  {(currentUser?.role === 'Super Admin' || currentUser?.role === 'Admin') && (
+                     <button onClick={() => deleteReport(selectedReport.id)} className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-red-500/20">
+                        Excluir
                      </button>
                   )}
                 </div>
