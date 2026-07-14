@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Leaf, ChevronLeft } from 'lucide-react';
 import { AwarenessSection } from './components/AwarenessSection';
 import { ReportForm } from './components/ReportForm';
+import { supabase } from '../../lib/supabase';
 
 interface PublicMeioAmbientePortalProps {
   darkMode: boolean;
@@ -12,8 +13,6 @@ interface PublicMeioAmbientePortalProps {
 export const PublicMeioAmbientePortal = ({ darkMode, currentInstitution }: PublicMeioAmbientePortalProps) => {
   const handleReportSubmit = async (data: any) => {
     try {
-      // Import dynamic to avoid breaking if not configured
-      const { supabase } = await import('@/lib/supabase');
       const protocolo = `MA-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`;
       
       const { error } = await supabase
