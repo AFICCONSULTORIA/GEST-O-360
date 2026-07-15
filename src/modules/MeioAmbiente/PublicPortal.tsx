@@ -43,13 +43,13 @@ export const PublicMeioAmbientePortal = ({ darkMode, currentInstitution }: Publi
       <nav className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-200/50 dark:border-neutral-800/50 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
+            {/* <button 
               onClick={() => window.location.href = '/'}
               className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-500 dark:text-neutral-400"
               title="Voltar ao Início"
             >
               <ChevronLeft size={24} />
-            </button>
+            </button> */}
             <div className="flex items-center gap-3">
               {currentInstitution?.logo_url ? (
                 <img src={currentInstitution.logo_url} alt="Logo" className="h-10 w-auto object-contain" />
@@ -66,9 +66,9 @@ export const PublicMeioAmbientePortal = ({ darkMode, currentInstitution }: Publi
           </div>
 
           <div className="flex items-center gap-4">
-             <a href="/" className="text-sm font-bold text-neutral-600 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
+             {/* <a href="/" className="text-sm font-bold text-neutral-600 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors">
                 Portal Principal
-             </a>
+             </a> */}
           </div>
         </div>
       </nav>
