@@ -172,11 +172,16 @@ const AgendamentosModule = ({ currentInstitution }: { currentInstitution?: { id:
   };
 
   const handleWhatsAppClick = async (apt: Appointment) => {
-    window.open(getWhatsAppLink(apt), '_blank', 'noopener,noreferrer');
-    if (!apt.whatsapp_sent) {
-      setAppointments(appointments.map(a => a.id === apt.id ? { ...a, whatsapp_sent: true } : a));
-      await supabase.from('appointments').update({ whatsapp_sent: true }).eq('id', apt.id);
-    }
+    // Simula o envio via servidor (Central de Comunicação)
+    showToast(`Enviando notificação via Central para ${apt.patient_name}...`, 'info');
+    
+    setTimeout(async () => {
+      showToast('Notificação enviada com sucesso!', 'success');
+      if (!apt.whatsapp_sent) {
+        setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, whatsapp_sent: true } : a));
+        await supabase.from('appointments').update({ whatsapp_sent: true }).eq('id', apt.id);
+      }
+    }, 1500);
   };
 
   const handleSaveDateTime = async (aptId: string, newDate: string, newTime: string) => {

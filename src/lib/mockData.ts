@@ -24,7 +24,8 @@ import {
   Map, 
   Landmark, 
   BookOpen, 
-  Users2 
+  Users2,
+  MessageSquare
 } from 'lucide-react';
 
 import { 
@@ -189,6 +190,14 @@ export const NAVBAR_CATEGORIES = [
     ]
   },
   {
+    id: 'comunicacao',
+    label: 'Comunicação',
+    icon: MessageSquare,
+    items: [
+      { id: 'communication', label: 'Central WhatsApp', icon: MessageSquare },
+    ]
+  },
+  {
     id: 'legislativo',
     label: 'Poder Legislativo',
     icon: Landmark,
@@ -224,6 +233,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'esporte', label: 'Esporte' },
   { id: 'planejamento', label: 'Planejamento' },
   { id: 'camara', label: 'Câmara Municipal' },
+  { id: 'communication', label: 'Comunicação WhatsApp' },
   { id: 'settings', label: 'Configurações' }
 ];
 
@@ -232,7 +242,7 @@ export const MOCK_INSTITUTIONS: Institution[] = [
 ];
 
 export const MOCK_USERS: AdminUser[] = [
-  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara'], institution_id: 'inst_1' },
+  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara', 'communication'], institution_id: 'inst_1' },
   { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'], institution_id: 'inst_1' },
   { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'], institution_id: 'inst_2' }
 ];

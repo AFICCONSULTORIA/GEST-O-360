@@ -12,7 +12,12 @@ import {
   DollarSign, 
   Users,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Landmark,
+  Handshake,
+  Award,
+  FileSignature,
+  PieChart
 } from 'lucide-react';
 import { BarChart, Bar, ResponsiveContainer, Cell } from 'recharts';
 
@@ -190,6 +195,90 @@ export const MayorDashboard = ({ darkMode, userName = 'Prefeito' }: MayorDashboa
              <p className="text-3xl font-black text-neutral-900 dark:text-white mb-2">12.000</p>
              <p className="text-xs font-semibold text-neutral-500">Kits entregues este mês.</p>
           </div>
+        </div>
+      </div>
+
+      {/* Seção: Balanço Semestral e Articulação (Capital Político) */}
+      <div className="mt-6">
+        <div className="flex items-center gap-3 mb-4 px-2">
+          <div className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl">
+            <Landmark size={20} />
+          </div>
+          <div>
+            <h3 className="text-lg font-black text-neutral-900 dark:text-white">Balanço Semestral & Articulação</h3>
+            <p className="text-xs text-neutral-500 font-medium mt-0.5">Indicadores de capital político e resultados de gestão</p>
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded-2xl">
+                <Handshake size={24} />
+              </div>
+              <span className="flex items-center text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+                1º Semestre
+              </span>
+            </div>
+            <p className="text-3xl font-black text-neutral-900 dark:text-white mb-1">R$ 12,5<span className="text-lg text-neutral-500 font-bold ml-1">Mi</span></p>
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Emendas Captadas</p>
+            <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 opacity-70 group-hover:opacity-100 transition-opacity">
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase tracking-wider font-bold">Base de apoio sólida na câmara e assembleia</p>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded-2xl">
+                <Award size={24} />
+              </div>
+              <span className="flex items-center text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                Em dia
+              </span>
+            </div>
+            <div className="flex items-end gap-2 mb-1">
+              <p className="text-3xl font-black text-neutral-900 dark:text-white">68%</p>
+            </div>
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Plano de Governo</p>
+            <div className="w-full bg-neutral-100 dark:bg-neutral-800 rounded-full h-1.5 mt-3 mb-1">
+               <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '68%' }}></div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800 opacity-70 group-hover:opacity-100 transition-opacity">
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase tracking-wider font-bold">Promessas de campanha cumpridas</p>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded-2xl">
+                <FileSignature size={24} />
+              </div>
+              <span className="flex items-center text-xs font-bold px-2.5 py-1 rounded-full bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                Execução Alta
+              </span>
+            </div>
+            <p className="text-3xl font-black text-neutral-900 dark:text-white mb-1">18</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Convênios Assinados</p>
+            <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 opacity-70 group-hover:opacity-100 transition-opacity">
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase tracking-wider font-bold">Parcerias federais e estaduais ativas</p>
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded-2xl">
+                <PieChart size={24} />
+              </div>
+              <span className="flex items-center text-xs font-bold px-2.5 py-1 rounded-full bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400">
+                <TrendingUp size={12} className="mr-1" /> +12% Base
+              </span>
+            </div>
+            <p className="text-3xl font-black text-neutral-900 dark:text-white mb-1">45</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Projetos Aprovados</p>
+            <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800 opacity-70 group-hover:opacity-100 transition-opacity">
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400 uppercase tracking-wider font-bold">Ampla governabilidade no legislativo</p>
+            </div>
+          </motion.div>
         </div>
       </div>
 

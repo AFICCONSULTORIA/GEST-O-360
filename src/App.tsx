@@ -33,6 +33,7 @@ import { SupportModule } from './modules/Support';
 import { AssistenciaSocialModule } from './modules/AssistenciaSocial';
 import { FinanceModules } from './modules/AdminFinancas';
 import { AdministracaoModule } from './modules/Administracao';
+import { CommunicationCenter } from './modules/CommunicationCenter';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -400,6 +401,16 @@ export default function App() {
   const [isChangingPassword, setIsChangingPassword] = React.useState(false);
   const [forcePasswordChange, setForcePasswordChange] = React.useState(false);
   const [homeMode, setHomeMode] = React.useState<'quick_access' | 'mayor'>('mayor');
+
+  React.useEffect(() => {
+    if (currentUser) {
+      if (currentUser.role === 'Prefeito' || currentUser.role === 'Super Admin') {
+        setHomeMode('mayor');
+      } else {
+        setHomeMode('quick_access');
+      }
+    }
+  }, [currentUser]);
   const [recentViews, setRecentViews] = React.useState<View[]>([]);
 
   // Carrega os acessos recentes quando o usuário logar
@@ -1158,20 +1169,22 @@ export default function App() {
                       {homeMode === 'mayor' ? 'Indicadores estratégicos da gestão.' : (recentViews.length > 0 ? 'Suas ferramentas mais utilizadas recentemente.' : 'Selecione um módulo para começar.')}
                     </p>
                   </div>
-                  <div className="bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl flex items-center">
-                    <button
-                      onClick={() => setHomeMode('mayor')}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${homeMode === 'mayor' ? 'bg-white dark:bg-neutral-900 shadow-sm text-purple-600 dark:text-purple-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
-                    >
-                      Visão do Prefeito
-                    </button>
-                    <button
-                      onClick={() => setHomeMode('quick_access')}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${homeMode === 'quick_access' ? 'bg-white dark:bg-neutral-900 shadow-sm text-purple-600 dark:text-purple-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
-                    >
-                      Módulos do Sistema
-                    </button>
-                  </div>
+                  {(currentUser?.role === 'Prefeito' || currentUser?.role === 'Super Admin') && (
+                    <div className="bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl flex items-center">
+                      <button
+                        onClick={() => setHomeMode('mayor')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${homeMode === 'mayor' ? 'bg-white dark:bg-neutral-900 shadow-sm text-purple-600 dark:text-purple-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
+                      >
+                        Visão do Prefeito
+                      </button>
+                      <button
+                        onClick={() => setHomeMode('quick_access')}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${homeMode === 'quick_access' ? 'bg-white dark:bg-neutral-900 shadow-sm text-purple-600 dark:text-purple-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
+                      >
+                        Módulos do Sistema
+                      </button>
+                    </div>
+                  )}
                 </div>
                 
                 {homeMode === 'mayor' ? (
@@ -1277,6 +1290,7 @@ export default function App() {
             {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} departments={departments} setDepartments={setDepartments} currentUser={currentUser} />}
             {activeView === 'support' && <SupportModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'templates' && <TemplatesModule />}
+            {activeView === 'communication' && <CommunicationCenter />}
           </motion.div>
         </AnimatePresence>
         </div>

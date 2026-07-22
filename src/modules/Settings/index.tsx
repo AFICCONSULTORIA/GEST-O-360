@@ -756,6 +756,7 @@ export const SettingsModule = ({
                       >
                         <option value="Super Admin">Super Admin (Global)</option>
                         <option value="Admin">Admin</option>
+                        <option value="Prefeito">Prefeito</option>
                         <option value="Editor">Editor</option>
                         <option value="Visualizador">Visualizador</option>
                         <option value="Professor">Professor</option>
