@@ -3,24 +3,51 @@ import React from 'react';
 interface LogoCompassProps {
   size?: number;
   className?: string;
+  variant?: 'emerald' | 'indigo' | 'blue';
 }
 
-export const LogoCompass = ({ size = 32, className = '' }: LogoCompassProps) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
-    <defs>
-      <linearGradient id="compass-gradient" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#10B981" />
-        <stop offset="1" stopColor="#06B6D4" />
-      </linearGradient>
-      <linearGradient id="needle-gradient" x1="12" y1="6" x2="12" y2="12" gradientUnits="userSpaceOnUse">
-        <stop stopColor="#34D399" />
-        <stop offset="1" stopColor="#22D3EE" />
-      </linearGradient>
-    </defs>
-    <circle cx="12" cy="12" r="10" stroke="url(#compass-gradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M12 4V5M12 19V20M4 12H5M19 12H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="opacity-30" />
-    <path d="M12 12L15 6L12 10.5V12Z" fill="url(#needle-gradient)" />
-    <path d="M12 12L9 18L12 13.5V12Z" fill="currentColor" className="opacity-50" />
-    <circle cx="12" cy="12" r="2" fill="currentColor" />
-  </svg>
-);
+export const LogoCompass: React.FC<LogoCompassProps> = ({ 
+  size = 32, 
+  className = ''
+}) => {
+  const [hasError, setHasError] = React.useState(false);
+
+  if (hasError) {
+    // High quality fallback SVG Planet logo
+    return (
+      <svg 
+        width={size} 
+        height={size} 
+        viewBox="0 0 32 32" 
+        fill="none" 
+        xmlns="http://www.w3.org/2000/svg" 
+        className={`shrink-0 ${className}`}
+      >
+        <defs>
+          <linearGradient id="fallback-planet-grad" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#6366F1" />
+            <stop offset="1" stopColor="#8B5CF6" />
+          </linearGradient>
+          <linearGradient id="fallback-ring-grad" x1="2" y1="16" x2="30" y2="16" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#38BDF8" />
+            <stop offset="1" stopColor="#A855F7" />
+          </linearGradient>
+        </defs>
+        <path d="M 5 21 C 8 13, 22 10, 27 13" stroke="url(#fallback-ring-grad)" strokeWidth="2.5" opacity="0.5" />
+        <circle cx="16" cy="16" r="9.5" fill="url(#fallback-planet-grad)" />
+        <path d="M 4 19.5 C 7 24.5, 25 24.5, 28 17.5" stroke="url(#fallback-ring-grad)" strokeWidth="2.8" strokeLinecap="round" />
+        <circle cx="25.5" cy="19.5" r="2" fill="white" />
+      </svg>
+    );
+  }
+
+  return (
+    <img 
+      src="/logo-planet.png" 
+      alt="Gestão 360 Logo"
+      onError={() => setHasError(true)}
+      style={{ width: size, height: size }}
+      className={`object-contain rounded-xl shrink-0 transition-transform duration-300 ${className}`}
+    />
+  );
+};
