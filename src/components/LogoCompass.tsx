@@ -12,12 +12,15 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
 }) => {
   const [hasError, setHasError] = React.useState(false);
 
+  // Apply a 1.45x scaling multiplier so image logos match visual weight of SVG icons
+  const displaySize = Math.max(Math.round(size * 1.45), 34);
+
   if (hasError) {
     // High quality fallback SVG Planet logo
     return (
       <svg 
-        width={size} 
-        height={size} 
+        width={displaySize} 
+        height={displaySize} 
         viewBox="0 0 32 32" 
         fill="none" 
         xmlns="http://www.w3.org/2000/svg" 
@@ -46,8 +49,8 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
       src="/logo-planet.png" 
       alt="Gestão 360 Logo"
       onError={() => setHasError(true)}
-      style={{ width: size, height: size }}
-      className={`object-contain rounded-xl shrink-0 transition-transform duration-300 ${className}`}
+      style={{ width: displaySize, height: displaySize }}
+      className={`object-contain shrink-0 transition-transform duration-300 hover:scale-105 ${className}`}
     />
   );
 };

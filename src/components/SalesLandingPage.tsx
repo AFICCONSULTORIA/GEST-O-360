@@ -58,12 +58,12 @@ const Navbar = ({
 
           {/* Logo */}
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className={`p-2 rounded-xl border transition-all duration-300 group-hover:scale-105 ${
+            <div className={`p-1.5 rounded-xl border transition-all duration-300 group-hover:scale-105 ${
               scrolled
                 ? 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 shadow-sm'
                 : 'bg-white/10 border-white/15'
             }`}>
-              <LogoCompass size={24} />
+              <LogoCompass size={32} />
             </div>
             <span className="text-xl font-black tracking-tight italic text-white">
               Gestão <span className="text-white/50 font-normal">360</span>
