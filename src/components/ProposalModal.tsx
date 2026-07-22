@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, Download, X, CheckCircle2, ShieldCheck, Zap, Globe, 
   Building2, Users, PieChart, Landmark, HeartPulse, GraduationCap, 
-  HardHat, MessageSquare, Printer, Send
+  HardHat, MessageSquare, Printer, Send, FileCheck, ListOrdered
 } from 'lucide-react';
 import { LogoCompass } from './LogoCompass';
 
@@ -111,53 +111,62 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose })
           {/* Main Body */}
           <div className="p-8 sm:p-12 space-y-10 bg-white print:p-8">
             
-            {/* Section 1: O Desafio dos Municípios */}
+            {/* Section 1: Os Dois Pilares da Solução */}
             <section className="space-y-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl font-bold text-sm">01</div>
-                <h3 className="text-xl font-black tracking-tight text-neutral-900">Principais Dores Resolvidas na Gestão Municipal</h3>
+                <div>
+                  <h3 className="text-xl font-black tracking-tight text-neutral-900">Pilares Fundamentais do Gestão 360</h3>
+                  <p className="text-xs text-neutral-500 font-medium">Desenhado para simplificar a rotina e proteger a administração pública.</p>
+                </div>
               </div>
               
               <div className="grid sm:grid-cols-2 gap-4 pt-2">
-                <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
-                    <ShieldCheck size={18} />
-                    Blindagem Jurídica & Prazos TCE
+                
+                {/* Pilar 1: O Servidor */}
+                <div className="p-5 bg-emerald-50/50 rounded-2xl border border-emerald-200/70 space-y-3">
+                  <div className="flex items-center gap-2 text-emerald-800 font-black text-sm uppercase tracking-wider">
+                    <Zap size={18} className="text-emerald-600" />
+                    1. Facilidade & Produtividade para o Servidor
                   </div>
-                  <p className="text-xs text-neutral-600 leading-relaxed">
-                    Eliminação de multas e sanções decorrentes de prazos vencidos no RREO, LRF, Siace e obrigações do Tribunal de Contas com alertas preventivos em tempo real.
-                  </p>
+                  <ul className="space-y-2 text-xs text-neutral-700 leading-relaxed font-medium">
+                    <li className="flex items-start gap-2">
+                      <span className="text-emerald-600 font-bold">•</span>
+                      <span><strong>Zero Burocracia & Retrabalho:</strong> Eliminação de planilhas paralelas e pilhas de papel com processos 100% digitais.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-emerald-600 font-bold">•</span>
+                      <span><strong>Controle Sequencial Automático:</strong> Fim do erro de numeração duplicada ou pulada em decretos, portarias e ofícios.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-emerald-600 font-bold">•</span>
+                      <span><strong>Interface Intuitiva:</strong> Telas amigáveis e fluxo simplificado para que a equipe trabalhe sem estresse.</span>
+                    </li>
+                  </ul>
                 </div>
 
-                <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
-                    <Globe size={18} />
-                    Radar PNTP & Transparência Ativa
+                {/* Pilar 2: A Prefeitura / Prefeito */}
+                <div className="p-5 bg-sky-50/50 rounded-2xl border border-sky-200/70 space-y-3">
+                  <div className="flex items-center gap-2 text-sky-800 font-black text-sm uppercase tracking-wider">
+                    <ShieldCheck size={18} className="text-sky-600" />
+                    2. Segurança Jurídica & Tranquilidade para o Gestor
                   </div>
-                  <p className="text-xs text-neutral-600 leading-relaxed">
-                    Envio automatizado de processos licitatórios e homologações ao PNTP (Lei 14.133), elevando a pontuação do município no Radar Nacional de Transparência.
-                  </p>
+                  <ul className="space-y-2 text-xs text-neutral-700 leading-relaxed font-medium">
+                    <li className="flex items-start gap-2">
+                      <span className="text-sky-600 font-bold">•</span>
+                      <span><strong>Alertas Preventivos TCE/LRF:</strong> Notificações antes de prazos vencerem, prevenindo apontamentos e multas.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-sky-600 font-bold">•</span>
+                      <span><strong>Banco de Certidões (CND):</strong> Validação contínua da regularidade de fornecedores para evitar contratos irregulares.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-sky-600 font-bold">•</span>
+                      <span><strong>Radar PNTP & Transparência:</strong> Conformidade total com a Lei 14.133 para elevar o índice nacional do município.</span>
+                    </li>
+                  </ul>
                 </div>
 
-                <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
-                    <Zap size={18} />
-                    Economia de Até 40% em Custeio
-                  </div>
-                  <p className="text-xs text-neutral-600 leading-relaxed">
-                    Eliminação de papel com protocolo 100% digital, controle rigoroso de frotas e insumos, e otimização de pedidos entre secretarias.
-                  </p>
-                </div>
-
-                <div className="p-5 bg-neutral-50 rounded-2xl border border-neutral-200/80 space-y-2">
-                  <div className="flex items-center gap-2 text-emerald-700 font-bold text-sm">
-                    <Users size={18} />
-                    Conexão Direta com o Cidadão
-                  </div>
-                  <p className="text-xs text-neutral-600 leading-relaxed">
-                    Portais públicos intuitivos no celular para agendamento de saúde, consulta a remédios da Farmácia SUS, serviços públicos e ouvidoria.
-                  </p>
-                </div>
               </div>
             </section>
 
