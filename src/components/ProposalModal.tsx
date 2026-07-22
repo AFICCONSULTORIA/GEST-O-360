@@ -256,10 +256,10 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose })
 
               <div className="grid sm:grid-cols-3 gap-4 pt-2">
                 <div className="p-5 bg-emerald-50/60 rounded-2xl border border-emerald-200/80 text-center space-y-2">
-                  <div className="text-2xl font-black text-emerald-800">15 Dias</div>
+                  <div className="text-2xl font-black text-emerald-800">7 Dias</div>
                   <div className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Implantação Rápida</div>
                   <p className="text-[11px] text-emerald-700 leading-normal">
-                    Configuração em nuvem imediata com cadastro de subdomínio e logo da prefeitura em menos de 15 dias.
+                    Configuração em nuvem imediata com cadastro de subdomínio e logo da prefeitura em menos de 7 dias.
                   </p>
                 </div>
 
