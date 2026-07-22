@@ -10,17 +10,19 @@ import {
 import { LogoCompass } from './LogoCompass';
 import { showToast } from './ui/Toast';
 import { Institution } from '../types';
+import { ProposalModal } from './ProposalModal';
 
 const WA_DEMO_URL = "https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20agendar%20uma%20demonstra%C3%A7%C3%A3o%20do%20sistema%20Gest%C3%A3o%20360%20para%20o%20meu%20munic%C3%ADpio.";
 const WA_CHAT_URL = "https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20tirar%20d%C3%BAvidas%20sobre%20o%20sistema%20Gest%C3%A3o%20360.";
 
 /* ── Navbar ─────────────────────────────────────────────── */
 const Navbar = ({
-  darkMode, setDarkMode, onSelectMunicipality
+  darkMode, setDarkMode, onSelectMunicipality, onOpenProposal
 }: {
   darkMode: boolean;
   setDarkMode: (v: boolean) => void;
   onSelectMunicipality: () => void;
+  onOpenProposal: () => void;
 }) => {
   const [scrolled, setScrolled] = React.useState(false);
   const [mobileOpen, setMobileOpen] = React.useState(false);
@@ -99,6 +101,19 @@ const Navbar = ({
               title={darkMode ? 'Modo claro' : 'Modo escuro'}
             >
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            {/* Baixar Apresentação PDF */}
+            <button
+              onClick={onOpenProposal}
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 hover:scale-[1.02] border ${
+                scrolled
+                  ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20'
+                  : 'border-emerald-400/40 text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25'
+              }`}
+            >
+              <FileText size={14} />
+              Apresentação PDF
             </button>
 
             {/* Municipality selector */}
@@ -219,6 +234,7 @@ export const SalesLandingPage = ({
 }) => {
   const [activeTab, setActiveTab] = React.useState<'gabinete' | 'administracao' | 'servicos' | 'cidadao'>('gabinete');
   const [isSelectorModalOpen, setIsSelectorModalOpen] = React.useState(false);
+  const [isProposalModalOpen, setIsProposalModalOpen] = React.useState(false);
   const [searchCity, setSearchCity] = React.useState('');
 
   const heroRef = React.useRef<HTMLDivElement>(null);
@@ -332,6 +348,7 @@ export const SalesLandingPage = ({
           darkMode={darkMode}
           setDarkMode={setDarkMode}
           onSelectMunicipality={() => setIsSelectorModalOpen(true)}
+          onOpenProposal={() => setIsProposalModalOpen(true)}
         />
 
         {/* ── HERO ───────────────────────────────────────────── */}
@@ -389,8 +406,15 @@ export const SalesLandingPage = ({
                     Agendar Demonstração Gratuita
                   </a>
                   <button
+                    onClick={() => setIsProposalModalOpen(true)}
+                    className="flex items-center justify-center gap-2 px-7 py-4 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/30 text-emerald-300 font-black text-sm uppercase tracking-wider rounded-2xl hover:scale-[1.02] active:scale-[0.97] transition-all"
+                  >
+                    <FileText size={16} />
+                    Baixar Apresentação PDF
+                  </button>
+                  <button
                     onClick={() => document.getElementById('solucoes')?.scrollIntoView({ behavior: 'smooth' })}
-                    className="flex items-center justify-center gap-2 px-8 py-4 bg-white/10 hover:bg-white/16 backdrop-blur-sm text-white border border-white/15 font-bold text-sm rounded-2xl hover:scale-[1.02] active:scale-[0.97] transition-all"
+                    className="flex items-center justify-center gap-2 px-6 py-4 bg-white/10 hover:bg-white/16 backdrop-blur-sm text-white border border-white/15 font-bold text-sm rounded-2xl hover:scale-[1.02] active:scale-[0.97] transition-all"
                   >
                     Ver Soluções
                     <ChevronRight size={16} />
@@ -919,6 +943,12 @@ export const SalesLandingPage = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Modal de Apresentação Institucional e PDF */}
+        <ProposalModal
+          isOpen={isProposalModalOpen}
+          onClose={() => setIsProposalModalOpen(false)}
+        />
       </div>
     </div>
   );
