@@ -80,8 +80,8 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose })
             <div className="relative z-10 space-y-6">
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white/10 rounded-2xl border border-white/20">
-                    <LogoCompass size={42} />
+                  <div className="rounded-2xl border border-white/20 overflow-hidden flex items-center justify-center shadow-lg shadow-black/30">
+                    <LogoCompass size={56} />
                   </div>
                   <div>
                     <h1 className="text-2xl font-black italic tracking-tight">GESTÃO <span className="text-emerald-400 font-normal">360</span></h1>

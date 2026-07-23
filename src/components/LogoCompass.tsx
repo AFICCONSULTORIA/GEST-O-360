@@ -1,4 +1,7 @@
 import React from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 interface LogoCompassProps {
   size?: number;
@@ -11,9 +14,19 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
   className = ''
 }) => {
   const [hasError, setHasError] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(false);
 
-  // Apply a 1.45x scaling multiplier so image logos match visual weight of SVG icons
+  // Apply scaling multiplier
   const displaySize = Math.max(Math.round(size * 1.45), 34);
+
+  // Handle escape key to close modal
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsExpanded(false);
+    };
+    if (isExpanded) window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isExpanded]);
 
   if (hasError) {
     // High quality fallback SVG Planet logo
@@ -44,13 +57,56 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
     );
   }
 
+  const modal = typeof document !== 'undefined' && createPortal(
+    <AnimatePresence>
+      {isExpanded && (
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 sm:p-8"
+          onClick={() => setIsExpanded(false)}
+        >
+          {/* Botão Fechar */}
+          <button 
+            className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur-md transition-all duration-300"
+            onClick={(e) => { e.stopPropagation(); setIsExpanded(false); }}
+          >
+            <X size={24} />
+          </button>
+
+          {/* Imagem em Tela Cheia */}
+          <motion.img 
+            initial={{ scale: 0.8, y: 20 }}
+            animate={{ scale: 1, y: 0 }}
+            exit={{ scale: 0.8, y: 20, opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            src="/logo-planet.png" 
+            alt="Gestão 360 Logo - Full"
+            className="w-full max-w-3xl max-h-[85vh] object-contain drop-shadow-[0_0_80px_rgba(56,189,248,0.4)]"
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>,
+    document.body
+  );
+
   return (
-    <img 
-      src="/logo-planet.png" 
-      alt="Gestão 360 Logo"
-      onError={() => setHasError(true)}
-      style={{ width: displaySize, height: displaySize }}
-      className={`object-contain shrink-0 transition-transform duration-300 hover:scale-105 ${className}`}
-    />
+    <>
+      <div 
+        onClick={() => setIsExpanded(true)}
+        style={{ width: displaySize, height: displaySize }}
+        className={`relative overflow-hidden rounded-xl shrink-0 cursor-pointer flex items-center justify-center group bg-neutral-950 ${className}`}
+      >
+        <img 
+          src="/logo-planet.png" 
+          alt="Gestão 360 Logo"
+          onError={() => setHasError(true)}
+          className="w-[115%] h-[115%] max-w-none object-contain transition-transform duration-500 group-hover:scale-110"
+        />
+      </div>
+      {modal}
+    </>
   );
 };

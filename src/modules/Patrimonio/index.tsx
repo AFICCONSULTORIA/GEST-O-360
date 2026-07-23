@@ -13,7 +13,7 @@ import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 
 const { 
-  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy, RotateCw, Loader2, ImageOff, ChevronsLeft, ChevronsRight
+  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy, RotateCw, Loader2, ImageOff, ChevronsLeft, ChevronsRight, CheckSquare, Square
 } = LucideIcons;
 
 const compressImage = async (file: File): Promise<File> => {
@@ -78,7 +78,7 @@ const compressImage = async (file: File): Promise<File> => {
   }
 };
 
-const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit = true, userDepartment, availableDepartments = [], currentUserName }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[], currentUserName?: string }) => {
+const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, canDelete, canEdit = true, userDepartment, availableDepartments = [], currentUserName }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, onDeleteMultiple?: (ids: string[]) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[], currentUserName?: string }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
@@ -93,8 +93,27 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
   const [isRotating, setIsRotating] = React.useState(false);
   const [showDeptDropdown, setShowDeptDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
+  const [selectedItems, setSelectedItems] = React.useState<string[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = React.useState(false);
   const itemsPerPage = 12;
   const formRef = React.useRef<HTMLFormElement>(null);
+
+  const toggleSelection = (id: string) => {
+    setSelectedItems(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedItems.length === 0) return;
+    if (confirm(`Tem certeza que deseja excluir ${selectedItems.length} itens selecionados?`)) {
+      if (onDeleteMultiple) {
+        onDeleteMultiple(selectedItems);
+      } else if (onDelete) {
+        selectedItems.forEach(id => onDelete(id));
+      }
+      setSelectedItems([]);
+      setIsSelectionMode(false);
+    }
+  };
 
   React.useEffect(() => {
     setCurrentPage(1);
@@ -258,6 +277,18 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
             <Download size={18} />
             Emitir Relatório
           </button>
+          {canDelete && (
+            <button 
+              onClick={() => {
+                setIsSelectionMode(!isSelectionMode);
+                if (isSelectionMode) setSelectedItems([]);
+              }}
+              className={`px-4 py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${isSelectionMode ? 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400' : 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'}`}
+            >
+              <CheckSquare size={18} />
+              <span className="hidden sm:inline">{isSelectionMode ? 'Cancelar Seleção' : 'Selecionar Vários'}</span>
+            </button>
+          )}
           {canEdit && (
             <button 
               onClick={() => {
@@ -273,6 +304,37 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {isSelectionMode && selectedItems.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-100 dark:border-indigo-500/20 rounded-2xl p-4 flex items-center justify-between shadow-sm"
+          >
+            <div className="flex items-center gap-3 text-indigo-700 dark:text-indigo-400 font-bold">
+              <CheckSquare size={20} />
+              <span>{selectedItems.length} {selectedItems.length === 1 ? 'item selecionado' : 'itens selecionados'}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={() => setSelectedItems(paginatedItems.map(i => i.id))}
+                className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                Selecionar Tudo na Página
+              </button>
+              <button 
+                onClick={handleBulkDelete}
+                className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 shadow-sm shadow-rose-500/20"
+              >
+                <Trash2 size={16} />
+                Excluir Selecionados
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex flex-col md:flex-row gap-3 flex-1 w-full">
@@ -353,12 +415,21 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
                 {/* Image Area */}
                 <div 
                   onClick={() => {
-                    if (item.imageUrls && item.imageUrls.length > 0) {
+                    if (isSelectionMode) {
+                      toggleSelection(item.id);
+                    } else if (item.imageUrls && item.imageUrls.length > 0) {
                       openImageModal(item);
                     }
                   }}
-                  className={`relative aspect-[4/3] bg-neutral-50 dark:bg-neutral-800/40 border-b border-neutral-100 dark:border-neutral-800/50 overflow-hidden ${item.imageUrls && item.imageUrls.length > 0 ? 'cursor-pointer' : ''}`}
+                  className={`relative aspect-[4/3] bg-neutral-50 dark:bg-neutral-800/40 border-b border-neutral-100 dark:border-neutral-800/50 overflow-hidden ${isSelectionMode || (item.imageUrls && item.imageUrls.length > 0) ? 'cursor-pointer' : ''}`}
                 >
+                  {isSelectionMode && (
+                    <div className="absolute top-3 left-3 z-20">
+                      <div className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${selectedItems.includes(item.id) ? 'bg-indigo-500 text-white' : 'bg-white/80 dark:bg-neutral-900/80 text-neutral-400 border border-neutral-300 dark:border-neutral-600 backdrop-blur-md'}`}>
+                        {selectedItems.includes(item.id) ? <CheckSquare size={16} /> : <Square size={16} />}
+                      </div>
+                    </div>
+                  )}
                   {item.imageUrls && item.imageUrls.length > 0 ? (
                     <>
                       <img 
@@ -502,10 +573,21 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, canDelete, canEdit =
           {paginatedItems.map(item => (
             <div key={item.id} className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden transition-all">
               <div 
-                className="px-6 py-5 flex flex-col md:flex-row md:items-center justify-between cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors gap-4"
-                onClick={() => setExpandedDescId(expandedDescId === item.id ? null : item.id)}
+                className={`px-6 py-5 flex flex-col md:flex-row md:items-center justify-between cursor-pointer transition-colors gap-4 ${selectedItems.includes(item.id) ? 'bg-indigo-50/50 dark:bg-indigo-500/5' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50'}`}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    toggleSelection(item.id);
+                  } else {
+                    setExpandedDescId(expandedDescId === item.id ? null : item.id);
+                  }
+                }}
               >
                 <div className="flex items-center gap-4 flex-1">
+                  {isSelectionMode && (
+                    <div className={`w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors ${selectedItems.includes(item.id) ? 'bg-indigo-500 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 border border-neutral-300 dark:border-neutral-600'}`}>
+                      {selectedItems.includes(item.id) ? <CheckSquare size={16} /> : <Square size={16} />}
+                    </div>
+                  )}
                   <div className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400 shrink-0 relative">
                     {item.imageUrls && item.imageUrls.length > 0 ? (
                       <div className="w-full h-full relative cursor-pointer group" onClick={(e) => { e.stopPropagation(); openImageModal(item); }}>

@@ -1048,6 +1048,17 @@ export default function App() {
                     showToast('Erro ao excluir item', 'error');
                   }
                 }}
+                onDeleteMultiple={async (ids) => {
+                  try {
+                    const { error } = await supabase.from('patrimonio').delete().in('id', ids);
+                    if (error) throw error;
+                    setPatrimonioItems(patrimonioItems.filter(p => !ids.includes(p.id)));
+                    showToast(`${ids.length} itens excluídos com sucesso`, 'success');
+                  } catch (error) {
+                    console.error('Erro ao excluir patrimônios:', error);
+                    showToast('Erro ao excluir itens', 'error');
+                  }
+                }}
                 onAdd={async (item) => {
                   const dbItem = {
                     item_type: item.itemType,

@@ -79,8 +79,8 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
 
       {/* ── Logo no canto superior esquerdo ── */}
       <div className="absolute top-6 left-6 sm:left-8 flex items-center gap-3 z-20">
-        <div className="p-1.5 bg-neutral-900/5 dark:bg-white/10 backdrop-blur-md border border-neutral-900/10 dark:border-white/20 rounded-xl flex items-center justify-center">
-          <LogoCompass size={32} className="text-neutral-900 dark:text-white" />
+        <div className="bg-neutral-900/5 dark:bg-white/10 backdrop-blur-md border border-neutral-900/10 dark:border-white/20 rounded-xl overflow-hidden flex items-center justify-center">
+          <LogoCompass size={36} className="text-neutral-900 dark:text-white" />
         </div>
         <div>
           <span className="text-sm font-black text-neutral-900 dark:text-white tracking-tight uppercase">Gestão 360</span>
@@ -124,16 +124,16 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
                 </>
               ) : currentInstitution ? (
                 <>
-                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl mb-2 sm:mb-3">
-                    <LogoCompass size={36} className="text-emerald-600 dark:text-emerald-400" />
+                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 border border-emerald-500/20 rounded-2xl mb-2 sm:mb-3 overflow-hidden shadow-lg shadow-emerald-900/20">
+                    <LogoCompass size={56} className="text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <h1 className="text-lg sm:text-xl font-black text-neutral-900 dark:text-white tracking-tight leading-tight px-2">{currentInstitution.name}</h1>
                   <p className="text-[9px] sm:text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">Painel Administrativo Oficial</p>
                 </>
               ) : (
                 <>
-                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 bg-neutral-900/5 dark:bg-white/5 border border-neutral-900/10 dark:border-white/10 rounded-2xl mb-2 sm:mb-3">
-                    <LogoCompass size={36} className="text-neutral-900 dark:text-white" />
+                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 border border-neutral-900/10 dark:border-white/10 rounded-2xl mb-2 sm:mb-3 overflow-hidden shadow-lg shadow-black/20">
+                    <LogoCompass size={56} className="text-neutral-900 dark:text-white" />
                   </div>
                   <h1 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white tracking-tight">Bem-vindo de volta</h1>
                   <p className="text-xs sm:text-sm text-neutral-500 dark:text-white/50 font-medium">Entre com suas credenciais para acessar o sistema</p>
