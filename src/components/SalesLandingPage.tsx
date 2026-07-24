@@ -5,7 +5,7 @@ import {
   GraduationCap, HardHat, Landmark, Users2, Sun, Moon, Lock,
   Building2, Sparkles, Menu, X, ChevronRight, Globe, FileCheck, PieChart as PieChartIcon,
   ArrowRight, Shield, CheckCircle2, FileText, Users, Send, Leaf,
-  Package, Calendar, BookOpen, LayoutDashboard, TrendingDown, Activity, Phone
+  Package, Calendar, BookOpen, LayoutDashboard, TrendingDown, Activity, Phone, Scale
 } from 'lucide-react';
 import { LogoCompass } from './LogoCompass';
 import { showToast } from './ui/Toast';
@@ -260,6 +260,7 @@ export const SalesLandingPage = ({
         { title: "Licitações & Contratos", desc: "Gestão de vigências, reajustes e conformidade nativa com a Lei 14.133.", icon: Target },
         { title: "Radar PNTP", desc: "Envio automatizado de processos homologados ao Portal Nacional de Contratações.", icon: Globe },
         { title: "Banco de Certidões", desc: "Monitoramento de regularidade em tempo real com alertas automáticos.", icon: FileCheck },
+        { title: "Banco de Leis", desc: "Repositório completo de leis municipais, decretos e inteiro teor com exportação em PDF.", icon: Scale },
         { title: "Gestão Financeira", desc: "Painéis consolidados de receitas, despesas e limites legais da LRF.", icon: PieChartIcon }
       ]
     },

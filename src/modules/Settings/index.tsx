@@ -5,7 +5,7 @@ import {
   ClipboardCheck, ShieldAlert, Compass, Landmark, BookText, PieChart,
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
   BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
-  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings
+  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -25,6 +25,7 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'doc_numbers', label: 'Controle de Numeração' },
   { id: 'reports', label: 'Relatórios' },
   { id: 'certificates', label: 'Certidões' },
+  { id: 'laws', label: 'Banco de Leis' },
   { id: 'obras', label: 'Obras e Inf.' },
   { id: 'administracao', label: 'Administração' },
   { id: 'financas', label: 'Finanças' },
@@ -63,6 +64,7 @@ const PERMISSION_GROUPS: {
       { id: 'pntp', label: 'PNTP', desc: 'Evidências do PNTP e portal de transparência', icon: Compass },
       { id: 'camara', label: 'Câmara Municipal', desc: 'Atividades legislativas, projetos de lei e indicações', icon: Landmark },
       { id: 'norms', label: 'Atos Normativos', desc: 'Publicação de decretos, portarias e resoluções', icon: BookText },
+      { id: 'laws', label: 'Banco de Leis', desc: 'Repositório de leis municipais, decretos e portarias', icon: Scale },
       { id: 'reports', label: 'Relatórios', desc: 'Relatórios e análises de desempenho municipal', icon: PieChart },
     ]
   },
@@ -229,6 +231,31 @@ export const SettingsModule = ({
       classes: u.classes || []
     });
     setIsModalOpen(true);
+  };
+
+  const handleResetPassword = async (user: AdminUser) => {
+    if (confirm(`Tem certeza que deseja restaurar a senha padrão (gestao123@) para o usuário ${user.name}?`)) {
+      try {
+        const { error } = await supabase.rpc('reset_user_password', { target_user_id: user.id });
+        
+        if (error) {
+          console.error("Erro ao resetar senha:", error);
+          if (error.message.includes('function reset_user_password does not exist')) {
+            showToast('A função no banco de dados não foi criada. Execute o script SQL no Supabase.', 'warning');
+          } else {
+            showToast('Erro ao resetar senha: ' + error.message, 'error');
+          }
+          return;
+        }
+
+        // Atualiza o lastLogin localmente para "Nunca" forçando a troca
+        setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
+        showToast('Senha restaurada para o padrão com sucesso!', 'success');
+      } catch (err) {
+        console.error("Erro inesperado:", err);
+        showToast('Erro inesperado ao resetar senha.', 'error');
+      }
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -437,7 +464,16 @@ export const SettingsModule = ({
                       >
                         <Shield size={16} />
                       </button>
-                      <button onClick={() => handleEdit(u)} className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all">
+                      {(currentUser?.role === 'Super Admin' || currentUser?.role === 'Admin') && (
+                        <button 
+                          onClick={() => handleResetPassword(u)} 
+                          className="p-2 text-neutral-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-xl transition-all"
+                          title="Restaurar Senha Padrão"
+                        >
+                          <KeyRound size={16} />
+                        </button>
+                      )}
+                      <button onClick={() => handleEdit(u)} className="p-2 text-neutral-400 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-all" title="Editar Usuário">
                         <Edit2 size={16} />
                       </button>
                       <button onClick={() => handleDelete(u.id)} className="p-2 text-neutral-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-all">

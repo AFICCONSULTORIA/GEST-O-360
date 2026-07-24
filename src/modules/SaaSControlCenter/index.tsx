@@ -204,7 +204,7 @@ export const SaaSControlCenter = ({
         role: newUser.role,
         status: newUser.status,
         last_login: newUser.lastLogin,
-        permissions: newUser.permissions || ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio'],
+        permissions: newUser.permissions || ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio'],
         institution_id: newUser.institution_id || null,
         department_id: newUser.department_id || null
       });
@@ -488,7 +488,7 @@ export const SaaSControlCenter = ({
                     <p className="text-xs text-neutral-400 mt-1">Comparativo de contas de servidores alocados por prefeitura ativa.</p>
                   </div>
                   <div className="h-80 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                       <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" className="dark:opacity-10" />
                         <XAxis dataKey="name" stroke="#9CA3AF" fontSize={11} tickLine={false} axisLine={false} />
@@ -1054,6 +1054,7 @@ export const SaaSControlCenter = ({
                         { id: 'camara', label: 'Câmara Municipal' },
                         { id: 'patrimonio', label: 'Patrimônio' },
                         { id: 'certificates', label: 'Certidões' },
+                        { id: 'laws', label: 'Banco de Leis' },
                         { id: 'doc_numbers', label: 'Controle de Ofícios' },
                         { id: 'calendar', label: 'Agenda' },
                         { id: 'norms', label: 'Normas' },
@@ -1083,7 +1084,7 @@ export const SaaSControlCenter = ({
                     <div className="flex gap-2 mt-2 ml-1">
                       <button 
                         type="button" 
-                        onClick={() => setUserFormData({ ...userFormData, permissions: ['home', 'controls', 'protocol', 'orders', 'contracts', 'pntp', 'education', 'saude', 'obras', 'administracao', 'financas', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'patrimonio', 'certificates', 'doc_numbers', 'calendar', 'norms', 'risk', 'reports', 'templates', 'settings', 'support'] })} 
+                        onClick={() => setUserFormData({ ...userFormData, permissions: ['home', 'controls', 'protocol', 'orders', 'contracts', 'pntp', 'education', 'saude', 'obras', 'administracao', 'financas', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'patrimonio', 'certificates', 'laws', 'doc_numbers', 'calendar', 'norms', 'risk', 'reports', 'templates', 'settings', 'support'] })} 
                         className="text-[10px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 transition-colors"
                       >
                         Marcar Todos

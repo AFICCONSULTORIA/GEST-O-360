@@ -162,6 +162,10 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose })
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="text-sky-600 font-bold">•</span>
+                      <span><strong>Banco de Leis & Atos Normativos:</strong> Consulta de inteiro teor, vigência e emissão de fichas em PDF oficial.</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="text-sky-600 font-bold">•</span>
                       <span><strong>Radar PNTP & Transparência:</strong> Conformidade total com a Lei 14.133 para elevar o índice nacional do município.</span>
                     </li>
                   </ul>

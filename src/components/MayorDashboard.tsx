@@ -90,7 +90,7 @@ export const MayorDashboard = ({ darkMode, userName = 'Prefeito' }: MayorDashboa
             <p className="text-xs font-bold uppercase tracking-widest text-neutral-400">Consultas no Mês</p>
             
             <div className="absolute bottom-0 left-0 right-0 h-12 opacity-30 group-hover:opacity-100 transition-opacity">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                 <BarChart data={sparklineData}>
                   <Bar dataKey="value" fill="#10b981" radius={[4, 4, 0, 0]} />
                 </BarChart>

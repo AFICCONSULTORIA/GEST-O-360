@@ -220,7 +220,7 @@ export const FinanceModules = () => {
                   <h3 className="text-xl font-black text-[#003B6F] dark:text-white">Receitas Previstas vs. Arrecadadas (Mês)</h3>
                 </div>
                 <div className="h-[350px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                     <ComposedChart data={MOCK_REVENUE_DATA} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#333" opacity={0.2} />
                       <XAxis 

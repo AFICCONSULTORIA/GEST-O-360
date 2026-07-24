@@ -2,6 +2,7 @@ import React from 'react';
 import { supabase, signUpNewUser } from './lib/supabase';
 import { ToastContainer, showToast } from './components/ui/Toast';
 import { CertificatesModule } from './modules/Certificates';
+import { LawsModule } from './modules/Laws';
 import { SettingsModule } from './modules/Settings';
 import { ProtocolModule } from './modules/Protocol';
 import { hasPermission } from './lib/permissions';
@@ -1285,6 +1286,7 @@ export default function App() {
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} currentInstitution={currentInstitution} />}
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
+            {activeView === 'laws' && <LawsModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <FinanceModules />}
             {activeView === 'administracao' && <AdministracaoModule />}

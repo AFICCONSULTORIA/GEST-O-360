@@ -1,4 +1,52 @@
-export type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication';
+export type View = 'home' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication';
+
+export type LawType = 
+  | 'Lei Orgânica' 
+  | 'Lei Complementar' 
+  | 'Lei Ordinária' 
+  | 'Decreto' 
+  | 'Portaria' 
+  | 'Resolução' 
+  | 'Emenda à LOM' 
+  | 'Outros';
+
+export type LawStatus = 
+  | 'Em Vigor' 
+  | 'Revogada' 
+  | 'Alterada' 
+  | 'Regulamentada' 
+  | 'Em Tramitação';
+
+export type LawCategory = 
+  | 'Administração Geral' 
+  | 'Finanças e Tributos' 
+  | 'Saúde' 
+  | 'Educação' 
+  | 'Meio Ambiente' 
+  | 'Viação e Obras' 
+  | 'Servidores e RH' 
+  | 'Assistência Social' 
+  | 'Urbanismo e Patrimônio' 
+  | 'Geral';
+
+export interface MunicipalLaw {
+  id: string;
+  number: string;
+  title: string;
+  type: LawType;
+  category: LawCategory;
+  ementa: string;
+  full_text?: string;
+  publication_date: string;
+  status: LawStatus;
+  author?: string;
+  file_url?: string;
+  external_link?: string;
+  tags?: string[];
+  institution_id?: string;
+  created_at?: string;
+}
+
 
 export interface SupportTicket {
   id: string;
