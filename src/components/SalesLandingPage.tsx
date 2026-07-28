@@ -714,13 +714,15 @@ export const SalesLandingPage = ({
               </div>
 
               <div className="pt-4 flex justify-center">
-                <button
-                  onClick={() => setIsProposalModalOpen(true)}
+                <a
+                  href="https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20a%20Minuta%20do%20Termo%20de%20Refer%C3%AAncia%20e%20a%20Proposta%20Comercial%20do%20sistema%20Gest%C3%A3o%20360."
+                  target="_blank"
+                  rel="noreferrer"
                   className="flex items-center gap-2 px-8 py-4 bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-black text-xs uppercase tracking-widest rounded-2xl transition-all shadow-xl shadow-emerald-500/20"
                 >
                   <FileText size={16} />
                   Solicitar Minuta de Termo de Referência / Proposta
-                </button>
+                </a>
               </div>
             </div>
           </section>
