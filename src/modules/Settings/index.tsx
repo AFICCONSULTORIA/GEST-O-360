@@ -5,7 +5,7 @@ import {
   ClipboardCheck, ShieldAlert, Compass, Landmark, BookText, PieChart,
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
   BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
-  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale
+  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale, Activity
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -13,6 +13,7 @@ import { AdminUser, Institution, View, Department } from '../../types';
 
 const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
+  { id: 'mayor', label: 'Visão do Prefeito' },
   { id: 'controls', label: 'Controles Internos' },
   { id: 'calendar', label: 'Calendário Oficial' },
   { id: 'norms', label: 'Atos Normativos' },
@@ -73,6 +74,7 @@ const PERMISSION_GROUPS: {
     desc: 'Operações administrativas fundamentais e logística.',
     items: [
       { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites', icon: FileText },
+      { id: 'mayor', label: 'Visão do Prefeito', desc: 'Painel gerencial e indicadores estratégicos', icon: Activity },
       { id: 'contracts', label: 'Contratos & Licitações', desc: 'Contratos administrativos e licitações', icon: Briefcase },
       { id: 'patrimonio', label: 'Patrimônio', desc: 'Controle de bens móveis, imóveis e frotas', icon: Package },
       { id: 'orders', label: 'Pedidos (Obras/Veículos)', desc: 'Solicitações de veículos e materiais de obras', icon: ShoppingCart },
