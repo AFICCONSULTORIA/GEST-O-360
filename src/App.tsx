@@ -401,16 +401,10 @@ export default function App() {
   const [attachingFor, setAttachingFor] = React.useState<number | null>(null);
   const [isChangingPassword, setIsChangingPassword] = React.useState(false);
   const [forcePasswordChange, setForcePasswordChange] = React.useState(false);
-  const [homeMode, setHomeMode] = React.useState<'quick_access' | 'mayor'>('mayor');
+
 
   React.useEffect(() => {
-    if (currentUser) {
-      if (currentUser.role === 'Prefeito' || currentUser.role === 'Super Admin') {
-        setHomeMode('mayor');
-      } else {
-        setHomeMode('quick_access');
-      }
-    }
+
   }, [currentUser]);
   const [recentViews, setRecentViews] = React.useState<View[]>([]);
 
@@ -1175,34 +1169,15 @@ export default function App() {
                 <div className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                   <div>
                     <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
-                      {homeMode === 'mayor' ? 'Painel Gerencial' : (recentViews.length > 0 ? 'Acessados Recentemente' : 'Acesso Rápido')}
+                      {recentViews.length > 0 ? 'Acessados Recentemente' : 'Acesso Rápido'}
                     </h2>
                     <p className="text-neutral-500 dark:text-neutral-400 mt-2">
-                      {homeMode === 'mayor' ? 'Indicadores estratégicos da gestão.' : (recentViews.length > 0 ? 'Suas ferramentas mais utilizadas recentemente.' : 'Selecione um módulo para começar.')}
+                      {recentViews.length > 0 ? 'Suas ferramentas mais utilizadas recentemente.' : 'Selecione um módulo para começar.'}
                     </p>
                   </div>
-                  {(currentUser?.role === 'Prefeito' || currentUser?.role === 'Super Admin') && (
-                    <div className="bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl flex items-center">
-                      <button
-                        onClick={() => setHomeMode('mayor')}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${homeMode === 'mayor' ? 'bg-white dark:bg-neutral-900 shadow-sm text-purple-600 dark:text-purple-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
-                      >
-                        Visão do Prefeito
-                      </button>
-                      <button
-                        onClick={() => setHomeMode('quick_access')}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${homeMode === 'quick_access' ? 'bg-white dark:bg-neutral-900 shadow-sm text-purple-600 dark:text-purple-400' : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'}`}
-                      >
-                        Módulos do Sistema
-                      </button>
-                    </div>
-                  )}
                 </div>
                 
-                {homeMode === 'mayor' ? (
-                  <MayorDashboard darkMode={darkMode} userName={currentUser?.name} />
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 relative z-10">
                   {(() => {
                     // Flatten all allowed items
                     const allAllowedItems = NAVBAR_CATEGORIES.flatMap(category => 
@@ -1248,7 +1223,6 @@ export default function App() {
                     ));
                   })()}
                 </div>
-                )}
                 
 
                 {/* Minimal watermark background */}
@@ -1257,6 +1231,9 @@ export default function App() {
                   <h1 className="text-[140px] font-black tracking-tight leading-none italic text-neutral-900 dark:text-white">Gestão <span className="font-normal">360</span></h1>
                 </div>
               </div>
+            )}
+            {activeView === 'mayor' && (
+              <MayorDashboard darkMode={darkMode} userName={currentUser?.name} />
             )}
             {activeView === 'controls' && (
               <ControlsModule 
