@@ -6,7 +6,7 @@ import {
   Building2, Sparkles, Menu, X, ChevronRight, Globe, FileCheck, PieChart as PieChartIcon,
   ArrowRight, Shield, CheckCircle2, FileText, Users, Send, Leaf,
   Package, Calendar, BookOpen, LayoutDashboard, TrendingDown, Activity, Phone, Scale,
-  Award, Clock, Check, XCircle, FileCode, CheckSquare, Zap, ShieldCheck
+  Award, Clock, Check, XCircle, FileCode, CheckSquare, Zap, ShieldCheck, Calculator, MessageSquare
 } from 'lucide-react';
 import { LogoCompass } from './LogoCompass';
 import { showToast } from './ui/Toast';
