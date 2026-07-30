@@ -10,6 +10,8 @@ import {
   Legend, ResponsiveContainer, LineChart, Line, ComposedChart 
 } from 'recharts';
 
+import { RemanejamentoSaldos } from './RemanejamentoSaldos';
+
 // --- MOCKS ---
 const MOCK_REVENUE_DATA = [
   { name: 'IPTU', previsto: 1200000, arrecadado: 1050000 },
@@ -27,7 +29,7 @@ const MOCK_EXPENSES = [
 ];
 
 export const FinanceModules = () => {
-  const [activeTab, setActiveTab] = useState<'despesa' | 'arrecadacao'>('despesa');
+  const [activeTab, setActiveTab] = useState<'remanejamento' | 'despesa' | 'arrecadacao'>('remanejamento');
 
   const formatCurrency = (val: number) => 
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -124,7 +126,18 @@ export const FinanceModules = () => {
 
       {/* 3. ÁREA CENTRAL (Abas) */}
       <div className="bg-white dark:bg-[#171717] rounded-[32px] border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-        <div className="flex border-b border-neutral-100 dark:border-neutral-800 p-2 gap-2 bg-neutral-50/50 dark:bg-neutral-900/50">
+        <div className="flex flex-wrap border-b border-neutral-100 dark:border-neutral-800 p-2 gap-2 bg-neutral-50/50 dark:bg-neutral-900/50">
+          <button
+            onClick={() => setActiveTab('remanejamento')}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'remanejamento'
+                ? 'bg-white dark:bg-[#171717] text-[#003B6F] dark:text-white shadow-sm border border-neutral-100 dark:border-neutral-800'
+                : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+            }`}
+            aria-label="Aba Remanejamento e Distribuição de Saldos"
+          >
+            <ArrowRightLeft size={18} /> Remanejamento & Distribuição de Saldos
+          </button>
           <button
             onClick={() => setActiveTab('despesa')}
             className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
@@ -151,6 +164,17 @@ export const FinanceModules = () => {
 
         <div className="p-8 min-h-[400px]">
           <AnimatePresence mode="wait">
+            {activeTab === 'remanejamento' && (
+              <motion.div
+                key="remanejamento"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <RemanejamentoSaldos />
+              </motion.div>
+            )}
+
             {activeTab === 'despesa' && (
               <motion.div
                 key="despesa"
