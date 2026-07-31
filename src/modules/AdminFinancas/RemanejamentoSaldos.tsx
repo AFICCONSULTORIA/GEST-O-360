@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   ArrowRightLeft, Wallet, Target, AlertTriangle, CheckCircle2, 
   Clock, Plus, Trash2, RefreshCw, Zap, ShieldAlert, FileSpreadsheet,
-  ArrowRight, Info, Edit2
+  ArrowRight, Info, Edit2, Upload, FileText, X, ChevronDown, ChevronUp
 } from 'lucide-react';
 
 export interface OriginAccount {
@@ -69,6 +69,15 @@ export const RemanejamentoSaldos: React.FC = () => {
   const [editingOriginId, setEditingOriginId] = useState<string | null>(null);
   const [editingDestId, setEditingDestId] = useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'origin' | 'dest' } | null>(null);
+  
+  interface ImportedFile {
+    id: string;
+    fileName: string;
+    totalAmount: number;
+    lines: { account: string, amount: number }[];
+    isExpanded: boolean;
+  }
+  const [importedFiles, setImportedFiles] = useState<ImportedFile[]>([]);
 
   // Utilitário de Formatação de Moeda
   const formatCurrency = (val: number) => 
@@ -323,6 +332,89 @@ export const RemanejamentoSaldos: React.FC = () => {
     if (confirm('Deseja limpar todos os remanejamentos e restaurar os saldos originais?')) {
       setAllocations([]);
     }
+  };
+
+  // LEITURA DE MÚLTIPLOS ARQUIVOS TXT/CNAB 240
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const newFiles: ImportedFile[] = [];
+
+    for (const file of files) {
+      const content = await file.text();
+      const lines = content.split('\n');
+      const parsedData: { account: string, amount: number }[] = [];
+      let totalAmount = 0;
+
+      lines.forEach(line => {
+        if (!line.trim()) return;
+
+        if (line.length >= 238 && line[7] === '3' && line[13] === 'A') {
+          const account = line.substring(43, 73).trim();
+          const rawAmount = line.substring(119, 134);
+          const amount = parseInt(rawAmount, 10) / 100;
+
+          if (amount > 0 || account) {
+            parsedData.push({ account, amount });
+            totalAmount += amount;
+          }
+          return;
+        }
+        
+        if (line.length >= 238 && (line[7] === '0' || line[7] === '1' || line[7] === '5' || line[7] === '9' || line[13] === 'B' || line[13] === 'C')) {
+          return;
+        }
+
+        const trimmed = line.trim();
+        const numberMatches = trimmed.match(/[\d.,]+/g);
+        
+        let amount = 0;
+        let account = trimmed;
+
+        if (numberMatches && numberMatches.length > 0) {
+          const rawAmount = numberMatches[numberMatches.length - 1];
+          amount = parseBRLToNumber(rawAmount);
+          
+          const lastIndex = trimmed.lastIndexOf(rawAmount);
+          if (lastIndex !== -1) {
+            account = trimmed.substring(0, lastIndex) + trimmed.substring(lastIndex + rawAmount.length);
+          }
+          
+          account = account.replace(/R\$\s*/gi, '')
+                           .replace(/\t/g, ' ')
+                           .replace(/\s+/g, ' ')
+                           .replace(/[-:;]\s*$/, '')
+                           .trim();
+        }
+
+        if (account || amount > 0) {
+          parsedData.push({ account: account || 'Desconhecido', amount });
+          totalAmount += amount;
+        }
+      });
+
+      if (parsedData.length > 0) {
+        newFiles.push({
+          id: Math.random().toString(36).substr(2, 9),
+          fileName: file.name,
+          totalAmount,
+          lines: parsedData,
+          isExpanded: false
+        });
+      }
+    }
+
+    setImportedFiles(prev => [...prev, ...newFiles]);
+    e.target.value = '';
+  };
+
+  const toggleFileExpanded = (fileId: string) => {
+    setImportedFiles(prev => prev.map(f => f.id === fileId ? { ...f, isExpanded: !f.isExpanded } : f));
+  };
+
+  const removeImportedFile = (fileId: string) => {
+    setImportedFiles(prev => prev.filter(f => f.id !== fileId));
   };
 
   return (
@@ -851,6 +943,123 @@ export const RemanejamentoSaldos: React.FC = () => {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </div>
+
+      {/* PAINEL DE COMPARAÇÃO VISUAL (TXT) */}
+      <div className="bg-white dark:bg-[#171717] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 md:p-8 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-neutral-100 dark:border-neutral-800">
+          <div>
+            <h3 className="text-xl font-black text-[#003B6F] dark:text-white font-['Montserrat'] flex items-center gap-2">
+              <FileText size={22} /> Extrato para Comparação Visual (TXT)
+            </h3>
+            <p className="text-xs text-neutral-500 mt-1">
+              Faça o upload de um arquivo TXT contendo as contas e os valores (ex: MENSAL 90) para comparar os saldos.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {importedFiles.length > 0 && (
+              <button
+                onClick={() => setImportedFiles([])}
+                className="flex items-center gap-2 px-4 py-2 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-xs hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors"
+              >
+                <X size={14} /> Limpar Todos
+              </button>
+            )}
+            <label className="flex items-center gap-2 px-5 py-2.5 bg-[#003B6F] hover:bg-[#002b52] text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md active:scale-95">
+              <Upload size={16} /> Importar Arquivos
+              <input type="file" accept=".txt" multiple onChange={handleFileUpload} className="hidden" />
+            </label>
+          </div>
+        </div>
+
+        {importedFiles.length > 0 ? (
+          <div className="space-y-4">
+            {importedFiles.map(file => (
+              <div key={file.id} className="border border-neutral-200 dark:border-neutral-800 rounded-2xl overflow-hidden bg-neutral-50/50 dark:bg-neutral-900/30">
+                {/* File Header / Summary */}
+                <div className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-[#171717]">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl text-[#003B6F] dark:text-blue-400">
+                      <FileText size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-neutral-900 dark:text-white">{file.fileName}</h4>
+                      <p className="text-xs text-neutral-500 font-medium mt-0.5">{file.lines.length} registros identificados</p>
+                      {file.lines.filter(l => l.amount === 0).length > 0 && (
+                        <div className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900/50">
+                          <AlertTriangle size={12} /> {file.lines.filter(l => l.amount === 0).length} registro(s) com valor zerado
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 mb-0.5">Total do Arquivo</p>
+                      <p className="text-xl font-black font-['Montserrat'] text-[#003B6F] dark:text-blue-400">
+                        {formatCurrency(file.totalAmount)}
+                      </p>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 border-l border-neutral-200 dark:border-neutral-800 pl-6">
+                      <button 
+                        onClick={() => toggleFileExpanded(file.id)}
+                        className="p-2 text-neutral-500 hover:text-[#003B6F] hover:bg-blue-50 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                        title={file.isExpanded ? "Ocultar detalhes" : "Ver detalhes"}
+                      >
+                        {file.isExpanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                      </button>
+                      <button 
+                        onClick={() => removeImportedFile(file.id)}
+                        className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+                        title="Remover este arquivo"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* File Details (Expanded) */}
+                {file.isExpanded && (
+                  <div className="border-t border-neutral-200 dark:border-neutral-800 p-4">
+                    <div className="max-h-64 overflow-y-auto pr-2 custom-scrollbar">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-neutral-200 dark:border-neutral-800 text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                            <th className="py-2 px-3">Conta / Favorecido</th>
+                            <th className="py-2 px-3 text-right">Valor Identificado</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {file.lines.map((item, idx) => (
+                            <tr key={idx} className={`border-b border-neutral-100 dark:border-neutral-800/60 text-xs ${item.amount === 0 ? 'bg-amber-50/80 dark:bg-amber-950/20' : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/30'}`}>
+                              <td className="py-2 px-3 font-medium text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
+                                {item.amount === 0 && <AlertTriangle size={12} className="text-amber-500 shrink-0" />}
+                                {item.account}
+                              </td>
+                              <td className={`py-2 px-3 text-right font-bold ${item.amount === 0 ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-900 dark:text-white'}`}>
+                                {item.amount === 0 ? 'VALOR ZERADO' : formatCurrency(item.amount)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-10 border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl bg-neutral-50/50 dark:bg-neutral-900/30">
+            <FileSpreadsheet size={36} className="mx-auto text-neutral-300 dark:text-neutral-700 mb-3" />
+            <h4 className="font-bold text-neutral-500 dark:text-neutral-400 text-sm">Nenhum arquivo importado</h4>
+            <p className="text-xs text-neutral-400 max-w-sm mx-auto mt-1">
+              Clique no botão "Importar Arquivos" acima para carregar e resumir seus extratos.
+            </p>
           </div>
         )}
       </div>
