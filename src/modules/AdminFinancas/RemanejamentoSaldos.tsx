@@ -32,23 +32,11 @@ export interface BalanceAllocation {
 }
 
 // Contas e Saldos de Origem Iniciais
-const INITIAL_ORIGIN_ACCOUNTS: OriginAccount[] = [
-  { id: 'fpm', code: '001-FPM', name: 'FPM - Fundo de Participação dos Municípios', bank: 'Banco do Brasil - Ag: 1234 / C: 50.100-1', initialBalance: 1500000.00 },
-  { id: 'icms', code: '002-ICMS', name: 'ICMS - Cota-Parte Estadual', bank: 'Banco do Brasil - Ag: 1234 / C: 50.200-2', initialBalance: 850000.00 },
-  { id: 'icms_exp', code: '003-ICMEXP', name: 'ICMS Exportação / Desoneração', bank: 'Banco do Brasil - Ag: 1234 / C: 50.205-9', initialBalance: 220000.00 },
-  { id: 'fep', code: '004-FEP', name: 'FEP - Fundo Especial do Petróleo (Royalties)', bank: 'Caixa Econômica - Ag: 0987 / C: 70.300-8', initialBalance: 180000.00 },
-  { id: 'sna', code: '005-SNA', name: 'SNA - Simples Nacional', bank: 'Banco do Brasil - Ag: 1234 / C: 50.400-3', initialBalance: 95000.00 },
-  { id: 'fundeb30', code: '006-FDB30', name: 'FUNDEB (Outras Despesas)', bank: 'Banco do Brasil - Ag: 1234 / C: 60.100-7', initialBalance: 410000.00 },
-];
+const INITIAL_ORIGIN_ACCOUNTS: OriginAccount[] = [];
 
 // Contas de Destino e Demandas Iniciais
-const INITIAL_DESTINATION_DEMANDS: DestinationDemand[] = [
-  { id: 'movimento', code: 'DEST-01', name: 'MOVIMENTO (Conta Central de Livre Movimentação)', department: 'Tesouraria Geral', totalRequired: 327698.66, priority: 'Alta' },
-  { id: 'folha', code: 'DEST-02', name: 'FOLHA DE PAGAMENTO (Servidores)', department: 'Recursos Humanos / Finanças', totalRequired: 850000.00, priority: 'Alta' },
-  { id: 'fus', code: 'DEST-03', name: 'FUS - Fundo Único de Saúde (Custeio)', department: 'Secretaria de Saúde', totalRequired: 420000.00, priority: 'Alta' },
-  { id: 'custeio', code: 'DEST-04', name: 'CUSTEIO OPERACIONAL (Fornecedores)', department: 'Administração Geral', totalRequired: 150000.00, priority: 'Média' },
-  { id: 'educacao', code: 'DEST-05', name: 'EDUCAÇÃO - MDE Manutenção Ensino', department: 'Secretaria de Educação', totalRequired: 280000.00, priority: 'Normal' },
-];
+const INITIAL_DESTINATION_DEMANDS: DestinationDemand[] = [];
+
 
 export const RemanejamentoSaldos: React.FC = () => {
   const [origins, setOrigins] = useState<OriginAccount[]>(INITIAL_ORIGIN_ACCOUNTS);
@@ -56,8 +44,8 @@ export const RemanejamentoSaldos: React.FC = () => {
   const [allocations, setAllocations] = useState<BalanceAllocation[]>([]);
 
   // Formulário de Lançamento
-  const [selectedOriginId, setSelectedOriginId] = useState<string>('fpm');
-  const [selectedDestinationId, setSelectedDestinationId] = useState<string>('movimento');
+  const [selectedOriginId, setSelectedOriginId] = useState<string>('');
+  const [selectedDestinationId, setSelectedDestinationId] = useState<string>('');
   const [amountInput, setAmountInput] = useState<string>('');
   const [observationInput, setObservationInput] = useState<string>('');
 
