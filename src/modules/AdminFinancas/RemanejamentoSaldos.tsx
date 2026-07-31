@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../lib/supabase';
 import { 
   ArrowRightLeft, Wallet, Target, AlertTriangle, CheckCircle2, 
   Clock, Plus, Trash2, RefreshCw, Zap, ShieldAlert, FileSpreadsheet,
@@ -42,6 +43,42 @@ export const RemanejamentoSaldos: React.FC = () => {
   const [origins, setOrigins] = useState<OriginAccount[]>(INITIAL_ORIGIN_ACCOUNTS);
   const [destinations, setDestinations] = useState<DestinationDemand[]>(INITIAL_DESTINATION_DEMANDS);
   const [allocations, setAllocations] = useState<BalanceAllocation[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load from Supabase
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const [originsRes, destsRes, allocsRes] = await Promise.all([
+          supabase.from('fin_remanejamento_origens').select('*').order('created_at', { ascending: true }),
+          supabase.from('fin_remanejamento_destinos').select('*').order('created_at', { ascending: true }),
+          supabase.from('fin_remanejamento_alocacoes').select('*').order('created_at', { ascending: false })
+        ]);
+
+        if (originsRes.data) {
+          setOrigins(originsRes.data.map(o => ({
+            id: o.id, code: o.code || '', name: o.name, bank: o.bank || '', initialBalance: Number(o.initial_balance)
+          })));
+        }
+        if (destsRes.data) {
+          setDestinations(destsRes.data.map(d => ({
+            id: d.id, code: d.code || '', name: d.name, department: d.department || '', totalRequired: Number(d.total_required), priority: d.priority || 'Normal'
+          })));
+        }
+        if (allocsRes.data) {
+          setAllocations(allocsRes.data.map(a => ({
+            id: a.id, originId: a.origin_id, destinationId: a.destination_id, amount: Number(a.amount), observation: a.observation || '', timestamp: a.timestamp_text || new Date(a.created_at).toLocaleTimeString('pt-BR')
+          })));
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   // Formulário de Lançamento
   const [selectedOriginId, setSelectedOriginId] = useState<string>('');
@@ -135,7 +172,7 @@ export const RemanejamentoSaldos: React.FC = () => {
   const surplusAmountAlert = willCauseSurplus ? numericAmount - currentSelectedDestTotals.pendingDemand : 0;
 
   // EXECUTAR ALOCAÇÃO
-  const handleExecuteAllocation = (e: React.FormEvent) => {
+  const handleExecuteAllocation = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (numericAmount <= 0) {
@@ -146,24 +183,65 @@ export const RemanejamentoSaldos: React.FC = () => {
     if (isInsufficientBalance) {
       return; // Bloqueado pelo CA03
     }
+    
+    setIsLoading(true);
+    const timestampStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const observationStr = observationInput.trim() || 'Remanejamento de saldo para cobertura de necessidade';
 
-    const newAlloc: BalanceAllocation = {
-      id: `alloc-${Date.now()}`,
-      originId: selectedOriginId,
-      destinationId: selectedDestinationId,
-      amount: numericAmount,
-      timestamp: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      observation: observationInput.trim() || 'Remanejamento de saldo para cobertura de necessidade'
-    };
-
-    setAllocations(prev => [newAlloc, ...prev]);
-    setAmountInput('');
-    setObservationInput('');
+    try {
+      const { data, error } = await supabase
+        .from('fin_remanejamento_alocacoes')
+        .insert({
+          origin_id: selectedOriginId,
+          destination_id: selectedDestinationId,
+          amount: numericAmount,
+          observation: observationStr,
+          timestamp_text: timestampStr
+        })
+        .select()
+        .single();
+        
+      if (data && !error) {
+        const newAlloc: BalanceAllocation = {
+          id: data.id,
+          originId: data.origin_id,
+          destinationId: data.destination_id,
+          amount: Number(data.amount),
+          timestamp: data.timestamp_text || timestampStr,
+          observation: data.observation || ''
+        };
+        setAllocations(prev => [newAlloc, ...prev]);
+        setAmountInput('');
+        setObservationInput('');
+      } else {
+        console.error(error);
+        alert('Erro ao salvar alocação');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // REVERSÃO DE ALOCAÇÃO
-  const handleRemoveAllocation = (allocId: string) => {
-    setAllocations(prev => prev.filter(a => a.id !== allocId));
+  const handleRemoveAllocation = async (allocId: string) => {
+    if (!window.confirm('Tem certeza que deseja estornar este lançamento?')) return;
+    
+    setIsLoading(true);
+    try {
+      const { error } = await supabase
+        .from('fin_remanejamento_alocacoes')
+        .delete()
+        .eq('id', allocId);
+        
+      if (!error) {
+        setAllocations(prev => prev.filter(a => a.id !== allocId));
+      } else {
+        console.error(error);
+        alert('Erro ao remover alocação');
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // SIMULAÇÃO DO EXEMPLO DA ESPECIFICAÇÃO
@@ -201,34 +279,69 @@ export const RemanejamentoSaldos: React.FC = () => {
   };
 
   // ADICIONAR OU EDITAR CONTA DE ORIGEM
-  const handleAddOriginSubmit = (e: React.FormEvent) => {
+  const handleAddOriginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOrigin.name || !newOrigin.initialBalance) return;
 
     const parsedBalance = parseBRLToNumber(newOrigin.initialBalance);
+    setIsLoading(true);
 
-    if (editingOriginId) {
-      setOrigins(prev => prev.map(o => o.id === editingOriginId ? {
-        ...o,
-        code: newOrigin.code || o.code,
-        name: newOrigin.name,
-        bank: newOrigin.bank || o.bank,
-        initialBalance: parsedBalance
-      } : o));
-    } else {
-      const created: OriginAccount = {
-        id: `orig-${Date.now()}`,
-        code: newOrigin.code || `CONTA-${origins.length + 1}`,
-        name: newOrigin.name,
-        bank: newOrigin.bank || 'Banco Convencional',
-        initialBalance: parsedBalance
-      };
-      setOrigins(prev => [...prev, created]);
+    try {
+      if (editingOriginId) {
+        const { error } = await supabase
+          .from('fin_remanejamento_origens')
+          .update({
+            code: newOrigin.code,
+            name: newOrigin.name,
+            bank: newOrigin.bank,
+            initial_balance: parsedBalance
+          })
+          .eq('id', editingOriginId);
+
+        if (!error) {
+          setOrigins(prev => prev.map(o => o.id === editingOriginId ? {
+            ...o,
+            code: newOrigin.code || o.code,
+            name: newOrigin.name,
+            bank: newOrigin.bank || o.bank,
+            initialBalance: parsedBalance
+          } : o));
+        } else {
+          console.error(error);
+          alert('Erro ao atualizar conta');
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('fin_remanejamento_origens')
+          .insert({
+            code: newOrigin.code || `CONTA-${origins.length + 1}`,
+            name: newOrigin.name,
+            bank: newOrigin.bank || 'Banco Convencional',
+            initial_balance: parsedBalance
+          })
+          .select()
+          .single();
+
+        if (data && !error) {
+          const created: OriginAccount = {
+            id: data.id,
+            code: data.code || '',
+            name: data.name,
+            bank: data.bank || '',
+            initialBalance: Number(data.initial_balance)
+          };
+          setOrigins(prev => [...prev, created]);
+        } else {
+          console.error(error);
+          alert('Erro ao criar conta');
+        }
+      }
+    } finally {
+      setIsLoading(false);
+      setNewOrigin({ code: '', name: '', bank: '', initialBalance: '' });
+      setEditingOriginId(null);
+      setShowAddOriginModal(false);
     }
-
-    setNewOrigin({ code: '', name: '', bank: '', initialBalance: '' });
-    setEditingOriginId(null);
-    setShowAddOriginModal(false);
   };
 
   const handleEditOrigin = (origin: OriginAccount, e: React.MouseEvent) => {
@@ -249,36 +362,73 @@ export const RemanejamentoSaldos: React.FC = () => {
   };
 
   // ADICIONAR OU EDITAR DEMANDA DE DESTINO
-  const handleAddDestSubmit = (e: React.FormEvent) => {
+  const handleAddDestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDest.name || !newDest.totalRequired) return;
 
     const parsedRequired = parseBRLToNumber(newDest.totalRequired);
+    setIsLoading(true);
 
-    if (editingDestId) {
-      setDestinations(prev => prev.map(d => d.id === editingDestId ? {
-        ...d,
-        code: newDest.code || d.code,
-        name: newDest.name,
-        department: newDest.department || d.department,
-        totalRequired: parsedRequired,
-        priority: newDest.priority
-      } : d));
-    } else {
-      const created: DestinationDemand = {
-        id: `dest-${Date.now()}`,
-        code: newDest.code || `DEST-${destinations.length + 1}`,
-        name: newDest.name,
-        department: newDest.department || 'Geral',
-        totalRequired: parsedRequired,
-        priority: newDest.priority
-      };
-      setDestinations(prev => [...prev, created]);
+    try {
+      if (editingDestId) {
+        const { error } = await supabase
+          .from('fin_remanejamento_destinos')
+          .update({
+            code: newDest.code,
+            name: newDest.name,
+            department: newDest.department,
+            total_required: parsedRequired,
+            priority: newDest.priority
+          })
+          .eq('id', editingDestId);
+
+        if (!error) {
+          setDestinations(prev => prev.map(d => d.id === editingDestId ? {
+            ...d,
+            code: newDest.code || d.code,
+            name: newDest.name,
+            department: newDest.department || d.department,
+            totalRequired: parsedRequired,
+            priority: newDest.priority
+          } : d));
+        } else {
+          console.error(error);
+          alert('Erro ao atualizar demanda');
+        }
+      } else {
+        const { data, error } = await supabase
+          .from('fin_remanejamento_destinos')
+          .insert({
+            code: newDest.code || `DEST-${destinations.length + 1}`,
+            name: newDest.name,
+            department: newDest.department || 'Geral',
+            total_required: parsedRequired,
+            priority: newDest.priority
+          })
+          .select()
+          .single();
+          
+        if (data && !error) {
+          const created: DestinationDemand = {
+            id: data.id,
+            code: data.code || '',
+            name: data.name,
+            department: data.department || '',
+            totalRequired: Number(data.total_required),
+            priority: data.priority as any
+          };
+          setDestinations(prev => [...prev, created]);
+        } else {
+          console.error(error);
+          alert('Erro ao criar demanda');
+        }
+      }
+    } finally {
+      setIsLoading(false);
+      setNewDest({ code: '', name: '', department: '', totalRequired: '', priority: 'Normal' });
+      setEditingDestId(null);
+      setShowAddDestModal(false);
     }
-
-    setNewDest({ code: '', name: '', department: '', totalRequired: '', priority: 'Normal' });
-    setEditingDestId(null);
-    setShowAddDestModal(false);
   };
 
   const handleEditDest = (dest: DestinationDemand, e: React.MouseEvent) => {
@@ -299,32 +449,59 @@ export const RemanejamentoSaldos: React.FC = () => {
     setItemToDelete({ id, type: 'dest' });
   };
 
-  const confirmDeletion = () => {
+  const confirmDeletion = async () => {
     if (!itemToDelete) return;
     
-    if (itemToDelete.type === 'origin') {
-      setOrigins(prev => prev.filter(o => o.id !== itemToDelete.id));
-      setAllocations(prev => prev.filter(a => a.originId !== itemToDelete.id));
-      if (selectedOriginId === itemToDelete.id) setSelectedOriginId('');
-    } else {
-      setDestinations(prev => prev.filter(d => d.id !== itemToDelete.id));
-      setAllocations(prev => prev.filter(a => a.destinationId !== itemToDelete.id));
-      if (selectedDestinationId === itemToDelete.id) setSelectedDestinationId('');
+    setIsLoading(true);
+    try {
+      if (itemToDelete.type === 'origin') {
+        const { error } = await supabase.from('fin_remanejamento_origens').delete().eq('id', itemToDelete.id);
+        if (!error) {
+          setOrigins(prev => prev.filter(o => o.id !== itemToDelete.id));
+          setAllocations(prev => prev.filter(a => a.originId !== itemToDelete.id));
+          if (selectedOriginId === itemToDelete.id) setSelectedOriginId('');
+        } else {
+          console.error(error);
+          alert('Erro ao excluir conta.');
+        }
+      } else {
+        const { error } = await supabase.from('fin_remanejamento_destinos').delete().eq('id', itemToDelete.id);
+        if (!error) {
+          setDestinations(prev => prev.filter(d => d.id !== itemToDelete.id));
+          setAllocations(prev => prev.filter(a => a.destinationId !== itemToDelete.id));
+          if (selectedDestinationId === itemToDelete.id) setSelectedDestinationId('');
+        } else {
+          console.error(error);
+          alert('Erro ao excluir demanda.');
+        }
+      }
+    } finally {
+      setIsLoading(false);
+      setItemToDelete(null);
     }
-    
-    setItemToDelete(null);
   };
 
   // RESET GERAL
-  const handleResetAll = () => {
+  const handleResetAll = async () => {
     if (confirm('Deseja limpar todos os remanejamentos e restaurar os saldos originais?')) {
-      setAllocations([]);
+      setIsLoading(true);
+      try {
+        const { error } = await supabase.from('fin_remanejamento_alocacoes').delete().neq('id', '0');
+        if (!error) {
+          setAllocations([]);
+        } else {
+          console.error(error);
+          alert('Erro ao restaurar saldos.');
+        }
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
   // LEITURA DE MÚLTIPLOS ARQUIVOS TXT/CNAB 240
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+    const files = Array.from(e.target.files || []) as File[];
     if (files.length === 0) return;
 
     const newFiles: ImportedFile[] = [];
