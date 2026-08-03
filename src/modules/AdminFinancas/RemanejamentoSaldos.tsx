@@ -93,7 +93,7 @@ export const RemanejamentoSaldos: React.FC = () => {
   const [newDest, setNewDest] = useState({ code: '', name: '', department: '', totalRequired: '', priority: 'Normal' as 'Alta' | 'Média' | 'Normal' });
   const [editingOriginId, setEditingOriginId] = useState<string | null>(null);
   const [editingDestId, setEditingDestId] = useState<string | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<{ id: string, type: 'origin' | 'dest' } | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<{ id: string | null, type: 'origin' | 'dest' | 'allocation' | 'importedFile' | 'allImportedFiles' } | null>(null);
   
   interface ImportedFile {
     id: string;
@@ -101,8 +101,29 @@ export const RemanejamentoSaldos: React.FC = () => {
     totalAmount: number;
     lines: { account: string, amount: number }[];
     isExpanded: boolean;
+    category?: 'Movimento' | 'FUS' | 'Educação' | 'FUNDEB' | 'Custeio' | 'Notas Fiscais' | 'Verbas Indenizatórias' | 'Sem conta';
   }
-  const [importedFiles, setImportedFiles] = useState<ImportedFile[]>([]);
+
+  // Lançamento Manual (Notas/Verbas/etc)
+  const [showAddManualModal, setShowAddManualModal] = useState<boolean>(false);
+  const [newManualEntry, setNewManualEntry] = useState({ description: '', amount: '', category: 'Notas Fiscais' as ImportedFile['category'] });
+
+  const [importedFiles, setImportedFiles] = useState<ImportedFile[]>(() => {
+    const saved = localStorage.getItem('fin_imported_files');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Erro ao ler arquivos salvos', e);
+        return [];
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('fin_imported_files', JSON.stringify(importedFiles));
+  }, [importedFiles]);
 
   // Utilitário de Formatação de Moeda
   const formatCurrency = (val: number) => 
@@ -223,25 +244,8 @@ export const RemanejamentoSaldos: React.FC = () => {
   };
 
   // REVERSÃO DE ALOCAÇÃO
-  const handleRemoveAllocation = async (allocId: string) => {
-    if (!window.confirm('Tem certeza que deseja estornar este lançamento?')) return;
-    
-    setIsLoading(true);
-    try {
-      const { error } = await supabase
-        .from('fin_remanejamento_alocacoes')
-        .delete()
-        .eq('id', allocId);
-        
-      if (!error) {
-        setAllocations(prev => prev.filter(a => a.id !== allocId));
-      } else {
-        console.error(error);
-        alert('Erro ao remover alocação');
-      }
-    } finally {
-      setIsLoading(false);
-    }
+  const handleRemoveAllocation = (allocId: string) => {
+    setItemToDelete({ id: allocId, type: 'allocation' });
   };
 
   // SIMULAÇÃO DO EXEMPLO DA ESPECIFICAÇÃO
@@ -464,7 +468,7 @@ export const RemanejamentoSaldos: React.FC = () => {
           console.error(error);
           alert('Erro ao excluir conta.');
         }
-      } else {
+      } else if (itemToDelete.type === 'dest') {
         const { error } = await supabase.from('fin_remanejamento_destinos').delete().eq('id', itemToDelete.id);
         if (!error) {
           setDestinations(prev => prev.filter(d => d.id !== itemToDelete.id));
@@ -474,6 +478,18 @@ export const RemanejamentoSaldos: React.FC = () => {
           console.error(error);
           alert('Erro ao excluir demanda.');
         }
+      } else if (itemToDelete.type === 'allocation' && itemToDelete.id) {
+        const { error } = await supabase.from('fin_remanejamento_alocacoes').delete().eq('id', itemToDelete.id);
+        if (!error) {
+          setAllocations(prev => prev.filter(a => a.id !== itemToDelete.id));
+        } else {
+          console.error(error);
+          alert('Erro ao remover alocação');
+        }
+      } else if (itemToDelete.type === 'importedFile' && itemToDelete.id) {
+        setImportedFiles(prev => prev.filter(f => f.id !== itemToDelete.id));
+      } else if (itemToDelete.type === 'allImportedFiles') {
+        setImportedFiles([]);
       }
     } finally {
       setIsLoading(false);
@@ -560,12 +576,23 @@ export const RemanejamentoSaldos: React.FC = () => {
       });
 
       if (parsedData.length > 0) {
+        const nameLower = file.name.toLowerCase();
+        let cat: 'Movimento' | 'FUS' | 'Educação' | 'FUNDEB' | 'Custeio' | 'Notas Fiscais' | 'Verbas Indenizatórias' | 'Sem conta' = 'Sem conta';
+        if (nameLower.includes('movimento')) cat = 'Movimento';
+        else if (nameLower.includes('fus')) cat = 'FUS';
+        else if (nameLower.includes('educação') || nameLower.includes('educacao')) cat = 'Educação';
+        else if (nameLower.includes('fundeb')) cat = 'FUNDEB';
+        else if (nameLower.includes('custeio')) cat = 'Custeio';
+        else if (nameLower.includes('nota') || nameLower.includes('notas')) cat = 'Notas Fiscais';
+        else if (nameLower.includes('verba') || nameLower.includes('indenizat')) cat = 'Verbas Indenizatórias';
+
         newFiles.push({
           id: Math.random().toString(36).substr(2, 9),
           fileName: file.name,
           totalAmount,
           lines: parsedData,
-          isExpanded: false
+          isExpanded: false,
+          category: cat
         });
       }
     }
@@ -574,13 +601,57 @@ export const RemanejamentoSaldos: React.FC = () => {
     e.target.value = '';
   };
 
+  const handleAddManualSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newManualEntry.description || !newManualEntry.amount) return;
+
+    const parsedAmount = parseBRLToNumber(newManualEntry.amount);
+    
+    const manualFile: ImportedFile = {
+      id: `manual-${Math.random().toString(36).substr(2, 9)}`,
+      fileName: `(Manual) ${newManualEntry.description}`,
+      totalAmount: parsedAmount,
+      lines: [{ account: newManualEntry.description, amount: parsedAmount }],
+      isExpanded: false,
+      category: newManualEntry.category
+    };
+
+    setImportedFiles(prev => [...prev, manualFile]);
+    setShowAddManualModal(false);
+    setNewManualEntry({ description: '', amount: '', category: 'Notas Fiscais' });
+  };
+
   const toggleFileExpanded = (fileId: string) => {
     setImportedFiles(prev => prev.map(f => f.id === fileId ? { ...f, isExpanded: !f.isExpanded } : f));
   };
 
   const removeImportedFile = (fileId: string) => {
-    setImportedFiles(prev => prev.filter(f => f.id !== fileId));
+    setItemToDelete({ id: fileId, type: 'importedFile' });
   };
+
+  const updateFileCategory = (fileId: string, category: 'Movimento' | 'FUS' | 'Educação' | 'FUNDEB' | 'Custeio' | 'Notas Fiscais' | 'Verbas Indenizatórias' | 'Sem conta') => {
+    setImportedFiles(prev => prev.map(f => f.id === fileId ? { ...f, category } : f));
+  };
+
+  const fileAccountTotals = (() => {
+    const totals: Record<'Movimento' | 'FUS' | 'Educação' | 'FUNDEB' | 'Custeio' | 'Notas Fiscais' | 'Verbas Indenizatórias' | 'Sem conta', number> = {
+      Movimento: 0,
+      FUS: 0,
+      Educação: 0,
+      FUNDEB: 0,
+      Custeio: 0,
+      'Notas Fiscais': 0,
+      'Verbas Indenizatórias': 0,
+      'Sem conta': 0
+    };
+
+    importedFiles.forEach(file => {
+      const cat = file.category || 'Sem conta';
+      totals[cat] = (totals[cat] || 0) + file.totalAmount;
+    });
+
+    return totals;
+  })();
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300 font-['Inter']">
@@ -1126,18 +1197,74 @@ export const RemanejamentoSaldos: React.FC = () => {
           <div className="flex items-center gap-3">
             {importedFiles.length > 0 && (
               <button
-                onClick={() => setImportedFiles([])}
+                onClick={() => setItemToDelete({ id: null, type: 'allImportedFiles' })}
                 className="flex items-center gap-2 px-4 py-2 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl font-bold text-xs hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-colors"
               >
                 <X size={14} /> Limpar Todos
               </button>
             )}
+            <button
+              onClick={() => setShowAddManualModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold text-xs transition-colors"
+            >
+              <Plus size={14} /> Adicionar Manual
+            </button>
             <label className="flex items-center gap-2 px-5 py-2.5 bg-[#003B6F] hover:bg-[#002b52] text-white rounded-xl font-bold text-xs transition-all cursor-pointer shadow-md active:scale-95">
               <Upload size={16} /> Importar Arquivos
               <input type="file" accept=".txt" multiple onChange={handleFileUpload} className="hidden" />
             </label>
           </div>
         </div>
+
+        {/* CARDS DE TOTAIS POR CONTA (EXTRATOS) */}
+        {importedFiles.length > 0 && (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 mb-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {Object.entries(fileAccountTotals).map(([key, value]) => {
+                const isActive = value > 0;
+                return (
+                  <div 
+                    key={key} 
+                    className={`rounded-2xl p-4 transition-all duration-300 border ${
+                      isActive 
+                        ? 'bg-blue-50/50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50 shadow-sm' 
+                        : 'bg-neutral-50 dark:bg-neutral-900/30 border-neutral-100 dark:border-neutral-800 opacity-70'
+                    }`}
+                  >
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-neutral-500 mb-1">{key}</p>
+                    <p className={`text-base md:text-lg font-black font-['Montserrat'] truncate ${
+                      isActive ? 'text-[#003B6F] dark:text-blue-400' : 'text-neutral-400 dark:text-neutral-600'
+                    }`} title={formatCurrency(value)}>
+                      {formatCurrency(value)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* CARDS DE SOMAS COMPOSTAS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 pt-4 border-t border-neutral-200 dark:border-neutral-800 animate-in fade-in slide-in-from-bottom-6 duration-700">
+              <div className="bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-900/30 border border-indigo-100 dark:border-indigo-800/50 rounded-2xl p-4 shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-indigo-600 dark:text-indigo-400 mb-1">Movimento + Notas Fiscais</p>
+                <p className="text-xl font-black font-['Montserrat'] text-indigo-900 dark:text-indigo-200">
+                  {formatCurrency(fileAccountTotals['Movimento'] + fileAccountTotals['Notas Fiscais'])}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-900/30 border border-emerald-100 dark:border-emerald-800/50 rounded-2xl p-4 shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1">Movimento + Verbas</p>
+                <p className="text-xl font-black font-['Montserrat'] text-emerald-900 dark:text-emerald-200">
+                  {formatCurrency(fileAccountTotals['Movimento'] + fileAccountTotals['Verbas Indenizatórias'])}
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-900/30 border border-amber-100 dark:border-amber-800/50 rounded-2xl p-4 shadow-sm">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-amber-700 dark:text-amber-500 mb-1">Movimento + Notas + Verbas</p>
+                <p className="text-xl font-black font-['Montserrat'] text-amber-900 dark:text-amber-200">
+                  {formatCurrency(fileAccountTotals['Movimento'] + fileAccountTotals['Notas Fiscais'] + fileAccountTotals['Verbas Indenizatórias'])}
+                </p>
+              </div>
+            </div>
+          </>
+        )}
 
         {importedFiles.length > 0 ? (
           <div className="space-y-4">
@@ -1152,6 +1279,23 @@ export const RemanejamentoSaldos: React.FC = () => {
                     <div>
                       <h4 className="font-bold text-neutral-900 dark:text-white">{file.fileName}</h4>
                       <p className="text-xs text-neutral-500 font-medium mt-0.5">{file.lines.length} registros identificados</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] uppercase font-bold text-neutral-500">Categoria:</span>
+                        <select 
+                          value={file.category || 'Sem conta'}
+                          onChange={(e) => updateFileCategory(file.id, e.target.value as any)}
+                          className="text-xs font-semibold bg-neutral-100 dark:bg-neutral-800 border-none rounded-lg px-2 py-1 outline-none text-[#003B6F] dark:text-blue-400 focus:ring-2 focus:ring-[#003B6F]"
+                        >
+                          <option value="Movimento">Movimento</option>
+                          <option value="FUS">FUS</option>
+                          <option value="Educação">Educação</option>
+                          <option value="FUNDEB">FUNDEB</option>
+                          <option value="Custeio">Custeio</option>
+                          <option value="Notas Fiscais">Notas Fiscais</option>
+                          <option value="Verbas Indenizatórias">Verbas Indenizatórias</option>
+                          <option value="Sem conta">Sem conta</option>
+                        </select>
+                      </div>
                       {file.lines.filter(l => l.amount === 0).length > 0 && (
                         <div className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-900/50">
                           <AlertTriangle size={12} /> {file.lines.filter(l => l.amount === 0).length} registro(s) com valor zerado
@@ -1405,6 +1549,84 @@ export const RemanejamentoSaldos: React.FC = () => {
         </div>
       )}
 
+      {/* MODAL ADICIONAR LANÇAMENTO MANUAL (NOTAS/VERBAS) */}
+      {showAddManualModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white dark:bg-[#171717] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-xl font-black text-[#003B6F] dark:text-white mb-4">
+              Adicionar Lançamento Manual
+            </h3>
+            <form onSubmit={handleAddManualSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 mb-1">Descrição / Referência</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Nota Fiscal Ref. Outubro"
+                  value={newManualEntry.description}
+                  onChange={e => setNewManualEntry({ ...newManualEntry, description: e.target.value })}
+                  className="w-full p-2.5 border rounded-xl dark:bg-neutral-900 dark:border-neutral-800 text-sm font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 mb-1">Categoria</label>
+                <select
+                  value={newManualEntry.category}
+                  onChange={e => setNewManualEntry({ ...newManualEntry, category: e.target.value as any })}
+                  className="w-full p-2.5 border rounded-xl dark:bg-neutral-900 dark:border-neutral-800 text-sm font-semibold"
+                >
+                  <option value="Movimento">Movimento</option>
+                  <option value="FUS">FUS</option>
+                  <option value="Educação">Educação</option>
+                  <option value="FUNDEB">FUNDEB</option>
+                  <option value="Custeio">Custeio</option>
+                  <option value="Notas Fiscais">Notas Fiscais</option>
+                  <option value="Verbas Indenizatórias">Verbas Indenizatórias</option>
+                  <option value="Sem conta">Sem conta</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-neutral-500 mb-1">Valor Total (R$)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-neutral-400 font-bold text-sm">R$</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: 5.400,00"
+                    value={newManualEntry.amount}
+                    onChange={e => setNewManualEntry({ ...newManualEntry, amount: applyCurrencyMask(e.target.value) })}
+                    className="w-full pl-10 pr-3 py-2.5 border rounded-xl dark:bg-neutral-900 dark:border-neutral-800 text-sm font-semibold"
+                  />
+                </div>
+                {newManualEntry.amount && (
+                  <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1 font-semibold">
+                    Valor formatado: {formatCurrency(parseBRLToNumber(newManualEntry.amount))}
+                  </p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddManualModal(false);
+                    setNewManualEntry({ description: '', amount: '', category: 'Notas Fiscais' });
+                  }}
+                  className="px-4 py-2 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-[#00A86B] text-white rounded-xl text-xs font-bold"
+                >
+                  Adicionar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO */}
       {itemToDelete && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in">
@@ -1416,8 +1638,12 @@ export const RemanejamentoSaldos: React.FC = () => {
               Confirmar Exclusão
             </h3>
             <p className="text-sm text-neutral-500 mb-6 leading-relaxed">
-              Tem certeza que deseja excluir est{itemToDelete.type === 'origin' ? 'a conta de origem' : 'a demanda de destino'}? 
-              Todos os remanejamentos vinculados também serão removidos. <br/><strong className="text-rose-500">Esta ação não pode ser desfeita.</strong>
+              {itemToDelete.type === 'origin' && 'Tem certeza que deseja excluir esta conta de origem? Todos os remanejamentos vinculados também serão removidos.'}
+              {itemToDelete.type === 'dest' && 'Tem certeza que deseja excluir esta demanda de destino? Todos os remanejamentos vinculados também serão removidos.'}
+              {itemToDelete.type === 'allocation' && 'Tem certeza que deseja estornar e excluir este lançamento de remanejamento?'}
+              {itemToDelete.type === 'importedFile' && 'Tem certeza que deseja remover este arquivo importado da comparação?'}
+              {itemToDelete.type === 'allImportedFiles' && 'Tem certeza que deseja limpar todos os arquivos importados da lista?'}
+              <br/><strong className="text-rose-500">Esta ação não pode ser desfeita.</strong>
             </p>
             <div className="flex justify-stretch w-full gap-3">
               <button
