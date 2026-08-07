@@ -811,7 +811,7 @@ export const LawsModule = ({
   const canEdit = hasPermission(currentUser, 'laws', 'edit');
   const canAdmin = hasPermission(currentUser, 'laws', 'admin');
 
-  const [laws, setLaws] = React.useState<MunicipalLaw[]>(INITIAL_MOCK_LAWS);
+  const [laws, setLaws] = React.useState<MunicipalLaw[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [selectedLaw, setSelectedLaw] = React.useState<MunicipalLaw | null>(null);
   const [editingLaw, setEditingLaw] = React.useState<MunicipalLaw | null>(null);
@@ -825,20 +825,24 @@ export const LawsModule = ({
   const [selectedYear, setSelectedYear] = React.useState<string>('Todos');
   const [viewLayout, setViewLayout] = React.useState<'grid' | 'table'>('grid');
 
-  // Load from Supabase
   const loadLaws = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      let query = supabase.from('municipal_laws').select('*');
+      let query = supabase.from('municipal_laws').select('*').order('created_at', { ascending: false });
       if (institution?.id) {
         query = query.eq('institution_id', institution.id);
       }
       const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        setLaws(data as MunicipalLaw[]);
+      if (error) {
+        console.error('Error fetching laws:', error);
+        showToast('Erro ao carregar leis do banco de dados.', 'error');
+        setLaws([]);
+      } else {
+        setLaws((data || []) as MunicipalLaw[]);
       }
     } catch (err) {
-      console.log('Utilizando mock de leis municipais.');
+      console.error(err);
+      setLaws([]);
     }
     setIsLoading(false);
   }, [institution?.id]);
@@ -864,34 +868,31 @@ export const LawsModule = ({
     const payload = {
       ...lawData,
       file_url: fileUrl,
-      institution_id: institution?.id || 'inst_1'
+      institution_id: institution?.id || null
     };
 
     if (lawData.id) {
       // Update
       const { error } = await supabase.from('municipal_laws').update(payload).eq('id', lawData.id);
       if (error) {
-        setLaws(prev => prev.map(l => l.id === lawData.id ? { ...l, ...payload } as MunicipalLaw : l));
+        console.error(error);
+        showToast('Erro ao atualizar a norma.', 'error');
       } else {
         await loadLaws();
+        showToast('Lei/Ato normativo atualizado com sucesso!', 'success');
       }
-      showToast('Lei/Ato normativo atualizado com sucesso!', 'success');
     } else {
       // Create
-      const newId = `law_${Date.now()}`;
-      const fullLaw: MunicipalLaw = {
-        ...(payload as MunicipalLaw),
-        id: newId,
-        created_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase.from('municipal_laws').insert([fullLaw]);
+      delete payload.id; // Allow Supabase to generate the UUID
+      
+      const { error } = await supabase.from('municipal_laws').insert([payload]);
       if (error) {
-        setLaws(prev => [fullLaw, ...prev]);
+        console.error(error);
+        showToast('Erro ao cadastrar a norma.', 'error');
       } else {
         await loadLaws();
+        showToast('Nova lei cadastrada e publicada com sucesso!', 'success');
       }
-      showToast('Nova lei cadastrada e publicada com sucesso!', 'success');
     }
 
     setIsFormOpen(false);
@@ -904,11 +905,12 @@ export const LawsModule = ({
 
     const { error } = await supabase.from('municipal_laws').delete().eq('id', id);
     if (error) {
-      setLaws(prev => prev.filter(l => l.id !== id));
+      console.error(error);
+      showToast('Erro ao excluir a norma.', 'error');
     } else {
       await loadLaws();
+      showToast('Norma excluída com sucesso.', 'info');
     }
-    showToast('Norma excluída com sucesso.', 'info');
   };
 
   // Filtered dataset
