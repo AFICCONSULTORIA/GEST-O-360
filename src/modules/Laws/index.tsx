@@ -828,7 +828,7 @@ export const LawsModule = ({
   const loadLaws = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      let query = supabase.from('municipal_laws').select('*').order('created_at', { ascending: false });
+      let query = supabase.from('municipal_laws').select('*').order('publication_date', { ascending: false });
       
       const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
       if (institution?.id && isUUID(institution.id)) {
@@ -931,6 +931,10 @@ export const LawsModule = ({
     const matchesYear = selectedYear === 'Todos' || l.number.endsWith(selectedYear) || (l.publication_date && l.publication_date.startsWith(selectedYear));
 
     return matchesSearch && matchesType && matchesCategory && matchesStatus && matchesYear;
+  }).sort((a, b) => {
+    const dateA = new Date(a.publication_date || a.created_at || 0).getTime();
+    const dateB = new Date(b.publication_date || b.created_at || 0).getTime();
+    return dateB - dateA; // Mais nova primeiro
   });
 
   // Calculate metrics
