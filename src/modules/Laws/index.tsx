@@ -829,9 +829,12 @@ export const LawsModule = ({
     setIsLoading(true);
     try {
       let query = supabase.from('municipal_laws').select('*').order('created_at', { ascending: false });
-      if (institution?.id) {
+      
+      const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+      if (institution?.id && isUUID(institution.id)) {
         query = query.eq('institution_id', institution.id);
       }
+      
       const { data, error } = await query;
       if (error) {
         console.error('Error fetching laws:', error);
@@ -865,10 +868,11 @@ export const LawsModule = ({
       }
     }
 
+    const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     const payload = {
       ...lawData,
       file_url: fileUrl,
-      institution_id: institution?.id || null
+      institution_id: (institution?.id && isUUID(institution.id)) ? institution.id : null
     };
 
     if (lawData.id) {
