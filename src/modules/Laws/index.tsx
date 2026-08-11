@@ -931,9 +931,21 @@ export const LawsModule = ({
 
     return matchesSearch && matchesType && matchesCategory && matchesStatus && matchesYear;
   }).sort((a, b) => {
-    const dateA = new Date(a.publication_date || a.created_at || 0).getTime();
-    const dateB = new Date(b.publication_date || b.created_at || 0).getTime();
-    return dateB - dateA; // Mais nova primeiro
+    const parseLawNumber = (numStr: string) => {
+      if (!numStr) return { year: 0, num: 0 };
+      const parts = numStr.split('/');
+      const num = parseInt((parts[0] || '0').replace(/\./g, ''), 10) || 0;
+      const year = parseInt(parts[1] || '0', 10) || 0;
+      return { year, num };
+    };
+    
+    const aVal = parseLawNumber(a.number);
+    const bVal = parseLawNumber(b.number);
+    
+    if (bVal.year !== aVal.year) {
+      return bVal.year - aVal.year;
+    }
+    return bVal.num - aVal.num;
   });
 
   // Calculate metrics
