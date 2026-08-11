@@ -580,7 +580,6 @@ const LawFormModal = ({
     <motion.div 
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-neutral-950/70 backdrop-blur-md"
-      onClick={onClose}
     >
       <motion.div 
         initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
