@@ -1,4 +1,4 @@
-export type View = 'home' | 'mayor' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication';
+export type View = 'home' | 'mayor' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms';
 
 export type LawType = 
   | 'Lei Orgânica' 
@@ -267,3 +267,74 @@ export interface EnvironmentalReport {
   dateReported: string;
   institution_id?: string;
 }
+
+export type FormFieldType = 
+  | 'text' 
+  | 'textarea' 
+  | 'radio' 
+  | 'checkbox' 
+  | 'select' 
+  | 'rating_stars' 
+  | 'rating_emojis' 
+  | 'scale_nps' 
+  | 'date' 
+  | 'time' 
+  | 'cpf' 
+  | 'phone' 
+  | 'neighborhood' 
+  | 'file_link' 
+  | 'yes_no' 
+  | 'section_header';
+
+export interface FormField {
+  id: string;
+  type: FormFieldType;
+  label: string;
+  placeholder?: string;
+  description?: string;
+  required: boolean;
+  options?: string[];
+  min?: number;
+  max?: number;
+  step?: number;
+  allowOther?: boolean;
+}
+
+export interface PublicForm {
+  id: string;
+  institution_id?: string;
+  title: string;
+  description: string;
+  category: string;
+  slug?: string;
+  cover_theme: string; // gradient / color identifier
+  cover_image_url?: string;
+  status: 'published' | 'draft' | 'closed';
+  is_anonymous: boolean;
+  require_cpf: boolean;
+  max_responses?: number;
+  start_date?: string;
+  end_date?: string;
+  thank_you_title?: string;
+  thank_you_message?: string;
+  redirect_url?: string;
+  questions: FormField[];
+  created_by?: string;
+  created_at?: string;
+  updated_at?: string;
+  response_count?: number;
+}
+
+export interface FormResponse {
+  id: string;
+  form_id: string;
+  institution_id?: string;
+  respondent_name?: string;
+  respondent_cpf?: string;
+  respondent_phone?: string;
+  respondent_neighborhood?: string;
+  answers: Record<string, any>;
+  protocol: string;
+  created_at: string;
+}
+

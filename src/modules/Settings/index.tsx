@@ -5,7 +5,8 @@ import {
   ClipboardCheck, ShieldAlert, Compass, Landmark, BookText, PieChart,
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
   BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
-  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale, Activity
+  HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale, Activity,
+  ClipboardList
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -41,7 +42,8 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'settings', label: 'Configurações' },
   { id: 'patrimonio', label: 'Patrimônio' },
   { id: 'templates', label: 'Modelos de Documentos' },
-  { id: 'camara', label: 'Câmara Municipal' }
+  { id: 'camara', label: 'Câmara Municipal' },
+  { id: 'forms', label: 'Formulários & Consultas Públicas' }
 ];
 
 interface PermissionDef {
@@ -73,6 +75,7 @@ const PERMISSION_GROUPS: {
     title: 'Administração & Gestão',
     desc: 'Operações administrativas fundamentais e logística.',
     items: [
+      { id: 'forms', label: 'Formulários & Consultas', desc: 'Criação e divulgação de pesquisas para a população', icon: ClipboardList },
       { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites', icon: FileText },
       { id: 'mayor', label: 'Visão do Prefeito', desc: 'Painel gerencial e indicadores estratégicos', icon: Activity },
       { id: 'contracts', label: 'Contratos & Licitações', desc: 'Contratos administrativos e licitações', icon: Briefcase },

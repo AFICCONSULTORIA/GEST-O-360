@@ -90,6 +90,8 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
   const [editingItemId, setEditingItemId] = React.useState<string | null>(null);
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = React.useState<PatrimonioItem | null>(null);
+  const [duplicateModalItem, setDuplicateModalItem] = React.useState<PatrimonioItem | null>(null);
+  const [duplicateCount, setDuplicateCount] = React.useState<number>(1);
   const [isRotating, setIsRotating] = React.useState(false);
   const [showDeptDropdown, setShowDeptDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -210,14 +212,39 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
     setIsModalOpen(true);
   };
   const handleDuplicate = (item: PatrimonioItem) => {
-    setEditingItemId(null);
-    setFormData({
-      ...item,
-      id: undefined,
-      code: item.code ? item.code + ' (Cópia)' : '',
-      plate: item.plate ? item.plate + ' (Cópia)' : ''
-    });
-    setIsModalOpen(true);
+    setDuplicateCount(1);
+    setDuplicateModalItem(item);
+  };
+
+  const confirmDuplicate = () => {
+    if (!duplicateModalItem) return;
+    const num = duplicateCount;
+    if (isNaN(num) || num < 1 || num > 50) {
+      showToast("Por favor, insira um número válido entre 1 e 50.", 'error');
+      return;
+    }
+
+    if (num === 1) {
+      setEditingItemId(null);
+      setFormData({
+        ...duplicateModalItem,
+        id: undefined,
+        code: duplicateModalItem.code ? duplicateModalItem.code + ' (Cópia)' : '',
+        plate: duplicateModalItem.plate ? duplicateModalItem.plate + ' (Cópia)' : ''
+      });
+      setIsModalOpen(true);
+    } else {
+      for (let i = 1; i <= num; i++) {
+        onAdd({
+          ...duplicateModalItem,
+          id: crypto.randomUUID(),
+          code: duplicateModalItem.code ? `${duplicateModalItem.code} (Cópia ${i})` : '',
+          plate: duplicateModalItem.plate ? `${duplicateModalItem.plate} (Cópia ${i})` : ''
+        } as PatrimonioItem);
+      }
+      showToast(`${num} cópias criadas com sucesso!`, 'success');
+    }
+    setDuplicateModalItem(null);
   };
   const [formData, setFormData] = React.useState<Partial<PatrimonioItem>>({
     itemType: 'Geral', code: '', objectName: '', location: '', status: 'Servível', condition: 'Bom', department: '', year: new Date().getFullYear(), imageUrls: [], plate: '', chassis: '', model: ''
@@ -1194,6 +1221,92 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
       </AnimatePresence>
 
       <AnimatePresence>
+        {duplicateModalItem && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-950/50 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-white dark:bg-neutral-900 rounded-[32px] p-8 max-w-md w-full shadow-2xl border border-neutral-100 dark:border-neutral-800"
+            >
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
+                  <Copy size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-neutral-900 dark:text-white tracking-tight">Duplicar Item</h3>
+                  <p className="text-sm text-neutral-500">Quantas cópias você deseja criar?</p>
+                </div>
+              </div>
+
+              <div className="mb-6 space-y-4">
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
+                  <span className="text-xs font-bold uppercase text-neutral-400 block mb-1">Item a ser duplicado</span>
+                  <strong className="text-neutral-900 dark:text-neutral-200 uppercase truncate block">
+                    {duplicateModalItem.objectName}
+                  </strong>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <button 
+                    onClick={() => setDuplicateCount(Math.max(1, duplicateCount - 1))}
+                    className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 flex items-center justify-center transition-colors"
+                  >
+                    <ChevronLeft size={20} />
+                  </button>
+                  
+                  <div className="flex-1 relative">
+                    <input 
+                      type="number" 
+                      min="1" 
+                      max="50"
+                      value={duplicateCount}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val)) setDuplicateCount(Math.min(50, Math.max(1, val)));
+                      }}
+                      className="w-full h-12 bg-transparent border-2 border-indigo-100 dark:border-indigo-500/20 rounded-2xl text-center text-xl font-black text-indigo-600 dark:text-indigo-400 focus:outline-none focus:border-indigo-500 transition-colors"
+                    />
+                  </div>
+
+                  <button 
+                    onClick={() => setDuplicateCount(Math.min(50, duplicateCount + 1))}
+                    className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 flex items-center justify-center transition-colors"
+                  >
+                    <ChevronRight size={20} />
+                  </button>
+                </div>
+                
+                <p className="text-xs text-center text-neutral-500 px-4">
+                  {duplicateCount === 1 
+                    ? "O modal de edição será aberto para você revisar a cópia antes de salvar." 
+                    : `Serão criadas ${duplicateCount} cópias instantaneamente.`}
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setDuplicateModalItem(null)}
+                  className="flex-1 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  onClick={confirmDuplicate}
+                  className="flex-1 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest bg-indigo-500 text-white hover:bg-indigo-600 shadow-xl shadow-indigo-500/20 transition-colors"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {itemToDelete && (
           <motion.div 
             initial={{ opacity: 0 }}

@@ -27,7 +27,8 @@ import {
   Users2,
   MessageSquare,
   Scale,
-  Activity
+  Activity,
+  ClipboardList
 } from 'lucide-react';
 
 
@@ -196,9 +197,10 @@ export const NAVBAR_CATEGORIES = [
   },
   {
     id: 'comunicacao',
-    label: 'Comunicação',
+    label: 'Comunicação & População',
     icon: MessageSquare,
     items: [
+      { id: 'forms', label: 'Formulários & Consultas', icon: ClipboardList },
       { id: 'communication', label: 'Central WhatsApp', icon: MessageSquare },
     ]
   },
@@ -240,6 +242,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'esporte', label: 'Esporte' },
   { id: 'planejamento', label: 'Planejamento' },
   { id: 'camara', label: 'Câmara Municipal' },
+  { id: 'forms', label: 'Formulários & Consultas Populares' },
   { id: 'communication', label: 'Comunicação WhatsApp' },
   { id: 'settings', label: 'Configurações' }
 ];

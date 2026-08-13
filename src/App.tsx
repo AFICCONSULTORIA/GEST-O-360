@@ -35,6 +35,8 @@ import { AssistenciaSocialModule } from './modules/AssistenciaSocial';
 import { FinanceModules } from './modules/AdminFinancas';
 import { AdministracaoModule } from './modules/Administracao';
 import { CommunicationCenter } from './modules/CommunicationCenter';
+import { PublicFormsModule } from './modules/PublicForms';
+import { PublicFormRouteLoader } from './modules/PublicForms/PublicFormRouteLoader';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -448,6 +450,11 @@ export default function App() {
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isEducacaoPortal = currentPath === '/educacao';
   const isMeioAmbientePortal = currentPath === '/meio-ambiente';
+  const isPublicFormRoute = 
+    currentPath.startsWith('/formulario') || 
+    currentPath.startsWith('/form') || 
+    currentPath.startsWith('/responder') || 
+    (window.location.search.includes('form=') || window.location.search.includes('formulario='));
   const isAdminRoute = currentPath === '/servidores' || currentPath.startsWith('/servidores/');
   const isLandingPage = currentPath === '/';
   const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
@@ -569,6 +576,16 @@ export default function App() {
           </div>
           <PublicMeioAmbientePortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
+    );
+  }
+
+  if (isPublicFormRoute) {
+    return (
+      <PublicFormRouteLoader 
+        darkMode={darkMode} 
+        setDarkMode={setDarkMode} 
+        currentInstitution={currentInstitution} 
+      />
     );
   }
 
@@ -1281,6 +1298,7 @@ export default function App() {
             {activeView === 'support' && <SupportModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'templates' && <TemplatesModule />}
             {activeView === 'communication' && <CommunicationCenter />}
+            {activeView === 'forms' && <PublicFormsModule currentUser={currentUser} institution={currentInstitution} />}
           </motion.div>
         </AnimatePresence>
         </div>
