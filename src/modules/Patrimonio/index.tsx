@@ -91,7 +91,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
   const [expandedDescId, setExpandedDescId] = React.useState<string | null>(null);
   const [itemToDelete, setItemToDelete] = React.useState<PatrimonioItem | null>(null);
   const [duplicateModalItem, setDuplicateModalItem] = React.useState<PatrimonioItem | null>(null);
-  const [duplicateCount, setDuplicateCount] = React.useState<number>(1);
+  const [duplicateCount, setDuplicateCount] = React.useState<number | ''>(1);
   const [isRotating, setIsRotating] = React.useState(false);
   const [showDeptDropdown, setShowDeptDropdown] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
@@ -218,7 +218,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
 
   const confirmDuplicate = () => {
     if (!duplicateModalItem) return;
-    const num = duplicateCount;
+    const num = duplicateCount === '' ? 0 : duplicateCount;
     if (isNaN(num) || num < 1 || num > 50) {
       showToast("Por favor, insira um número válido entre 1 e 50.", 'error');
       return;
@@ -237,12 +237,16 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
       setIsModalOpen(false);
       const createCopies = async () => {
         showToast(`Criando ${num} cópias, aguarde...`, 'info');
+        const baseTime = new Date().getTime();
         for (let i = 1; i <= num; i++) {
+          // Subtrai segundos para que i=1 seja o mais antigo e i=num seja o mais novo.
+          const artificialDate = new Date(baseTime - (num - i) * 1000);
           await onAdd({
             ...duplicateModalItem,
             id: crypto.randomUUID(),
             code: duplicateModalItem.code ? `${duplicateModalItem.code} (Cópia ${i})` : '',
-            plate: duplicateModalItem.plate ? `${duplicateModalItem.plate} (Cópia ${i})` : ''
+            plate: duplicateModalItem.plate ? `${duplicateModalItem.plate} (Cópia ${i})` : '',
+            createdAt: artificialDate.toISOString()
           } as PatrimonioItem);
         }
         showToast(`${num} cópias criadas com sucesso!`, 'success');
@@ -1259,7 +1263,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
 
                 <div className="flex items-center gap-4">
                   <button 
-                    onClick={() => setDuplicateCount(Math.max(1, duplicateCount - 1))}
+                    onClick={() => setDuplicateCount(Math.max(1, (typeof duplicateCount === 'number' ? duplicateCount : 1) - 1))}
                     className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 flex items-center justify-center transition-colors"
                   >
                     <ChevronLeft size={20} />
@@ -1272,15 +1276,19 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
                       max="50"
                       value={duplicateCount}
                       onChange={(e) => {
+                        if (e.target.value === '') {
+                          setDuplicateCount('');
+                          return;
+                        }
                         const val = parseInt(e.target.value);
-                        if (!isNaN(val)) setDuplicateCount(Math.min(50, Math.max(1, val)));
+                        if (!isNaN(val)) setDuplicateCount(Math.min(50, val));
                       }}
                       className="w-full h-12 bg-transparent border-2 border-indigo-100 dark:border-indigo-500/20 rounded-2xl text-center text-xl font-black text-indigo-600 dark:text-indigo-400 focus:outline-none focus:border-indigo-500 transition-colors"
                     />
                   </div>
 
                   <button 
-                    onClick={() => setDuplicateCount(Math.min(50, duplicateCount + 1))}
+                    onClick={() => setDuplicateCount(Math.min(50, (typeof duplicateCount === 'number' ? duplicateCount : 0) + 1))}
                     className="w-12 h-12 rounded-2xl bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 flex items-center justify-center transition-colors"
                   >
                     <ChevronRight size={20} />

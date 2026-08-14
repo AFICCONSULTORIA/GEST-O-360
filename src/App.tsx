@@ -1087,7 +1087,8 @@ export default function App() {
                     model: item.model,
                     description: item.description,
                     created_by_name: currentUser?.name || currentUser?.email || 'Usuário Desconhecido',
-                    institution_id: currentInstitution?.id || null
+                    institution_id: currentInstitution?.id || null,
+                    ...(item.createdAt ? { created_at: item.createdAt } : {})
                   };
                   try {
                     const { data, error } = await supabase.from('patrimonio').insert([dbItem]).select().single();

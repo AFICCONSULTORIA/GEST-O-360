@@ -161,6 +161,7 @@ export interface PatrimonioItem {
   model?: string;
   description?: string;
   createdByName?: string;
+  createdAt?: string;
 }
 
 export interface Evidence {
