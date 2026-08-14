@@ -375,6 +375,7 @@ export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrech
                 </p>
                 <a 
                   href={settings.decretoUrl}
+                  download={settings.decretoName + ".pdf"}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center justify-center gap-2 py-4 bg-white text-blue-600 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-blue-50 hover:scale-[1.02] active:scale-95 transition-all"

@@ -741,13 +741,28 @@ const EducationModule = () => {
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">URL do Arquivo (PDF)</label>
-                      <input 
-                        type="text" 
-                        value={crecheSettings.decretoUrl}
-                        onChange={(e) => setCrecheSettings({...crecheSettings, decretoUrl: e.target.value})}
-                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-pink-500"
-                      />
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Arquivo do Decreto (PDF)</label>
+                      <div className="relative">
+                        <input 
+                          type="file" 
+                          accept="application/pdf"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                setCrecheSettings({...crecheSettings, decretoUrl: event.target?.result as string});
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        <div className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 flex items-center justify-center gap-2 text-sm font-bold text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors relative">
+                          <Upload size={16} /> 
+                          {crecheSettings.decretoUrl && crecheSettings.decretoUrl.length > 100 ? 'Arquivo Selecionado (Base64)' : 'Fazer Upload do PDF'}
+                        </div>
+                      </div>
                     </div>
                     <div className="md:col-span-2">
                       <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Descrição do Documento</label>
