@@ -1,25 +1,15 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  GraduationCap, Home, Bus, Salad, Baby, Users2, FileText 
+  GraduationCap, Baby 
 } from 'lucide-react';
-import { EducationOverview } from './components/EducationOverview';
-import { EducationTransport } from './components/EducationTransport';
-import { EducationMeals } from './components/EducationMeals';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
-import { EducationCouncils } from './components/EducationCouncils';
-import { EducationPlans } from './components/EducationPlans';
 
 export const EducationModule: React.FC = () => {
-  const [educationView, setEducationView] = useState<'overview' | 'transport' | 'meals' | 'creche' | 'councils' | 'plans'>('overview');
+  const [educationView, setEducationView] = useState<'creche'>('creche');
 
   const navigationTabs = [
-    { id: 'overview', label: 'Dashboard & Escolas', icon: Home },
-    { id: 'transport', label: 'Transporte (PNATE)', icon: Bus },
-    { id: 'meals', label: 'Alimentação (PNAE)', icon: Salad },
     { id: 'creche', label: 'Vagas CMEI', icon: Baby },
-    { id: 'councils', label: 'Conselhos (CACS/CAE/CME)', icon: Users2 },
-    { id: 'plans', label: 'Metas PME & Relatórios', icon: FileText },
   ] as const;
 
   return (
@@ -62,42 +52,6 @@ export const EducationModule: React.FC = () => {
 
       {/* Main Content Area with Transitions */}
       <AnimatePresence mode="wait">
-        {educationView === 'overview' && (
-          <motion.div 
-            key="overview"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
-            transition={{ duration: 0.2 }}
-          >
-            <EducationOverview />
-          </motion.div>
-        )}
-
-        {educationView === 'transport' && (
-          <motion.div 
-            key="transport"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
-            transition={{ duration: 0.2 }}
-          >
-            <EducationTransport />
-          </motion.div>
-        )}
-
-        {educationView === 'meals' && (
-          <motion.div 
-            key="meals"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
-            transition={{ duration: 0.2 }}
-          >
-            <EducationMeals />
-          </motion.div>
-        )}
-
         {educationView === 'creche' && (
           <motion.div 
             key="creche"
@@ -107,30 +61,6 @@ export const EducationModule: React.FC = () => {
             transition={{ duration: 0.2 }}
           >
             <EducationCrecheAdmin />
-          </motion.div>
-        )}
-
-        {educationView === 'councils' && (
-          <motion.div 
-            key="councils"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
-            transition={{ duration: 0.2 }}
-          >
-            <EducationCouncils />
-          </motion.div>
-        )}
-
-        {educationView === 'plans' && (
-          <motion.div 
-            key="plans"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
-            transition={{ duration: 0.2 }}
-          >
-            <EducationPlans />
           </motion.div>
         )}
       </AnimatePresence>
