@@ -291,11 +291,56 @@ export const MOCK_COMPANIES: CompanyCertificates[] = [
 ];
 
 export const MOCK_TEMPLATES: DocumentTemplate[] = [
-  { id: 'tpl1', title: 'Ofício Padrão - Notificação', description: 'Modelo nativo para notificação de empresas e fornecedores.', category: 'Ofícios', format: 'Editor Web', fileUrl: '#', updatedAt: '2025-10-15', content: '<h1>OFÍCIO Nº XXX/2026</h1><p><b>À Empresa [Nome da Empresa]</b></p><br><p>Prezados,</p><p>Servimo-nos do presente para notificar V. Sas. acerca de...</p>' },
-  { id: 'tpl2', title: 'Planilha de Custos Unitários', description: 'Planilha padrão para estimativa de custos em processos licitatórios.', category: 'Licitações', format: 'Excel', fileUrl: '#', updatedAt: '2025-11-20' },
-  { id: 'tpl3', title: 'Minuta de Contrato Administrativo', description: 'Estrutura base para contratos de prestação de serviços.', category: 'Contratos', format: 'Word', fileUrl: '#', updatedAt: '2026-01-05' },
-  { id: 'tpl4', title: 'Ficha de Avaliação de Desempenho', description: 'Formulário anual para avaliação de servidores.', category: 'RH', format: 'PDF', fileUrl: '#', updatedAt: '2026-02-10' },
-  { id: 'tpl5', title: 'Apresentação Institucional', description: 'Slides padrão com a identidade visual da prefeitura.', category: 'Geral', format: 'PowerPoint', fileUrl: '#', updatedAt: '2026-03-01' }
+  { 
+    id: 'tpl1', 
+    title: 'Ofício de Solicitação / Encaminhamento', 
+    description: 'Ofício padrão para comunicação oficial externa ou envio de demandas a outros órgãos.', 
+    category: 'Ofícios', 
+    format: 'Editor Web', 
+    fileUrl: '#', 
+    updatedAt: '2026-04-10', 
+    content: '<p style="text-align: right;">{{NOME_MUNICIPIO}}, {{DATA_EXTENSO}}</p><br><p><b>OFÍCIO Nº XXXX/2026/{{NOME_SECRETARIA_SIGLA}}</b></p><br><p>A Sua Senhoria o(a) Senhor(a),</p><p><b>[NOME DO DESTINATÁRIO]</b></p><p>[Cargo do Destinatário]</p><p>[Órgão/Entidade]</p><br><p><b>Assunto: Solicitação de providências referente a [Tema]</b></p><br><p>Senhor(a) [Cargo],</p><p style="text-align: justify; text-indent: 40px;">Ao cumprimentá-lo(a) cordialmente, sirvo-me do presente para solicitar a Vossa Senhoria as providências necessárias visando [descrever o pedido de forma clara e objetiva].</p><p style="text-align: justify; text-indent: 40px;">Ressaltamos que a referida solicitação se faz necessária em virtude de [apresentar a justificativa principal da demanda].</p><p style="text-align: justify; text-indent: 40px;">Certos de contarmos com vossa habitual atenção e colaboração, colocamo-nos à inteira disposição para eventuais esclarecimentos adicionais que se fizerem necessários.</p><br><p>Respeitosamente,</p><br>{{ASSINATURA}}' 
+  },
+  { 
+    id: 'tpl2', 
+    title: 'Memorando Interno', 
+    description: 'Documento ágil para comunicação direta entre setores e departamentos da mesma secretaria.', 
+    category: 'Ofícios', 
+    format: 'Editor Web', 
+    fileUrl: '#', 
+    updatedAt: '2026-04-12', 
+    content: '<p><b>MEMORANDO Nº XXX/2026/{{NOME_SECRETARIA_SIGLA}}</b></p><br><p><b>De:</b> {{NOME_USUARIO}} - {{CARGO_USUARIO}}</p><p><b>Para:</b> [Setor / Destinatário]</p><p><b>Data:</b> {{DATA_CURTA}}</p><p><b>Assunto:</b> [Assunto do Memorando]</p><hr><br><p style="text-align: justify; text-indent: 40px;">Comunico a Vossa Senhoria que [inserir o conteúdo do comunicado interno, solicitações ou informações de forma direta e objetiva].</p><p style="text-align: justify; text-indent: 40px;">Solicitamos que as devidas providências sejam adotadas com a maior brevidade possível, visando [justificativa ou objetivo do memorando].</p><br><p>Atenciosamente,</p><br>{{ASSINATURA}}' 
+  },
+  { 
+    id: 'tpl3', 
+    title: 'Portaria de Nomeação / Exoneração', 
+    description: 'Minuta oficial para atos administrativos de pessoal (nomeação, exoneração, designação).', 
+    category: 'RH', 
+    format: 'Editor Web', 
+    fileUrl: '#', 
+    updatedAt: '2026-05-01', 
+    content: '<h2 style="text-align: center;">PORTARIA Nº XXX, DE {{DATA_EXTENSO}}</h2><br><p style="text-align: justify;"><i>Dispõe sobre a [Nomeação/Exoneração/Designação] de servidor(a) que especifica e dá outras providências.</i></p><br><p style="text-align: justify;">O(A) <b>Prefeito(a) do Município de {{NOME_MUNICIPIO}}</b>, no uso das atribuições legais que lhe são conferidas pela Lei Orgânica do Município e legislação em vigor,</p><br><p style="text-align: center;"><b>RESOLVE:</b></p><br><p style="text-align: justify; text-indent: 40px;"><b>Art. 1º</b> Fica [nomeado(a)/exonerado(a)] o(a) Senhor(a) <b>[NOME COMPLETO DO SERVIDOR]</b>, portador(a) do CPF nº [000.000.000-00], para exercer o Cargo de Provimento em Comissão de [NOME DO CARGO], Símbolo [SÍMBOLO], lotado(a) na [NOME DA SECRETARIA].</p><p style="text-align: justify; text-indent: 40px;"><b>Art. 2º</b> As despesas decorrentes da execução desta Portaria correrão por conta de dotações orçamentárias próprias.</p><p style="text-align: justify; text-indent: 40px;"><b>Art. 3º</b> Esta Portaria entra em vigor na data de sua publicação, revogando-se as disposições em contrário.</p><br><p style="text-align: right;">Gabinete do Prefeito, {{DATA_EXTENSO}}.</p><br><br><br><p style="text-align: center;"><b>[NOME DO PREFEITO(A)]</b><br>Prefeito(a) Municipal</p>' 
+  },
+  { 
+    id: 'tpl4', 
+    title: 'Termo de Referência (Simplificado)', 
+    description: 'Documento base para iniciar processo licitatório ou contratação direta.', 
+    category: 'Licitações', 
+    format: 'Editor Web', 
+    fileUrl: '#', 
+    updatedAt: '2026-02-15', 
+    content: '<h2 style="text-align: center;">TERMO DE REFERÊNCIA</h2><br><h3>1. DO OBJETO</h3><p style="text-align: justify;">O presente Termo de Referência tem por objeto a contratação de empresa especializada para o fornecimento de [descrever o objeto principal], visando atender às necessidades da {{NOME_SECRETARIA}} do município de {{NOME_MUNICIPIO}}.</p><br><h3>2. DA JUSTIFICATIVA</h3><p style="text-align: justify;">A aquisição justifica-se pela necessidade contínua de [explicar o motivo e os benefícios da contratação para a administração pública e sociedade].</p><br><h3>3. DAS ESPECIFICAÇÕES TÉCNICAS</h3><table style="width: 100%; border-collapse: collapse; margin: 1.5rem 0;"><tbody><tr><td style="border: 1px solid #d4d4d8; padding: 0.75rem; font-weight: bold; background-color: #f3f4f6;">Item</td><td style="border: 1px solid #d4d4d8; padding: 0.75rem; font-weight: bold; background-color: #f3f4f6;">Descrição / Especificação do Produto ou Serviço</td><td style="border: 1px solid #d4d4d8; padding: 0.75rem; font-weight: bold; background-color: #f3f4f6;">Unid.</td><td style="border: 1px solid #d4d4d8; padding: 0.75rem; font-weight: bold; background-color: #f3f4f6;">Quant.</td></tr><tr><td style="border: 1px solid #d4d4d8; padding: 0.75rem;">1</td><td style="border: 1px solid #d4d4d8; padding: 0.75rem;">[Especificação completa]</td><td style="border: 1px solid #d4d4d8; padding: 0.75rem;">UND</td><td style="border: 1px solid #d4d4d8; padding: 0.75rem;">00</td></tr></tbody></table><br><h3>4. OBRIGAÇÕES DA CONTRATADA E DA CONTRATANTE</h3><p style="text-align: justify;">A Contratada compromete-se a entregar os itens no prazo máximo de X dias após a assinatura do termo. A Contratante fica responsável pelo acompanhamento e fiscalização.</p><br>{{ASSINATURA}}' 
+  },
+  { 
+    id: 'tpl5', 
+    title: 'Atestado de Lotação e Exercício', 
+    description: 'Documento oficial do RH para atestar o vínculo e exercício atual do servidor.', 
+    category: 'RH', 
+    format: 'Editor Web', 
+    fileUrl: '#', 
+    updatedAt: '2026-03-20', 
+    content: '<h2 style="text-align: center;">ATESTADO DE LOTAÇÃO E EXERCÍCIO</h2><br><br><p style="text-align: justify; text-indent: 40px; line-height: 2;">Atesto para os devidos fins e a quem possa interessar, que o(a) Sr(a). <b>[NOME DO SERVIDOR]</b>, inscrito(a) no CPF sob o nº <b>[000.000.000-00]</b>, matrícula nº <b>[0000]</b>, é servidor(a) público(a) municipal pertencente ao Quadro Pessoal desta Prefeitura, exercendo o cargo de <b>[CARGO DO SERVIDOR]</b>, com carga horária de [XX] horas semanais.</p><p style="text-align: justify; text-indent: 40px; line-height: 2;">Atesto ainda que o(a) referido(a) servidor(a) encontra-se atualmente lotado(a) e em pleno exercício de suas funções na <b>{{NOME_SECRETARIA}}</b>.</p><p style="text-align: justify; text-indent: 40px; line-height: 2;">Por ser verdade, firmo o presente atestado.</p><br><br><p style="text-align: right;">{{NOME_MUNICIPIO}}, {{DATA_EXTENSO}}.</p><br><br><br><br>{{ASSINATURA}}' 
+  }
 ];
 
 export const RADAR_DATA: PNTPCategory[] = [

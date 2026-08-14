@@ -1297,7 +1297,7 @@ export default function App() {
             {activeView === 'camara' && <CamaraModule />}
             {activeView === 'settings' && <SettingsModule users={adminUsers} setUsers={setAdminUsers} institutions={institutions} setInstitutions={setInstitutions} departments={departments} setDepartments={setDepartments} currentUser={currentUser} />}
             {activeView === 'support' && <SupportModule currentUser={currentUser} institution={currentInstitution} />}
-            {activeView === 'templates' && <TemplatesModule />}
+            {activeView === 'templates' && <TemplatesModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'communication' && <CommunicationCenter />}
             {activeView === 'forms' && <PublicFormsModule currentUser={currentUser} institution={currentInstitution} />}
           </motion.div>

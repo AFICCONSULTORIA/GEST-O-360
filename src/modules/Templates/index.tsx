@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as LucideIcons from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { MOCK_TEMPLATES } from '../../lib/mockData';
-import { DocumentTemplate } from '../../types';
+import { DocumentTemplate, AdminUser, Institution } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 
 const { 
@@ -12,7 +12,7 @@ const {
   List, ListOrdered, Heading1, Heading2, Printer, Save, Send, Undo, Redo, Indent, Outdent,
   TableProperties, ArrowUpDown, Minus, Image: ImageIcon, Scissors, Copy, ClipboardPaste,
   Type, Highlighter, Palette, Check, Search: SearchIcon, Replace, ZoomIn, ZoomOut, 
-  ChevronDown, ChevronUp, XCircle, LayoutTemplate, Link: LinkIcon
+  ChevronDown, ChevronUp, XCircle, LayoutTemplate, Link: LinkIcon, Wand2, PenTool, Workflow
 } = LucideIcons;
 
 const FONT_FAMILIES = [
@@ -99,7 +99,7 @@ const UncontrolledEditable = ({
 // -------------------------------------------------------------
 // EDITOR COMPONENT
 // -------------------------------------------------------------
-const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: () => void, onSave: (d: WebDocument, silent?: boolean) => void }) => {
+const DocumentEditor = ({ doc, onClose, onSave, currentUser, currentInstitution }: { doc?: WebDocument, onClose: () => void, onSave: (d: WebDocument, silent?: boolean) => void, currentUser?: AdminUser | null, currentInstitution?: Institution | null }) => {
   const DEFAULT_CONTENT = '<p style="font-family: Times New Roman, serif; font-size: 12pt; line-height: 1.5;"><br></p>';
   
   const [title, setTitle] = React.useState(doc?.title || 'Novo Documento Sem Título');
@@ -137,6 +137,80 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
   const [showMarginsMenu, setShowMarginsMenu] = React.useState(false);
   const [margins, setMargins] = React.useState<'normal'|'narrow'|'wide'>('normal');
   const [showGuides, setShowGuides] = React.useState(true);
+  const [showSmartVars, setShowSmartVars] = React.useState(false);
+
+  const insertSmartVar = (variableName: string) => {
+    const varHtml = `<span style="background-color: #E0F2FE; color: #0284C7; border: 1px solid #BAE6FD; padding: 2px 4px; border-radius: 4px; font-weight: bold; font-family: Inter, sans-serif; font-size: 10px;" data-smart-var="true">{{${variableName}}}</span>&nbsp;`;
+    execCmd('insertHTML', varHtml);
+    setShowSmartVars(false);
+  };
+
+  const replaceSmartVars = () => {
+    let currentHtml = bodyRef.current?.innerHTML || '';
+    
+    const vars: Record<string, string> = {
+      'NOME_USUARIO': currentUser?.name || '[Nome do Usuário]',
+      'CARGO_USUARIO': currentUser?.role || '[Cargo do Usuário]',
+      'NOME_MUNICIPIO': currentInstitution?.name || '[Nome do Município]',
+      'NOME_SECRETARIA': currentInstitution?.name || 'Prefeitura Municipal',
+      'NOME_SECRETARIA_SIGLA': 'PM',
+      'DATA_CURTA': new Date().toLocaleDateString('pt-BR'),
+      'DATA_EXTENSO': new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }),
+      'ASSINATURA': `<div style="text-align: center; margin-top: 50px;"><div style="width: 250px; border-top: 1px solid black; margin: 0 auto; margin-bottom: 8px;"></div><p style="margin:0; font-weight:bold;">${currentUser?.name || '[Nome]'}</p><p style="margin:0;">${currentUser?.role || '[Cargo]'}</p></div>`
+    };
+
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = currentHtml;
+    
+    const varSpans = tempDiv.querySelectorAll('span[data-smart-var="true"]');
+    varSpans.forEach(span => {
+      const text = span.textContent || '';
+      const varName = text.replace(/[{}]/g, '');
+      if (vars[varName] !== undefined) {
+        const replacement = document.createElement('span');
+        replacement.innerHTML = vars[varName];
+        span.replaceWith(...Array.from(replacement.childNodes));
+      }
+    });
+    
+    let newHtml = tempDiv.innerHTML;
+    for (const [key, value] of Object.entries(vars)) {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      newHtml = newHtml.replace(regex, value);
+    }
+    
+    if (bodyRef.current) {
+      bodyRef.current.innerHTML = newHtml;
+      setContent(newHtml);
+      markDirty();
+      showToast('Variáveis processadas com sucesso!', 'success');
+    }
+  };
+
+  const generateHeaderFooter = () => {
+    if (headerRef.current) {
+      const logoHtml = currentInstitution?.logo_url ? `<img src="${currentInstitution.logo_url}" style="height: 60px; object-fit: contain; margin-bottom: 10px;" />` : '';
+      const newHeader = `<div style="text-align: center; font-family: 'Times New Roman', serif;">
+        ${logoHtml}
+        <h3 style="margin: 0; font-size: 14pt; font-weight: bold;">MUNICÍPIO DE ${currentInstitution?.name?.toUpperCase() || 'MUNICÍPIO'}</h3>
+        <p style="margin: 0; font-size: 12pt;">ESTADO DE MATO GROSSO</p>
+        <div style="width: 100%; border-bottom: 2px solid #000; margin-top: 10px; margin-bottom: 2px;"></div>
+        <div style="width: 100%; border-bottom: 1px solid #000;"></div>
+      </div>`;
+      headerRef.current.innerHTML = newHeader;
+      setHeader(newHeader);
+    }
+    if (footerRef.current) {
+      const newFooter = `<div style="text-align: center; font-family: 'Times New Roman', serif; font-size: 10pt; color: #666; border-top: 1px solid #000; padding-top: 10px;">
+        <p style="margin: 0;">Prefeitura Municipal de ${currentInstitution?.name || 'Município'}</p>
+        <p style="margin: 0;">Este é um documento oficial gerado eletronicamente no sistema GESTÃO 360.</p>
+      </div>`;
+      footerRef.current.innerHTML = newFooter;
+      setFooter(newFooter);
+    }
+    markDirty();
+    showToast('Timbre e rodapé oficiais aplicados!', 'success');
+  };
 
   const MARGIN_PRESETS = {
     normal: { label: 'Normal', px: '5rem' },    // ~2cm
@@ -1012,6 +1086,68 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
           )}
         </div>
 
+        {/* Smart Variables Dropdown */}
+        <div className="relative">
+          <button
+            type="button"
+            title="Campos Inteligentes"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setShowSmartVars(!showSmartVars)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded-lg transition-colors border border-sky-100 dark:border-sky-800"
+          >
+            <Workflow size={14} /> Variáveis
+          </button>
+          {showSmartVars && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowSmartVars(false)} />
+              <div className="absolute top-full right-0 mt-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl shadow-xl py-2 w-56 z-50">
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 px-4 pb-2 border-b border-neutral-100 dark:border-neutral-800 mb-1">Inserir Campo</p>
+                {[
+                  { label: 'Data (Extenso)', value: 'DATA_EXTENSO' },
+                  { label: 'Data (Curta)', value: 'DATA_CURTA' },
+                  { label: 'Nome do Usuário', value: 'NOME_USUARIO' },
+                  { label: 'Cargo do Usuário', value: 'CARGO_USUARIO' },
+                  { label: 'Município', value: 'NOME_MUNICIPIO' },
+                  { label: 'Bloco de Assinatura', value: 'ASSINATURA' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => insertSmartVar(opt.value)}
+                    className="w-full text-left px-4 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-sky-50 hover:text-sky-600 dark:hover:bg-sky-900/20 dark:hover:text-sky-400 font-medium transition-colors"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Process Variables Action */}
+        <button
+          type="button"
+          title="Processar Variáveis (Preencher com dados reais)"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={replaceSmartVars}
+          className="p-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-emerald-100 hover:text-emerald-600 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 rounded-lg transition-colors border border-transparent hover:border-emerald-200 dark:hover:border-emerald-800"
+        >
+          <Wand2 size={16} />
+        </button>
+
+        {/* Generate Header/Footer Action */}
+        <button
+          type="button"
+          title="Gerar Timbre Oficial"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={generateHeaderFooter}
+          className="p-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-blue-100 hover:text-blue-600 dark:hover:bg-blue-900/30 dark:hover:text-blue-400 rounded-lg transition-colors border border-transparent hover:border-blue-200 dark:hover:border-blue-800 ml-1"
+        >
+          <PenTool size={16} />
+        </button>
+
+        <div className="w-px h-6 bg-neutral-200 dark:bg-neutral-700 mx-1 self-center"></div>
+
         {/* Buscar */}
         <ToolbarButton 
           icon={SearchIcon} 
@@ -1263,7 +1399,7 @@ const DocumentEditor = ({ doc, onClose, onSave }: { doc?: WebDocument, onClose: 
 // -------------------------------------------------------------
 // MAIN MODULE COMPONENT
 // -------------------------------------------------------------
-const TemplatesModule = () => {
+const TemplatesModule = ({ currentUser, currentInstitution }: { currentUser?: AdminUser | null, currentInstitution?: Institution | null }) => {
   const [activeTab, setActiveTab] = React.useState<'Oficiais' | 'Meus'>('Meus');
   const [search, setSearch] = React.useState('');
   
@@ -1455,6 +1591,8 @@ const TemplatesModule = () => {
           doc={editingWebDoc} 
           onClose={() => { setIsEditorOpen(false); setEditingTemplateId(null); }}
           onSave={handleSaveWebDoc}
+          currentUser={currentUser}
+          currentInstitution={currentInstitution}
         />
       </div>
     );
