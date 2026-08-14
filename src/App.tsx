@@ -1093,14 +1093,14 @@ export default function App() {
                     const { data, error } = await supabase.from('patrimonio').insert([dbItem]).select().single();
                     if (error) throw error;
                     if (data) {
-                      setPatrimonioItems([{
+                      setPatrimonioItems(prev => [{
                         ...data,
                         itemType: data.item_type,
                         objectName: data.object_name,
                         imageUrls: data.image_urls,
                         description: data.description,
                         createdByName: data.created_by_name
-                      } as PatrimonioItem, ...patrimonioItems]);
+                      } as PatrimonioItem, ...prev]);
                       showToast('Item de patrimônio salvo com sucesso', 'success');
                     }
                   } catch (error) {
