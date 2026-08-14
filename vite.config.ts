@@ -14,7 +14,7 @@ export default defineConfig(({mode}) => {
         registerType: 'autoUpdate',
         includeAssets: ['icon.svg'],
         workbox: {
-          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 // 4MB
+          maximumFileSizeToCacheInBytes: 8 * 1024 * 1024 // 8MB
         },
         manifest: {
           name: 'Gestão 360',
