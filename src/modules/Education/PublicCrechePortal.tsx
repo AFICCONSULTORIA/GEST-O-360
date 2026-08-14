@@ -23,6 +23,7 @@ export interface CrecheSettings {
   decretoName: string;
   decretoDescription: string;
   isOpen: boolean;
+  fichaUrl?: string;
 }
 
 export const DEFAULT_CRECHE_SETTINGS: CrecheSettings = {
@@ -35,7 +36,8 @@ export const DEFAULT_CRECHE_SETTINGS: CrecheSettings = {
   decretoUrl: '#',
   decretoName: 'Decreto Municipal nº 035/2024',
   decretoDescription: 'Regulamentação do Acesso à Educação Infantil e Fila Única dos CMEIs.',
-  isOpen: true
+  isOpen: true,
+  fichaUrl: ''
 };
 
 export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrechePortalProps) => {
@@ -394,6 +396,18 @@ export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrech
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 font-medium">
                 As matrículas são realizadas <strong className="text-pink-600 dark:text-pink-400">exclusivamente presencialmente no CMEI</strong>. Procure a secretaria portando todos os documentos necessários.
               </p>
+              
+              {settings.fichaUrl && settings.fichaUrl.length > 0 && (
+                <a
+                  href={settings.fichaUrl}
+                  download="Ficha_de_Matricula.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-4 mb-4 bg-pink-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-pink-700 hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-pink-500/20"
+                >
+                  <FileText size={18} /> Baixar Ficha de Matrícula
+                </a>
+              )}
               
               <div className="w-full flex flex-col items-center justify-center gap-2 py-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl border border-neutral-100 dark:border-neutral-800">
                 <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest">Contato e Dúvidas</p>
