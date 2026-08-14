@@ -234,7 +234,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
       });
       setIsModalOpen(true);
     } else {
-      for (let i = 1; i <= num; i++) {
+      for (let i = num; i >= 1; i--) {
         onAdd({
           ...duplicateModalItem,
           id: crypto.randomUUID(),
