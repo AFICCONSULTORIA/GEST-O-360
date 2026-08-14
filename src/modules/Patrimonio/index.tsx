@@ -78,7 +78,7 @@ const compressImage = async (file: File): Promise<File> => {
   }
 };
 
-const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, canDelete, canEdit = true, userDepartment, availableDepartments = [], currentUserName }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, onDeleteMultiple?: (ids: string[]) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[], currentUserName?: string }) => {
+const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, canDelete, canEdit = true, userDepartment, availableDepartments = [], currentUserName }: { items: PatrimonioItem[], onAdd: (item: PatrimonioItem) => void | Promise<void>, onEdit?: (item: PatrimonioItem) => void, onDelete?: (id: string) => void, onDeleteMultiple?: (ids: string[]) => void, canDelete?: boolean, canEdit?: boolean, userDepartment?: string, availableDepartments?: string[], currentUserName?: string }) => {
   const [search, setSearch] = React.useState('');
   const [filterDept, setFilterDept] = React.useState('Todos');
   const [filterCond, setFilterCond] = React.useState('Todos');
@@ -234,15 +234,20 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
       });
       setIsModalOpen(true);
     } else {
-      for (let i = num; i >= 1; i--) {
-        onAdd({
-          ...duplicateModalItem,
-          id: crypto.randomUUID(),
-          code: duplicateModalItem.code ? `${duplicateModalItem.code} (Cópia ${i})` : '',
-          plate: duplicateModalItem.plate ? `${duplicateModalItem.plate} (Cópia ${i})` : ''
-        } as PatrimonioItem);
-      }
-      showToast(`${num} cópias criadas com sucesso!`, 'success');
+      setIsModalOpen(false);
+      const createCopies = async () => {
+        showToast(`Criando ${num} cópias, aguarde...`, 'info');
+        for (let i = 1; i <= num; i++) {
+          await onAdd({
+            ...duplicateModalItem,
+            id: crypto.randomUUID(),
+            code: duplicateModalItem.code ? `${duplicateModalItem.code} (Cópia ${i})` : '',
+            plate: duplicateModalItem.plate ? `${duplicateModalItem.plate} (Cópia ${i})` : ''
+          } as PatrimonioItem);
+        }
+        showToast(`${num} cópias criadas com sucesso!`, 'success');
+      };
+      createCopies();
     }
     setDuplicateModalItem(null);
   };
