@@ -23,6 +23,7 @@ import { PublicFarmaciaPortal } from './modules/Saude/PublicFarmacia';
 import { ServicosPublicosModule } from './modules/ServicosPublicos';
 import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
 import { PublicEducacaoPortal } from './modules/Education/PublicPortal';
+import { PublicCrechePortal } from './modules/Education/PublicCrechePortal';
 import { MeioAmbienteModule } from './modules/MeioAmbiente';
 import { PublicMeioAmbientePortal } from './modules/MeioAmbiente/PublicPortal';
 import { CamaraModule } from './modules/Camara';
@@ -449,6 +450,7 @@ export default function App() {
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isEducacaoPortal = currentPath === '/educacao';
+  const isCrechePortal = currentPath === '/cmei' || currentPath.startsWith('/cmei/');
   const isMeioAmbientePortal = currentPath === '/meio-ambiente';
   const isPublicFormRoute = 
     currentPath.startsWith('/formulario') || 
@@ -559,6 +561,22 @@ export default function App() {
             </button>
           </div>
           <PublicEducacaoPortal darkMode={darkMode} currentInstitution={currentInstitution} />
+      </div>
+    );
+  }
+
+  if (isCrechePortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+         <div className="absolute top-10 right-10 z-50">
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+          <PublicCrechePortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }

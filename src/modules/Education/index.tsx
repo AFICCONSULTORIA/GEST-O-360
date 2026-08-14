@@ -12,11 +12,32 @@ import { showToast } from '../../components/ui/Toast';
 
 // Destructure common icons to avoid changing code
 const { 
-  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
+  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, Baby, Save
 } = LucideIcons;
 
 const EducationModule = () => {
-  const [educationView, setEducationView] = React.useState<'overview' | 'transport' | 'meals' | 'councils' | 'plans'>('overview');
+  const [educationView, setEducationView] = React.useState<'overview' | 'transport' | 'meals' | 'councils' | 'plans' | 'creche'>('overview');
+  const [crecheSettings, setCrecheSettings] = React.useState<any>(() => {
+    const saved = localStorage.getItem('@gestao360:creche_settings');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      bercarioTotal: 20, bercarioOccupied: 0,
+      maternal1Total: 35, maternal1Occupied: 0,
+      maternal2Total: 45, maternal2Occupied: 0,
+      decretoUrl: '#', decretoName: 'Decreto Municipal nº 035/2024',
+      decretoDescription: 'Regulamentação do Acesso à Educação Infantil e Fila Única dos CMEIs.',
+      isOpen: true
+    };
+  });
+
+  const saveCrecheSettings = () => {
+    localStorage.setItem('@gestao360:creche_settings', JSON.stringify(crecheSettings));
+    showToast('Configurações do CMEI salvas com sucesso!', 'success');
+  };
 
   const stats = [
     { label: 'MDE (25%)', value: '26.4%', sub: 'Mínimo Constitucional', trend: 'up', color: 'text-emerald-600' },
@@ -50,6 +71,7 @@ const EducationModule = () => {
               { id: 'overview', label: 'Dashboard', icon: Home },
               { id: 'transport', label: 'Transporte', icon: Bus },
               { id: 'meals', label: 'Merenda', icon: Salad },
+              { id: 'creche', label: 'Vagas CMEI', icon: Baby },
               { id: 'councils', label: 'Conselhos', icon: Users2 },
               { id: 'plans', label: 'Planos/Relatórios', icon: FileText },
             ].map((tab) => (
@@ -586,6 +608,160 @@ const EducationModule = () => {
                   </div>
                 </div>
              </div>
+          </motion.div>
+        )}
+
+        {educationView === 'creche' && (
+          <motion.div 
+            key="creche"
+            initial={{ opacity: 0, y: 20 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -20 }} 
+            className="space-y-8"
+          >
+            <div className="bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+              <div className="flex items-center justify-between mb-8 pb-8 border-b border-neutral-100 dark:border-neutral-800">
+                <div>
+                  <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Baby className="text-pink-500" /> Vagas do CMEI
+                  </h3>
+                  <p className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mt-1">
+                    Gerencie a quantidade de vagas, ocupação e os documentos do portal público.
+                  </p>
+                </div>
+                <button 
+                  onClick={saveCrecheSettings}
+                  className="flex items-center gap-2 px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-transform"
+                >
+                  <Save size={16} /> Salvar Alterações
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {/* Status da Fila */}
+                <div className="lg:col-span-3 bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-[2rem] border border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-neutral-900 dark:text-white">Status do Sistema de Vagas</h4>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">Controla o banner exibido no portal público.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer" 
+                      checked={crecheSettings.isOpen}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, isOpen: e.target.checked})}
+                    />
+                    <div className="w-14 h-7 bg-neutral-200 peer-focus:outline-none rounded-full peer dark:bg-neutral-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-neutral-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all dark:border-neutral-600 peer-checked:bg-emerald-500"></div>
+                    <span className="ml-3 text-sm font-black uppercase tracking-widest text-neutral-900 dark:text-neutral-100">
+                      {crecheSettings.isOpen ? 'Aberto' : 'Fila de Espera'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Berçário */}
+                <div className="space-y-4 p-6 bg-sky-50/50 dark:bg-sky-900/10 rounded-3xl border border-sky-100 dark:border-sky-900/30">
+                  <h4 className="font-black text-sky-600 dark:text-sky-400">Berçário (0 a 1 ano)</h4>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Vagas Totais Ofertadas</label>
+                    <input 
+                      type="number" 
+                      value={crecheSettings.bercarioTotal}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, bercarioTotal: parseInt(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Vagas Ocupadas</label>
+                    <input 
+                      type="number" 
+                      value={crecheSettings.bercarioOccupied}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, bercarioOccupied: parseInt(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Maternal I */}
+                <div className="space-y-4 p-6 bg-amber-50/50 dark:bg-amber-900/10 rounded-3xl border border-amber-100 dark:border-amber-900/30">
+                  <h4 className="font-black text-amber-600 dark:text-amber-400">Maternal I (1 a 2 anos)</h4>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Vagas Totais Ofertadas</label>
+                    <input 
+                      type="number" 
+                      value={crecheSettings.maternal1Total}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, maternal1Total: parseInt(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Vagas Ocupadas</label>
+                    <input 
+                      type="number" 
+                      value={crecheSettings.maternal1Occupied}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, maternal1Occupied: parseInt(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Maternal II */}
+                <div className="space-y-4 p-6 bg-emerald-50/50 dark:bg-emerald-900/10 rounded-3xl border border-emerald-100 dark:border-emerald-900/30">
+                  <h4 className="font-black text-emerald-600 dark:text-emerald-400">Maternal II (2 a 3 anos)</h4>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Vagas Totais Ofertadas</label>
+                    <input 
+                      type="number" 
+                      value={crecheSettings.maternal2Total}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, maternal2Total: parseInt(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Vagas Ocupadas</label>
+                    <input 
+                      type="number" 
+                      value={crecheSettings.maternal2Occupied}
+                      onChange={(e) => setCrecheSettings({...crecheSettings, maternal2Occupied: parseInt(e.target.value) || 0})}
+                      className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Documentos */}
+                <div className="lg:col-span-3 space-y-4 p-6 bg-neutral-50 dark:bg-neutral-800/50 rounded-3xl border border-neutral-100 dark:border-neutral-800 mt-4">
+                  <h4 className="font-black text-neutral-900 dark:text-white mb-4">Decreto / Documento de Regulação</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Nome do Documento</label>
+                      <input 
+                        type="text" 
+                        value={crecheSettings.decretoName}
+                        onChange={(e) => setCrecheSettings({...crecheSettings, decretoName: e.target.value})}
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">URL do Arquivo (PDF)</label>
+                      <input 
+                        type="text" 
+                        value={crecheSettings.decretoUrl}
+                        onChange={(e) => setCrecheSettings({...crecheSettings, decretoUrl: e.target.value})}
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500 mb-1 block">Descrição do Documento</label>
+                      <input 
+                        type="text" 
+                        value={crecheSettings.decretoDescription}
+                        onChange={(e) => setCrecheSettings({...crecheSettings, decretoDescription: e.target.value})}
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-pink-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

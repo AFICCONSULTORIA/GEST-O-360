@@ -4,7 +4,7 @@ import {
   GraduationCap, BookOpen, Brain, Star, Award, 
   ArrowRight, ChevronLeft, ChevronRight, PlayCircle, 
   FileText, CheckCircle2, User, Users, BookMarked, MonitorPlay,
-  School, Lock, Loader2, Sparkles
+  School, Lock, Loader2, Sparkles, Baby
 } from 'lucide-react';
 import { StudentPortal } from './StudentPortal';
 import { TeacherDashboard } from './TeacherDashboard';
@@ -151,6 +151,26 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
           Um universo de aprendizado e diversão espera por você! 🚀
           <br/>Escolha quem você é para começar a aventura:
         </p>
+      </div>
+
+      <div className="max-w-3xl mx-auto px-4 relative z-10 mb-8">
+        <a 
+          href="/cmei"
+          className="group flex items-center justify-between p-6 bg-gradient-to-r from-pink-500 to-rose-500 rounded-[2rem] shadow-xl shadow-pink-500/20 hover:shadow-pink-500/40 hover:-translate-y-1 transition-all duration-300"
+        >
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
+              <Baby size={32} />
+            </div>
+            <div>
+              <h3 className="text-2xl font-black text-white">Vagas no CMEI</h3>
+              <p className="text-pink-100 font-medium">Consulte vagas ofertadas, fila única e critérios de seleção.</p>
+            </div>
+          </div>
+          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:bg-white group-hover:text-pink-600 transition-colors">
+            <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform" />
+          </div>
+        </a>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12 px-4 relative z-10">
