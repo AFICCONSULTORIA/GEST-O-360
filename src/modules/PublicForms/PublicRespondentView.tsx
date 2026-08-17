@@ -103,11 +103,7 @@ export const PublicRespondentView: React.FC<PublicRespondentViewProps> = ({
     const newErrors: Record<string, string> = {};
 
     // Validate Identification if required
-    if (form.require_cpf && !isAnonymous) {
-      if (!respondentCpf || respondentCpf.replace(/\D/g, '').length !== 11) {
-        newErrors['cpf'] = 'Por favor, informe um CPF válido com 11 dígitos.';
-      }
-    }
+    // Removed CPF validation as requested
 
     // Validate Required Questions
     form.questions.forEach(q => {
@@ -131,7 +127,7 @@ export const PublicRespondentView: React.FC<PublicRespondentViewProps> = ({
 
     setSubmitting(true);
     const protocol = generateProtocol();
-    const resolvedNeighborhood = respondentNeighborhood === 'Outro' ? customNeighborhood : respondentNeighborhood;
+    const resolvedNeighborhood = respondentNeighborhood;
 
     const responsePayload: FormResponse = {
       id: crypto.randomUUID(),
@@ -399,39 +395,6 @@ export const PublicRespondentView: React.FC<PublicRespondentViewProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
-                  Nome Completo
-                </label>
-                <input
-                  type="text"
-                  value={respondentName}
-                  onChange={e => setRespondentName(e.target.value)}
-                  placeholder="Seu nome completo"
-                  className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 dark:text-white"
-                />
-              </div>
-
-              <div id="field_cpf" className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 flex items-center justify-between">
-                  <span>CPF {form.require_cpf && <span className="text-red-500">*</span>}</span>
-                  {errors['cpf'] && <span className="text-red-500 font-bold lowercase">{errors['cpf']}</span>}
-                </label>
-                <input
-                  type="text"
-                  value={respondentCpf}
-                  onChange={e => {
-                    setRespondentCpf(formatCPF(e.target.value));
-                    if (errors['cpf']) setErrors(prev => { const next = { ...prev }; delete next['cpf']; return next; });
-                  }}
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                  className={`w-full bg-neutral-50 dark:bg-neutral-800 border px-4 py-3 rounded-2xl text-xs font-mono font-bold outline-none dark:text-white ${
-                    errors['cpf'] ? 'border-red-500 ring-2 ring-red-500/20' : 'border-neutral-200 dark:border-neutral-700 focus:border-blue-500'
-                  }`}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
                   WhatsApp / Telefone (Opcional)
                 </label>
                 <input
@@ -448,32 +411,14 @@ export const PublicRespondentView: React.FC<PublicRespondentViewProps> = ({
                 <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
                   Bairro ou Região de Moradia
                 </label>
-                <select
+                <input
+                  type="text"
                   value={respondentNeighborhood}
                   onChange={e => setRespondentNeighborhood(e.target.value)}
+                  placeholder="Digite seu bairro..."
                   className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 dark:text-white"
-                >
-                  <option value="">Selecione seu bairro...</option>
-                  {COMMON_MUNICIPAL_NEIGHBORHOODS.map(n => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
+                />
               </div>
-
-              {respondentNeighborhood === 'Outro' && (
-                <div className="sm:col-span-2 space-y-1.5">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
-                    Especifique sua Comunidade / Assentamento / Bairro
-                  </label>
-                  <input
-                    type="text"
-                    value={customNeighborhood}
-                    onChange={e => setCustomNeighborhood(e.target.value)}
-                    placeholder="Ex: Comunidade São João"
-                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 dark:text-white"
-                  />
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -741,18 +686,15 @@ export const PublicRespondentView: React.FC<PublicRespondentViewProps> = ({
                     />
                   )}
 
-                  {/* Neighborhood Selector inside question */}
+                  {/* Neighborhood Input inside question */}
                   {question.type === 'neighborhood' && (
-                    <select
+                    <input
+                      type="text"
                       value={currentAnswer || ''}
                       onChange={e => handleAnswerChange(question.id, e.target.value)}
+                      placeholder="Digite seu bairro..."
                       className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3.5 rounded-2xl text-xs font-bold outline-none focus:border-blue-500 dark:text-white"
-                    >
-                      <option value="">Selecione o bairro...</option>
-                      {COMMON_MUNICIPAL_NEIGHBORHOODS.map(n => (
-                        <option key={n} value={n}>{n}</option>
-                      ))}
-                    </select>
+                    />
                   )}
                 </div>
               </motion.div>
