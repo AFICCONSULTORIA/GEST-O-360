@@ -6,6 +6,7 @@ import {
   Home, MapPin, Scale, Clock, ShieldCheck, Phone
 } from 'lucide-react';
 import { Institution } from '../../types';
+import { supabase } from '../../lib/supabase';
 
 interface PublicCrechePortalProps {
   darkMode: boolean;
@@ -45,14 +46,32 @@ export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrech
   const [activeTab, setActiveTab] = useState<'vagas' | 'criterios' | 'documentos' | 'faq'>('vagas');
 
   useEffect(() => {
-    const saved = localStorage.getItem('@gestao360:creche_settings');
-    if (saved) {
+    const fetchSettings = async () => {
       try {
-        setSettings(JSON.parse(saved));
-      } catch (e) {
-        console.error('Error loading creche settings', e);
+        const { data, error } = await supabase.from('creche_settings').select('*').single();
+        if (error && error.code !== 'PGRST116') throw error;
+        
+        if (data) {
+          setSettings({
+            bercarioTotal: data.bercario_total,
+            bercarioOccupied: data.bercario_occupied,
+            maternal1Total: data.maternal1_total,
+            maternal1Occupied: data.maternal1_occupied,
+            maternal2Total: data.maternal2_total,
+            maternal2Occupied: data.maternal2_occupied,
+            decretoUrl: data.decreto_url || '#',
+            decretoName: data.decreto_name || 'Decreto Municipal',
+            decretoDescription: data.decreto_description || '',
+            isOpen: data.is_open,
+            fichaUrl: data.ficha_url || ''
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching creche settings', err);
       }
-    }
+    };
+
+    fetchSettings();
   }, []);
 
   const totalVagas = settings.bercarioTotal + settings.maternal1Total + settings.maternal2Total;

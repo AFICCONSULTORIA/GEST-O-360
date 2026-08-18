@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Baby, Save, Upload, FileText, CheckCircle2 } from 'lucide-react';
+import { Baby, Save, Upload, FileText, CheckCircle2, Loader2 } from 'lucide-react';
 import { showToast } from '../../../components/ui/Toast';
+import { supabase } from '../../../lib/supabase';
 
 export interface CrecheSettingsData {
+  id?: string;
   bercarioTotal: number;
   bercarioOccupied: number;
   maternal1Total: number;
@@ -24,7 +26,7 @@ const DEFAULT_CRECHE_SETTINGS: CrecheSettingsData = {
   maternal1Occupied: 0,
   maternal2Total: 45,
   maternal2Occupied: 0,
-  decretoUrl: '#',
+  decretoUrl: '',
   decretoName: 'Decreto Municipal nº 035/2024',
   decretoDescription: 'Regulamentação do Acesso à Educação Infantil e Fila Única dos CMEIs.',
   isOpen: true,
@@ -32,21 +34,133 @@ const DEFAULT_CRECHE_SETTINGS: CrecheSettingsData = {
 };
 
 export const EducationCrecheAdmin: React.FC = () => {
-  const [settings, setSettings] = useState<CrecheSettingsData>(() => {
-    const saved = localStorage.getItem('@gestao360:creche_settings');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return { ...DEFAULT_CRECHE_SETTINGS, ...parsed };
-      } catch (e) {}
-    }
-    return DEFAULT_CRECHE_SETTINGS;
-  });
+  const [settings, setSettings] = useState<CrecheSettingsData>(DEFAULT_CRECHE_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [decretoFile, setDecretoFile] = useState<File | null>(null);
+  const [fichaFile, setFichaFile] = useState<File | null>(null);
 
-  const handleSave = () => {
-    localStorage.setItem('@gestao360:creche_settings', JSON.stringify(settings));
-    showToast('Configurações do CMEI salvas com sucesso!', 'success');
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabase.from('creche_settings').select('*').single();
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (data) {
+        setSettings({
+          id: data.id,
+          bercarioTotal: data.bercario_total,
+          bercarioOccupied: data.bercario_occupied,
+          maternal1Total: data.maternal1_total,
+          maternal1Occupied: data.maternal1_occupied,
+          maternal2Total: data.maternal2_total,
+          maternal2Occupied: data.maternal2_occupied,
+          decretoUrl: data.decreto_url || '',
+          decretoName: data.decreto_name || '',
+          decretoDescription: data.decreto_description || '',
+          isOpen: data.is_open,
+          fichaUrl: data.ficha_url || ''
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching creche settings:', error);
+      showToast('Erro ao carregar configurações do CMEI', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const uploadFile = async (file: File, folder: string): Promise<string | null> => {
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+      const fileName = `${folder}/${Date.now()}_${safeName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('creche_documents')
+        .upload(fileName, file, { cacheControl: '3600', upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('creche_documents')
+        .getPublicUrl(fileName);
+
+      return data.publicUrl;
+    } catch (error) {
+      console.error(`Error uploading ${folder}:`, error);
+      showToast(`Erro ao fazer upload do arquivo ${folder}`, 'error');
+      return null;
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      let currentDecretoUrl = settings.decretoUrl;
+      let currentFichaUrl = settings.fichaUrl;
+
+      if (decretoFile) {
+        const url = await uploadFile(decretoFile, 'decreto');
+        if (url) currentDecretoUrl = url;
+      }
+
+      if (fichaFile) {
+        const url = await uploadFile(fichaFile, 'ficha');
+        if (url) currentFichaUrl = url;
+      }
+
+      const updateData = {
+        bercario_total: settings.bercarioTotal,
+        bercario_occupied: settings.bercarioOccupied,
+        maternal1_total: settings.maternal1Total,
+        maternal1_occupied: settings.maternal1Occupied,
+        maternal2_total: settings.maternal2Total,
+        maternal2_occupied: settings.maternal2Occupied,
+        decreto_url: currentDecretoUrl,
+        decreto_name: settings.decretoName,
+        decreto_description: settings.decretoDescription,
+        is_open: settings.isOpen,
+        ficha_url: currentFichaUrl,
+        updated_at: new Date().toISOString()
+      };
+
+      if (settings.id) {
+        const { error } = await supabase.from('creche_settings').update(updateData).eq('id', settings.id);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from('creche_settings').insert(updateData).select().single();
+        if (error) throw error;
+        if (data) settings.id = data.id;
+      }
+
+      setSettings({
+        ...settings,
+        decretoUrl: currentDecretoUrl,
+        fichaUrl: currentFichaUrl
+      });
+      
+      setDecretoFile(null);
+      setFichaFile(null);
+
+      showToast('Configurações do CMEI salvas com sucesso!', 'success');
+    } catch (error) {
+      console.error('Error saving creche settings:', error);
+      showToast('Erro ao salvar configurações do CMEI', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-8 h-8 text-pink-500 animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -62,9 +176,11 @@ export const EducationCrecheAdmin: React.FC = () => {
           </div>
           <button 
             onClick={handleSave}
-            className="flex items-center gap-2 px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-transform shadow-lg shadow-neutral-900/10"
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-lg shadow-neutral-900/10 disabled:opacity-50 disabled:hover:scale-100"
           >
-            <Save size={16} /> Salvar Alterações
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            {saving ? 'Salvando...' : 'Salvar Alterações'}
           </button>
         </div>
 
@@ -181,21 +297,18 @@ export const EducationCrecheAdmin: React.FC = () => {
                     accept="application/pdf"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          setSettings({...settings, decretoUrl: event.target?.result as string});
-                        };
-                        reader.readAsDataURL(file);
-                      }
+                      if (file) setDecretoFile(file);
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   />
                   <div className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 flex items-center justify-center gap-2 text-sm font-bold text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors relative">
                     <Upload size={16} /> 
-                    {settings.decretoUrl && settings.decretoUrl.length > 100 ? 'Arquivo Selecionado (Base64)' : 'Fazer Upload do Decreto'}
+                    {decretoFile ? decretoFile.name : (settings.decretoUrl ? 'Substituir Decreto Atual' : 'Fazer Upload do Decreto')}
                   </div>
                 </div>
+                {settings.decretoUrl && !decretoFile && (
+                  <p className="text-[10px] font-bold text-emerald-500 mt-1">Documento atual salvo online.</p>
+                )}
               </div>
 
               <div className="md:col-span-2">
@@ -216,21 +329,18 @@ export const EducationCrecheAdmin: React.FC = () => {
                     accept="application/pdf"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          setSettings({...settings, fichaUrl: event.target?.result as string});
-                        };
-                        reader.readAsDataURL(file);
-                      }
+                      if (file) setFichaFile(file);
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   />
                   <div className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl px-4 py-2 flex items-center justify-center gap-2 text-sm font-bold text-pink-600 dark:text-pink-400 hover:bg-pink-50 dark:hover:bg-pink-900/20 transition-colors relative">
                     <Upload size={16} /> 
-                    {settings.fichaUrl && settings.fichaUrl.length > 100 ? 'Ficha de Matrícula Selecionada (Base64)' : 'Fazer Upload da Ficha de Matrícula'}
+                    {fichaFile ? fichaFile.name : (settings.fichaUrl ? 'Substituir Ficha de Matrícula' : 'Fazer Upload da Ficha de Matrícula')}
                   </div>
                 </div>
+                {settings.fichaUrl && !fichaFile && (
+                  <p className="text-[10px] font-bold text-emerald-500 mt-1">Ficha atual salva online.</p>
+                )}
               </div>
             </div>
           </div>
