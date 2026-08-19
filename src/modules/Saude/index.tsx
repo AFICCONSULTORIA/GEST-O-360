@@ -1,783 +1,192 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Calendar, Clock, User, FileText, CheckCircle2, XCircle, AlertCircle, RotateCcw, Trash2, Phone, MessageCircle, LayoutGrid, Package } from 'lucide-react';
+import { 
+  Plus, Calendar, Clock, User, FileText, CheckCircle2, 
+  XCircle, AlertCircle, Phone, MessageCircle, LayoutGrid, 
+  Package, Activity, RefreshCw, UserCheck, HeartPulse, Building2,
+  Stethoscope
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { FarmaciaModule } from './Farmacia';
+import { SaudeQueue } from './components/SaudeQueue';
+import { SaudeAgenda } from './components/SaudeAgenda';
+import { SaudePatients } from './components/SaudePatients';
+import { 
+  Appointment, Patient, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
+  formatCPF, formatSUS, formatPhone, calculatePriority, getAge 
+} from './types';
 
-export interface Appointment {
-  id: string;
-  patient_name: string;
-  patient_cpf: string;
-  patient_sus: string;
-  patient_phone?: string;
-  whatsapp_sent?: boolean;
-  patient_birth_date: string;
-  is_pregnant: boolean;
-  is_urgent: boolean;
-  specialty: string;
-  referral_details?: string;
-  appointment_date: string;
-  appointment_time?: string;
-  status: 'Aguardando Regulação' | 'Agendado' | 'Atendido' | 'Cancelado' | 'Faltou';
-  notes?: string;
-  created_at?: string;
-}
+export * from './types';
 
-const COMMON_SPECIALTIES = [
-  'Clínico Geral',
-  'Pediatria',
-  'Ginecologia',
-  'Odontologia',
-  'Fisioterapia',
-  'Ortopedia',
-  'Psicologia',
-  'Enfermagem'
-];
 
-const formatCPF = (value: string) => {
-  let v = value.replace(/\D/g, '').substring(0, 11);
-  v = v.replace(/(\d{3})(\d)/, '$1.$2');
-  v = v.replace(/(\d{3})(\d)/, '$1.$2');
-  v = v.replace(/(\d{3})(\d)/, '$1-$2');
-  return v;
-};
-
-const formatSUS = (value: string) => {
-  let v = value.replace(/\D/g, '').substring(0, 15);
-  v = v.replace(/(\d{3})(\d)/, '$1 $2');
-  v = v.replace(/(\d{4})(\d)/, '$1 $2');
-  v = v.replace(/(\d{4})(\d)/, '$1 $2');
-  return v;
-};
-
-const formatPhone = (value: string) => {
-  let v = value.replace(/\D/g, '').substring(0, 11);
-  if (v.length > 10) {
-    v = v.replace(/^(\d{2})(\d{5})(\d{4}).*/, '($1) $2-$3');
-  } else if (v.length > 5) {
-    v = v.replace(/^(\d{2})(\d{4})(\d{0,4}).*/, '($1) $2-$3');
-  } else if (v.length > 2) {
-    v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
-  } else {
-    v = v.replace(/^(\d*)/, '($1');
-  }
-  return v;
-};
-
-const AgendamentosModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
+export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id: string; name?: string } | null }) => {
+  const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'pacientes' | 'farmacia'>('fila');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterSpecialty, setFilterSpecialty] = useState('Todas');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isNewAppointmentModalOpen, setIsNewAppointmentModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [prefilledPatient, setPrefilledPatient] = useState<Patient | null>(null);
 
-  const loadAppointments = async () => {
+  const loadData = async () => {
     setIsLoading(true);
-    let query = supabase.from('appointments').select('*');
-    if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
-    const { data, error } = await query.order('appointment_date', { ascending: true });
-    
-    if (error) {
-      console.error('Erro ao carregar agendamentos:', error);
-      showToast('Erro ao carregar agendamentos', 'error');
-    } else if (data) {
-      setAppointments(data as Appointment[]);
-    }
-    setIsLoading(false);
-  };
+    try {
+      // 1. Carregar Agendamentos
+      let aptQuery = supabase.from('appointments').select('*');
+      if (currentInstitution?.id) aptQuery = aptQuery.eq('institution_id', currentInstitution.id);
+      const { data: aptData, error: aptError } = await aptQuery.order('appointment_date', { ascending: true });
 
-  const getAge = (birthDate: string) => {
-    const today = new Date();
-    const birth = new Date(birthDate);
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-      age--;
-    }
-    return age;
-  };
+      if (aptError) {
+        console.error('Erro ao carregar agendamentos:', aptError);
+      } else if (aptData) {
+        setAppointments(aptData as Appointment[]);
+      }
 
-  const getPriorityLevel = (apt: Appointment) => {
-    if (apt.is_urgent) return -1;
-    const age = getAge(apt.patient_birth_date);
-    if (age >= 80) return 0;
-    if (age >= 60 || apt.is_pregnant) return 1;
-    return 2;
+      // 2. Carregar Pacientes
+      let patQuery = supabase.from('patients').select('*');
+      if (currentInstitution?.id) patQuery = patQuery.eq('institution_id', currentInstitution.id);
+      const { data: patData, error: patError } = await patQuery.order('name', { ascending: true });
+
+      if (patError) {
+        // Se a tabela ainda não existir no banco, mantém array vazio sem travar
+        console.warn('Pacientes não puderam ser carregados do banco (tabela pode estar pendente de migração):', patError.message);
+      } else if (patData) {
+        setPatients(patData as Patient[]);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar dados de saúde:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadAppointments();
+    loadData();
 
-    const channel = supabase
-      .channel('appointments-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'appointments'
-        },
-        () => {
-          loadAppointments();
-        }
-      )
+    // Subscrição em Tempo Real para Agendamentos
+    const aptChannel = supabase
+      .channel('appointments-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
+        loadData();
+      })
+      .subscribe();
+
+    // Subscrição em Tempo Real para Pacientes
+    const patChannel = supabase
+      .channel('patients-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+        loadData();
+      })
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(aptChannel);
+      supabase.removeChannel(patChannel);
     };
-  }, []);
+  }, [currentInstitution?.id]);
 
-  const updateStatus = async (id: string, newStatus: string) => {
-    const { error } = await supabase.from('appointments').update({ status: newStatus }).eq('id', id);
-    if (error) {
-      showToast('Erro ao atualizar status', 'error');
+  const queueCount = appointments.filter(a => a.status === 'Aguardando Regulação').length;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayAppointmentsCount = appointments.filter(a => a.appointment_date === todayStr && a.status !== 'Aguardando Regulação').length;
+
+  const handleOpenNewAppointment = (patient?: Patient) => {
+    if (patient) {
+      setPrefilledPatient(patient);
     } else {
-      setAppointments(appointments.map(a => a.id === id ? { ...a, status: newStatus as any } : a));
-      showToast('Status atualizado!', 'success');
+      setPrefilledPatient(null);
     }
+    setIsNewAppointmentModalOpen(true);
   };
-
-  const deleteAppointment = async (id: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir este agendamento permanentemente?')) return;
-    const { error } = await supabase.from('appointments').delete().eq('id', id);
-    if (error) {
-      showToast('Erro ao excluir agendamento', 'error');
-    } else {
-      setAppointments(appointments.filter(a => a.id !== id));
-      showToast('Agendamento excluído com sucesso!', 'success');
-    }
-  };
-
-  const getWhatsAppLink = (apt: Appointment) => {
-    if (!apt.patient_phone) return '#';
-    const phone = apt.patient_phone.replace(/\D/g, '');
-    
-    let text = '';
-    
-    if (apt.appointment_time) {
-      const dataStr = apt.appointment_date.split('-').reverse().join('/');
-      text = `Sua consulta para *${apt.specialty}* está confirmada para o dia *${dataStr}* às *${apt.appointment_time}*.\nPor favor, confirme sua presença.`;
-    } else {
-      text = `Olá, ${apt.patient_name}! Somos da Secretaria de Saúde.\n\nInformamos que a sua solicitação de consulta para *${apt.specialty}* foi recebida com sucesso!\n\nEm breve entraremos em contato para informar o horário e o dia da sua consulta.`;
-      
-      if (apt.specialty !== 'Clínico Geral') {
-        text += `\n\nPara agilizarmos o seu atendimento, por favor, nos envie uma foto ou o arquivo em PDF do seu encaminhamento médico por aqui mesmo.`;
-      }
-    }
-    
-    return `https://wa.me/55${phone}?text=${encodeURIComponent(text)}`;
-  };
-
-  const handleWhatsAppClick = async (apt: Appointment) => {
-    // Simula o envio via servidor (Central de Comunicação)
-    showToast(`Enviando notificação via Central para ${apt.patient_name}...`, 'info');
-    
-    setTimeout(async () => {
-      showToast('Notificação enviada com sucesso!', 'success');
-      if (!apt.whatsapp_sent) {
-        setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, whatsapp_sent: true } : a));
-        await supabase.from('appointments').update({ whatsapp_sent: true }).eq('id', apt.id);
-      }
-    }, 1500);
-  };
-
-  const handleSaveDateTime = async (aptId: string, newDate: string, newTime: string) => {
-    const { error } = await supabase.from('appointments').update({ 
-      appointment_date: newDate, 
-      appointment_time: newTime,
-      status: 'Agendado' 
-    }).eq('id', aptId);
-    
-    if (error) {
-      showToast('Erro ao salvar data e horário.', 'error');
-    } else {
-      showToast('Agendamento confirmado com sucesso!', 'success');
-      setSelectedAppointment(null);
-    }
-  };
-
-  const filtered = appointments.filter(a => {
-    const matchSearch = a.patient_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                        a.patient_cpf.includes(searchQuery) ||
-                        a.patient_sus.includes(searchQuery);
-    const matchSpecialty = filterSpecialty === 'Todas' || a.specialty === filterSpecialty;
-    return matchSearch && matchSpecialty;
-  }).sort((a, b) => {
-    const pA = getPriorityLevel(a);
-    const pB = getPriorityLevel(b);
-    if (pA !== pB) return pA - pB;
-    return new Date(a.appointment_date).getTime() - new Date(b.appointment_date).getTime();
-  });
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm gap-6">
+      {/* Top Banner de Navegação da Secretaria */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-white dark:bg-neutral-900 p-8 rounded-[32px] border border-neutral-100 dark:border-neutral-800 shadow-sm gap-6">
         <div>
-          <h2 className="text-2xl font-bold italic tracking-tight uppercase dark:text-neutral-100 flex items-center gap-3">
-            <span className="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 p-2 rounded-xl">
-              <Plus size={24} />
+          <h2 className="text-2xl font-black italic tracking-tight uppercase dark:text-white flex items-center gap-3">
+            <span className="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 p-2.5 rounded-2xl">
+              <HeartPulse size={26} />
             </span>
-            Secretaria de Saúde
+            Secretaria Municipal de Saúde
           </h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2">Agendamento e controle de consultas para a população.</p>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+            Gestão da Fila de Regulação, Agenda de Especialidades e Cadastro de Pacientes.
+          </p>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-            <input 
-              type="text"
-              placeholder="Buscar paciente ou CPF..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all min-w-[250px] dark:text-white"
-            />
-          </div>
-          
-          <select 
-            value={filterSpecialty}
-            onChange={(e) => setFilterSpecialty(e.target.value)}
-            className="px-4 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 rounded-xl text-sm font-bold outline-none dark:text-white"
-          >
-            <option value="Todas">Todas as Especialidades</option>
-            {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
 
+        <div className="flex flex-wrap items-center gap-3">
           <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2"
+            onClick={() => handleOpenNewAppointment()}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2"
           >
             <Calendar size={18} /> Novo Agendamento
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {filtered.map(apt => {
-          const priority = getPriorityLevel(apt);
-          const isUrgent = priority === -1;
-          
-          return (
-          <div key={apt.id} onClick={() => setSelectedAppointment(apt)} className={`bg-white dark:bg-neutral-900 rounded-[32px] p-8 border cursor-pointer ${
-            isUrgent ? 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)] animate-[pulse_2s_ease-in-out_infinite]' : 'border-neutral-100 dark:border-neutral-800 hover:shadow-md'
-          } transition-all relative overflow-hidden group`}>
-            <div className={`absolute top-0 left-0 w-1.5 h-full ${
-              isUrgent ? 'bg-red-600' :
-              apt.status === 'Agendado' ? 'bg-sky-500' :
-              apt.status === 'Atendido' ? 'bg-emerald-500' :
-              apt.status === 'Faltou' ? 'bg-amber-500' : 'bg-red-500'
-            }`} />
-            
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex gap-2">
-                <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${
-                  apt.status === 'Agendado' ? 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400' :
-                  apt.status === 'Atendido' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                  apt.status === 'Faltou' ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400' : 
-                  'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
-                }`}>{apt.status}</span>
-                
-                {priority === -1 && (
-                  <span title="Atendimento imediato necessário" className="cursor-help text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-red-600 text-white shadow-sm shadow-red-500/40">URGÊNCIA MÉDICA</span>
-                )}
-                {priority === 0 && (
-                  <span title="Paciente com 80 anos ou mais" className="cursor-help text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 border border-red-200 dark:border-red-500/30">Prioridade Especial</span>
-                )}
-                {priority === 1 && (
-                  <span title="Paciente com 60 a 79 anos ou gestante" className="cursor-help text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30">Prioridade</span>
-                )}
-              </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {apt.status === 'Agendado' ? (
-                  <>
-                    <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Atendido'); }} className="p-1.5 text-emerald-600 bg-emerald-50 rounded-lg hover:bg-emerald-100" title="Marcar como Atendido"><CheckCircle2 size={16} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Faltou'); }} className="p-1.5 text-amber-600 bg-amber-50 rounded-lg hover:bg-amber-100" title="Marcar como Falta"><AlertCircle size={16} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Cancelado'); }} className="p-1.5 text-red-600 bg-red-50 rounded-lg hover:bg-red-100" title="Cancelar"><XCircle size={16} /></button>
-                  </>
-                ) : (
-                  <button onClick={(e) => { e.stopPropagation(); updateStatus(apt.id, 'Agendado'); }} className="p-1.5 text-neutral-600 bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-400 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700" title="Desfazer ação (Reverter para Agendado)"><RotateCcw size={16} /></button>
-                )}
-                <button onClick={(e) => { e.stopPropagation(); deleteAppointment(apt.id); }} className="p-1.5 text-red-600 bg-red-50 dark:bg-red-500/10 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-500/20 ml-1" title="Excluir Permanentemente"><Trash2 size={16} /></button>
-              </div>
-            </div>
-
-            <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-1">{apt.patient_name}</h3>
-            <div className="flex flex-col gap-1 text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-              <div className="flex items-center gap-2"><FileText size={14} /> <span className="font-mono text-xs">CPF: {apt.patient_cpf}</span></div>
-              <div className="flex items-center gap-2"><FileText size={14} /> <span className="font-mono text-xs">SUS: {apt.patient_sus}</span></div>
-              {apt.patient_phone ? (
-                <div className="flex items-center gap-2"><Phone size={14} /> <span className="font-mono text-xs">Tel: {apt.patient_phone}</span></div>
-              ) : (
-                <div className="flex items-center gap-2 opacity-50"><Phone size={14} /> <span className="text-xs italic">Sem telefone registrado</span></div>
-              )}
-              <div className="flex items-center gap-2"><Calendar size={14} /> <span className="text-xs">Nasc: {apt.patient_birth_date.split('-').reverse().join('/')}</span></div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 bg-neutral-50 dark:bg-neutral-800 p-3 rounded-xl">
-                <User size={16} className="text-emerald-600 dark:text-emerald-400" />
-                <span className="text-sm font-bold dark:text-neutral-200">{apt.specialty}</span>
-              </div>
-              <div className="flex items-center gap-3 bg-neutral-50 dark:bg-neutral-800 p-3 rounded-xl">
-                <Calendar size={16} className="text-sky-600 dark:text-sky-400" />
-                <span className="text-sm font-bold dark:text-neutral-200">
-                  {apt.appointment_date.split('-').reverse().join('/')}
-                </span>
-              </div>
-            </div>
-            {apt.referral_details && (
-              <div className="mt-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-3 rounded-xl flex items-start gap-2">
-                <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-amber-700/70 dark:text-amber-500/70">Encaminhamento</p>
-                  <p className="text-xs font-bold text-amber-900 dark:text-amber-300">{apt.referral_details}</p>
-                </div>
-              </div>
-            )}
-            {apt.notes && (
-              <p className="mt-4 text-xs text-neutral-500 dark:text-neutral-400 border-t border-neutral-100 dark:border-neutral-800 pt-3">
-                <span className="font-bold">Obs:</span> {apt.notes}
-              </p>
-            )}
-
-            {apt.patient_phone && (
-              <div className="mt-4 flex items-center justify-between border-t border-neutral-100 dark:border-neutral-800 pt-4">
-                {apt.whatsapp_sent ? (
-                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 size={14} /> Mensagem Enviada
-                  </div>
-                ) : (
-                  <div></div>
-                )}
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleWhatsAppClick(apt); }}
-                  className={`flex items-center gap-2 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-xl transition-all shadow-sm border ${
-                    apt.whatsapp_sent 
-                      ? 'bg-neutral-100 text-neutral-500 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700' 
-                      : 'bg-[#25D366]/10 text-[#25D366] border-[#25D366]/20 hover:bg-[#25D366]/20 dark:bg-[#25D366]/20 dark:text-[#25D366] dark:hover:bg-[#25D366]/30'
-                  }`}
-                >
-                  <MessageCircle size={16} /> {apt.whatsapp_sent ? 'Reenviar' : 'WhatsApp'}
-                </button>
-              </div>
-            )}
-          </div>
-        )})}
-
-        {filtered.length === 0 && !isLoading && (
-          <div className="col-span-full py-12 text-center text-neutral-400">
-            <Calendar size={48} className="mx-auto mb-4 opacity-20" />
-            <p className="font-bold">Nenhum agendamento encontrado.</p>
-          </div>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {isModalOpen && (
-          <NewAppointmentModal 
-            onClose={() => setIsModalOpen(false)}
-            onSuccess={() => { loadAppointments(); setIsModalOpen(false); }}
-            currentInstitution={currentInstitution}
-          />
-        )}
-        {selectedAppointment && (
-          <AppointmentDetailsModal
-            apt={selectedAppointment}
-            onClose={() => setSelectedAppointment(null)}
-            onSave={(d, t) => handleSaveDateTime(selectedAppointment.id, d, t)}
-          />
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
-const AppointmentDetailsModal = ({ apt, onClose, onSave }: { apt: Appointment, onClose: () => void, onSave: (d: string, t: string) => void }) => {
-  const [editDate, setEditDate] = useState(apt.appointment_date);
-  const [editTime, setEditTime] = useState(apt.appointment_time || '');
-  const isEditable = apt.status === 'Aguardando Regulação' || apt.status === 'Agendado';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800"
-      >
-        <div className="p-8 pb-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
-          <div>
-            <h2 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-white">Detalhes do Agendamento</h2>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400">ID: {apt.id}</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-full transition-colors text-neutral-500 dark:text-neutral-400">
-            <XCircle size={24} />
-          </button>
-        </div>
-
-        <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Paciente</p>
-              <p className="font-bold text-neutral-900 dark:text-white">{apt.patient_name}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Especialidade</p>
-              <div className="flex items-center gap-2">
-                <User size={16} className="text-emerald-500" />
-                <p className="font-bold text-neutral-900 dark:text-white">{apt.specialty}</p>
-              </div>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Status do Agendamento</p>
-              <p className="font-bold text-neutral-900 dark:text-white">{apt.status}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Data de Nascimento</p>
-              <p className="font-bold text-neutral-900 dark:text-white">{apt.patient_birth_date.split('-').reverse().join('/')}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">CPF</p>
-              <p className="font-mono text-neutral-900 dark:text-white">{apt.patient_cpf}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Cartão do SUS</p>
-              <p className="font-mono text-neutral-900 dark:text-white">{apt.patient_sus}</p>
-            </div>
-            {apt.patient_phone && (
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-1">Telefone / WhatsApp</p>
-                <div className="flex items-center gap-2">
-                  <Phone size={14} className="text-neutral-500" />
-                  <p className="font-mono text-neutral-900 dark:text-white">{apt.patient_phone}</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="md:col-span-2 bg-neutral-50 dark:bg-neutral-800/50 p-6 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-            <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-4">Definição de Data e Horário</p>
-            {isEditable ? (
-              <div className="flex flex-col md:flex-row gap-4 items-end">
-                <div className="flex-1 w-full space-y-1">
-                  <label className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Data da Consulta</label>
-                  <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white" />
-                </div>
-                <div className="flex-1 w-full space-y-1">
-                  <label className="text-xs font-bold text-neutral-600 dark:text-neutral-400">Horário</label>
-                  <input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-2.5 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all dark:text-white" />
-                </div>
-                <button onClick={() => onSave(editDate, editTime)} className="w-full md:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-colors shadow-lg shadow-emerald-500/20">
-                  Confirmar Agendamento
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-8">
-                <div>
-                  <p className="text-xs text-neutral-500 mb-1">Data</p>
-                  <div className="flex items-center gap-2">
-                    <Calendar size={16} className="text-sky-500" />
-                    <p className="font-bold text-neutral-900 dark:text-white">{apt.appointment_date.split('-').reverse().join('/')}</p>
-                  </div>
-                </div>
-                {apt.appointment_time && (
-                  <div>
-                    <p className="text-xs text-neutral-500 mb-1">Horário</p>
-                    <div className="flex items-center gap-2">
-                      <Clock size={16} className="text-emerald-500" />
-                      <p className="font-bold text-neutral-900 dark:text-white">{apt.appointment_time}</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {(apt.is_pregnant || apt.is_urgent) && (
-            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6 flex gap-4">
-              {apt.is_pregnant && (
-                <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400 text-xs font-bold uppercase tracking-widest border border-amber-200 dark:border-amber-500/30">
-                  Gestante
-                </span>
-              )}
-              {apt.is_urgent && (
-                <span className="px-3 py-1 rounded-full bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400 text-xs font-bold uppercase tracking-widest border border-red-200 dark:border-red-500/30">
-                  Urgência Médica
-                </span>
-              )}
-            </div>
-          )}
-
-          {apt.referral_details && (
-            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6">
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-2">Detalhes do Encaminhamento</p>
-              <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30">
-                <p className="text-sm font-bold text-amber-900 dark:text-amber-300">{apt.referral_details}</p>
-              </div>
-            </div>
-          )}
-
-          {apt.notes && (
-            <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6">
-              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 mb-2">Observações / Sintomas / Motivo</p>
-              <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-                <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{apt.notes}</p>
-              </div>
-            </div>
-          )}
-        </div>
-        <div className="p-8 pt-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
-          <button 
-            onClick={onClose}
-            className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-xl font-bold text-sm hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors shadow-lg shadow-neutral-900/20"
-          >
-            Fechar Janela
-          </button>
-        </div>
-      </motion.div>
-    </div>
-  );
-};
-
-const NewAppointmentModal = ({ onClose, onSuccess, currentInstitution }: { onClose: () => void, onSuccess: () => void, currentInstitution?: { id: string } | null }) => {
-  const [formData, setFormData] = useState({
-    patient_name: '',
-    patient_cpf: '',
-    patient_sus: '',
-    patient_phone: '',
-    patient_birth_date: '',
-    is_pregnant: false,
-    is_urgent: false,
-    specialty: COMMON_SPECIALTIES[0],
-    referral_details: '',
-    appointment_date: '',
-    notes: ''
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    const newAppointment = {
-      id: Math.random().toString(36).substring(2, 10),
-      ...formData,
-      referral_details: formData.specialty === 'Clínico Geral' ? null : formData.referral_details,
-      status: 'Agendado',
-      institution_id: currentInstitution?.id || null
-    };
-
-    const { error } = await supabase.from('appointments').insert(newAppointment);
-
-    if (error) {
-      showToast('Erro ao agendar consulta: ' + error.message, 'error');
-      console.error(error);
-    } else {
-      showToast('Consulta agendada com sucesso!', 'success');
-      onSuccess();
-    }
-    setIsSubmitting(false);
-  };
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/60 backdrop-blur-sm"
-    >
-      <motion.div 
-        initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
-        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="px-8 py-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20">
-          <h3 className="text-xl font-black text-emerald-900 dark:text-emerald-100 flex items-center gap-2">
-            <Calendar size={24} className="text-emerald-600 dark:text-emerald-400" /> 
-            Novo Agendamento
-          </h3>
-          <button onClick={onClose} className="p-2 bg-white dark:bg-neutral-800 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors">
-            <XCircle size={20} className="text-neutral-500" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-8 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Nome Completo do Paciente *</label>
-              <input 
-                type="text" required
-                value={formData.patient_name} onChange={e => setFormData({...formData, patient_name: e.target.value})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-                placeholder="Ex: João da Silva Santos"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">CPF *</label>
-              <input 
-                type="text" required
-                value={formData.patient_cpf} onChange={e => setFormData({...formData, patient_cpf: formatCPF(e.target.value)})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-                placeholder="000.000.000-00"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Cartão do SUS *</label>
-              <input 
-                type="text" required
-                value={formData.patient_sus} onChange={e => setFormData({...formData, patient_sus: formatSUS(e.target.value)})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-                placeholder="000 0000 0000 0000"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Telefone / WhatsApp *</label>
-              <input 
-                type="text" required
-                value={formData.patient_phone} onChange={e => setFormData({...formData, patient_phone: formatPhone(e.target.value)})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-                placeholder="(00) 00000-0000"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Data de Nascimento *</label>
-              <input 
-                type="date" required
-                value={formData.patient_birth_date} onChange={e => setFormData({...formData, patient_birth_date: e.target.value})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-              />
-            </div>
-
-            <div className="space-y-2 flex items-end pb-2">
-              <label className="flex items-center gap-3 cursor-pointer group">
-                <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
-                  formData.is_pregnant 
-                    ? 'bg-emerald-500 border-emerald-500 text-white' 
-                    : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 group-hover:border-emerald-500'
-                }`}>
-                  {formData.is_pregnant && <CheckCircle2 size={16} />}
-                </div>
-                <input 
-                  type="checkbox" 
-                  className="hidden"
-                  checked={formData.is_pregnant}
-                  onChange={(e) => setFormData({...formData, is_pregnant: e.target.checked})}
-                />
-                <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">
-                  Paciente Gestante
-                </span>
-              </label>
-            </div>
-            
-            <div className="space-y-2 md:col-span-2">
-              <div className="bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 rounded-2xl p-4 flex items-center justify-between">
-                <div>
-                  <h4 className="text-sm font-bold text-red-700 dark:text-red-400 flex items-center gap-2">
-                    <AlertCircle size={16} /> Atendimento de Urgência
-                  </h4>
-                  <p className="text-xs text-red-600/70 dark:text-red-400/70 mt-1">Marque apenas em casos de risco imediato. Paciente será colocado no topo absoluto da fila.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" className="sr-only peer" checked={formData.is_urgent} onChange={(e) => setFormData({...formData, is_urgent: e.target.checked})} />
-                  <div className="w-11 h-6 bg-red-200 peer-focus:outline-none rounded-full peer dark:bg-neutral-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-red-600"></div>
-                </label>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Especialidade / Médico *</label>
-              <select 
-                required
-                value={formData.specialty} onChange={e => setFormData({...formData, specialty: e.target.value})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-              >
-                {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            {formData.specialty !== 'Clínico Geral' && (
-              <div className="space-y-2 md:col-span-2 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 p-4 rounded-2xl animate-in fade-in">
-                <label className="text-[10px] font-black uppercase tracking-widest text-amber-800/70 dark:text-amber-500 ml-1">Médico Solicitante / CRM / Nº da Guia *</label>
-                <input 
-                  type="text" required
-                  value={formData.referral_details} onChange={e => setFormData({...formData, referral_details: e.target.value})}
-                  className="w-full bg-white dark:bg-neutral-950 border border-amber-200 dark:border-amber-800 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-amber-500/10 outline-none transition-all dark:text-white"
-                  placeholder="Ex: Dr. Carlos CRM: 12345"
-                />
-              </div>
-            )}
-
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Data da Consulta *</label>
-              <input 
-                type="date" required
-                value={formData.appointment_date} onChange={e => setFormData({...formData, appointment_date: e.target.value})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-              />
-            </div>
-
-            <div className="space-y-2 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400 dark:text-neutral-500 ml-1">Observações / Sintomas</label>
-              <textarea 
-                rows={3}
-                value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-6 py-4 rounded-2xl text-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all dark:text-white"
-                placeholder="Detalhes adicionais sobre o agendamento..."
-              />
-            </div>
-          </div>
-
-          <div className="pt-6">
-            <button 
-              type="submit" 
-              disabled={isSubmitting}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/30 disabled:opacity-50"
-            >
-              {isSubmitting ? 'Salvando...' : 'Confirmar Agendamento'}
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-};
-
-export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
-  const [activeTab, setActiveTab] = useState<'agendamentos' | 'farmacia'>('agendamentos');
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex gap-2 w-fit">
+      {/* Tabs de Controle Operacional */}
+      <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex flex-wrap gap-2 w-fit">
         <button
-          onClick={() => setActiveTab('agendamentos')}
-          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
-            activeTab === 'agendamentos'
-              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400'
+          onClick={() => setActiveTab('fila')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === 'fila'
+              ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 shadow-sm'
               : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
           }`}
         >
-          <LayoutGrid size={18} />
-          Agendamentos
+          <Clock size={16} />
+          Fila de Regulação
+          {queueCount > 0 && (
+            <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-sm">
+              {queueCount}
+            </span>
+          )}
         </button>
+
+        <button
+          onClick={() => setActiveTab('agenda')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === 'agenda'
+              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 shadow-sm'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <Calendar size={16} />
+          Agenda & Recepção
+          {todayAppointmentsCount > 0 && (
+            <span className="bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {todayAppointmentsCount} hoje
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('pacientes')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === 'pacientes'
+              ? 'bg-purple-50 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 shadow-sm'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <User size={16} />
+          Pacientes & Prontuário
+        </button>
+
         <button
           onClick={() => setActiveTab('farmacia')}
-          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
             activeTab === 'farmacia'
-              ? 'bg-sky-50 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400'
+              ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400 shadow-sm'
               : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
           }`}
         >
-          <Package size={18} />
+          <Package size={16} />
           Farmácia SUS
         </button>
       </div>
 
+      {/* Conteúdo da Tab Ativa */}
       <AnimatePresence mode="wait">
         <motion.div
           key={activeTab}
@@ -786,9 +195,562 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
-          {activeTab === 'agendamentos' ? <AgendamentosModule currentInstitution={currentInstitution} /> : <FarmaciaModule currentInstitution={currentInstitution} />}
+          {activeTab === 'fila' && (
+            <SaudeQueue 
+              appointments={appointments}
+              isLoading={isLoading}
+              onRefresh={loadData}
+              onSelectAppointment={apt => setSelectedAppointment(apt)}
+              currentInstitution={currentInstitution}
+            />
+          )}
+
+          {activeTab === 'agenda' && (
+            <SaudeAgenda 
+              appointments={appointments}
+              isLoading={isLoading}
+              onRefresh={loadData}
+              onSelectAppointment={apt => setSelectedAppointment(apt)}
+              currentInstitution={currentInstitution}
+            />
+          )}
+
+          {activeTab === 'pacientes' && (
+            <SaudePatients 
+              patients={patients}
+              appointments={appointments}
+              isLoading={isLoading}
+              onRefresh={loadData}
+              onNewAppointmentForPatient={patient => handleOpenNewAppointment(patient)}
+              currentInstitution={currentInstitution}
+            />
+          )}
+
+          {activeTab === 'farmacia' && (
+            <FarmaciaModule currentInstitution={currentInstitution} />
+          )}
         </motion.div>
       </AnimatePresence>
+
+      {/* Modais Globais */}
+      <AnimatePresence>
+        {isNewAppointmentModalOpen && (
+          <NewAppointmentModal 
+            patients={patients}
+            prefilledPatient={prefilledPatient}
+            onClose={() => setIsNewAppointmentModalOpen(false)}
+            onSuccess={() => {
+              loadData();
+              setIsNewAppointmentModalOpen(false);
+            }}
+            currentInstitution={currentInstitution}
+          />
+        )}
+
+        {selectedAppointment && (
+          <AppointmentDetailsModal
+            apt={selectedAppointment}
+            onClose={() => setSelectedAppointment(null)}
+            onUpdateStatus={(newStatus) => {
+              loadData();
+              setSelectedAppointment(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// Modal de Novo Agendamento (com Autocomplete de Paciente)
+interface NewAppointmentModalProps {
+  patients: Patient[];
+  prefilledPatient: Patient | null;
+  onClose: () => void;
+  onSuccess: () => void;
+  currentInstitution?: { id: string } | null;
+}
+
+const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
+  patients,
+  prefilledPatient,
+  onClose,
+  onSuccess,
+  currentInstitution
+}) => {
+  const [formData, setFormData] = useState({
+    patient_id: prefilledPatient?.id || '',
+    patient_name: prefilledPatient?.name || '',
+    patient_cpf: prefilledPatient?.cpf || '',
+    patient_sus: prefilledPatient?.sus_number || '',
+    patient_phone: prefilledPatient?.phone || '',
+    patient_birth_date: prefilledPatient?.birth_date || '',
+    is_pregnant: prefilledPatient?.is_pregnant || false,
+    is_urgent: false,
+    specialty: COMMON_SPECIALTIES[0],
+    unit_name: DEFAULT_HEALTH_UNITS[0],
+    doctor_name: '',
+    referral_details: '',
+    appointment_date: new Date().toISOString().split('T')[0],
+    appointment_time: '08:00',
+    notes: '',
+    destiny: 'fila' as 'fila' | 'agendado' // Se vai para a fila ou já tem data/hora fixa
+  });
+
+  const [patientSearch, setPatientSearch] = useState('');
+  const [showPatientResults, setShowPatientResults] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const matchedPatients = patients.filter(p => 
+    p.name.toLowerCase().includes(patientSearch.toLowerCase()) ||
+    p.cpf.includes(patientSearch) ||
+    p.sus_number.includes(patientSearch)
+  ).slice(0, 5);
+
+  const handleSelectPatient = (p: Patient) => {
+    setFormData(prev => ({
+      ...prev,
+      patient_id: p.id,
+      patient_name: p.name,
+      patient_cpf: p.cpf,
+      patient_sus: p.sus_number,
+      patient_phone: p.phone || '',
+      patient_birth_date: p.birth_date || '',
+      is_pregnant: p.is_pregnant || false,
+      unit_name: p.ubs_reference || prev.unit_name
+    }));
+    setShowPatientResults(false);
+    setPatientSearch(p.name);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const isQueue = formData.destiny === 'fila';
+
+      const newAppointment = {
+        id: Math.random().toString(36).substring(2, 10),
+        patient_id: formData.patient_id || null,
+        patient_name: formData.patient_name,
+        patient_cpf: formData.patient_cpf,
+        patient_sus: formData.patient_sus,
+        patient_phone: formData.patient_phone || null,
+        patient_birth_date: formData.patient_birth_date,
+        is_pregnant: formData.is_pregnant,
+        is_urgent: formData.is_urgent,
+        specialty: formData.specialty,
+        unit_name: formData.unit_name,
+        doctor_name: formData.doctor_name || null,
+        referral_details: formData.specialty === 'Clínico Geral' ? null : formData.referral_details,
+        appointment_date: formData.appointment_date,
+        appointment_time: isQueue ? null : formData.appointment_time,
+        status: isQueue ? 'Aguardando Regulação' : 'Agendado',
+        notes: formData.notes || null,
+        institution_id: currentInstitution?.id || null
+      };
+
+      const { error } = await supabase.from('appointments').insert(newAppointment);
+      if (error) throw error;
+
+      showToast(isQueue ? 'Solicitação inserida na Fila de Regulação!' : 'Consulta agendada com sucesso!', 'success');
+      onSuccess();
+    } catch (err: any) {
+      console.error(err);
+      showToast('Erro ao criar agendamento: ' + err.message, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 max-h-[90vh] flex flex-col"
+      >
+        <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-emerald-50 dark:bg-emerald-900/20 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-600 text-white rounded-2xl">
+              <Calendar size={22} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-neutral-900 dark:text-white">Novo Agendamento / Solicitação</h3>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400">Insira na Fila de Regulação ou confirme o agendamento direto.</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-white">
+            <XCircle size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Autocomplete de Paciente */}
+          <div className="relative space-y-1 bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+            <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+              Buscar Paciente Cadastrado (Auto-Preenchimento)
+            </label>
+            <div className="relative">
+              <input 
+                type="text"
+                value={patientSearch}
+                onChange={e => {
+                  setPatientSearch(e.target.value);
+                  setShowPatientResults(true);
+                }}
+                onFocus={() => setShowPatientResults(true)}
+                placeholder="Digite o Nome, CPF ou SUS para buscar..."
+                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-2.5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
+              />
+            </div>
+
+            {showPatientResults && patientSearch && matchedPatients.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-700 z-30 overflow-hidden">
+                {matchedPatients.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectPatient(p)}
+                    className="w-full text-left p-3 hover:bg-emerald-50 dark:hover:bg-neutral-800 flex justify-between items-center text-xs border-b last:border-0 border-neutral-100 dark:border-neutral-800"
+                  >
+                    <div>
+                      <p className="font-bold text-neutral-900 dark:text-white">{p.name}</p>
+                      <p className="text-[11px] text-neutral-400 font-mono">CPF: {p.cpf} · SUS: {p.sus_number}</p>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-600">Selecionar</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Dados do Paciente */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nome do Paciente *</label>
+              <input 
+                type="text" required
+                value={formData.patient_name} onChange={e => setFormData({...formData, patient_name: e.target.value})}
+                placeholder="Ex: João da Silva"
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">CPF *</label>
+              <input 
+                type="text" required
+                value={formData.patient_cpf} onChange={e => setFormData({...formData, patient_cpf: formatCPF(e.target.value)})}
+                placeholder="000.000.000-00"
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cartão do SUS *</label>
+              <input 
+                type="text" required
+                value={formData.patient_sus} onChange={e => setFormData({...formData, patient_sus: formatSUS(e.target.value)})}
+                placeholder="000 0000 0000 0000"
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Telefone / WhatsApp</label>
+              <input 
+                type="text"
+                value={formData.patient_phone} onChange={e => setFormData({...formData, patient_phone: formatPhone(e.target.value)})}
+                placeholder="(00) 00000-0000"
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Data de Nascimento *</label>
+              <input 
+                type="date" required
+                value={formData.patient_birth_date} onChange={e => setFormData({...formData, patient_birth_date: e.target.value})}
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+              />
+            </div>
+
+            <div className="flex items-center gap-6 md:col-span-2 pt-1">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={formData.is_pregnant}
+                  onChange={e => setFormData({...formData, is_pregnant: e.target.checked})}
+                  className="rounded text-amber-500"
+                />
+                <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Paciente Gestante</span>
+              </label>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox"
+                  checked={formData.is_urgent}
+                  onChange={e => setFormData({...formData, is_urgent: e.target.checked})}
+                  className="rounded text-rose-600"
+                />
+                <span className="text-xs font-bold text-rose-600 dark:text-rose-400">🚨 Urgência Médica</span>
+              </label>
+            </div>
+
+            {/* Especialidade e Unidade */}
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Especialidade Desejada *</label>
+              <select 
+                value={formData.specialty}
+                onChange={e => setFormData({...formData, specialty: e.target.value})}
+                required
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
+              >
+                {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Unidade de Saúde (UBS)</label>
+              <select 
+                value={formData.unit_name}
+                onChange={e => setFormData({...formData, unit_name: e.target.value})}
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
+              >
+                {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+
+            {formData.specialty !== 'Clínico Geral' && (
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-amber-700 dark:text-amber-400">
+                  Médico Solicitante / CRM / Guia de Encaminhamento *
+                </label>
+                <input 
+                  type="text" required
+                  value={formData.referral_details} onChange={e => setFormData({...formData, referral_details: e.target.value})}
+                  placeholder="Ex: Dr. Carlos (Clínico Geral) - CRM 12345"
+                  className="w-full bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                />
+              </div>
+            )}
+
+            {/* Tipo de Destino do Agendamento */}
+            <div className="space-y-2 md:col-span-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Fluxo do Agendamento</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, destiny: 'fila'})}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    formData.destiny === 'fila'
+                      ? 'border-amber-500 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100 shadow-sm'
+                      : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  <p className="font-black text-xs">⏳ Fila de Regulação (Recomendado)</p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
+                    Cai na fila para triagem e definição de vaga pela equipe de regulação.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, destiny: 'agendado'})}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    formData.destiny === 'agendado'
+                      ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-900 dark:text-emerald-100 shadow-sm'
+                      : 'border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  <p className="font-black text-xs">📅 Agendamento Imediato</p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
+                    Define diretamente a data e o horário fixo da consulta.
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            {formData.destiny === 'agendado' && (
+              <>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Data Fixa da Consulta *</label>
+                  <input 
+                    type="date" required
+                    value={formData.appointment_date} onChange={e => setFormData({...formData, appointment_date: e.target.value})}
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Horário *</label>
+                  <input 
+                    type="time" required
+                    value={formData.appointment_time} onChange={e => setFormData({...formData, appointment_time: e.target.value})}
+                    className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Observações / Sintomas (Opcional)</label>
+              <textarea 
+                rows={2}
+                value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}
+                placeholder="Observações clínicas ou motivo da consulta..."
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+            <button 
+              type="button" 
+              onClick={onClose}
+              className="flex-1 py-3.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-2xl font-bold text-xs"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="flex-1 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/30 disabled:opacity-50"
+            >
+              {isSubmitting ? 'Salvando...' : formData.destiny === 'fila' ? 'Inserir na Fila de Regulação' : 'Confirmar Agendamento'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+};
+
+// Modal de Detalhes do Agendamento
+interface AppointmentDetailsModalProps {
+  apt: Appointment;
+  onClose: () => void;
+  onUpdateStatus: (newStatus: string) => void;
+}
+
+const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, onClose, onUpdateStatus }) => {
+  const priority = calculatePriority(apt);
+  const age = getAge(apt.patient_birth_date);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        onClick={e => e.stopPropagation()}
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800"
+      >
+        <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
+          <div>
+            <h3 className="text-xl font-black text-neutral-900 dark:text-white">Detalhes do Agendamento</h3>
+            <p className="text-xs text-neutral-400 font-mono">Protocolo: {apt.id}</p>
+          </div>
+          <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-white">
+            <XCircle size={22} />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+          {/* Status e Prioridade */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              Status: {apt.status}
+            </span>
+            <span className={`text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full ${
+              priority.level === -1 ? 'bg-red-500 text-white' : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+            }`}>
+              {priority.label}
+            </span>
+          </div>
+
+          {/* Dados do Paciente */}
+          <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-3">
+            <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Dados do Paciente</h4>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Nome</span>
+                <span className="font-bold text-neutral-900 dark:text-white">{apt.patient_name} ({age} anos)</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">CPF</span>
+                <span className="font-mono font-bold text-neutral-900 dark:text-white">{apt.patient_cpf}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Cartão SUS</span>
+                <span className="font-mono font-bold text-neutral-900 dark:text-white">{apt.patient_sus}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Telefone</span>
+                <span className="font-mono font-bold text-neutral-900 dark:text-white">{apt.patient_phone ? formatPhone(apt.patient_phone) : 'Não informado'}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dados Clínicos e da Consulta */}
+          <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-3">
+            <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Informações da Consulta</h4>
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Especialidade</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">{apt.specialty}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Unidade de Saúde (Local)</span>
+                <span className="font-bold text-neutral-900 dark:text-white">{apt.unit_name || 'A definir pela Regulação'}</span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Data da Consulta</span>
+                <span className="font-bold text-neutral-900 dark:text-white">
+                  {apt.appointment_date ? apt.appointment_date.split('-').reverse().join('/') : 'Em análise'}
+                </span>
+              </div>
+              <div>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Horário</span>
+                <span className="font-bold text-neutral-900 dark:text-white">{apt.appointment_time || 'A definir'}</span>
+              </div>
+              {apt.doctor_name && (
+                <div className="col-span-2">
+                  <span className="text-neutral-400 block text-[10px] font-bold uppercase">Médico / Profissional</span>
+                  <span className="font-bold text-neutral-900 dark:text-white">{apt.doctor_name}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {apt.referral_details && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl text-xs">
+              <span className="font-black uppercase text-[10px] text-amber-800 dark:text-amber-400 block mb-1">Encaminhamento Médico</span>
+              <p className="font-bold text-amber-900 dark:text-amber-200">{apt.referral_details}</p>
+            </div>
+          )}
+
+          {apt.notes && (
+            <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl text-xs">
+              <span className="font-black uppercase text-[10px] text-neutral-400 block mb-1">Observações do Paciente</span>
+              <p className="text-neutral-700 dark:text-neutral-300">{apt.notes}</p>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
+          <button 
+            onClick={onClose}
+            className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl font-bold text-xs shadow-lg transition-colors"
+          >
+            Fechar Detalhes
+          </button>
+        </div>
+      </motion.div>
     </div>
   );
 };
