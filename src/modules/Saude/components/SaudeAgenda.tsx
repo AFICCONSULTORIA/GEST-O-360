@@ -9,12 +9,14 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
 import { 
-  Appointment, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
+  Appointment, HealthUnit, HealthProfessional, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
   formatPhone, formatCPF, formatSUS 
 } from '../types';
 
 interface SaudeAgendaProps {
   appointments: Appointment[];
+  units: HealthUnit[];
+  professionals: HealthProfessional[];
   isLoading: boolean;
   onRefresh: () => void;
   onSelectAppointment: (apt: Appointment) => void;
@@ -23,6 +25,8 @@ interface SaudeAgendaProps {
 
 export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
   appointments,
+  units,
+  professionals,
   isLoading,
   onRefresh,
   onSelectAppointment,
@@ -184,7 +188,9 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
             className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold outline-none dark:text-white"
           >
             <option value="Todas">Todas as Unidades (UBS)</option>
-            {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            {units.length > 0 
+              ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
+              : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
 
           <select 
@@ -193,7 +199,9 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
             className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold outline-none dark:text-white"
           >
             <option value="Todas">Todas Especialidades</option>
-            {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+            {professionals.length > 0
+              ? Array.from(new Set(professionals.map(p => p.specialty))).map(s => <option key={s} value={s}>{s}</option>)
+              : COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
           <select 
@@ -403,6 +411,8 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
         {reschedulingAppointment && (
           <RescheduleModal 
             appointment={reschedulingAppointment}
+            units={units}
+            professionals={professionals}
             onClose={() => setReschedulingAppointment(null)}
             onSuccess={() => {
               setReschedulingAppointment(null);
@@ -430,14 +440,16 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
 // Modal de Reagendamento
 interface RescheduleModalProps {
   appointment: Appointment;
+  units: HealthUnit[];
+  professionals: HealthProfessional[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const RescheduleModal: React.FC<RescheduleModalProps> = ({ appointment, onClose, onSuccess }) => {
+const RescheduleModal: React.FC<RescheduleModalProps> = ({ appointment, units, professionals, onClose, onSuccess }) => {
   const [newDate, setNewDate] = useState(appointment.appointment_date);
   const [newTime, setNewTime] = useState(appointment.appointment_time || '08:00');
-  const [newUnit, setNewUnit] = useState(appointment.unit_name || DEFAULT_HEALTH_UNITS[0]);
+  const [newUnit, setNewUnit] = useState(appointment.unit_name || (units.length > 0 ? units[0].name : DEFAULT_HEALTH_UNITS[0]));
   const [newDoctor, setNewDoctor] = useState(appointment.doctor_name || '');
   const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -502,19 +514,24 @@ const RescheduleModal: React.FC<RescheduleModalProps> = ({ appointment, onClose,
               onChange={e => setNewUnit(e.target.value)}
               className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
             >
-              {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              {units.length > 0 
+                ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
+                : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
             </select>
           </div>
 
           <div className="space-y-1">
             <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Médico / Profissional</label>
             <input 
-              type="text"
+              type="text" list="agenda_doctors"
               value={newDoctor}
               onChange={e => setNewDoctor(e.target.value)}
               placeholder="Ex: Dr. Roberto"
               className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
             />
+            <datalist id="agenda_doctors">
+              {professionals.map(p => <option key={p.id} value={p.name} />)}
+            </datalist>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

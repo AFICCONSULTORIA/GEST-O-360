@@ -8,12 +8,14 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
 import { 
-  Appointment, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
+  Appointment, HealthUnit, HealthProfessional, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
   calculatePriority, getAge, formatPhone 
 } from '../types';
 
 interface SaudeQueueProps {
   appointments: Appointment[];
+  units: HealthUnit[];
+  professionals: HealthProfessional[];
   isLoading: boolean;
   onRefresh: () => void;
   onSelectAppointment: (apt: Appointment) => void;
@@ -22,6 +24,8 @@ interface SaudeQueueProps {
 
 export const SaudeQueue: React.FC<SaudeQueueProps> = ({
   appointments,
+  units,
+  professionals,
   isLoading,
   onRefresh,
   onSelectAppointment,
@@ -186,7 +190,9 @@ export const SaudeQueue: React.FC<SaudeQueueProps> = ({
             className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold outline-none dark:text-white"
           >
             <option value="Todas">Todas as Especialidades</option>
-            {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+            {professionals.length > 0
+              ? Array.from(new Set(professionals.map(p => p.specialty))).map(s => <option key={s} value={s}>{s}</option>)
+              : COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
           <select 
@@ -352,6 +358,8 @@ export const SaudeQueue: React.FC<SaudeQueueProps> = ({
         {regulatingAppointment && (
           <RegulationModal 
             appointment={regulatingAppointment}
+            units={units}
+            professionals={professionals}
             onClose={() => setRegulatingAppointment(null)}
             onSuccess={() => {
               setRegulatingAppointment(null);
@@ -366,12 +374,14 @@ export const SaudeQueue: React.FC<SaudeQueueProps> = ({
 
 interface RegulationModalProps {
   appointment: Appointment;
+  units: HealthUnit[];
+  professionals: HealthProfessional[];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-const RegulationModal: React.FC<RegulationModalProps> = ({ appointment, onClose, onSuccess }) => {
-  const [unitName, setUnitName] = useState(appointment.unit_name || DEFAULT_HEALTH_UNITS[0]);
+const RegulationModal: React.FC<RegulationModalProps> = ({ appointment, units, professionals, onClose, onSuccess }) => {
+  const [unitName, setUnitName] = useState(appointment.unit_name || (units.length > 0 ? units[0].name : DEFAULT_HEALTH_UNITS[0]));
   const [doctorName, setDoctorName] = useState(appointment.doctor_name || '');
   const [appointmentDate, setAppointmentDate] = useState(appointment.appointment_date || new Date().toISOString().split('T')[0]);
   const [appointmentTime, setAppointmentTime] = useState(appointment.appointment_time || '08:00');
@@ -448,19 +458,24 @@ const RegulationModal: React.FC<RegulationModalProps> = ({ appointment, onClose,
                 required
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
               >
-                {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                {units.length > 0
+                  ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
+                  : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
 
             <div className="space-y-1 md:col-span-2">
               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Médico / Profissional de Saúde (Opcional)</label>
               <input 
-                type="text"
+                type="text" list="queue_doctors"
                 placeholder="Ex: Dra. Camila Rocha (CRM 12345)"
                 value={doctorName}
                 onChange={e => setDoctorName(e.target.value)}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
               />
+              <datalist id="queue_doctors">
+                {professionals.map(p => <option key={p.id} value={p.name} />)}
+              </datalist>
             </div>
 
             <div className="space-y-1">

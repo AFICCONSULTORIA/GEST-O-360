@@ -12,8 +12,9 @@ import { FarmaciaModule } from './Farmacia';
 import { SaudeQueue } from './components/SaudeQueue';
 import { SaudeAgenda } from './components/SaudeAgenda';
 import { SaudePatients } from './components/SaudePatients';
+import { SaudeSettings } from './components/SaudeSettings';
 import { 
-  Appointment, Patient, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
+  Appointment, Patient, HealthUnit, HealthProfessional, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
   formatCPF, formatSUS, formatPhone, calculatePriority, getAge 
 } from './types';
 
@@ -21,9 +22,11 @@ export * from './types';
 
 
 export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id: string; name?: string } | null }) => {
-  const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'pacientes' | 'farmacia'>('fila');
+  const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'pacientes' | 'farmacia' | 'cadastros'>('fila');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [units, setUnits] = useState<HealthUnit[]>([]);
+  const [professionals, setProfessionals] = useState<HealthProfessional[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isNewAppointmentModalOpen, setIsNewAppointmentModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
@@ -54,6 +57,13 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       } else if (patData) {
         setPatients(patData as Patient[]);
       }
+
+      // 3. Carregar Unidades e Profissionais
+      const { data: unitsData } = await supabase.from('health_units').select('*').eq('institution_id', currentInstitution?.id || null).order('name');
+      if (unitsData) setUnits(unitsData as HealthUnit[]);
+
+      const { data: profData } = await supabase.from('health_professionals').select('*').eq('institution_id', currentInstitution?.id || null).order('name');
+      if (profData) setProfessionals(profData as HealthProfessional[]);
     } catch (err) {
       console.error('Erro ao buscar dados de saúde:', err);
     } finally {
@@ -184,6 +194,18 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           <Package size={16} />
           Farmácia SUS
         </button>
+
+        <button
+          onClick={() => setActiveTab('cadastros')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === 'cadastros'
+              ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 shadow-sm'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <Building2 size={16} />
+          Cadastros
+        </button>
       </div>
 
       {/* Conteúdo da Tab Ativa */}
@@ -198,6 +220,8 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           {activeTab === 'fila' && (
             <SaudeQueue 
               appointments={appointments}
+              units={units}
+              professionals={professionals}
               isLoading={isLoading}
               onRefresh={loadData}
               onSelectAppointment={apt => setSelectedAppointment(apt)}
@@ -208,6 +232,8 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           {activeTab === 'agenda' && (
             <SaudeAgenda 
               appointments={appointments}
+              units={units}
+              professionals={professionals}
               isLoading={isLoading}
               onRefresh={loadData}
               onSelectAppointment={apt => setSelectedAppointment(apt)}
@@ -219,6 +245,8 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
             <SaudePatients 
               patients={patients}
               appointments={appointments}
+              units={units}
+              professionals={professionals}
               isLoading={isLoading}
               onRefresh={loadData}
               onNewAppointmentForPatient={patient => handleOpenNewAppointment(patient)}
@@ -229,6 +257,16 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           {activeTab === 'farmacia' && (
             <FarmaciaModule currentInstitution={currentInstitution} />
           )}
+
+          {activeTab === 'cadastros' && (
+            <SaudeSettings 
+              units={units}
+              professionals={professionals}
+              isLoading={isLoading}
+              onRefresh={loadData}
+              currentInstitution={currentInstitution}
+            />
+          )}
         </motion.div>
       </AnimatePresence>
 
@@ -237,6 +275,8 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
         {isNewAppointmentModalOpen && (
           <NewAppointmentModal 
             patients={patients}
+            units={units}
+            professionals={professionals}
             prefilledPatient={prefilledPatient}
             onClose={() => setIsNewAppointmentModalOpen(false)}
             onSuccess={() => {
@@ -265,6 +305,8 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
 // Modal de Novo Agendamento (com Autocomplete de Paciente)
 interface NewAppointmentModalProps {
   patients: Patient[];
+  units: HealthUnit[];
+  professionals: HealthProfessional[];
   prefilledPatient: Patient | null;
   onClose: () => void;
   onSuccess: () => void;
@@ -273,6 +315,8 @@ interface NewAppointmentModalProps {
 
 const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   patients,
+  units,
+  professionals,
   prefilledPatient,
   onClose,
   onSuccess,
@@ -287,8 +331,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     patient_birth_date: prefilledPatient?.birth_date || '',
     is_pregnant: prefilledPatient?.is_pregnant || false,
     is_urgent: false,
-    specialty: COMMON_SPECIALTIES[0],
-    unit_name: DEFAULT_HEALTH_UNITS[0],
+    specialty: professionals.length > 0 ? professionals[0].specialty : COMMON_SPECIALTIES[0],
+    unit_name: units.length > 0 ? units[0].name : DEFAULT_HEALTH_UNITS[0],
     doctor_name: '',
     referral_details: '',
     appointment_date: new Date().toISOString().split('T')[0],
@@ -510,7 +554,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 required
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
               >
-                {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                {professionals.length > 0 
+                  ? Array.from(new Set(professionals.map(p => p.specialty))).map(s => <option key={s} value={s}>{s}</option>)
+                  : COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
@@ -521,7 +567,9 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 onChange={e => setFormData({...formData, unit_name: e.target.value})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
               >
-                {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                {units.length > 0
+                  ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
+                  : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
 

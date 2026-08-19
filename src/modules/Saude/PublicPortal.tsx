@@ -22,6 +22,15 @@ const formatDate = (dateString?: string) => {
 
 export const PublicSaudePortal = ({ darkMode, currentInstitution }: { darkMode: boolean; currentInstitution?: any }) => {
   const [activeTab, setActiveTab] = useState<'agendar' | 'acompanhar'>('agendar');
+  const [professionals, setProfessionals] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    const loadProf = async () => {
+      const { data } = await supabase.from('health_professionals').select('specialty').eq('institution_id', currentInstitution?.id || null);
+      if (data) setProfessionals(data);
+    };
+    loadProf();
+  }, [currentInstitution]);
 
   // AGENDAR STATE
   const [formData, setFormData] = useState({
@@ -431,7 +440,9 @@ export const PublicSaudePortal = ({ darkMode, currentInstitution }: { darkMode: 
                           required
                           className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3.5 rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
                         >
-                          {COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+                          {professionals.length > 0 
+                            ? Array.from(new Set(professionals.map(p => p.specialty))).map(s => <option key={s as string} value={s as string}>{s as string}</option>)
+                            : COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
                         </select>
                       </div>
 

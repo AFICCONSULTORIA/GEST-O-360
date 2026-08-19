@@ -21,6 +21,28 @@ export interface Patient {
   updated_at?: string;
 }
 
+export interface HealthUnit {
+  id: string;
+  institution_id?: string | null;
+  name: string;
+  address?: string;
+  phone?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface HealthProfessional {
+  id: string;
+  institution_id?: string | null;
+  unit_id?: string | null;
+  name: string;
+  specialty: string;
+  crm_coren?: string;
+  working_days?: string;
+  is_active: boolean;
+  created_at?: string;
+}
+
 export interface Appointment {
   id: string;
   institution_id?: string | null;

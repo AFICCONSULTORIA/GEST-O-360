@@ -9,13 +9,15 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
 import { 
-  Patient, Appointment, DEFAULT_HEALTH_UNITS, 
+  Patient, Appointment, HealthUnit, HealthProfessional, DEFAULT_HEALTH_UNITS, 
   formatCPF, formatSUS, formatPhone, getAge 
 } from '../types';
 
 interface SaudePatientsProps {
   patients: Patient[];
   appointments: Appointment[];
+  units: HealthUnit[];
+  professionals: HealthProfessional[];
   isLoading: boolean;
   onRefresh: () => void;
   onNewAppointmentForPatient?: (patient: Patient) => void;
@@ -36,6 +38,8 @@ const COMMON_CONDITIONS = [
 export const SaudePatients: React.FC<SaudePatientsProps> = ({
   patients,
   appointments,
+  units,
+  professionals,
   isLoading,
   onRefresh,
   onNewAppointmentForPatient,
@@ -175,7 +179,9 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
             className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold outline-none dark:text-white"
           >
             <option value="Todas">Todas as UBS</option>
-            {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+            {units.length > 0 
+              ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
+              : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
           </select>
 
           <button 
@@ -350,6 +356,7 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
         {isFormModalOpen && (
           <PatientFormModal 
             patient={editingPatient}
+            units={units}
             onClose={() => setIsFormModalOpen(false)}
             onSuccess={() => {
               setIsFormModalOpen(false);
@@ -387,12 +394,13 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
 // Modal de Formulário (Cadastro / Edição)
 interface PatientFormModalProps {
   patient: Patient | null;
+  units: HealthUnit[];
   onClose: () => void;
   onSuccess: () => void;
   currentInstitution?: { id: string } | null;
 }
 
-const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, onClose, onSuccess, currentInstitution }) => {
+const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, units, onClose, onSuccess, currentInstitution }) => {
   const [formData, setFormData] = useState({
     name: patient?.name || '',
     cpf: patient?.cpf || '',
@@ -403,7 +411,7 @@ const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, onClose, o
     phone: patient?.phone || '',
     address: patient?.address || '',
     neighborhood: patient?.neighborhood || '',
-    ubs_reference: patient?.ubs_reference || DEFAULT_HEALTH_UNITS[0],
+    ubs_reference: patient?.ubs_reference || (units.length > 0 ? units[0].name : DEFAULT_HEALTH_UNITS[0]),
     blood_type: patient?.blood_type || '',
     allergies: patient?.allergies || '',
     conditions: patient?.conditions ? patient.conditions.split(',').map(c => c.trim()) : [] as string[],
@@ -565,7 +573,9 @@ const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, onClose, o
                 value={formData.ubs_reference} onChange={e => setFormData({...formData, ubs_reference: e.target.value})}
                 className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
               >
-                {DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                {units.length > 0
+                  ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
+                  : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
 
