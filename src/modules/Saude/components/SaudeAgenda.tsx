@@ -4,7 +4,7 @@ import {
   Calendar as CalendarIcon, Clock, User, Phone, CheckCircle2, 
   XCircle, AlertCircle, Printer, RotateCcw, Building2, 
   Search, MessageCircle, MapPin, Stethoscope, ChevronRight,
-  UserCheck, AlertTriangle
+  UserCheck, AlertTriangle, Trash2
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
@@ -93,6 +93,20 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDeleteAppointment = async (apt: Appointment) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o agendamento do paciente ${apt.patient_name}?`)) return;
+
+    try {
+      const { error } = await supabase.from('appointments').delete().eq('id', apt.id);
+      if (error) throw error;
+      showToast('Agendamento excluído com sucesso!', 'success');
+      onRefresh();
+    } catch (err: any) {
+      console.error(err);
+      showToast('Erro ao excluir: ' + err.message, 'error');
+    }
   };
 
   // KPIs for the selected date
@@ -359,15 +373,24 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
                     </button>
                   </div>
 
-                  {apt.patient_phone && (
+                  <div className="flex items-center gap-2">
+                    {apt.patient_phone && (
+                      <button 
+                        onClick={() => handleSendReminderWhatsApp(apt)}
+                        title="Lembrete WhatsApp"
+                        className="p-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-xl transition-colors"
+                      >
+                        <MessageCircle size={16} />
+                      </button>
+                    )}
                     <button 
-                      onClick={() => handleSendReminderWhatsApp(apt)}
-                      title="Lembrete WhatsApp"
-                      className="p-2 bg-[#25D366]/10 hover:bg-[#25D366]/20 text-[#25D366] rounded-xl transition-colors"
+                      onClick={() => handleDeleteAppointment(apt)}
+                      title="Excluir Agendamento (Super Admin)"
+                      className="p-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 text-rose-600 rounded-xl transition-colors"
                     >
-                      <MessageCircle size={16} />
+                      <Trash2 size={16} />
                     </button>
-                  )}
+                  </div>
                 </div>
               </div>
             );
