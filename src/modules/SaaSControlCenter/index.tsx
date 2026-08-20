@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { 
-  Building2, Users, ClipboardCheck, ArrowRight, Plus, Edit2, Trash2, X, Lock, LogOut, LayoutDashboard, Globe, Activity, CheckCircle2, AlertTriangle, Settings, Home, Sun, Moon, LifeBuoy, GraduationCap, UploadCloud
+  Building2, Users, ClipboardCheck, ArrowRight, Plus, Edit2, Trash2, X, Lock, LogOut, LayoutDashboard, Globe, Activity, CheckCircle2, AlertTriangle, Settings, Home, Sun, Moon, LifeBuoy, GraduationCap, UploadCloud, FileSpreadsheet, Sparkles
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -12,6 +12,7 @@ import { AdminUser, Institution, Department, View } from '../../types';
 import { SaaSControlCenterSupport } from './SaaSControlCenterSupport';
 import { SaaSControlCenterEducation } from './SaaSControlCenterEducation';
 import { SaaSControlCenterImport } from './SaaSControlCenterImport';
+import { SaaSControlCenterPdfExtractor } from './SaaSControlCenterPdfExtractor';
 
 interface SaaSControlCenterProps {
   darkMode: boolean;
@@ -42,7 +43,7 @@ export const SaaSControlCenter = ({
   patrimonioItems,
   orders
 }: SaaSControlCenterProps) => {
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'institutions' | 'users' | 'departments' | 'support' | 'education' | 'import'>('overview');
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'institutions' | 'users' | 'departments' | 'education' | 'import' | 'pdf-extractor' | 'support'>('overview');
   
   // Modal de Resultado Demo
   const [demoResultModal, setDemoResultModal] = React.useState<{isOpen: boolean, success: boolean, message: string}>({isOpen: false, success: true, message: ''});
@@ -328,6 +329,18 @@ export const SaaSControlCenter = ({
             Migração de Dados
           </button>
           <button 
+            onClick={() => setActiveTab('pdf-extractor')}
+            className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'pdf-extractor' ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-100/50 dark:border-purple-550/10' : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800/40'}`}
+          >
+            <div className="flex items-center gap-4">
+              <FileSpreadsheet size={18} />
+              Extrator PDF / Excel
+            </div>
+            <span className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1">
+              <Sparkles size={10} /> IA
+            </span>
+          </button>
+          <button 
             onClick={() => setActiveTab('support')}
             className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'support' ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-100/50 dark:border-purple-550/10' : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800/40'}`}
           >
@@ -385,6 +398,7 @@ export const SaaSControlCenter = ({
               {activeTab === 'departments' && 'Estrutura de Secretarias'}
               {activeTab === 'education' && 'Ambiente de Educação'}
               {activeTab === 'import' && 'Migração de Dados B2G'}
+              {activeTab === 'pdf-extractor' && 'Extrator Inteligente de PDF para Excel'}
               {activeTab === 'support' && 'Central de Help Desk'}
             </h1>
             <p className="text-xs text-neutral-400 font-bold uppercase tracking-widest mt-1.5">
@@ -394,11 +408,12 @@ export const SaaSControlCenter = ({
               {activeTab === 'departments' && 'Pastas e departamentos governamentais do SaaS'}
               {activeTab === 'education' && 'Gerenciamento de Escolas, Professores e Alunos'}
               {activeTab === 'import' && 'Onboarding expresso de prefeituras por planilhas'}
+              {activeTab === 'pdf-extractor' && 'Extração multimodal via IA Gemini com download em Excel (.xlsx) e CSV'}
               {activeTab === 'support' && 'Chamados e suporte técnico global'}
             </p>
           </div>
 
-          {activeTab !== 'overview' && activeTab !== 'support' && activeTab !== 'education' && activeTab !== 'import' && (
+          {activeTab !== 'overview' && activeTab !== 'support' && activeTab !== 'education' && activeTab !== 'import' && activeTab !== 'pdf-extractor' && (
             <button 
               onClick={() => {
                 if (activeTab === 'institutions') {
@@ -848,6 +863,14 @@ export const SaaSControlCenter = ({
 
           {activeTab === 'education' && (
             <SaaSControlCenterEducation institutions={institutions} currentUser={currentUser} />
+          )}
+
+          {activeTab === 'import' && (
+            <SaaSControlCenterImport institutions={institutions} departments={departments} />
+          )}
+
+          {activeTab === 'pdf-extractor' && (
+            <SaaSControlCenterPdfExtractor darkMode={darkMode} />
           )}
 
         </div>
