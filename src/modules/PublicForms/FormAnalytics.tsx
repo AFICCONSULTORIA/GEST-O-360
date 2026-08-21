@@ -808,7 +808,7 @@ ${stats.netPromoterScore !== null ? `- **Net Promoter Score (NPS da Gestão):** 
                     const chartData = Object.entries(counts).map(([name, value]) => ({
                       name,
                       value,
-                      percent: totalAnswersForQ > 0 ? Math.round((value / totalAnswersForQ) * 100) : 0
+                      pct: totalAnswersForQ > 0 ? Math.round((value / totalAnswersForQ) * 100) : 0
                     })).sort((a, b) => b.value - a.value);
 
                     return (
@@ -862,14 +862,14 @@ ${stats.netPromoterScore !== null ? `- **Net Promoter Score (NPS da Gestão):** 
                                       {item.name}
                                     </span>
                                     <span className="font-mono text-neutral-600 dark:text-neutral-400">
-                                      {item.value} ({item.percent}%)
+                                      {item.value} ({item.pct}%)
                                     </span>
                                   </div>
                                   <div className="w-full bg-neutral-100 dark:bg-neutral-800 h-3 rounded-full overflow-hidden flex">
                                     <div
                                       className="h-full rounded-full transition-all duration-500"
                                       style={{
-                                        width: `${item.percent}%`,
+                                        width: `${item.pct}%`,
                                         backgroundColor: q.type === 'yes_no' 
                                           ? (item.name.toLowerCase() === 'sim' ? '#10b981' : '#f43f5e') 
                                           : PALETTE[i % PALETTE.length]
@@ -928,7 +928,7 @@ ${stats.netPromoterScore !== null ? `- **Net Promoter Score (NPS da Gestão):** 
                                         {item.value}
                                       </td>
                                       <td className="p-3 text-right font-mono text-purple-600 dark:text-purple-400 font-bold">
-                                        {item.percent}%
+                                        {item.pct}%
                                       </td>
                                     </tr>
                                   ))}
@@ -973,7 +973,7 @@ ${stats.netPromoterScore !== null ? `- **Net Promoter Score (NPS da Gestão):** 
                     const chartData = Object.entries(counts).map(([name, value]) => ({
                       name,
                       value,
-                      percent: totalRatingCount > 0 ? Math.round((value / totalRatingCount) * 100) : 0
+                      pct: totalRatingCount > 0 ? Math.round((value / totalRatingCount) * 100) : 0
                     }));
 
                     return (
