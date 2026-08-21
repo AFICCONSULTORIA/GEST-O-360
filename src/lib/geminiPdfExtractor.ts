@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 
 export interface ExtractionPreset {
   id: string;
@@ -141,40 +140,43 @@ ${columnsPrompt}
 `;
 
   try {
-    const genAI = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'gestao360-pdf-extractor',
-        }
-      }
-    });
-
-    const response = await genAI.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType: 'application/pdf',
-                data: base64Data
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType: 'application/pdf',
+                  data: base64Data
+                }
+              },
+              {
+                text: systemPrompt
               }
-            },
-            {
-              text: systemPrompt
-            }
-          ]
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.1
         }
-      ],
-      config: {
-        responseMimeType: 'application/json',
-        temperature: 0.1
-      }
+      })
     });
 
-    const rawText = response.text || '{}';
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      console.error('Gemini API Error:', errorData);
+      throw new Error(`Erro na API do Gemini (${response.status}): ${errorData?.error?.message || response.statusText}`);
+    }
+
+    const data = await response.json();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
     let cleanJson = rawText.trim();
 
     // Se vier envelopado em ```json ```, limpa
