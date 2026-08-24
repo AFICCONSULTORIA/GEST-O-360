@@ -14,6 +14,7 @@ import {
   formatCPF, formatSUS, formatPhone, getAge, checkExamDuplicity, DuplicityCheckResult,
   generateUUID, isValidUUID
 } from '../types';
+import { printExamGuide } from '../utils/printReceipt';
 
 interface SaudeExamsProps {
   requests: ExamRequest[];
@@ -1201,7 +1202,7 @@ const PrintExamGuideModal: React.FC<{
   onClose: () => void;
 }> = ({ req, currentInstitution, onClose }) => {
   const handlePrint = () => {
-    window.print();
+    printExamGuide(req, currentInstitution?.name || 'Prefeitura Municipal');
   };
 
   return (
@@ -1209,72 +1210,90 @@ const PrintExamGuideModal: React.FC<{
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         onClick={e => e.stopPropagation()}
-        className="bg-white w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl text-neutral-900"
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-800 flex flex-col max-h-[90vh]"
       >
-        <div className="p-4 bg-neutral-100 flex justify-between items-center border-b print:hidden">
-          <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Guia de Encaminhamento / Autorização de Exame</span>
-          <div className="flex gap-2">
-            <button onClick={handlePrint} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md">
-              <Printer size={14} /> Imprimir Guia
+        <div className="p-5 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-sm">
+              <Printer size={18} />
+            </div>
+            <div>
+              <h3 className="font-black text-sm text-neutral-900 dark:text-white">Guia de Encaminhamento / Autorização</h3>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Emissão Oficial para Procedimentos e Exames</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handlePrint} 
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <Printer size={15} /> Imprimir Guia
             </button>
-            <button onClick={onClose} className="p-2 text-neutral-500 hover:text-neutral-900">
-              <XCircle size={18} />
+            <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-xl">
+              <XCircle size={20} />
             </button>
           </div>
         </div>
 
-        {/* Conteúdo Imprimível da Guia */}
-        <div className="p-8 space-y-6 text-xs">
-          <div className="border-b-2 border-neutral-900 pb-4 flex justify-between items-center">
-            <div>
-              <h2 className="text-lg font-black uppercase">{currentInstitution?.name || 'Prefeitura Municipal - Secretaria de Saúde'}</h2>
-              <p className="text-xs font-bold text-neutral-600">Sistema Integrado de Regulação de Exames & Procedimentos</p>
+        {/* Pré-visualização na tela */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+          <div className="border border-neutral-200 dark:border-neutral-700 p-6 rounded-2xl bg-neutral-50/50 dark:bg-neutral-800/40 space-y-4">
+            <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3 flex justify-between items-center">
+              <div>
+                <h2 className="text-sm font-black uppercase text-neutral-900 dark:text-white">{currentInstitution?.name || 'Prefeitura Municipal - Secretaria de Saúde'}</h2>
+                <p className="text-xs font-bold text-blue-600 dark:text-blue-400">Central de Regulação Municipal de Saúde</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold uppercase text-neutral-400">Protocolo</p>
+                <p className="text-sm font-mono font-black text-neutral-900 dark:text-white">{req.id.substring(0, 13).toUpperCase()}</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] font-bold uppercase text-neutral-400">Protocolo Municipal</p>
-              <p className="text-sm font-mono font-black">{req.id.toUpperCase()}</p>
-            </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4 bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-            <div>
-              <span className="text-[10px] font-bold text-neutral-400 uppercase block">Paciente</span>
-              <span className="font-bold text-sm">{req.patient_name}</span>
+            <div className="grid grid-cols-2 gap-3 bg-white dark:bg-neutral-900 p-4 rounded-xl border border-neutral-200 dark:border-neutral-700">
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase block">Paciente</span>
+                <span className="font-bold text-sm text-neutral-900 dark:text-white">{req.patient_name}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase block">CPF / Cartão SUS</span>
+                <span className="font-mono text-neutral-700 dark:text-neutral-300">{req.patient_cpf} · {req.patient_sus}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase block">Médico Solicitante</span>
+                <span className="font-bold text-neutral-800 dark:text-neutral-200">{req.doctor_name} {req.doctor_crm ? `(${req.doctor_crm})` : ''}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase block">Unidade de Origem</span>
+                <span className="text-neutral-800 dark:text-neutral-200">{req.requesting_unit || 'UBS Central'}</span>
+              </div>
             </div>
-            <div>
-              <span className="text-[10px] font-bold text-neutral-400 uppercase block">CPF / Cartão SUS</span>
-              <span className="font-mono font-bold">{req.patient_cpf} / {req.patient_sus}</span>
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-neutral-400 uppercase block">Médico Solicitante</span>
-              <span className="font-bold">{req.doctor_name} ({req.doctor_crm || 'CRM Ativo'})</span>
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-neutral-400 uppercase block">Unidade Solicitante</span>
-              <span className="font-bold">{req.requesting_unit || 'UBS Central'}</span>
-            </div>
-          </div>
 
-          <div className="border border-neutral-300 p-4 rounded-xl space-y-2">
-            <span className="text-[10px] font-bold uppercase text-emerald-700 block">Exame Autorizado</span>
-            <p className="text-base font-black text-neutral-900">{req.exam_name}</p>
-            <p className="text-neutral-600">Categoria: {req.category}</p>
-            {req.clinical_indication && <p className="text-neutral-600">Indicação: {req.clinical_indication}</p>}
-            {req.scheduled_date && (
-              <p className="font-bold text-purple-700">Data Agendada: {req.scheduled_date.split('-').reverse().join('/')} ({req.executing_unit || 'Laboratório Central'})</p>
-            )}
+            <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800/50 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-blue-700 dark:text-blue-400 block">Exame Autorizado</span>
+              <p className="text-base font-black text-blue-950 dark:text-blue-100">{req.exam_name}</p>
+              <p className="text-neutral-600 dark:text-neutral-300">Categoria: {req.category} · Prioridade: {req.is_urgent ? '🚨 URGÊNCIA' : 'Eletivo'}</p>
+              {req.scheduled_date && (
+                <p className="font-bold text-purple-700 dark:text-purple-300 pt-1">
+                  📅 Data Agendada: {req.scheduled_date.split('-').reverse().join('/')} ({req.executing_unit || 'Laboratório Central'})
+                </p>
+              )}
+            </div>
           </div>
+        </div>
 
-          <div className="pt-8 border-t border-neutral-200 grid grid-cols-2 gap-8 text-center">
-            <div>
-              <div className="border-b border-neutral-400 pb-1 mb-1 font-bold">{req.doctor_name}</div>
-              <span className="text-[10px] text-neutral-500 uppercase">Assinatura / Carimbo do Médico</span>
-            </div>
-            <div>
-              <div className="border-b border-neutral-400 pb-1 mb-1 font-bold">Setor de Regulação Municipal</div>
-              <span className="text-[10px] text-neutral-500 uppercase">Visto da Secretaria de Saúde</span>
-            </div>
-          </div>
+        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 flex justify-end gap-2">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2.5 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-neutral-800 dark:text-white rounded-xl font-bold text-xs"
+          >
+            Fechar
+          </button>
+          <button 
+            onClick={handlePrint}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg shadow-blue-500/20"
+          >
+            <Printer size={15} /> Imprimir Guia
+          </button>
         </div>
       </motion.div>
     </div>

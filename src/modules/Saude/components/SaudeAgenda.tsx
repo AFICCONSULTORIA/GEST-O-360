@@ -12,6 +12,7 @@ import {
   Appointment, HealthUnit, HealthProfessional, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
   formatPhone, formatCPF, formatSUS 
 } from '../types';
+import { printDailyAgendaList } from '../utils/printReceipt';
 
 interface SaudeAgendaProps {
   appointments: Appointment[];
@@ -624,8 +625,8 @@ const PrintDailyListModal: React.FC<PrintDailyListModalProps> = ({ appointments,
           </div>
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => window.print()}
-              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+              onClick={() => printDailyAgendaList(appointments, date, institutionName)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer transition-all"
             >
               <Printer size={16} /> Imprimir Agora (PDF)
             </button>

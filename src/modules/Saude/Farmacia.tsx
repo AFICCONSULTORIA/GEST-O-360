@@ -13,6 +13,7 @@ import {
   formatCPF, formatSUS, formatPhone, checkMedicationEarlyRefill, EarlyRefillCheckResult, DEFAULT_HEALTH_UNITS,
   generateUUID, isValidUUID
 } from './types';
+import { printDispensationReceipt } from './utils/printReceipt';
 
 export interface Medication {
   id: string;
@@ -1212,7 +1213,7 @@ const PrintDispensationReceiptModal: React.FC<{
   onClose: () => void;
 }> = ({ disp, currentInstitution, onClose }) => {
   const handlePrint = () => {
-    window.print();
+    printDispensationReceipt(disp, currentInstitution?.name || 'Prefeitura Municipal');
   };
 
   return (
@@ -1220,54 +1221,89 @@ const PrintDispensationReceiptModal: React.FC<{
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         onClick={e => e.stopPropagation()}
-        className="bg-white w-full max-w-lg rounded-[32px] overflow-hidden shadow-2xl text-neutral-900"
+        className="bg-white dark:bg-neutral-900 w-full max-w-xl rounded-[32px] overflow-hidden shadow-2xl text-neutral-900 dark:text-white border border-neutral-200 dark:border-neutral-800 flex flex-col max-h-[90vh]"
       >
-        <div className="p-4 bg-neutral-100 flex justify-between items-center border-b print:hidden">
-          <span className="text-xs font-bold text-neutral-500 uppercase tracking-widest">Recibo de Dispensação de Medicamentos</span>
-          <div className="flex gap-2">
-            <button onClick={handlePrint} className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-md">
-              <Printer size={14} /> Imprimir Comprovante
+        <div className="p-5 bg-emerald-50 dark:bg-emerald-950/40 border-b border-emerald-100 dark:border-emerald-900/30 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-emerald-600 text-white rounded-2xl shadow-sm">
+              <Printer size={18} />
+            </div>
+            <div>
+              <h3 className="font-black text-sm text-neutral-900 dark:text-white">Comprovante de Retirada</h3>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Emissão em 2 Vias (Paciente e Farmácia)</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handlePrint} 
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+            >
+              <Printer size={15} /> Imprimir Comprovante
             </button>
-            <button onClick={onClose} className="p-1 text-neutral-500 hover:text-neutral-900">
-              <XCircle size={18} />
+            <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-xl">
+              <XCircle size={20} />
             </button>
           </div>
         </div>
 
-        <div className="p-8 space-y-6 text-xs">
-          <div className="border-b-2 border-neutral-900 pb-3 text-center">
-            <h2 className="text-base font-black uppercase">{currentInstitution?.name || 'Prefeitura Municipal'}</h2>
-            <p className="text-xs font-bold text-neutral-600">Secretaria Municipal de Saúde · Farmácia Popular / SUS</p>
-            <p className="text-[10px] font-mono text-neutral-400 mt-1">Comprovante Nº: {disp.id.toUpperCase()}</p>
-          </div>
-
-          <div className="space-y-2 bg-neutral-50 p-4 rounded-xl border border-neutral-200">
-            <p><strong>Paciente:</strong> {disp.patient_name}</p>
-            <p className="font-mono"><strong>CPF:</strong> {disp.patient_cpf} · <strong>SUS:</strong> {disp.patient_sus}</p>
-            <p><strong>Médico Prescritor:</strong> {disp.doctor_name || 'Médico da Rede'} {disp.doctor_crm ? `(${disp.doctor_crm})` : ''}</p>
-            <p><strong>Receita Nº:</strong> {disp.prescription_number || 'Sem número'}</p>
-          </div>
-
-          <div className="border-t border-b border-neutral-300 py-3 space-y-1">
-            <p className="text-sm font-black text-emerald-800">{disp.medication_name}</p>
-            <p className="text-neutral-600">Dosagem: {disp.dosage} · Forma: {disp.form}</p>
-            <p className="font-bold">Quantidade Entregue: {disp.quantity_dispensed} unidades</p>
-            <p className="text-neutral-500 font-mono">Lote: {disp.batch_number || 'Padrão'}</p>
-            <p className="font-bold text-purple-800 mt-2">
-              Período de Tratamento: {disp.days_of_treatment} dias (Próxima retirada a partir de: {disp.next_allowed_dispensation_date?.split('-').reverse().join('/')})
-            </p>
-          </div>
-
-          <div className="pt-6 grid grid-cols-2 gap-6 text-center text-[10px]">
-            <div>
-              <div className="border-b border-neutral-400 pb-1 mb-1 font-bold">{disp.patient_name}</div>
-              <span className="text-neutral-500 uppercase">Assinatura do Paciente</span>
+        {/* Pré-visualização do Comprovante na tela */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+          <div className="border border-neutral-200 dark:border-neutral-700 p-5 rounded-2xl bg-neutral-50/50 dark:bg-neutral-800/40 space-y-4">
+            <div className="border-b border-neutral-200 dark:border-neutral-700 pb-3 text-center">
+              <h2 className="text-sm font-black uppercase text-neutral-900 dark:text-white">{currentInstitution?.name || 'Prefeitura Municipal'}</h2>
+              <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">Secretaria Municipal de Saúde · Farmácia Popular / SUS</p>
+              <p className="text-[10px] font-mono text-neutral-400 mt-1">Comprovante Nº: {disp.id.substring(0, 13).toUpperCase()}</p>
             </div>
-            <div>
-              <div className="border-b border-neutral-400 pb-1 mb-1 font-bold">{disp.pharmacist_name || 'Farmácia Municipal'}</div>
-              <span className="text-neutral-500 uppercase">Dispensador Responsável</span>
+
+            <div className="grid grid-cols-2 gap-3 bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-700">
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase block">Paciente</span>
+                <span className="font-bold text-neutral-900 dark:text-white">{disp.patient_name}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-neutral-400 uppercase block">CPF / Cartão SUS</span>
+                <span className="font-mono text-neutral-700 dark:text-neutral-300">{disp.patient_cpf} · {disp.patient_sus}</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800/50 space-y-1">
+              <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400 block">Medicamento Dispensado</span>
+              <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">{disp.medication_name}</p>
+              <p className="text-neutral-600 dark:text-neutral-300">Dosagem: {disp.dosage} · {disp.form} · Lote: {disp.batch_number || 'Padrão'}</p>
+              <div className="flex justify-between items-center pt-2 border-t border-emerald-200 dark:border-emerald-800/50 font-bold">
+                <span className="text-emerald-800 dark:text-emerald-200">Quantidade: {disp.quantity_dispensed} un.</span>
+                <span className="text-purple-700 dark:text-purple-300">Tratamento: {disp.days_of_treatment} dias</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-xl text-[11px] text-amber-900 dark:text-amber-200">
+              <strong>📅 Próxima retirada liberada a partir de:</strong> {disp.next_allowed_dispensation_date?.split('-').reverse().join('/') || '---'}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-600 dark:text-neutral-400 pt-1">
+              <div>
+                <strong>Prescritor:</strong> {disp.doctor_name || 'Médico da Rede'} {disp.doctor_crm ? `(${disp.doctor_crm})` : ''}
+              </div>
+              <div>
+                <strong>Receita Nº:</strong> {disp.prescription_number || 'S/N'}
+              </div>
             </div>
           </div>
+        </div>
+
+        <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50 flex justify-end gap-2">
+          <button 
+            onClick={onClose}
+            className="px-4 py-2.5 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-neutral-800 dark:text-white rounded-xl font-bold text-xs"
+          >
+            Fechar
+          </button>
+          <button 
+            onClick={handlePrint}
+            className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+          >
+            <Printer size={15} /> Imprimir Comprovante
+          </button>
         </div>
       </motion.div>
     </div>
