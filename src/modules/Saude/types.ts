@@ -344,6 +344,49 @@ export const formatPhone = (value: string) => {
   return v;
 };
 
+// === LGPD: MASCARAMENTO SEGURO DE DADOS PESSOAIS E SENSÍVEIS ===
+
+export const maskCPF = (cpf?: string | null): string => {
+  if (!cpf) return '***.***.***-**';
+  const clean = cpf.replace(/\D/g, '');
+  if (clean.length < 11) return '***.***.***-**';
+  return `***.${clean.substring(3, 6)}.${clean.substring(6, 9)}-**`;
+};
+
+export const maskSUS = (sus?: string | null): string => {
+  if (!sus) return '*** **** **** ****';
+  const clean = sus.replace(/\D/g, '');
+  if (clean.length < 15) return '*** **** **** ****';
+  return `*** **** **** ${clean.substring(11)}`;
+};
+
+export const maskPhone = (phone?: string | null): string => {
+  if (!phone) return 'Não informado';
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length === 11) {
+    return `(${clean.substring(0, 2)}) 9****-${clean.substring(7)}`;
+  } else if (clean.length === 10) {
+    return `(${clean.substring(0, 2)}) ****-${clean.substring(6)}`;
+  }
+  return '(**) *****-****';
+};
+
+export const maskName = (name?: string | null): string => {
+  if (!name) return 'Munícipe';
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0];
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const initials = parts.slice(1, -1).map(p => `${p.charAt(0).toUpperCase()}.`).join(' ');
+  return `${first} ${initials ? initials + ' ' : ''}${last}`;
+};
+
+export interface CitizenSession {
+  patient: Patient;
+  authenticatedAt: string;
+}
+
+
 export const getAge = (birthDate?: string) => {
   if (!birthDate) return 0;
   const today = new Date();
