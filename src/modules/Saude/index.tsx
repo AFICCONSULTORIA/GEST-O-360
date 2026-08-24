@@ -4,7 +4,7 @@ import {
   Plus, Calendar, Clock, User, FileText, CheckCircle2, 
   XCircle, AlertCircle, Phone, MessageCircle, LayoutGrid, 
   Package, Activity, RefreshCw, UserCheck, HeartPulse, Building2,
-  Stethoscope
+  Stethoscope, ShieldAlert, Pill, ShoppingBag
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -13,24 +13,31 @@ import { SaudeQueue } from './components/SaudeQueue';
 import { SaudeAgenda } from './components/SaudeAgenda';
 import { SaudePatients } from './components/SaudePatients';
 import { SaudeSettings } from './components/SaudeSettings';
+import { SaudeExams } from './components/SaudeExams';
 import { 
-  Appointment, Patient, HealthUnit, HealthProfessional, COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
-  formatCPF, formatSUS, formatPhone, calculatePriority, getAge 
+  Appointment, Patient, HealthUnit, HealthProfessional, ExamRequest, ExamType, MedicationDispensation,
+  COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, DEFAULT_EXAM_TYPES,
+  formatCPF, formatSUS, formatPhone, calculatePriority, getAge,
+  generateUUID, isValidUUID 
 } from './types';
 
 export * from './types';
 
-
 export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id: string; name?: string } | null }) => {
-  const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'pacientes' | 'farmacia' | 'cadastros'>('fila');
+  const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'exames' | 'pacientes' | 'farmacia' | 'cadastros'>('fila');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [units, setUnits] = useState<HealthUnit[]>([]);
   const [professionals, setProfessionals] = useState<HealthProfessional[]>([]);
+  const [examRequests, setExamRequests] = useState<ExamRequest[]>([]);
+  const [examTypes, setExamTypes] = useState<ExamType[]>([]);
+  const [dispensations, setDispensations] = useState<MedicationDispensation[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isNewAppointmentModalOpen, setIsNewAppointmentModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
-  const [prefilledPatient, setPrefilledPatient] = useState<Patient | null>(null);
+  const [prefilledPatientForApt, setPrefilledPatientForApt] = useState<Patient | null>(null);
+  const [prefilledPatientForExam, setPrefilledPatientForExam] = useState<Patient | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -39,31 +46,48 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       let aptQuery = supabase.from('appointments').select('*');
       if (currentInstitution?.id) aptQuery = aptQuery.eq('institution_id', currentInstitution.id);
       const { data: aptData, error: aptError } = await aptQuery.order('appointment_date', { ascending: true });
-
-      if (aptError) {
-        console.error('Erro ao carregar agendamentos:', aptError);
-      } else if (aptData) {
-        setAppointments(aptData as Appointment[]);
-      }
+      if (aptData) setAppointments(aptData as Appointment[]);
 
       // 2. Carregar Pacientes
       let patQuery = supabase.from('patients').select('*');
       if (currentInstitution?.id) patQuery = patQuery.eq('institution_id', currentInstitution.id);
-      const { data: patData, error: patError } = await patQuery.order('name', { ascending: true });
-
-      if (patError) {
-        // Se a tabela ainda não existir no banco, mantém array vazio sem travar
-        console.warn('Pacientes não puderam ser carregados do banco (tabela pode estar pendente de migração):', patError.message);
-      } else if (patData) {
-        setPatients(patData as Patient[]);
-      }
+      const { data: patData } = await patQuery.order('name', { ascending: true });
+      if (patData) setPatients(patData as Patient[]);
 
       // 3. Carregar Unidades e Profissionais
-      const { data: unitsData } = await supabase.from('health_units').select('*').eq('institution_id', currentInstitution?.id || null).order('name');
+      let unitsQuery = supabase.from('health_units').select('*');
+      if (currentInstitution?.id) unitsQuery = unitsQuery.eq('institution_id', currentInstitution.id);
+      const { data: unitsData } = await unitsQuery.order('name');
       if (unitsData) setUnits(unitsData as HealthUnit[]);
 
-      const { data: profData } = await supabase.from('health_professionals').select('*').eq('institution_id', currentInstitution?.id || null).order('name');
+      let profQuery = supabase.from('health_professionals').select('*');
+      if (currentInstitution?.id) profQuery = profQuery.eq('institution_id', currentInstitution.id);
+      const { data: profData } = await profQuery.order('name');
       if (profData) setProfessionals(profData as HealthProfessional[]);
+
+      // 4. Carregar Solicitações de Exames
+      let examQuery = supabase.from('exam_requests').select('*');
+      if (currentInstitution?.id) examQuery = examQuery.eq('institution_id', currentInstitution.id);
+      const { data: examData } = await examQuery.order('requested_date', { ascending: false });
+      if (examData) setExamRequests(examData as ExamRequest[]);
+
+      // 5. Carregar Tipos de Exames
+      let typeQuery = supabase.from('exam_types').select('*');
+      if (currentInstitution?.id) typeQuery = typeQuery.eq('institution_id', currentInstitution.id);
+      const { data: typeData } = await typeQuery.order('name');
+      if (typeData && typeData.length > 0) {
+        setExamTypes(typeData as ExamType[]);
+      } else {
+        // Fallback para catálogo padrão municipal
+        setExamTypes(DEFAULT_EXAM_TYPES.map((t, idx) => ({ ...t, id: `def_${idx}` } as ExamType)));
+      }
+
+      // 6. Carregar Dispensações da Farmácia
+      let dispQuery = supabase.from('medication_dispensations').select('*');
+      if (currentInstitution?.id) dispQuery = dispQuery.eq('institution_id', currentInstitution.id);
+      const { data: dispData } = await dispQuery.order('created_at', { ascending: false });
+      if (dispData) setDispensations(dispData as MedicationDispensation[]);
+
     } catch (err) {
       console.error('Erro ao buscar dados de saúde:', err);
     } finally {
@@ -74,7 +98,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
   useEffect(() => {
     loadData();
 
-    // Subscrição em Tempo Real para Agendamentos
+    // Subscrições em Tempo Real
     const aptChannel = supabase
       .channel('appointments-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
@@ -82,7 +106,6 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       })
       .subscribe();
 
-    // Subscrição em Tempo Real para Pacientes
     const patChannel = supabase
       .channel('patients-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
@@ -90,21 +113,41 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       })
       .subscribe();
 
+    const examChannel = supabase
+      .channel('exam-requests-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'exam_requests' }, () => {
+        loadData();
+      })
+      .subscribe();
+
+    const dispChannel = supabase
+      .channel('dispensations-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'medication_dispensations' }, () => {
+        loadData();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(aptChannel);
       supabase.removeChannel(patChannel);
+      supabase.removeChannel(examChannel);
+      supabase.removeChannel(dispChannel);
     };
   }, [currentInstitution?.id]);
 
   const queueCount = appointments.filter(a => a.status === 'Aguardando Regulação').length;
   const todayStr = new Date().toISOString().split('T')[0];
   const todayAppointmentsCount = appointments.filter(a => a.appointment_date === todayStr && a.status !== 'Aguardando Regulação').length;
+  
+  // Contadores para o módulo de exames
+  const pendingExamsCount = examRequests.filter(r => r.status === 'Solicitado' || r.status === 'Aprovado').length;
+  const blockedDuplicatesCount = examRequests.filter(r => r.status === 'Bloqueado por Duplicidade' || r.is_duplicate_warning).length;
 
   const handleOpenNewAppointment = (patient?: Patient) => {
     if (patient) {
-      setPrefilledPatient(patient);
+      setPrefilledPatientForApt(patient);
     } else {
-      setPrefilledPatient(null);
+      setPrefilledPatientForApt(null);
     }
     setIsNewAppointmentModalOpen(true);
   };
@@ -121,7 +164,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
             Secretaria Municipal de Saúde
           </h2>
           <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
-            Gestão da Fila de Regulação, Agenda de Especialidades e Cadastro de Pacientes.
+            Gestão Integrada de Regulação, Controle Anti-Duplicidade de Exames e Farmácia Popular.
           </p>
         </div>
 
@@ -137,6 +180,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
 
       {/* Tabs de Controle Operacional */}
       <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex flex-wrap gap-2 w-fit">
+        {/* Tab 1: Fila de Regulação */}
         <button
           onClick={() => setActiveTab('fila')}
           className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
@@ -154,6 +198,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           )}
         </button>
 
+        {/* Tab 2: Agenda & Recepção */}
         <button
           onClick={() => setActiveTab('agenda')}
           className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
@@ -171,6 +216,43 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           )}
         </button>
 
+        {/* Tab 3: Controle de Exames (NOVO) */}
+        <button
+          onClick={() => setActiveTab('exames')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === 'exames'
+              ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 shadow-sm'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <Activity size={16} />
+          Controle de Exames
+          {pendingExamsCount > 0 && (
+            <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+              {pendingExamsCount}
+            </span>
+          )}
+          {blockedDuplicatesCount > 0 && (
+            <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full" title="Duplicidades identificadas">
+              <ShieldAlert size={10} className="inline" /> {blockedDuplicatesCount}
+            </span>
+          )}
+        </button>
+
+        {/* Tab 4: Farmácia Popular & SUS */}
+        <button
+          onClick={() => setActiveTab('farmacia')}
+          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+            activeTab === 'farmacia'
+              ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400 shadow-sm'
+              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+          }`}
+        >
+          <Pill size={16} />
+          Farmácia SUS
+        </button>
+
+        {/* Tab 5: Pacientes & Mini-Prontuário */}
         <button
           onClick={() => setActiveTab('pacientes')}
           className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
@@ -180,31 +262,20 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           }`}
         >
           <User size={16} />
-          Pacientes & Prontuário
+          Pacientes & Prontuário 360°
         </button>
 
-        <button
-          onClick={() => setActiveTab('farmacia')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'farmacia'
-              ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400 shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Package size={16} />
-          Farmácia SUS
-        </button>
-
+        {/* Tab 6: Cadastros & Configurações */}
         <button
           onClick={() => setActiveTab('cadastros')}
           className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
             activeTab === 'cadastros'
-              ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 shadow-sm'
+              ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm'
               : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
           }`}
         >
           <Building2 size={16} />
-          Cadastros
+          Cadastros & Prazos
         </button>
       </div>
 
@@ -241,27 +312,56 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
             />
           )}
 
+          {activeTab === 'exames' && (
+            <SaudeExams 
+              requests={examRequests}
+              examTypes={examTypes}
+              patients={patients}
+              units={units}
+              professionals={professionals}
+              isLoading={isLoading}
+              onRefresh={loadData}
+              currentInstitution={currentInstitution}
+              onNewRequestPrefilled={prefilledPatientForExam}
+            />
+          )}
+
           {activeTab === 'pacientes' && (
             <SaudePatients 
               patients={patients}
               appointments={appointments}
+              requests={examRequests}
+              dispensations={dispensations}
               units={units}
               professionals={professionals}
               isLoading={isLoading}
               onRefresh={loadData}
               onNewAppointmentForPatient={patient => handleOpenNewAppointment(patient)}
+              onNewExamForPatient={patient => {
+                setPrefilledPatientForExam(patient);
+                setActiveTab('exames');
+              }}
+              onNewDispensationForPatient={() => {
+                setActiveTab('farmacia');
+              }}
               currentInstitution={currentInstitution}
             />
           )}
 
           {activeTab === 'farmacia' && (
-            <FarmaciaModule currentInstitution={currentInstitution} />
+            <FarmaciaModule 
+              currentInstitution={currentInstitution}
+              patients={patients}
+              dispensations={dispensations}
+              onRefreshData={loadData}
+            />
           )}
 
           {activeTab === 'cadastros' && (
             <SaudeSettings 
               units={units}
               professionals={professionals}
+              examTypes={examTypes}
               isLoading={isLoading}
               onRefresh={loadData}
               currentInstitution={currentInstitution}
@@ -277,7 +377,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
             patients={patients}
             units={units}
             professionals={professionals}
-            prefilledPatient={prefilledPatient}
+            prefilledPatient={prefilledPatientForApt}
             onClose={() => setIsNewAppointmentModalOpen(false)}
             onSuccess={() => {
               loadData();
@@ -291,7 +391,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
           <AppointmentDetailsModal
             apt={selectedAppointment}
             onClose={() => setSelectedAppointment(null)}
-            onUpdateStatus={(newStatus) => {
+            onUpdateStatus={() => {
               loadData();
               setSelectedAppointment(null);
             }}
@@ -302,7 +402,9 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
   );
 };
 
-// Modal de Novo Agendamento (com Autocomplete de Paciente)
+// =========================================================
+// MODAL DE NOVO AGENDAMENTO DE CONSULTA
+// =========================================================
 interface NewAppointmentModalProps {
   patients: Patient[];
   units: HealthUnit[];
@@ -338,7 +440,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     appointment_date: new Date().toISOString().split('T')[0],
     appointment_time: '08:00',
     notes: '',
-    destiny: 'fila' as 'fila' | 'agendado' // Se vai para a fila ou já tem data/hora fixa
+    destiny: 'fila' as 'fila' | 'agendado'
   });
 
   const [patientSearch, setPatientSearch] = useState('');
@@ -375,8 +477,8 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
       const isQueue = formData.destiny === 'fila';
 
       const newAppointment = {
-        id: Math.random().toString(36).substring(2, 10),
-        patient_id: formData.patient_id || null,
+        id: generateUUID(),
+        patient_id: isValidUUID(formData.patient_id) ? formData.patient_id : null,
         patient_name: formData.patient_name,
         patient_cpf: formData.patient_cpf,
         patient_sus: formData.patient_sus,
@@ -480,7 +582,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
                 type="text" required
                 value={formData.patient_name} onChange={e => setFormData({...formData, patient_name: e.target.value})}
                 placeholder="Ex: João da Silva"
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
               />
             </div>
 
@@ -587,7 +689,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
               </div>
             )}
 
-            {/* Tipo de Destino do Agendamento */}
+            {/* Fluxo */}
             <div className="space-y-2 md:col-span-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
               <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Fluxo do Agendamento</label>
               <div className="grid grid-cols-2 gap-3">
@@ -646,7 +748,7 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
             )}
 
             <div className="space-y-1 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Observações / Sintomas (Opcional)</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Observações / Sintomas</label>
               <textarea 
                 rows={2}
                 value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}
@@ -678,14 +780,16 @@ const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   );
 };
 
-// Modal de Detalhes do Agendamento
+// =========================================================
+// MODAL DE DETALHES DO AGENDAMENTO DE CONSULTA
+// =========================================================
 interface AppointmentDetailsModalProps {
   apt: Appointment;
   onClose: () => void;
   onUpdateStatus: (newStatus: string) => void;
 }
 
-const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, onClose, onUpdateStatus }) => {
+const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, onClose }) => {
   const priority = calculatePriority(apt);
   const age = getAge(apt.patient_birth_date);
 
@@ -709,7 +813,6 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, 
         </div>
 
         <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-          {/* Status e Prioridade */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
               Status: {apt.status}
@@ -721,7 +824,6 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, 
             </span>
           </div>
 
-          {/* Dados do Paciente */}
           <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-3">
             <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Dados do Paciente</h4>
             <div className="grid grid-cols-2 gap-3 text-xs">
@@ -744,7 +846,6 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, 
             </div>
           </div>
 
-          {/* Dados Clínicos e da Consulta */}
           <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-3">
             <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Informações da Consulta</h4>
             <div className="grid grid-cols-2 gap-3 text-xs">
@@ -753,7 +854,7 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, 
                 <span className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">{apt.specialty}</span>
               </div>
               <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Unidade de Saúde (Local)</span>
+                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Unidade de Saúde</span>
                 <span className="font-bold text-neutral-900 dark:text-white">{apt.unit_name || 'A definir pela Regulação'}</span>
               </div>
               <div>
@@ -766,36 +867,13 @@ const AppointmentDetailsModal: React.FC<AppointmentDetailsModalProps> = ({ apt, 
                 <span className="text-neutral-400 block text-[10px] font-bold uppercase">Horário</span>
                 <span className="font-bold text-neutral-900 dark:text-white">{apt.appointment_time || 'A definir'}</span>
               </div>
-              {apt.doctor_name && (
-                <div className="col-span-2">
-                  <span className="text-neutral-400 block text-[10px] font-bold uppercase">Médico / Profissional</span>
-                  <span className="font-bold text-neutral-900 dark:text-white">{apt.doctor_name}</span>
-                </div>
-              )}
             </div>
           </div>
-
-          {apt.referral_details && (
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl text-xs">
-              <span className="font-black uppercase text-[10px] text-amber-800 dark:text-amber-400 block mb-1">Encaminhamento Médico</span>
-              <p className="font-bold text-amber-900 dark:text-amber-200">{apt.referral_details}</p>
-            </div>
-          )}
-
-          {apt.notes && (
-            <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl text-xs">
-              <span className="font-black uppercase text-[10px] text-neutral-400 block mb-1">Observações do Paciente</span>
-              <p className="text-neutral-700 dark:text-neutral-300">{apt.notes}</p>
-            </div>
-          )}
         </div>
 
         <div className="p-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
-          <button 
-            onClick={onClose}
-            className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl font-bold text-xs shadow-lg transition-colors"
-          >
-            Fechar Detalhes
+          <button onClick={onClose} className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl font-bold text-xs">
+            Fechar
           </button>
         </div>
       </motion.div>

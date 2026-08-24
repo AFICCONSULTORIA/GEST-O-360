@@ -4,23 +4,27 @@ import {
   Plus, Search, User, FileText, Phone, MapPin, Calendar, 
   Heart, AlertTriangle, CheckCircle2, Edit2, Trash2, XCircle, 
   Activity, Stethoscope, ChevronRight, Droplet, Clock, ShieldAlert,
-  Baby, Accessibility
+  Baby, Accessibility, Pill, ShoppingBag, History, FileSpreadsheet
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
 import { 
-  Patient, Appointment, HealthUnit, HealthProfessional, DEFAULT_HEALTH_UNITS, 
+  Patient, Appointment, ExamRequest, MedicationDispensation, HealthUnit, HealthProfessional, DEFAULT_HEALTH_UNITS, 
   formatCPF, formatSUS, formatPhone, getAge 
 } from '../types';
 
 interface SaudePatientsProps {
   patients: Patient[];
   appointments: Appointment[];
+  requests?: ExamRequest[];
+  dispensations?: MedicationDispensation[];
   units: HealthUnit[];
   professionals: HealthProfessional[];
   isLoading: boolean;
   onRefresh: () => void;
   onNewAppointmentForPatient?: (patient: Patient) => void;
+  onNewExamForPatient?: (patient: Patient) => void;
+  onNewDispensationForPatient?: (patient: Patient) => void;
   currentInstitution?: { id: string } | null;
 }
 
@@ -38,11 +42,15 @@ const COMMON_CONDITIONS = [
 export const SaudePatients: React.FC<SaudePatientsProps> = ({
   patients,
   appointments,
+  requests = [],
+  dispensations = [],
   units,
   professionals,
   isLoading,
   onRefresh,
   onNewAppointmentForPatient,
+  onNewExamForPatient,
+  onNewDispensationForPatient,
   currentInstitution
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -144,8 +152,10 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
             <User size={20} />
           </div>
           <div>
-            <h3 className="text-lg font-black text-neutral-900 dark:text-white">Cadastro de Pacientes & Mini-Prontuário</h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Histórico clínico, comorbidades e controle de faltas dos munícipes.</p>
+            <h3 className="text-lg font-black text-neutral-900 dark:text-white">Cadastro de Pacientes & Mini-Prontuário 360°</h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              Histórico unificado de consultas, exames solicitados/realizados e medicamentos retirados.
+            </p>
           </div>
         </div>
 
@@ -196,7 +206,7 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
         </div>
       </div>
 
-      {/* Tabela de Pacientes */}
+      {/* Tabela / Cards de Pacientes */}
       {filteredPatients.length === 0 ? (
         <div className="bg-white dark:bg-neutral-900 rounded-3xl p-12 text-center border border-neutral-100 dark:border-neutral-800">
           <div className="w-16 h-16 bg-neutral-50 dark:bg-neutral-800 text-neutral-400 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -220,7 +230,11 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {filteredPatients.map(patient => {
             const age = getAge(patient.birth_date);
-            const patientApts = appointments.filter(a => a.patient_cpf === patient.cpf || a.patient_id === patient.id);
+            const cleanCpf = (patient.cpf || '').replace(/\D/g, '');
+            const patientApts = appointments.filter(a => (a.patient_cpf || '').replace(/\D/g, '') === cleanCpf || a.patient_id === patient.id);
+            const patientExams = requests.filter(r => (r.patient_cpf || '').replace(/\D/g, '') === cleanCpf || r.patient_id === patient.id);
+            const patientDisps = dispensations.filter(d => (d.patient_cpf || '').replace(/\D/g, '') === cleanCpf || d.patient_id === patient.id);
+            
             const attendedCount = patientApts.filter(a => a.status === 'Atendido').length;
             const noShowCount = patientApts.filter(a => a.status === 'Faltou').length;
 
@@ -282,29 +296,34 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
                         {formatPhone(patient.phone)}
                       </p>
                     )}
-                    {patient.neighborhood && (
-                      <p className="flex items-center gap-2 font-sans">
-                        <MapPin size={13} className="text-neutral-400 shrink-0" />
-                        Bairro: {patient.neighborhood}
-                      </p>
-                    )}
+                  </div>
+
+                  {/* Resumo 360° de Atendimentos */}
+                  <div className="grid grid-cols-3 gap-2 p-2.5 bg-neutral-50 dark:bg-neutral-800/50 rounded-2xl mb-4 text-center">
+                    <div>
+                      <span className="text-[10px] text-neutral-400 uppercase font-bold block">Consultas</span>
+                      <span className="text-xs font-black text-neutral-800 dark:text-neutral-200">{patientApts.length}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-400 uppercase font-bold block">Exames</span>
+                      <span className="text-xs font-black text-blue-600 dark:text-blue-400">{patientExams.length}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-400 uppercase font-bold block">Remédios</span>
+                      <span className="text-xs font-black text-emerald-600 dark:text-emerald-400">{patientDisps.length}</span>
+                    </div>
                   </div>
 
                   {/* Condições Clínicas / Tags */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-4">
                     {patient.is_pregnant && (
-                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 border border-amber-200 dark:border-amber-500/20">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 border border-amber-200">
                         Gestante
                       </span>
                     )}
                     {patient.is_pcd && (
-                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300 border border-purple-200 dark:border-purple-500/20">
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-500/10 dark:text-purple-300 border border-purple-200">
                         PCD
-                      </span>
-                    )}
-                    {patient.blood_type && (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-                        Tipo {patient.blood_type}
                       </span>
                     )}
                     {patient.conditions && patient.conditions.split(',').map((c, i) => (
@@ -315,33 +334,18 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
                   </div>
                 </div>
 
-                {/* Footer com Mini-Métricas e Botão */}
+                {/* Footer com Ações */}
                 <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between" onClick={e => e.stopPropagation()}>
-                  <div className="flex items-center gap-3 text-[11px]">
-                    <span className="text-emerald-600 dark:text-emerald-400 font-bold" title="Consultas Atendidas">
-                      {attendedCount} atendidas
-                    </span>
-                    {noShowCount > 0 && (
-                      <span className="text-rose-500 font-bold" title="Faltas sem justificativa">
-                        {noShowCount} faltas
-                      </span>
-                    )}
-                  </div>
+                  <span className="text-xs text-neutral-400 font-medium">
+                    {patient.ubs_reference || 'UBS Central'}
+                  </span>
 
                   <div className="flex items-center gap-1.5">
-                    {onNewAppointmentForPatient && (
-                      <button 
-                        onClick={() => onNewAppointmentForPatient(patient)}
-                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 dark:text-emerald-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
-                      >
-                        <Calendar size={13} /> Agendar
-                      </button>
-                    )}
                     <button 
                       onClick={() => setSelectedPatientForDrawer(patient)}
-                      className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
                     >
-                      <ChevronRight size={16} />
+                      Prontuário 360° <ChevronRight size={14} />
                     </button>
                   </div>
                 </div>
@@ -367,12 +371,14 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Drawer de Visualização Completa / Mini-Prontuário */}
+      {/* Drawer de Visualização Completa / Mini-Prontuário 360° */}
       <AnimatePresence>
         {selectedPatientForDrawer && (
           <PatientDrawer 
             patient={selectedPatientForDrawer}
-            appointments={appointments.filter(a => a.patient_cpf === selectedPatientForDrawer.cpf || a.patient_id === selectedPatientForDrawer.id)}
+            appointments={appointments.filter(a => (a.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || a.patient_id === selectedPatientForDrawer.id)}
+            requests={requests.filter(r => (r.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || r.patient_id === selectedPatientForDrawer.id)}
+            dispensations={dispensations.filter(d => (d.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || d.patient_id === selectedPatientForDrawer.id)}
             onClose={() => setSelectedPatientForDrawer(null)}
             onEdit={() => {
               setEditingPatient(selectedPatientForDrawer);
@@ -381,6 +387,18 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
             onNewAppointment={() => {
               if (onNewAppointmentForPatient) {
                 onNewAppointmentForPatient(selectedPatientForDrawer);
+                setSelectedPatientForDrawer(null);
+              }
+            }}
+            onNewExam={() => {
+              if (onNewExamForPatient) {
+                onNewExamForPatient(selectedPatientForDrawer);
+                setSelectedPatientForDrawer(null);
+              }
+            }}
+            onNewDispensation={() => {
+              if (onNewDispensationForPatient) {
+                onNewDispensationForPatient(selectedPatientForDrawer);
                 setSelectedPatientForDrawer(null);
               }
             }}
@@ -548,7 +566,7 @@ const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, units, onC
             </div>
 
             <div className="space-y-1 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nome da Mãe (Importante para evitar homônimos)</label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nome da Mãe</label>
               <input 
                 type="text"
                 value={formData.mother_name} onChange={e => setFormData({...formData, mother_name: e.target.value})}
@@ -577,16 +595,6 @@ const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, units, onC
                   ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
                   : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Bairro</label>
-              <input 
-                type="text"
-                value={formData.neighborhood} onChange={e => setFormData({...formData, neighborhood: e.target.value})}
-                placeholder="Ex: Centro"
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-              />
             </div>
 
             <div className="space-y-1">
@@ -662,16 +670,6 @@ const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, units, onC
                 <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Pessoa com Deficiência (PCD)</span>
               </label>
             </div>
-
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Observações Gerais / Prontuário</label>
-              <textarea 
-                rows={2}
-                value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})}
-                placeholder="Anotações de acompanhamento, cuidados especiais..."
-                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white resize-none"
-              />
-            </div>
           </div>
 
           <div className="flex gap-3 pt-4 border-t border-neutral-100 dark:border-neutral-800">
@@ -696,25 +694,34 @@ const PatientFormModal: React.FC<PatientFormModalProps> = ({ patient, units, onC
   );
 };
 
-// Drawer / Ficha Completa do Paciente (Mini-Prontuário)
+// =========================================================
+// DRAWER / PRONTUÁRIO 360° DO PACIENTE COM ABAS INTEGRADAS
+// =========================================================
 interface PatientDrawerProps {
   patient: Patient;
   appointments: Appointment[];
+  requests: ExamRequest[];
+  dispensations: MedicationDispensation[];
   onClose: () => void;
   onEdit: () => void;
   onNewAppointment: () => void;
+  onNewExam?: () => void;
+  onNewDispensation?: () => void;
 }
 
 const PatientDrawer: React.FC<PatientDrawerProps> = ({
   patient,
   appointments,
+  requests,
+  dispensations,
   onClose,
   onEdit,
-  onNewAppointment
+  onNewAppointment,
+  onNewExam,
+  onNewDispensation
 }) => {
+  const [activeTab, setActiveTab] = useState<'consultas' | 'exames' | 'farmacia' | 'dados'>('consultas');
   const age = getAge(patient.birth_date);
-  const attendedCount = appointments.filter(a => a.status === 'Atendido').length;
-  const noShowCount = appointments.filter(a => a.status === 'Faltou').length;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-sm" onClick={onClose}>
@@ -724,7 +731,7 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
         exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         onClick={e => e.stopPropagation()}
-        className="w-full max-w-xl bg-white dark:bg-neutral-900 h-full shadow-2xl flex flex-col border-l border-neutral-100 dark:border-neutral-800"
+        className="w-full max-w-2xl bg-white dark:bg-neutral-900 h-full shadow-2xl flex flex-col border-l border-neutral-100 dark:border-neutral-800"
       >
         {/* Header do Drawer */}
         <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center bg-neutral-50 dark:bg-neutral-800/40">
@@ -733,9 +740,11 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
               {patient.name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h3 className="text-lg font-black text-neutral-900 dark:text-white">{patient.name}</h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                {age} anos {patient.birth_date ? `· Nasc: ${patient.birth_date.split('-').reverse().join('/')}` : ''}
+              <h3 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                {patient.name}
+              </h3>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">
+                CPF: {patient.cpf} · {age} anos
               </p>
             </div>
           </div>
@@ -743,119 +752,103 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
             <button 
               onClick={onEdit} 
               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 rounded-xl transition-colors"
-              title="Editar"
+              title="Editar Cadastro"
             >
-              <Edit2 size={18} />
+              <Edit2 size={16} />
             </button>
             <button 
               onClick={onClose} 
               className="p-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 rounded-xl transition-colors"
             >
-              <XCircle size={20} />
+              <XCircle size={18} />
             </button>
           </div>
         </div>
 
-        {/* Conteúdo da Ficha */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-6">
-          {/* Card de Resumo e Ações Rápidas */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-neutral-50 dark:bg-neutral-800/60 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Consultas Atendidas</p>
-              <p className="text-2xl font-black text-neutral-900 dark:text-white mt-1">{attendedCount}</p>
-            </div>
-            <div className="bg-neutral-50 dark:bg-neutral-800/60 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800">
-              <p className="text-[10px] font-black uppercase tracking-widest text-rose-500">Histórico de Faltas</p>
-              <p className="text-2xl font-black text-rose-600 mt-1">{noShowCount}</p>
-            </div>
-          </div>
-
+        {/* Barra de Ações Rápidas do Prontuário */}
+        <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 border-b border-emerald-100 dark:border-emerald-900/30 flex flex-wrap gap-2">
           <button 
             onClick={onNewAppointment}
-            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5"
           >
-            <Calendar size={16} /> Agendar Nova Consulta para {patient.name.split(' ')[0]}
+            <Calendar size={14} /> Agendar Consulta
+          </button>
+          {onNewExam && (
+            <button 
+              onClick={onNewExam}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5"
+            >
+              <Activity size={14} /> Solicitar Exame
+            </button>
+          )}
+          {onNewDispensation && (
+            <button 
+              onClick={onNewDispensation}
+              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5"
+            >
+              <ShoppingBag size={14} /> Dispensar Remédio
+            </button>
+          )}
+        </div>
+
+        {/* Abas do Prontuário 360° */}
+        <div className="flex border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 px-6 pt-3 gap-3">
+          <button
+            onClick={() => setActiveTab('consultas')}
+            className={`pb-3 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-all ${
+              activeTab === 'consultas'
+                ? 'border-emerald-600 text-emerald-600'
+                : 'border-transparent text-neutral-400 hover:text-neutral-600'
+            }`}
+          >
+            <Calendar size={14} /> Consultas ({appointments.length})
           </button>
 
-          {/* Dados Pessoais & Documentos */}
-          <div className="space-y-3 bg-neutral-50 dark:bg-neutral-800/40 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800">
-            <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Identificação & Contato</h4>
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">CPF</span>
-                <span className="font-mono font-bold text-neutral-900 dark:text-white">{patient.cpf || '---'}</span>
-              </div>
-              <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Cartão SUS</span>
-                <span className="font-mono font-bold text-neutral-900 dark:text-white">{patient.sus_number || '---'}</span>
-              </div>
-              <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Telefone / WhatsApp</span>
-                <span className="font-mono font-bold text-neutral-900 dark:text-white">{patient.phone ? formatPhone(patient.phone) : '---'}</span>
-              </div>
-              <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Nome da Mãe</span>
-                <span className="font-bold text-neutral-900 dark:text-white">{patient.mother_name || '---'}</span>
-              </div>
-              <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">Bairro</span>
-                <span className="font-bold text-neutral-900 dark:text-white">{patient.neighborhood || '---'}</span>
-              </div>
-              <div>
-                <span className="text-neutral-400 block text-[10px] font-bold uppercase">UBS de Referência</span>
-                <span className="font-bold text-neutral-900 dark:text-white">{patient.ubs_reference || '---'}</span>
-              </div>
-            </div>
-          </div>
+          <button
+            onClick={() => setActiveTab('exames')}
+            className={`pb-3 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-all ${
+              activeTab === 'exames'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-neutral-400 hover:text-neutral-600'
+            }`}
+          >
+            <Activity size={14} /> Exames Prescritos ({requests.length})
+          </button>
 
-          {/* Perfil Clínico */}
-          <div className="space-y-3 bg-neutral-50 dark:bg-neutral-800/40 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800">
-            <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400">Perfil Clínico</h4>
-            <div className="space-y-2 text-xs">
-              {patient.blood_type && (
-                <div className="flex items-center gap-2">
-                  <Droplet size={14} className="text-rose-500" />
-                  <span className="font-bold">Tipo Sanguíneo: {patient.blood_type}</span>
-                </div>
-              )}
-              {patient.allergies && (
-                <div className="p-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-2xl text-rose-800 dark:text-rose-300 flex items-start gap-2">
-                  <ShieldAlert size={16} className="shrink-0 mt-0.5" />
-                  <div>
-                    <span className="font-bold block">Alergias:</span>
-                    <span>{patient.allergies}</span>
-                  </div>
-                </div>
-              )}
-              {patient.conditions && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl text-amber-800 dark:text-amber-300">
-                  <span className="font-bold block mb-1">Comorbidades / Condições:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {patient.conditions.split(',').map((c, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-white dark:bg-neutral-900 rounded-lg text-[11px] font-bold">
-                        {c.trim()}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
+          <button
+            onClick={() => setActiveTab('farmacia')}
+            className={`pb-3 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-all ${
+              activeTab === 'farmacia'
+                ? 'border-purple-600 text-purple-600'
+                : 'border-transparent text-neutral-400 hover:text-neutral-600'
+            }`}
+          >
+            <Pill size={14} /> Farmácia / Remédios ({dispensations.length})
+          </button>
 
-          {/* Histórico Cronológico de Atendimentos */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-black uppercase tracking-widest text-neutral-400 flex items-center justify-between">
-              <span>Histórico de Consultas</span>
-              <span className="text-[10px] font-bold text-neutral-500">{appointments.length} registros</span>
-            </h4>
+          <button
+            onClick={() => setActiveTab('dados')}
+            className={`pb-3 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 border-b-2 transition-all ${
+              activeTab === 'dados'
+                ? 'border-neutral-900 dark:border-white text-neutral-900 dark:text-white'
+                : 'border-transparent text-neutral-400 hover:text-neutral-600'
+            }`}
+          >
+            <User size={14} /> Perfil & Ficha
+          </button>
+        </div>
 
-            {appointments.length === 0 ? (
-              <p className="text-xs text-neutral-400 italic p-4 bg-neutral-50 dark:bg-neutral-800 rounded-2xl text-center">
-                Nenhum agendamento anterior para este paciente.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {appointments.map(apt => (
+        {/* Conteúdo da Ficha */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-4">
+          {/* TAB 1: CONSULTAS */}
+          {activeTab === 'consultas' && (
+            <div className="space-y-3">
+              {appointments.length === 0 ? (
+                <div className="p-8 text-center text-neutral-400 italic bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl">
+                  Nenhuma consulta ou agendamento registrado para este paciente.
+                </div>
+              ) : (
+                appointments.map(apt => (
                   <div key={apt.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex justify-between items-center text-xs">
                     <div>
                       <p className="font-bold text-neutral-900 dark:text-white">{apt.specialty}</p>
@@ -865,18 +858,124 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
                       </p>
                     </div>
                     <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full ${
-                      apt.status === 'Atendido' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400' :
-                      apt.status === 'Faltou' ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-400' :
-                      apt.status === 'Agendado' ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400' :
+                      apt.status === 'Atendido' ? 'bg-emerald-100 text-emerald-700' :
+                      apt.status === 'Faltou' ? 'bg-rose-100 text-rose-700' :
+                      apt.status === 'Agendado' ? 'bg-sky-100 text-sky-700' :
                       'bg-amber-100 text-amber-700'
                     }`}>
                       {apt.status}
                     </span>
                   </div>
-                ))}
+                ))
+              )}
+            </div>
+          )}
+
+          {/* TAB 2: EXAMES PRESCRITOS & REALIZADOS */}
+          {activeTab === 'exames' && (
+            <div className="space-y-3">
+              {requests.length === 0 ? (
+                <div className="p-8 text-center text-neutral-400 italic bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl">
+                  Nenhum exame prescrito para este paciente ainda.
+                </div>
+              ) : (
+                requests.map(req => (
+                  <div key={req.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2 text-xs">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-black text-neutral-900 dark:text-white">{req.exam_name}</h4>
+                        <p className="text-[11px] text-neutral-400">Categoria: {req.category} · Prescrito por: {req.doctor_name}</p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
+                        req.status === 'Realizado' ? 'bg-emerald-100 text-emerald-700' :
+                        req.status === 'Agendado' ? 'bg-purple-100 text-purple-700' :
+                        req.status === 'Bloqueado por Duplicidade' ? 'bg-rose-100 text-rose-700' :
+                        'bg-blue-100 text-blue-700'
+                      }`}>
+                        {req.status}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-[11px] text-neutral-500 font-mono">
+                      <span>Data do Pedido: {req.requested_date?.split('-').reverse().join('/')}</span>
+                      {req.performed_date && <span className="text-emerald-600 font-bold">Feito em: {req.performed_date.split('-').reverse().join('/')}</span>}
+                    </div>
+
+                    {req.result_notes && (
+                      <div className="p-2.5 bg-white dark:bg-neutral-900 rounded-xl text-[11px] border border-neutral-200 dark:border-neutral-700">
+                        <span className="font-bold block text-neutral-700 dark:text-neutral-300">Laudo / Resultado:</span>
+                        <p className="text-neutral-500 mt-0.5">{req.result_notes}</p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: MEDICAMENTOS RETIRADOS NA FARMÁCIA */}
+          {activeTab === 'farmacia' && (
+            <div className="space-y-3">
+              {dispensations.length === 0 ? (
+                <div className="p-8 text-center text-neutral-400 italic bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl">
+                  Nenhuma retirada de medicamento registrada para este paciente.
+                </div>
+              ) : (
+                dispensations.map(d => (
+                  <div key={d.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-1.5 text-xs">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-black text-sky-600 dark:text-sky-400">{d.medication_name}</h4>
+                        <p className="text-[11px] text-neutral-400">{d.dosage} - {d.form}</p>
+                      </div>
+                      <span className="font-black text-emerald-600 text-sm">
+                        {d.quantity_dispensed} un.
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-[11px] text-neutral-500 pt-1 font-mono">
+                      <span>Data Retirada: {d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '---'}</span>
+                      <span className="text-purple-600 font-bold">Uso previsto: {d.days_of_treatment} dias</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: PERFIL & DADOS */}
+          {activeTab === 'dados' && (
+            <div className="space-y-4">
+              <div className="bg-neutral-50 dark:bg-neutral-800/40 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-3 text-xs">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Identificação & Endereço</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-neutral-400 block text-[10px] uppercase font-bold">Cartão SUS</span>
+                    <span className="font-mono font-bold">{patient.sus_number || '---'}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 block text-[10px] uppercase font-bold">Telefone</span>
+                    <span className="font-mono">{patient.phone ? formatPhone(patient.phone) : '---'}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 block text-[10px] uppercase font-bold">Nome da Mãe</span>
+                    <span>{patient.mother_name || '---'}</span>
+                  </div>
+                  <div>
+                    <span className="text-neutral-400 block text-[10px] uppercase font-bold">Bairro</span>
+                    <span>{patient.neighborhood || '---'}</span>
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
+
+              {patient.allergies && (
+                <div className="p-4 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 rounded-2xl text-xs text-rose-800 dark:text-rose-300">
+                  <span className="font-bold block mb-1">Alergias Cadastradas:</span>
+                  <p>{patient.allergies}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </motion.div>
     </div>

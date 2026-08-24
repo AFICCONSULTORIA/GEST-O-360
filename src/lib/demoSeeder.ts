@@ -79,63 +79,128 @@ export const seedDemoInstitution = async (institutionId: string) => {
     const { error: e4 } = await supabase.from('patrimonio').insert(patrimonio);
     if (e4) throw new Error('Patrimônio: ' + e4.message);
 
-    // 5. Saúde: Consultas (Appointments)
+    // 5. Saúde: Pacientes
+    const patient1Id = generateId();
+    const patient2Id = generateId();
+    const patients = [
+      {
+        id: patient1Id,
+        name: 'Maria Antonieta Silva',
+        cpf: '111.111.111-11',
+        sus_number: '111 1111 1111 1111',
+        birth_date: '1985-04-12',
+        gender: 'F',
+        mother_name: 'Ana Maria Silva',
+        phone: '(11) 99999-9999',
+        address: 'Rua das Palmeiras, 120',
+        neighborhood: 'Centro',
+        ubs_reference: 'UBS Central',
+        blood_type: 'O+',
+        conditions: 'Hipertensão Arterial, Diabetes Mellitus',
+        is_pregnant: false,
+        is_pcd: false,
+        institution_id: institutionId
+      },
+      {
+        id: patient2Id,
+        name: 'José Ferreira dos Santos',
+        cpf: '222.222.222-22',
+        sus_number: '222 2222 2222 2222',
+        birth_date: '1962-11-20',
+        gender: 'M',
+        mother_name: 'Francisca Ferreira',
+        phone: '(11) 98888-8888',
+        address: 'Av. Brasil, 450',
+        neighborhood: 'Bairro São José',
+        ubs_reference: 'UBS Bairro São José',
+        blood_type: 'A+',
+        conditions: 'Hipertensão Arterial',
+        is_pregnant: false,
+        is_pcd: false,
+        institution_id: institutionId
+      }
+    ];
+    try {
+      await supabase.from('patients').insert(patients);
+    } catch (e) {
+      console.log('Patients seed note:', e);
+    }
+
+    // 6. Saúde: Consultas (Appointments)
     const today = new Date().toISOString().split('T')[0];
     const appointments = [
       {
         id: generateId(),
         appointment_date: `${today}`,
         appointment_time: `10:00`,
-        patient_name: 'Maria Antonieta',
+        patient_name: 'Maria Antonieta Silva',
         patient_phone: '11999999999',
         patient_cpf: '111.111.111-11',
         patient_sus: '111 1111 1111 1111',
-        patient_birth_date: '1990-01-01',
+        patient_birth_date: '1985-04-12',
         is_pregnant: false,
-        is_urgent: true,
+        is_urgent: false,
         specialty: 'Clínico Geral',
         status: 'Agendado',
+        unit_name: 'UBS Central',
+        doctor_name: 'Dr. Lucas Silveira',
         institution_id: institutionId
       },
       {
         id: generateId(),
         appointment_date: `${today}`,
         appointment_time: `14:30`,
-        patient_name: 'José Ferreira',
+        patient_name: 'José Ferreira dos Santos',
         patient_phone: '11888888888',
         patient_cpf: '222.222.222-22',
         patient_sus: '222 2222 2222 2222',
-        patient_birth_date: '2015-05-05',
+        patient_birth_date: '1962-11-20',
         is_pregnant: false,
         is_urgent: false,
-        specialty: 'Pediatria',
+        specialty: 'Cardiologia',
         status: 'Atendido',
+        unit_name: 'Centro de Especialidades Médicas (CEM)',
+        doctor_name: 'Dra. Beatriz Santos',
         institution_id: institutionId
       }
     ];
     const { error: e5 } = await supabase.from('appointments').insert(appointments);
     if (e5) throw new Error('Appointments: ' + e5.message);
 
-    // 6. Farmácia: Medicamentos (Medications)
+    // 7. Farmácia: Medicamentos (Medications)
+    const med1Id = generateId();
+    const med2Id = generateId();
+    const med3Id = generateId();
     const medications = [
       {
-        id: generateId(),
+        id: med1Id,
+        name: 'Losartana Potássica 50mg',
+        active_ingredient: 'Losartana Potássica',
+        dosage: '50mg',
+        form: 'Comprimido',
+        batch_number: 'LT-LOS2026A',
+        expiration_date: '2027-02-10',
+        quantity: 3500,
+        institution_id: institutionId
+      },
+      {
+        id: med2Id,
         name: 'Dipirona 500mg',
         active_ingredient: 'Dipirona Sódica',
         dosage: '500mg',
         form: 'Comprimido',
-        batch_number: 'Lote A123',
+        batch_number: 'LT-DIP2026B',
         expiration_date: '2026-12-31',
         quantity: 5000,
         institution_id: institutionId
       },
       {
-        id: generateId(),
+        id: med3Id,
         name: 'Amoxicilina 500mg',
         active_ingredient: 'Amoxicilina Tri-hidratada',
         dosage: '500mg',
         form: 'Cápsula',
-        batch_number: 'Lote B456',
+        batch_number: 'LT-AMX2025C',
         expiration_date: '2025-06-30',
         quantity: 800,
         institution_id: institutionId
@@ -144,7 +209,153 @@ export const seedDemoInstitution = async (institutionId: string) => {
     const { error: e6 } = await supabase.from('medications').insert(medications);
     if (e6) throw new Error('Medications: ' + e6.message);
 
-    // 7. Serviços Públicos (servicos_publicos_demandas)
+    // 8. Saúde: Catálogo de Exames (Exam Types)
+    const examTypes = [
+      {
+        id: generateId(),
+        name: 'Hemograma Completo',
+        category: 'Laboratorial',
+        min_interval_days: 30,
+        preparation_instructions: 'Jejum obrigatório de 4 horas.',
+        estimated_cost: 15.00,
+        is_active: true,
+        institution_id: institutionId
+      },
+      {
+        id: generateId(),
+        name: 'Glicemia de Jejum',
+        category: 'Laboratorial',
+        min_interval_days: 30,
+        preparation_instructions: 'Jejum de 8 a 12 horas.',
+        estimated_cost: 8.50,
+        is_active: true,
+        institution_id: institutionId
+      },
+      {
+        id: generateId(),
+        name: 'Ultrassonografia Abdominal Total',
+        category: 'Imagem',
+        min_interval_days: 60,
+        preparation_instructions: 'Jejum de 6h e retenção urinária.',
+        estimated_cost: 95.00,
+        is_active: true,
+        institution_id: institutionId
+      },
+      {
+        id: generateId(),
+        name: 'Eletrocardiograma (ECG)',
+        category: 'Cardiológico',
+        min_interval_days: 30,
+        preparation_instructions: 'Evitar cremes e loções no peito.',
+        estimated_cost: 35.00,
+        is_active: true,
+        institution_id: institutionId
+      }
+    ];
+    try {
+      await supabase.from('exam_types').insert(examTypes);
+    } catch (e) {
+      console.log('Exam types seed note:', e);
+    }
+
+    // 9. Saúde: Solicitações de Exames (Exam Requests)
+    // Criamos casos de teste, inclusive um exame recente (há 8 dias) para testar o alerta de duplicidade <30d
+    const tenDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const examRequests = [
+      {
+        id: generateId().substring(0, 8),
+        patient_name: 'Maria Antonieta Silva',
+        patient_cpf: '111.111.111-11',
+        patient_sus: '111 1111 1111 1111',
+        patient_phone: '11999999999',
+        patient_birth_date: '1985-04-12',
+        exam_name: 'Hemograma Completo',
+        category: 'Laboratorial',
+        doctor_name: 'Dr. Lucas Silveira',
+        doctor_crm: 'CRM 45890/SP',
+        requesting_unit: 'UBS Central',
+        executing_unit: 'Laboratório Central Municipal',
+        requested_date: tenDaysAgo,
+        performed_date: tenDaysAgo,
+        status: 'Realizado',
+        clinical_indication: 'Check-up de rotina',
+        result_notes: 'Hemograma normal, sem alterações hematológicas.',
+        institution_id: institutionId
+      },
+      {
+        id: generateId().substring(0, 8),
+        patient_name: 'José Ferreira dos Santos',
+        patient_cpf: '222.222.222-22',
+        patient_sus: '222 2222 2222 2222',
+        patient_phone: '11888888888',
+        patient_birth_date: '1962-11-20',
+        exam_name: 'Eletrocardiograma (ECG)',
+        category: 'Cardiológico',
+        doctor_name: 'Dra. Beatriz Santos',
+        doctor_crm: 'CRM 33211/SP',
+        requesting_unit: 'Centro de Especialidades Médicas (CEM)',
+        executing_unit: 'Policlínica Municipal',
+        requested_date: today,
+        scheduled_date: today,
+        status: 'Agendado',
+        clinical_indication: 'Acompanhamento de hipertensão',
+        institution_id: institutionId
+      },
+      {
+        id: generateId().substring(0, 8),
+        patient_name: 'Maria Antonieta Silva',
+        patient_cpf: '111.111.111-11',
+        patient_sus: '111 1111 1111 1111',
+        exam_name: 'Ultrassonografia Abdominal Total',
+        category: 'Imagem',
+        doctor_name: 'Dr. Roberto Mendes',
+        doctor_crm: 'CRM 12098/SP',
+        requesting_unit: 'UBS Central',
+        requested_date: today,
+        status: 'Solicitado',
+        clinical_indication: 'Investigação de desconforto em hipocôndrio direito',
+        institution_id: institutionId
+      }
+    ];
+    try {
+      await supabase.from('exam_requests').insert(examRequests);
+    } catch (e) {
+      console.log('Exam requests seed note:', e);
+    }
+
+    // 10. Farmácia: Dispensações Registradas
+    const nextRefillDate = new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const dispensations = [
+      {
+        id: generateId().substring(0, 8),
+        patient_name: 'Maria Antonieta Silva',
+        patient_cpf: '111.111.111-11',
+        patient_sus: '111 1111 1111 1111',
+        patient_phone: '11999999999',
+        medication_id: med1Id,
+        medication_name: 'Losartana Potássica 50mg',
+        dosage: '50mg',
+        form: 'Comprimido',
+        batch_number: 'LT-LOS2026A',
+        quantity_dispensed: 30,
+        days_of_treatment: 30,
+        next_allowed_dispensation_date: nextRefillDate,
+        doctor_name: 'Dr. Lucas Silveira',
+        doctor_crm: 'CRM 45890/SP',
+        prescription_number: 'REC-90812',
+        prescription_date: tenDaysAgo,
+        dispensing_unit: 'Farmácia Popular Municipal',
+        pharmacist_name: 'Farmacêutico Municipal',
+        institution_id: institutionId
+      }
+    ];
+    try {
+      await supabase.from('medication_dispensations').insert(dispensations);
+    } catch (e) {
+      console.log('Dispensations seed note:', e);
+    }
+
+    // 11. Serviços Públicos (servicos_publicos_demandas)
     const demandas = [
       {
         id: generateId(),
@@ -174,7 +385,7 @@ export const seedDemoInstitution = async (institutionId: string) => {
     const { error: e7 } = await supabase.from('servicos_publicos_demandas').insert(demandas);
     if (e7) throw new Error('Servicos Publicos: ' + e7.message);
 
-    // 8. Protocolos (protocols)
+    // 12. Protocolos (protocols)
     const protocolos = [
       {
         id: generateId(),
@@ -200,7 +411,7 @@ export const seedDemoInstitution = async (institutionId: string) => {
     const { error: e8 } = await supabase.from('protocols').insert(protocolos);
     if (e8) throw new Error('Protocols: ' + e8.message);
 
-    // 9. Pedidos (orders)
+    // 13. Pedidos (orders)
     const pedidos = [
       {
         id: generateId(),
@@ -212,21 +423,12 @@ export const seedDemoInstitution = async (institutionId: string) => {
         winning_supplier: 'Construmax Materiais',
         status: 'concluido',
         institution_id: institutionId
-      },
-      {
-        id: generateId(),
-        type: 'veiculos_gtf',
-        description: 'Troca de óleo e filtros da ambulância',
-        requester: 'Maria - Saúde',
-        date_requested: today,
-        status: 'em_cotacao',
-        institution_id: institutionId
       }
     ];
     const { error: e9 } = await supabase.from('orders').insert(pedidos);
     if (e9) throw new Error('Orders: ' + e9.message);
 
-    // 10. Controles (controls)
+    // 14. Controles (controls)
     const controles = [
       {
         id: generateId(),
@@ -236,21 +438,12 @@ export const seedDemoInstitution = async (institutionId: string) => {
         deadline: '2026-05-15',
         notes: 'Aguardando envio dos diários de bordo.',
         institution_id: institutionId
-      },
-      {
-        id: generateId(),
-        task: 'Revisão de Folha de Pagamento',
-        status: 'completed',
-        department: 'RH',
-        deadline: '2026-05-30',
-        notes: 'Confrontado com o e-Social e sem divergências.',
-        institution_id: institutionId
       }
     ];
     const { error: e10 } = await supabase.from('controls').insert(controles);
     if (e10) throw new Error('Controls: ' + e10.message);
 
-    // 11. Contratos (contracts)
+    // 15. Contratos (contracts)
     const contratos = [
       {
         id: generateId(),
@@ -262,23 +455,12 @@ export const seedDemoInstitution = async (institutionId: string) => {
         status: 'active',
         deadline: '2026-12-31',
         institution_id: institutionId
-      },
-      {
-        id: generateId(),
-        number: '046/2026',
-        object: 'Locação de Veículos',
-        vendor_name: 'Transportes Rápidos',
-        amount: 80000.00,
-        category: 'Dispensa',
-        status: 'review',
-        deadline: '2026-12-31',
-        institution_id: institutionId
       }
     ];
     const { error: e11 } = await supabase.from('contracts').insert(contratos);
     if (e11) throw new Error('Contracts: ' + e11.message);
 
-    // 12. Numeração de Documentos (document_records)
+    // 16. Numeração de Documentos (document_records)
     const docRecords = [
       {
         id: generateId(),
@@ -288,21 +470,12 @@ export const seedDemoInstitution = async (institutionId: string) => {
         requester: 'Gabinete do Prefeito',
         subject: 'Solicitação de reunião com Governo Estadual',
         institution_id: institutionId
-      },
-      {
-        id: generateId(),
-        type: 'Decreto',
-        number: 1,
-        year: 2026,
-        requester: 'Administração',
-        subject: 'Nomeação de Secretário',
-        institution_id: institutionId
       }
     ];
     const { error: e12 } = await supabase.from('document_records').insert(docRecords);
     if (e12) throw new Error('Document Records: ' + e12.message);
 
-    // 13. Certidões (company_certificates)
+    // 17. Certidões (company_certificates)
     const certidoes = [
       {
         id: generateId(),
@@ -321,7 +494,7 @@ export const seedDemoInstitution = async (institutionId: string) => {
     const { error: e13 } = await supabase.from('company_certificates').insert(certidoes);
     if (e13) throw new Error('Certificates: ' + e13.message);
 
-    console.log(`Successfully seeded mock data for institution: ${institutionId}`);
+    console.log(`Successfully seeded complete mock data for institution: ${institutionId}`);
     return true;
   } catch (error) {
     console.error('Error seeding demo data:', error);
@@ -330,10 +503,13 @@ export const seedDemoInstitution = async (institutionId: string) => {
 };
 
 const resetInstitutionData = async (institutionId: string) => {
-  // Limpa as tabelas (requer que a coluna institution_id exista nelas)
   const tables = [
     'appointments', 
     'medications', 
+    'exam_requests',
+    'exam_types',
+    'medication_dispensations',
+    'patients',
     'servicos_publicos_demandas', 
     'patrimonio', 
     'admin_users', 
@@ -350,7 +526,7 @@ const resetInstitutionData = async (institutionId: string) => {
     try {
       await supabase.from(table).delete().eq('institution_id', institutionId);
     } catch (e) {
-      console.log(`Table ${table} cleanup failed or not supported.`, e);
+      console.log(`Table ${table} cleanup skipped.`, e);
     }
   }
 };
