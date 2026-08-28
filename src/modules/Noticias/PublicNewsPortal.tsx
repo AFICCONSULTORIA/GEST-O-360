@@ -100,8 +100,23 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
     }
   };
 
+  // Carregar ID da URL (para link direto)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get('id');
+    if (id && news.length > 0 && !selectedNews) {
+      const article = news.find(n => n.id === id);
+      if (article) {
+        setSelectedNews(article);
+        setNews(prev => prev.map(n => n.id === id ? { ...n, views_count: (n.views_count || 0) + 1 } : n));
+        supabase.from('municipal_news').update({ views_count: (article.views_count || 0) + 1 }).eq('id', article.id).then(() => {});
+      }
+    }
+  }, [news, selectedNews]);
+
   // Abrir matéria e registrar contagem de visualização
   const handleOpenArticle = (item: MunicipalNews) => {
+    window.history.pushState({}, '', `/noticias?id=${item.id}`);
     setSelectedNews(item);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -114,6 +129,12 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
       .update({ views_count: (item.views_count || 0) + 1 })
       .eq('id', item.id)
       .then(() => {});
+  };
+
+  const handleCloseArticle = () => {
+    window.history.pushState({}, '', '/noticias');
+    setSelectedNews(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Matéria em Destaque Principal (Hero)
@@ -222,50 +243,45 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
         </div>
       </header>
 
-      {/* Visualizador de Matéria Completa (Modal / Reader) */}
-      <AnimatePresence>
-        {selectedNews && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 overflow-y-auto bg-neutral-950/70 backdrop-blur-md flex items-start justify-center p-3 sm:p-6 lg:p-10"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 30 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 30 }}
-              className="bg-white dark:bg-neutral-900 w-full max-w-4xl rounded-[32px] shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden relative my-6"
-            >
-              {/* Botão Fechar */}
-              <button
-                onClick={() => setSelectedNews(null)}
-                className="absolute top-6 right-6 z-20 p-3 bg-neutral-900/60 hover:bg-neutral-900 text-white rounded-full backdrop-blur-md transition-all shadow-lg hover:scale-110"
-              >
-                <X size={20} />
-              </button>
+      {/* Visualizador de Matéria Completa (Página) */}
+      {selectedNews ? (
+        <main className="relative z-10 w-full max-w-4xl lg:max-w-5xl mx-auto px-0 sm:px-6 lg:px-8 py-2 sm:py-8 animate-in fade-in duration-500">
+           
+           {/* Barra de Retorno Superior */}
+           <div className="px-4 sm:px-0 mb-4 sm:mb-6">
+             <button
+               onClick={handleCloseArticle}
+               className="inline-flex items-center gap-2.5 px-5 py-3 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-2xl text-sm sm:text-base font-bold transition-all border border-neutral-200 dark:border-neutral-800 shadow-sm active:scale-95"
+             >
+               <ArrowLeft size={20} className="text-emerald-500" />
+               <span>Voltar para todas as notícias</span>
+             </button>
+           </div>
 
-              {/* Capa da Notícia */}
+           {/* Cartão / Artigo Principal */}
+           <article className="bg-white dark:bg-neutral-900 w-full rounded-none sm:rounded-[32px] shadow-none sm:shadow-2xl border-y sm:border border-neutral-200/80 dark:border-neutral-800 overflow-hidden relative">
+
+              {/* Capa da Notícia (Edge-to-Edge no celular) */}
               {selectedNews.cover_image_url && (
-                <div className="relative w-full h-[280px] sm:h-[420px] overflow-hidden bg-neutral-100 dark:bg-neutral-800">
+                <div className="relative w-full h-[280px] sm:h-[460px] md:h-[520px] overflow-hidden bg-neutral-900">
                   <img
                     src={selectedNews.cover_image_url}
                     alt={selectedNews.title}
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/30 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/30 to-transparent" />
                   
-                  <div className="absolute bottom-6 left-6 right-6 flex flex-wrap items-center gap-2">
+                  <div className="absolute bottom-4 sm:bottom-8 left-4 sm:left-8 right-4 sm:right-8 flex flex-wrap items-center gap-2 sm:gap-3">
                     {selectedNews.badge && (
-                      <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-full shadow-lg">
+                      <span className="px-3.5 py-1.5 bg-emerald-500 text-white text-xs sm:text-sm font-black uppercase tracking-wider rounded-full shadow-lg">
                         {selectedNews.badge}
                       </span>
                     )}
-                    <span className="px-3 py-1 bg-white/20 backdrop-blur-md text-white text-xs font-bold rounded-full">
+                    <span className="px-3.5 py-1.5 bg-white/20 backdrop-blur-md text-white text-xs sm:text-sm font-bold rounded-full">
                       {selectedNews.category}
                     </span>
                     {selectedNews.project_status && (
-                      <span className="px-3 py-1 bg-sky-500/90 text-white text-xs font-bold rounded-full">
+                      <span className="px-3.5 py-1.5 bg-sky-500 text-white text-xs sm:text-sm font-bold rounded-full shadow-md">
                         {PROJECT_STATUS_META[selectedNews.project_status]?.label || selectedNews.project_status}
                       </span>
                     )}
@@ -273,36 +289,39 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
                 </div>
               )}
 
-              {/* Conteúdo da Matéria */}
-              <div className="p-6 sm:p-10 space-y-6">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-4 text-xs text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-4">
-                    <div className="flex items-center gap-4">
-                      <span className="flex items-center gap-1.5">
-                        <Calendar size={14} className="text-emerald-500" />
+              {/* Conteúdo da Matéria com alta legibilidade */}
+              <div className="p-5 sm:p-10 md:p-14 space-y-8 sm:space-y-10">
+                <div className="space-y-4 sm:space-y-6">
+                  {/* Metadados */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-sm sm:text-base text-neutral-500 dark:text-neutral-400 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                    <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                      <span className="flex items-center gap-2 font-medium">
+                        <Calendar size={18} className="text-emerald-500" />
                         {formatDate(selectedNews.published_at)}
                       </span>
                       {selectedNews.department && (
-                        <span className="flex items-center gap-1.5 font-semibold text-neutral-700 dark:text-neutral-300">
-                          <Building2 size={14} className="text-emerald-500" />
+                        <span className="flex items-center gap-2 font-bold text-neutral-800 dark:text-neutral-200">
+                          <Building2 size={18} className="text-emerald-500" />
                           {selectedNews.department}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1 text-neutral-400">
-                        <Eye size={14} />
-                        {selectedNews.views_count || 1} leituras
+                    <div className="flex items-center gap-2">
+                      <span className="flex items-center gap-1.5 text-neutral-400 font-medium">
+                        <Eye size={18} />
+                        {selectedNews.views_count || 1} visualizações
                       </span>
                     </div>
                   </div>
 
-                  <h1 className="text-2xl sm:text-4xl font-black text-neutral-900 dark:text-white leading-tight tracking-tight">
+                  {/* Título Grande e Impactante */}
+                  <h1 className="text-2xl sm:text-4xl md:text-5xl lg:text-[3.25rem] font-black text-neutral-900 dark:text-white leading-[1.2] tracking-tight">
                     {selectedNews.title}
                   </h1>
 
+                  {/* Subtítulo / Olho da Notícia */}
                   {selectedNews.subtitle && (
-                    <p className="text-base sm:text-lg text-neutral-600 dark:text-neutral-300 font-medium leading-relaxed italic border-l-4 border-emerald-500 pl-4 py-1">
+                    <p className="text-lg sm:text-2xl text-neutral-600 dark:text-neutral-300 font-medium leading-relaxed italic border-l-4 border-emerald-500 pl-4 sm:pl-6 py-1">
                       {selectedNews.subtitle}
                     </p>
                   )}
@@ -310,36 +329,36 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
                 {/* Card Especial de Acompanhamento de Obra/Projeto */}
                 {selectedNews.project_status && (
-                  <div className="p-6 bg-gradient-to-br from-emerald-50 to-sky-50 dark:from-emerald-950/30 dark:to-sky-950/30 rounded-3xl border border-emerald-200/70 dark:border-emerald-800/60 space-y-4">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold">
-                          <Building2 size={20} />
+                  <div className="p-6 sm:p-8 bg-gradient-to-br from-emerald-50 to-sky-50 dark:from-emerald-950/30 dark:to-sky-950/30 rounded-2xl sm:rounded-3xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-5">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-14 h-14 rounded-2xl bg-emerald-500 text-white flex items-center justify-center font-bold shrink-0 shadow-md">
+                          <Building2 size={26} />
                         </div>
                         <div>
-                          <h4 className="text-sm font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-200">
-                            Ficha do Projeto / Obra Pública
+                          <h4 className="text-sm sm:text-base font-black uppercase tracking-wider text-emerald-950 dark:text-emerald-200">
+                            Acompanhamento da Obra / Projeto
                           </h4>
-                          <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                            Acompanhamento de transparência e aplicação de recursos
+                          <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 mt-0.5">
+                            Dados oficiais de transparência e aplicação de recursos públicos
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${PROJECT_STATUS_META[selectedNews.project_status]?.bg} ${PROJECT_STATUS_META[selectedNews.project_status]?.text}`}>
-                          <span className={`w-2 h-2 rounded-full ${PROJECT_STATUS_META[selectedNews.project_status]?.dot}`} />
+                      <div className="flex items-center">
+                        <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-black border ${PROJECT_STATUS_META[selectedNews.project_status]?.bg} ${PROJECT_STATUS_META[selectedNews.project_status]?.text}`}>
+                          <span className={`w-2.5 h-2.5 rounded-full ${PROJECT_STATUS_META[selectedNews.project_status]?.dot}`} />
                           {PROJECT_STATUS_META[selectedNews.project_status]?.label}
                         </span>
                       </div>
                     </div>
 
                     {selectedNews.project_budget && (
-                      <div className="pt-2 border-t border-emerald-200/50 dark:border-emerald-800/50 flex items-center justify-between">
-                        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">
+                      <div className="pt-4 mt-2 border-t border-emerald-200/60 dark:border-emerald-800/60 flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 font-bold uppercase tracking-wider">
                           Investimento Estimado:
                         </span>
-                        <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">
+                        <span className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400">
                           {formatCurrency(selectedNews.project_budget)}
                         </span>
                       </div>
@@ -347,20 +366,20 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
                   </div>
                 )}
 
-                {/* Texto Principal da Matéria */}
-                <div className="prose prose-neutral dark:prose-invert max-w-none text-neutral-700 dark:text-neutral-300 leading-relaxed text-base sm:text-lg whitespace-pre-line space-y-4">
+                {/* Texto Principal da Matéria (Tamanho aumentado para leitura no telefone e monitor) */}
+                <div className="text-neutral-800 dark:text-neutral-200 text-lg sm:text-xl md:text-[21px] leading-[1.85] sm:leading-[1.95] whitespace-pre-line font-normal space-y-6">
                   {selectedNews.content}
                 </div>
 
                 {/* Galeria de Fotos Complementares */}
                 {selectedNews.gallery_urls && selectedNews.gallery_urls.length > 0 && (
-                  <div className="space-y-3 pt-6 border-t border-neutral-100 dark:border-neutral-800">
-                    <h3 className="text-sm font-black uppercase tracking-widest text-neutral-400">
-                      Galeria de Registros
+                  <div className="space-y-4 pt-8 border-t border-neutral-100 dark:border-neutral-800">
+                    <h3 className="text-sm sm:text-base font-black uppercase tracking-widest text-neutral-400">
+                      Galeria de Fotos
                     </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       {selectedNews.gallery_urls.map((img, idx) => (
-                        <div key={idx} className="rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 h-36 sm:h-48 group">
+                        <div key={idx} className="rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 h-52 sm:h-56 group shadow-sm">
                           <img 
                             src={img} 
                             alt={`Registro ${idx + 1}`} 
@@ -372,43 +391,90 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
                   </div>
                 )}
 
-                {/* Barra de Compartilhamento no Rodapé */}
-                <div className="pt-8 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                      Compartilhar informação:
-                    </span>
+                {/* Barra de Compartilhamento no Rodapé com botões grandes para polegar */}
+                <div className="pt-8 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
                     <button
                       onClick={() => handleShareWhatsApp(selectedNews)}
-                      className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+                      className="inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-2xl text-sm sm:text-base font-black shadow-lg shadow-emerald-600/25 transition-all hover:scale-105 active:scale-95"
                     >
-                      <MessageCircle size={15} />
-                      <span>WhatsApp</span>
+                      <MessageCircle size={20} />
+                      <span>Compartilhar no WhatsApp</span>
                     </button>
                     <button
                       onClick={() => handleCopyLink(selectedNews)}
-                      className="inline-flex items-center gap-2 px-3 py-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold transition-all"
+                      className="inline-flex items-center justify-center gap-2.5 px-5 py-3.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-2xl text-sm sm:text-base font-bold transition-all active:scale-95"
                     >
-                      <Copy size={14} />
+                      <Copy size={18} />
                       <span>Copiar Link</span>
                     </button>
                   </div>
 
                   <button
-                    onClick={() => setSelectedNews(null)}
-                    className="px-6 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 text-xs font-black uppercase tracking-widest rounded-xl hover:opacity-90 transition-opacity"
+                    onClick={handleCloseArticle}
+                    className="px-6 py-3.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 text-xs sm:text-sm font-black uppercase tracking-widest rounded-2xl hover:opacity-90 transition-opacity text-center"
                   >
-                    Voltar às Notícias
+                    Voltar ao Portal
                   </button>
                 </div>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+           </article>
 
-      {/* Conteúdo Principal da Página */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12 relative z-10">
+           {/* Carrossel: Veja Também (Touch-friendly no celular) */}
+           <div className="mt-12 sm:mt-16 pt-8 px-4 sm:px-0">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-2.5">
+                  <Layers className="text-emerald-500" size={24} />
+                  <span>Veja também</span>
+                </h3>
+                <span className="text-xs sm:text-sm font-semibold text-neutral-400 hidden sm:inline">
+                  Deslize para ver mais matérias
+                </span>
+              </div>
+
+              {/* Trilho horizontal touch-swipe */}
+              <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-700 snap-x snap-mandatory">
+                {news.filter(n => n.id !== selectedNews.id).slice(0, 5).map(item => (
+                  <div 
+                    key={item.id} 
+                    onClick={() => handleOpenArticle(item)}
+                    className="min-w-[82vw] sm:min-w-[320px] max-w-[88vw] sm:max-w-[340px] bg-white dark:bg-neutral-900 rounded-2xl sm:rounded-3xl border border-neutral-200 dark:border-neutral-800 overflow-hidden cursor-pointer hover:shadow-xl transition-all snap-center sm:snap-start group flex flex-col shrink-0 shadow-sm active:scale-[0.98]"
+                  >
+                    <div className="h-44 sm:h-48 bg-neutral-100 dark:bg-neutral-800 overflow-hidden shrink-0 relative">
+                      {item.cover_image_url ? (
+                        <img src={item.cover_image_url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-neutral-400 bg-neutral-100 dark:bg-neutral-800">
+                          <LogoCompass size={40} />
+                        </div>
+                      )}
+                      {item.category && (
+                        <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-white/95 dark:bg-neutral-900/95 text-neutral-900 dark:text-white text-xs font-bold rounded-lg shadow-sm">
+                          {item.category}
+                        </span>
+                      )}
+                    </div>
+                    <div className="p-5 flex flex-col flex-1">
+                      <h4 className="font-bold text-base sm:text-lg text-neutral-900 dark:text-white line-clamp-2 mb-2 group-hover:text-emerald-600 transition-colors">
+                        {item.title}
+                      </h4>
+                      {item.subtitle && (
+                        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 line-clamp-2 mb-4 leading-relaxed">
+                          {item.subtitle}
+                        </p>
+                      )}
+                      <div className="mt-auto pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs sm:text-sm text-neutral-400">
+                        <span className="flex items-center gap-1.5"><Calendar size={14}/> {formatDate(item.published_at)}</span>
+                        <span className="flex items-center gap-1.5"><Eye size={14}/> {item.views_count || 1}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+           </div>
+        </main>
+      ) : (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12 relative z-10">
         
         {/* Banner Hero / Destaque Principal */}
         {featuredArticle && !selectedNews && (
@@ -690,8 +756,8 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
             })}
           </div>
         )}
-
-      </main>
+        </main>
+      )}
 
       {/* Footer com informações institucionais */}
       <footer className="relative z-10 mt-20 border-t border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md py-10 text-center space-y-4">
