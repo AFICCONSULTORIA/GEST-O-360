@@ -1,4 +1,4 @@
-export type View = 'home' | 'mayor' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms';
+export type View = 'home' | 'mayor' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms' | 'noticias';
 
 export type LawType = 
   | 'Lei Orgânica' 
@@ -337,5 +337,43 @@ export interface FormResponse {
   answers: Record<string, any>;
   protocol: string;
   created_at: string;
+}
+
+export type NewsCategory = 
+  | 'Obras & Infraestrutura'
+  | 'Saúde'
+  | 'Educação'
+  | 'Projetos & Planos'
+  | 'Cultura & Eventos'
+  | 'Meio Ambiente'
+  | 'Assistência Social'
+  | 'Esporte & Lazer'
+  | 'Agricultura & Rural'
+  | 'Nota Oficial';
+
+export type NewsStatus = 'published' | 'draft' | 'archived';
+export type ProjectStatus = 'Planejamento' | 'Em Execução' | 'Concluído' | 'Contínuo';
+
+export interface MunicipalNews {
+  id: string;
+  institution_id?: string;
+  title: string;
+  slug?: string;
+  subtitle?: string;
+  content: string;
+  category: NewsCategory;
+  department?: string;
+  cover_image_url?: string;
+  gallery_urls?: string[];
+  is_featured?: boolean;
+  badge?: string;
+  project_status?: ProjectStatus;
+  project_budget?: number;
+  status: NewsStatus;
+  author_name?: string;
+  published_at: string;
+  views_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { 
-  Sun, Moon, Globe, Calendar, HeartPulse, GraduationCap, Lock, ChevronRight, Baby 
+  Sun, Moon, Globe, Calendar, HeartPulse, GraduationCap, Lock, ChevronRight, Baby, Newspaper
 } from 'lucide-react';
 
 import { LogoCompass } from './LogoCompass';
@@ -75,8 +75,32 @@ export const LandingPage = ({ darkMode, setDarkMode, currentInstitution }: { dar
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2, ease: 'easeOut' }}
-          className="mt-12 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6 w-full max-w-6xl px-4 mx-auto"
+          className="mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 w-full max-w-7xl px-4 mx-auto"
         >
+          {/* Card Notícias & Projetos */}
+          <a
+            href="/noticias"
+            className="group relative bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/80 rounded-[32px] p-7 text-left hover:shadow-2xl hover:shadow-rose-500/10 hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-rose-50/50 to-transparent dark:from-rose-950/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="relative space-y-4">
+              <div className="w-14 h-14 bg-rose-50 dark:bg-rose-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-rose-500 group-hover:text-white dark:group-hover:text-neutral-950 transition-all duration-300 text-rose-600 dark:text-rose-400 shadow-sm">
+                <Newspaper size={24} />
+              </div>
+              <div>
+                <div className="flex items-center gap-1.5 mb-1">
+                  <h2 className="text-xl font-bold text-neutral-900 dark:text-white tracking-tight group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">Notícias & Ações</h2>
+                </div>
+                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mt-1 font-medium">
+                  Acompanhe obras em andamento, programas entregues, avisos oficiais e metas da gestão.
+                </p>
+              </div>
+            </div>
+            <div className="relative mt-6 flex items-center gap-2 text-rose-600 dark:text-rose-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
+              <span>Ver Notícias</span>
+              <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
+            </div>
+          </a>
           {/* Card Serviços Públicos */}
           <a
             href="/servicos"

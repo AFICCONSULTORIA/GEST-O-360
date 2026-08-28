@@ -38,6 +38,8 @@ import { AdministracaoModule } from './modules/Administracao';
 import { CommunicationCenter } from './modules/CommunicationCenter';
 import { PublicFormsModule } from './modules/PublicForms';
 import { PublicFormRouteLoader } from './modules/PublicForms/PublicFormRouteLoader';
+import { NoticiasModule } from './modules/Noticias';
+import { PublicNewsPortal } from './modules/Noticias/PublicNewsPortal';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -452,6 +454,7 @@ export default function App() {
   const isEducacaoPortal = currentPath === '/educacao';
   const isCrechePortal = currentPath === '/cmei' || currentPath.startsWith('/cmei/');
   const isMeioAmbientePortal = currentPath === '/meio-ambiente';
+  const isNoticiasPortal = currentPath === '/noticias' || currentPath.startsWith('/noticias');
   const isPublicFormRoute = 
     currentPath.startsWith('/formulario') || 
     currentPath.startsWith('/form') || 
@@ -604,6 +607,14 @@ export default function App() {
         setDarkMode={setDarkMode} 
         currentInstitution={currentInstitution} 
       />
+    );
+  }
+
+  if (isNoticiasPortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <PublicNewsPortal darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
+      </div>
     );
   }
 
@@ -1318,6 +1329,7 @@ export default function App() {
             {activeView === 'templates' && <TemplatesModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'communication' && <CommunicationCenter />}
             {activeView === 'forms' && <PublicFormsModule currentUser={currentUser} institution={currentInstitution} />}
+            {activeView === 'noticias' && <NoticiasModule currentUser={currentUser} currentInstitution={currentInstitution} />}
           </motion.div>
         </AnimatePresence>
         </div>

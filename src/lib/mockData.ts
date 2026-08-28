@@ -28,7 +28,8 @@ import {
   MessageSquare,
   Scale,
   Activity,
-  ClipboardList
+  ClipboardList,
+  Newspaper
 } from 'lucide-react';
 
 
@@ -200,6 +201,7 @@ export const NAVBAR_CATEGORIES = [
     label: 'Comunicação & População',
     icon: MessageSquare,
     items: [
+      { id: 'noticias', label: 'Notícias & Projetos', icon: Newspaper },
       { id: 'forms', label: 'Formulários & Consultas', icon: ClipboardList },
       { id: 'communication', label: 'Central WhatsApp', icon: MessageSquare },
     ]
@@ -242,6 +244,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'esporte', label: 'Esporte' },
   { id: 'planejamento', label: 'Planejamento' },
   { id: 'camara', label: 'Câmara Municipal' },
+  { id: 'noticias', label: 'Notícias & Divulgação Municipal' },
   { id: 'forms', label: 'Formulários & Consultas Populares' },
   { id: 'communication', label: 'Comunicação WhatsApp' },
   { id: 'settings', label: 'Configurações' }
@@ -252,7 +255,7 @@ export const MOCK_INSTITUTIONS: Institution[] = [
 ];
 
 export const MOCK_USERS: AdminUser[] = [
-  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'mayor', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara', 'communication'], institution_id: 'inst_1' },
+  { id: '1', name: 'Administrador Principal', email: 'admin@gestao360.com.br', role: 'Admin', status: 'Ativo', lastLogin: 'Hoje, 09:41', permissions: ['home', 'mayor', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio', 'camara', 'communication', 'forms', 'noticias'], institution_id: 'inst_1' },
   { id: '2', name: 'João Silva', email: 'joao.silva@gestao360.com.br', role: 'Editor', status: 'Ativo', lastLogin: 'Ontem, 15:30', permissions: ['home', 'controls', 'protocol'], institution_id: 'inst_1' },
   { id: '3', name: 'Maria Souza', email: 'maria.souza@gestao360.com.br', role: 'Visualizador', status: 'Inativo', lastLogin: '10/05/2026', permissions: ['home', 'calendar'], institution_id: 'inst_2' }
 ];
