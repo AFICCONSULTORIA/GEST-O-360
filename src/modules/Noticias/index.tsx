@@ -297,13 +297,32 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
 
       {/* Header com Ações Rápidas */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
-            Notícias, Novidades & Projetos
-          </h2>
-          <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-            Gestão da comunicação oficial da prefeitura com a população e acompanhamento de obras.
-          </p>
+        <div className="flex items-center gap-3.5">
+          <div className="w-13 h-13 sm:w-14 sm:h-14 bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 rounded-2xl p-2 flex items-center justify-center shadow-sm shrink-0">
+            <img 
+              src={currentInstitution?.logo_url || '/brasao-municipio.png'} 
+              alt={currentInstitution?.name || 'Brasão do Município'}
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = '/brasao-municipio.png';
+              }}
+            />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
+                Notícias, Novidades & Projetos
+              </h2>
+              {currentInstitution && (
+                <span className="hidden md:inline-block px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-lg">
+                  {currentInstitution.name.replace('Prefeitura Municipal de ', '')}
+                </span>
+              )}
+            </div>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+              Gestão da comunicação oficial do município com a população e acompanhamento de obras.
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

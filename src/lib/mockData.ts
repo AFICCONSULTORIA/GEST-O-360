@@ -251,7 +251,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
 ];
 
 export const MOCK_INSTITUTIONS: Institution[] = [
-  { id: 'inst_4', name: 'Prefeitura de Torixoréu/MT' }
+  { id: 'inst_4', name: 'Prefeitura de Torixoréu/MT', logo_url: '/brasao-municipio.png' }
 ];
 
 export const MOCK_USERS: AdminUser[] = [

@@ -83,7 +83,7 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             src="/logo-planet.png" 
             alt="Gestão 360 Logo - Full"
-            className="w-full max-w-3xl max-h-[85vh] object-contain drop-shadow-[0_0_80px_rgba(56,189,248,0.4)]"
+            className="w-full max-w-3xl max-h-[85vh] object-contain drop-shadow-[0_0_80px_rgba(217,119,6,0.5)] rounded-3xl"
             onClick={(e) => e.stopPropagation()} 
           />
         </motion.div>
@@ -97,13 +97,13 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
       <div 
         onClick={() => setIsExpanded(true)}
         style={{ width: displaySize, height: displaySize }}
-        className={`relative overflow-hidden rounded-xl shrink-0 cursor-pointer flex items-center justify-center group bg-neutral-950 ${className}`}
+        className={`relative overflow-hidden rounded-2xl shrink-0 cursor-pointer flex items-center justify-center group bg-neutral-950 shadow-md ${className}`}
       >
         <img 
           src="/logo-planet.png" 
           alt="Gestão 360 Logo"
           onError={() => setHasError(true)}
-          className="w-[115%] h-[115%] max-w-none object-contain transition-transform duration-500 group-hover:scale-110"
+          className="w-full h-full object-contain transition-transform duration-500 group-hover:scale-105"
         />
       </div>
       {modal}

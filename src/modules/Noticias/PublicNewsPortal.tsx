@@ -203,21 +203,28 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
       <header className="relative z-40 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-200/60 dark:border-neutral-800/80 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <a href="/" className="flex items-center gap-3 group">
-              <div className="bg-emerald-50 dark:bg-emerald-500/10 p-2.5 rounded-2xl border border-emerald-200 dark:border-emerald-500/20 group-hover:scale-105 transition-transform">
-                <LogoCompass size={28} />
+            <a href="/" className="flex items-center gap-3.5 group">
+              <div className="w-12 h-12 bg-white dark:bg-neutral-900 p-1.5 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm flex items-center justify-center group-hover:scale-105 transition-transform shrink-0">
+                <img 
+                  src={currentInstitution?.logo_url || '/brasao-municipio.png'} 
+                  alt={`Brasão ${currentInstitution?.name || 'Municipal'}`}
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/brasao-municipio.png';
+                  }}
+                />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-lg font-black tracking-tight text-neutral-900 dark:text-white uppercase">
-                    {currentInstitution ? currentInstitution.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : 'Gestão 360'}
+                    {currentInstitution ? currentInstitution.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : 'Prefeitura Municipal'}
                   </span>
                   <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-[10px] font-black uppercase tracking-wider rounded-md">
-                    Notícias & Ações
+                    Portal Oficial
                   </span>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 hidden sm:block">
-                  Portal Oficial de Transparência, Notícias e Obras Municipais
+                  Notícias, Obras e Atos Oficiais do Município
                 </p>
               </div>
             </a>
@@ -762,9 +769,16 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
       {/* Footer com informações institucionais */}
       <footer className="relative z-10 mt-20 border-t border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md py-10 text-center space-y-4">
         <div className="flex items-center justify-center gap-3">
-          <LogoCompass size={24} />
-          <span className="text-sm font-black tracking-tight text-neutral-900 dark:text-white italic">
-            Gestão <span className="text-emerald-500 font-normal">360</span> · Notícias & Governança Municipal
+          <img 
+            src={currentInstitution?.logo_url || '/brasao-municipio.png'} 
+            alt="Brasão Municipal"
+            className="h-8 w-auto max-w-[40px] object-contain"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src = '/brasao-municipio.png';
+            }}
+          />
+          <span className="text-sm font-black tracking-tight text-neutral-900 dark:text-white">
+            {currentInstitution ? currentInstitution.name : 'Prefeitura Municipal'} · Notícias Oficiais
           </span>
         </div>
         <p className="text-xs text-neutral-400 max-w-md mx-auto">
