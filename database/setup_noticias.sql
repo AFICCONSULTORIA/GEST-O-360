@@ -42,15 +42,15 @@ FOR SELECT USING (true);
 
 DROP POLICY IF EXISTS "Permitir inserção de notícias" ON public.municipal_news;
 CREATE POLICY "Permitir inserção de notícias" ON public.municipal_news 
-FOR INSERT WITH CHECK (true);
+FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Permitir atualização de notícias" ON public.municipal_news;
 CREATE POLICY "Permitir atualização de notícias" ON public.municipal_news 
-FOR UPDATE USING (true);
+FOR UPDATE USING (auth.uid() IS NOT NULL);
 
 DROP POLICY IF EXISTS "Permitir exclusão de notícias" ON public.municipal_news;
 CREATE POLICY "Permitir exclusão de notícias" ON public.municipal_news 
-FOR DELETE USING (true);
+FOR DELETE USING (auth.uid() IS NOT NULL);
 
 -- Função para incrementar visualizações atomicamente
 CREATE OR REPLACE FUNCTION increment_news_views(news_id UUID)
