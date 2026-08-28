@@ -22,17 +22,23 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
 
   const permissions = user.permissions || [];
 
+  // Auto-grant 'noticias' for users who already have 'communication' (backward compatibility)
+  const effectivePermissions = [...permissions];
+  if (effectivePermissions.includes('communication') && !effectivePermissions.includes('noticias')) {
+    effectivePermissions.push('noticias');
+  }
+
   // 1. Procurar por permissão granular específica no formato "modulo:nivel"
   const adminPattern = `${moduleId}:admin`;
   const editPattern = `${moduleId}:edit`;
   const viewPattern = `${moduleId}:view`;
 
-  if (permissions.includes(adminPattern as any)) return 'admin';
-  if (permissions.includes(editPattern as any)) return 'edit';
-  if (permissions.includes(viewPattern as any)) return 'view';
+  if (effectivePermissions.includes(adminPattern as any)) return 'admin';
+  if (effectivePermissions.includes(editPattern as any)) return 'edit';
+  if (effectivePermissions.includes(viewPattern as any)) return 'view';
 
   // 2. Procurar por permissão no formato clássico "modulo" (compatibilidade retroativa)
-  if (permissions.includes(moduleId)) {
+  if (effectivePermissions.includes(moduleId as any)) {
     // Associa o nível ao papel global do usuário
     if (user.role === 'Admin') return 'admin';
     if (user.role === 'Editor') return 'edit';

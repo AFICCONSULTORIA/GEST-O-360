@@ -285,10 +285,14 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
       
       {/* Banner de Novidade */}
       <WhatsNewBanner
-        moduleId="noticias"
+        version="v2.5.0-noticias"
         title="Novo Portal Oficial de Notícias & Ações Municipais"
-        description="Divulgue de forma ampla e transparente as obras, conquistas, avisos e projetos da prefeitura diretamente para toda a população no portal público do cidadão."
-        badges={['Portal do Cidadão', 'Obras & Projetos', 'Compartilhamento WhatsApp', 'Imagens Otimizadas']}
+        features={[
+          'Portal Público do Cidadão Integrado',
+          'Acompanhamento de Obras & Projetos em tempo real',
+          'Compartilhamento direto no WhatsApp',
+          'Compressão automática de imagens para celular'
+        ]}
       />
 
       {/* Header com Ações Rápidas */}
