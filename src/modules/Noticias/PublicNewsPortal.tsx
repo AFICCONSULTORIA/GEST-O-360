@@ -39,10 +39,10 @@ interface PublicNewsPortalProps {
 }
 
 export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
-  darkMode: initialDarkMode,
+  darkMode,
+  setDarkMode,
   currentInstitution
 }) => {
-  const [darkMode, setDarkMode] = useState(initialDarkMode);
   const [news, setNews] = useState<MunicipalNews[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,15 +50,6 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
   const [selectedNews, setSelectedNews] = useState<MunicipalNews | null>(null);
   const [filterOnlyProjects, setFilterOnlyProjects] = useState(false);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
-
-  // Sincronizar dark mode com a classe html
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
 
   // Carregar notícias do Supabase ou Fallback
   useEffect(() => {
@@ -265,8 +256,8 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
             </a>
 
             <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2.5 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all"
+              onClick={() => setDarkMode?.(!darkMode)}
+              className="p-2.5 bg-neutral-100 dark:bg-neutral-800 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all shrink-0 active:scale-95"
               title="Alternar tema"
             >
               {darkMode ? <Sun size={18} /> : <Moon size={18} />}
