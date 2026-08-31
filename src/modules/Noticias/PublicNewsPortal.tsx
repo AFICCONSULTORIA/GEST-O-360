@@ -49,6 +49,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<string>('Todas');
   const [selectedNews, setSelectedNews] = useState<MunicipalNews | null>(null);
   const [filterOnlyProjects, setFilterOnlyProjects] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
 
   // Sincronizar dark mode com a classe html
   useEffect(() => {
@@ -270,11 +271,14 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
               {/* Capa da Notícia (Edge-to-Edge no celular) */}
               {selectedNews.cover_image_url && (
-                <div className="relative w-full h-[280px] sm:h-[460px] md:h-[520px] overflow-hidden bg-neutral-900">
+                <div 
+                  className="relative w-full h-[280px] sm:h-[460px] md:h-[520px] overflow-hidden bg-neutral-900 group cursor-pointer"
+                  onClick={() => setFullScreenImage(selectedNews.cover_image_url!)}
+                >
                   <img
                     src={selectedNews.cover_image_url}
                     alt={selectedNews.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/30 to-transparent" />
                   
@@ -386,7 +390,11 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
                     </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       {selectedNews.gallery_urls.map((img, idx) => (
-                        <div key={idx} className="rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 h-52 sm:h-56 group shadow-sm">
+                        <div 
+                          key={idx} 
+                          className="rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 h-52 sm:h-56 group shadow-sm cursor-pointer"
+                          onClick={() => setFullScreenImage(img)}
+                        >
                           <img 
                             src={img} 
                             alt={`Registro ${idx + 1}`} 
@@ -792,6 +800,35 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
           <a href="/servidores" className="hover:text-emerald-600">Acesso Restrito</a>
         </div>
       </footer>
+
+      {/* Modal de Imagem Tela Cheia */}
+      <AnimatePresence>
+        {fullScreenImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+            onClick={() => setFullScreenImage(null)}
+          >
+            <button 
+              className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10"
+              onClick={(e) => { e.stopPropagation(); setFullScreenImage(null); }}
+            >
+              <X size={24} />
+            </button>
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={fullScreenImage}
+              alt="Imagem ampliada"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

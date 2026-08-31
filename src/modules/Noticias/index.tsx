@@ -21,7 +21,8 @@ import {
   Layers, 
   Coins, 
   MessageCircle,
-  Copy
+  Copy,
+  X
 } from 'lucide-react';
 import { MunicipalNews, Institution, AdminUser, NewsCategory, NewsStatus } from '../../types';
 import { CATEGORY_META_LIST, PROJECT_STATUS_META } from './types';
@@ -50,6 +51,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingNews, setEditingNews] = useState<MunicipalNews | null>(null);
   const [newsToDelete, setNewsToDelete] = useState<MunicipalNews | null>(null);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
 
   // Carregar notícias
   useEffect(() => {
@@ -506,7 +508,8 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
                       <img
                         src={item.cover_image_url}
                         alt={item.title}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                        onClick={() => setFullScreenImage(item.cover_image_url!)}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-neutral-400">
@@ -678,6 +681,35 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
               </div>
             </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Imagem Tela Cheia */}
+      <AnimatePresence>
+        {fullScreenImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+            onClick={() => setFullScreenImage(null)}
+          >
+            <button 
+              className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors z-10"
+              onClick={(e) => { e.stopPropagation(); setFullScreenImage(null); }}
+            >
+              <X size={24} />
+            </button>
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={fullScreenImage}
+              alt="Imagem ampliada"
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
         )}
       </AnimatePresence>
 
