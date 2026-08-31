@@ -164,6 +164,30 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
     return news.filter(n => n.project_status);
   }, [news]);
 
+  // Notícias relacionadas (Veja Também) - Mesma categoria/secretaria primeiro
+  const relatedNews = useMemo(() => {
+    if (!selectedNews || !news) return [];
+    
+    const others = news.filter(n => n.id !== selectedNews.id);
+    
+    return others.sort((a, b) => {
+      let scoreA = 0;
+      let scoreB = 0;
+      
+      if (a.category === selectedNews.category) scoreA += 2;
+      if (b.category === selectedNews.category) scoreB += 2;
+      
+      if (a.department === selectedNews.department && selectedNews.department) scoreA += 1;
+      if (b.department === selectedNews.department && selectedNews.department) scoreB += 1;
+      
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      
+      const dateA = new Date(a.published_at || 0).getTime();
+      const dateB = new Date(b.published_at || 0).getTime();
+      return dateB - dateA;
+    }).slice(0, 5);
+  }, [news, selectedNews]);
+
   // Compartilhar notícia
   const handleShareWhatsApp = (item: MunicipalNews) => {
     const text = encodeURIComponent(`📰 *${item.title}*\n\nConfira as ações da Prefeitura Municipal:\n${window.location.origin}/noticias?id=${item.id}`);
@@ -449,7 +473,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
               {/* Trilho horizontal touch-swipe */}
               <div className="flex gap-4 overflow-x-auto pb-6 scrollbar-thin scrollbar-thumb-neutral-300 dark:scrollbar-thumb-neutral-700 snap-x snap-mandatory">
-                {news.filter(n => n.id !== selectedNews.id).slice(0, 5).map(item => (
+                {relatedNews.map(item => (
                   <div 
                     key={item.id} 
                     onClick={() => handleOpenArticle(item)}

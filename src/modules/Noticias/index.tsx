@@ -116,6 +116,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
             is_featured: updatedItem.is_featured,
             badge: updatedItem.badge,
             cover_image_url: updatedItem.cover_image_url,
+            gallery_urls: updatedItem.gallery_urls,
             project_status: updatedItem.project_status,
             project_budget: updatedItem.project_budget,
             updated_at: updatedItem.updated_at
@@ -145,6 +146,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
           is_featured: newsData.is_featured || false,
           badge: newsData.badge,
           cover_image_url: newsData.cover_image_url,
+          gallery_urls: newsData.gallery_urls || [],
           project_status: newsData.project_status,
           project_budget: newsData.project_budget,
           institution_id: currentInstitution?.id,
@@ -169,6 +171,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
             is_featured: newItem.is_featured,
             badge: newItem.badge,
             cover_image_url: newItem.cover_image_url,
+            gallery_urls: newItem.gallery_urls,
             project_status: newItem.project_status,
             project_budget: newItem.project_budget,
             views_count: 0

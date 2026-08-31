@@ -102,6 +102,8 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
   const [isFeatured, setIsFeatured] = useState(initialNews?.is_featured || false);
   const [badge, setBadge] = useState(initialNews?.badge || '');
   const [coverImageUrl, setCoverImageUrl] = useState(initialNews?.cover_image_url || '');
+  const [galleryUrls, setGalleryUrls] = useState<string[]>(initialNews?.gallery_urls || []);
+  const [galleryInput, setGalleryInput] = useState('');
 
   // Campos de Obra / Projeto
   const [isProject, setIsProject] = useState(!!initialNews?.project_status);
@@ -147,6 +149,56 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
     }
   };
 
+  // Upload da galeria de fotos
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    setIsUploading(true);
+    showToast(`Otimizando ${files.length} imagens...`, 'info');
+
+    try {
+      const newUrls = await Promise.all(files.map(async (file) => {
+        const compressed = await compressImage(file);
+        const filename = `noticias/galeria/${Date.now()}-${Math.random().toString(36).substring(7)}-${compressed.name}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('certidoes')
+          .upload(filename, compressed, { upsert: true });
+
+        if (uploadError) {
+          return new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(compressed);
+          });
+        } else {
+          const { data: publicData } = supabase.storage.from('certidoes').getPublicUrl(filename);
+          return publicData.publicUrl;
+        }
+      }));
+
+      setGalleryUrls(prev => [...prev, ...newUrls]);
+      showToast('Imagens adicionadas à galeria!', 'success');
+    } catch (err) {
+      console.error('Erro no upload da galeria:', err);
+      showToast('Erro ao processar imagens', 'error');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleAddGalleryUrl = () => {
+    if (galleryInput.trim()) {
+      setGalleryUrls([...galleryUrls, galleryInput.trim()]);
+      setGalleryInput('');
+    }
+  };
+
+  const handleRemoveGalleryUrl = (index: number) => {
+    setGalleryUrls(galleryUrls.filter((_, i) => i !== index));
+  };
+
   // Submissão do Formulário
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,6 +225,7 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
         is_featured: isFeatured,
         badge: badge.trim() || undefined,
         cover_image_url: coverImageUrl.trim() || undefined,
+        gallery_urls: galleryUrls.length > 0 ? galleryUrls : undefined,
         institution_id: institutionId,
         project_status: isProject ? projectStatus : undefined,
         project_budget: isProject && projectBudget ? parseFloat(projectBudget) : undefined
@@ -376,6 +429,77 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
                         className="w-full px-4 py-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Galeria de Fotos */}
+              <div className="p-5 bg-neutral-50 dark:bg-neutral-800/40 rounded-3xl border border-neutral-200/80 dark:border-neutral-700/80 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <ImageIcon size={18} className="text-emerald-500" />
+                    <span className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-300">
+                      Galeria de Fotos Adicionais
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 items-center">
+                  <label className="flex-1 w-full flex flex-col items-center justify-center p-6 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-2xl hover:border-emerald-500 cursor-pointer bg-white dark:bg-neutral-900/60 transition-colors">
+                    <Upload size={24} className="text-neutral-400 mb-2" />
+                    <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300 text-center">
+                      {isUploading ? 'Otimizando fotos...' : 'Carregar fotos do computador/celular'}
+                    </span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      multiple
+                      onChange={handleGalleryUpload} 
+                      disabled={isUploading}
+                      className="hidden" 
+                    />
+                  </label>
+
+                  <div className="text-xs text-neutral-400 font-bold">OU</div>
+
+                  <div className="flex-1 w-full flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="Colar link de imagem (URL)..."
+                      value={galleryInput}
+                      onChange={(e) => setGalleryInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddGalleryUrl();
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddGalleryUrl}
+                      className="px-4 py-3 bg-emerald-500 text-white rounded-2xl hover:bg-emerald-600 transition-colors shrink-0 flex items-center justify-center"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                {galleryUrls.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                    {galleryUrls.map((url, idx) => (
+                      <div key={idx} className="relative h-24 rounded-xl overflow-hidden group border border-neutral-200 dark:border-neutral-700">
+                        <img src={url} alt={`Galeria ${idx}`} className="w-full h-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveGalleryUrl(idx)}
+                          className="absolute top-1.5 right-1.5 p-1.5 bg-rose-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
