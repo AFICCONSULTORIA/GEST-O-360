@@ -55,7 +55,10 @@
 
   /* Esconder TUDO que não é o documento */
   nav,
-  .print-hidden {
+  header,
+  aside,
+  .print-hidden,
+  [data-print-hidden="true"] {
     display: none !important;
   }
 
@@ -76,11 +79,30 @@
   img {
     max-width: 100% !important;
     page-break-inside: avoid;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Quebras de página forçadas */
+  [data-page-break="true"],
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+  }
+
+  /* Blocos que não devem ser quebrados no meio */
+  [data-signature-block="true"] {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* Tabelas não devem quebrar no meio de uma linha */
-  tr, td {
-    page-break-inside: avoid;
+  tr, td, th {
+    page-break-inside: avoid !important;
   }
 
   /* Repetir cabeçalho e rodapé em cada página */
@@ -99,8 +121,8 @@
     font-size: 8pt;
     font-family: 'Times New Roman', serif;
     color: #4b5563;
-    margin-top: 15px;
-    padding-bottom: 25px;
+    margin-top: 10px;
+    padding-bottom: 10px;
   }
   
   .print-page-number::after {
