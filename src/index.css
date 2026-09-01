@@ -122,11 +122,19 @@
     font-family: 'Times New Roman', serif;
     color: #4b5563;
     margin-top: 10px;
-    padding-bottom: 10px;
+  /* Relatório Financeiro Impresso */
+  .financial-report-print {
+    display: block !important;
+    background: white !important;
+    color: #111827 !important;
+    font-family: 'Inter', system-ui, sans-serif !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
   }
   
-  .print-page-number::after {
-    content: "Página " counter(page);
+  .financial-report-screen {
+    display: none !important;
   }
 }
 

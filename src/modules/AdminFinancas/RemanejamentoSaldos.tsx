@@ -5,6 +5,8 @@ import {
   Clock, Plus, Trash2, RefreshCw, Zap, ShieldAlert, FileSpreadsheet,
   ArrowRight, Info, Edit2, Upload, FileText, X, ChevronDown, ChevronUp
 } from 'lucide-react';
+import { parseFinancialContent } from './ComparativoExtratos';
+import { showToast } from '../../components/ui/Toast';
 
 export interface OriginAccount {
   id: string;
@@ -515,7 +517,7 @@ export const RemanejamentoSaldos: React.FC = () => {
     }
   };
 
-  // LEITURA DE MÚLTIPLOS ARQUIVOS TXT/CNAB 240
+  // LEITURA DE MÚLTIPLOS ARQUIVOS TXT/CNAB 240/400/CSV
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []) as File[];
     if (files.length === 0) return;
@@ -524,80 +526,32 @@ export const RemanejamentoSaldos: React.FC = () => {
 
     for (const file of files) {
       const content = await file.text();
-      const lines = content.split('\n');
-      const parsedData: { account: string, amount: number }[] = [];
-      let totalAmount = 0;
+      const { lines, totalAmount, detectedCategory } = parseFinancialContent(content, file.name);
 
-      lines.forEach(line => {
-        if (!line.trim()) return;
-
-        if (line.length >= 238 && line[7] === '3' && line[13] === 'A') {
-          const account = line.substring(43, 73).trim();
-          const rawAmount = line.substring(119, 134);
-          const amount = parseInt(rawAmount, 10) / 100;
-
-          if (amount > 0 || account) {
-            parsedData.push({ account, amount });
-            totalAmount += amount;
-          }
-          return;
-        }
-        
-        if (line.length >= 238 && (line[7] === '0' || line[7] === '1' || line[7] === '5' || line[7] === '9' || line[13] === 'B' || line[13] === 'C')) {
-          return;
-        }
-
-        const trimmed = line.trim();
-        const numberMatches = trimmed.match(/[\d.,]+/g);
-        
-        let amount = 0;
-        let account = trimmed;
-
-        if (numberMatches && numberMatches.length > 0) {
-          const rawAmount = numberMatches[numberMatches.length - 1];
-          amount = parseBRLToNumber(rawAmount);
-          
-          const lastIndex = trimmed.lastIndexOf(rawAmount);
-          if (lastIndex !== -1) {
-            account = trimmed.substring(0, lastIndex) + trimmed.substring(lastIndex + rawAmount.length);
-          }
-          
-          account = account.replace(/R\$\s*/gi, '')
-                           .replace(/\t/g, ' ')
-                           .replace(/\s+/g, ' ')
-                           .replace(/[-:;]\s*$/, '')
-                           .trim();
-        }
-
-        if (account || amount > 0) {
-          parsedData.push({ account: account || 'Desconhecido', amount });
-          totalAmount += amount;
-        }
-      });
-
-      if (parsedData.length > 0) {
-        const nameLower = file.name.toLowerCase();
-        let cat: 'Movimento' | 'FUS' | 'Educação' | 'FUNDEB' | 'Custeio' | 'Notas Fiscais' | 'Verbas Indenizatórias' | 'Sem conta' = 'Sem conta';
-        if (nameLower.includes('movimento')) cat = 'Movimento';
-        else if (nameLower.includes('fus')) cat = 'FUS';
-        else if (nameLower.includes('educação') || nameLower.includes('educacao')) cat = 'Educação';
-        else if (nameLower.includes('fundeb')) cat = 'FUNDEB';
-        else if (nameLower.includes('custeio')) cat = 'Custeio';
-        else if (nameLower.includes('nota') || nameLower.includes('notas')) cat = 'Notas Fiscais';
-        else if (nameLower.includes('verba') || nameLower.includes('indenizat')) cat = 'Verbas Indenizatórias';
+      if (lines.length > 0 || totalAmount > 0) {
+        let cat: ImportedFile['category'] = 'Sem conta';
+        if (detectedCategory === 'Movimento') cat = 'Movimento';
+        else if (detectedCategory === 'FUS / Saúde') cat = 'FUS';
+        else if (detectedCategory === 'Educação') cat = 'Educação';
+        else if (detectedCategory === 'FUNDEB') cat = 'FUNDEB';
+        else if (detectedCategory === 'Custeio') cat = 'Custeio';
+        else if (detectedCategory === 'Verbas Indenizatórias') cat = 'Verbas Indenizatórias';
 
         newFiles.push({
-          id: Math.random().toString(36).substr(2, 9),
+          id: Math.random().toString(36).substring(2, 9),
           fileName: file.name,
           totalAmount,
-          lines: parsedData,
+          lines: lines.map(l => ({ account: l.account, amount: l.amount })),
           isExpanded: false,
           category: cat
         });
       }
     }
 
-    setImportedFiles(prev => [...prev, ...newFiles]);
+    if (newFiles.length > 0) {
+      setImportedFiles(prev => [...prev, ...newFiles]);
+      showToast(`${newFiles.length} arquivo(s) importado(s) com sucesso!`, 'success');
+    }
     e.target.value = '';
   };
 
@@ -657,18 +611,18 @@ export const RemanejamentoSaldos: React.FC = () => {
     <div className="space-y-8 animate-in fade-in duration-300 font-['Inter']">
       
       {/* PAINEL SUPERIOR - RESUMO & AÇÕES RÁPIDAS */}
-      <div className="bg-gradient-to-br from-[#003B6F] to-[#002244] rounded-3xl p-6 md:p-8 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-white/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="bg-slate-900 dark:bg-black rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
           <div>
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-widest mb-1">
               <Zap size={14} /> Sistema de Gestão Financeira Dinâmica
             </div>
-            <h2 className="text-2xl md:text-3xl font-black font-['Montserrat']">
+            <h2 className="text-2xl md:text-3xl font-black font-['Montserrat'] tracking-tight text-white">
               Matriz de Remanejamento & Distribuição de Saldos
             </h2>
-            <p className="text-blue-100/80 text-sm mt-1 max-w-2xl">
+            <p className="text-slate-300 text-sm mt-1 max-w-2xl">
               Alocação em tempo real de saldos bancários disponíveis para liquidação de demandas orçamentárias municipais.
             </p>
           </div>
@@ -676,14 +630,14 @@ export const RemanejamentoSaldos: React.FC = () => {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handleRunExampleSimulation}
-              className="flex items-center gap-2 px-5 py-3 bg-[#00A86B] hover:bg-[#00905B] text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-[#00A86B]/30 hover:scale-[1.02] active:scale-[0.98]"
+              className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-600/20 hover:scale-[1.02] active:scale-[0.98]"
               title="Carregar alocação de exemplo: FPM R$ 200k + ICMS R$ 127.698,66 -> MOVIMENTO"
             >
               <Zap size={16} /> Executar Exemplo do Requisito
             </button>
             <button
               onClick={handleResetAll}
-              className="flex items-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-bold text-sm backdrop-blur-md transition-all"
+              className="flex items-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm border border-slate-700 transition-all"
             >
               <RefreshCw size={16} /> Restaurar Saldos
             </button>
@@ -691,22 +645,22 @@ export const RemanejamentoSaldos: React.FC = () => {
         </div>
 
         {/* METRICAS CHAVE */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-white/10">
-          <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-200 uppercase font-semibold">Total Saldos Origem Disponíveis</p>
-            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat']">{formatCurrency(grandTotalOriginAvailable)}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-800">
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
+            <p className="text-xs text-slate-300 uppercase font-semibold">Total Saldos Origem Disponíveis</p>
+            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat'] text-white">{formatCurrency(grandTotalOriginAvailable)}</p>
           </div>
-          <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-200 uppercase font-semibold">Total Necessidades Demandadas</p>
-            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat']">{formatCurrency(grandTotalDemandsRequired)}</p>
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
+            <p className="text-xs text-slate-300 uppercase font-semibold">Total Necessidades Demandadas</p>
+            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat'] text-white">{formatCurrency(grandTotalDemandsRequired)}</p>
           </div>
-          <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-200 uppercase font-semibold">Total Remanejado</p>
-            <p className="text-xl md:text-2xl font-black text-emerald-300 mt-1 font-['Montserrat']">{formatCurrency(grandTotalAllocated)}</p>
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
+            <p className="text-xs text-slate-300 uppercase font-semibold">Total Remanejado</p>
+            <p className="text-xl md:text-2xl font-black text-emerald-400 mt-1 font-['Montserrat']">{formatCurrency(grandTotalAllocated)}</p>
           </div>
-          <div className="bg-white/10 rounded-2xl p-4 backdrop-blur-sm">
-            <p className="text-xs text-blue-200 uppercase font-semibold">Demandas Liquidadas</p>
-            <p className="text-xl md:text-2xl font-black text-amber-300 mt-1 font-['Montserrat']">
+          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
+            <p className="text-xs text-slate-300 uppercase font-semibold">Demandas Liquidadas</p>
+            <p className="text-xl md:text-2xl font-black text-amber-400 mt-1 font-['Montserrat']">
               {totalLiquidatedDestinations} de {destinations.length} <span className="text-xs font-normal">({Math.round((totalLiquidatedDestinations / destinations.length) * 100)}%)</span>
             </p>
           </div>
