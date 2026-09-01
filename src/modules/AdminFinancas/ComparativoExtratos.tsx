@@ -270,119 +270,16 @@ export const ComparativoExtratos: React.FC = () => {
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return {
-      '2026-07': {
-        monthId: '2026-07',
-        monthLabel: 'Julho/2026',
-        files: [
-          { id: 'f-jul-1', fileName: 'Extrato_Movimento_Jul.txt', fileType: 'Extrato TXT', totalAmount: 480000.00, category: 'Movimento', lines: [{ id: '1', account: 'Folha Pagamento', amount: 480000.00 }], isExpanded: false, uploadDate: '2026-07-31' },
-          { id: 'f-jul-2', fileName: 'Extrato_Saude_FUS_Jul.txt', fileType: 'Extrato TXT', totalAmount: 310000.00, category: 'FUS / Saúde', lines: [{ id: '2', account: 'Medicamentos & Plantões', amount: 310000.00 }], isExpanded: false, uploadDate: '2026-07-31' },
-          { id: 'f-jul-3', fileName: 'Extrato_Educacao_Jul.txt', fileType: 'Extrato TXT', totalAmount: 220000.00, category: 'Educação', lines: [{ id: '3', account: 'Merenda & Transporte', amount: 220000.00 }], isExpanded: false, uploadDate: '2026-07-31' },
-          { id: 'f-jul-4', fileName: 'Extrato_FUNDEB_Jul.txt', fileType: 'Extrato TXT', totalAmount: 410000.00, category: 'FUNDEB', lines: [{ id: '4', account: 'Professores Efetivos', amount: 410000.00 }], isExpanded: false, uploadDate: '2026-07-31' },
-        ],
-        invoices: [
-          { id: 'nf-jul-1', category: 'FUS / Saúde', amount: 85400.00, description: 'Nota Ref. Medicamentos', date: '2026-07-15' },
-          { id: 'nf-jul-2', category: 'Educação', amount: 64200.00, description: 'Nota Ref. Merenda', date: '2026-07-18' },
-        ],
-        savedAt: '2026-07-31T18:00:00.000Z'
-      },
-      '2026-08': {
-        monthId: '2026-08',
-        monthLabel: 'Agosto/2026',
-        files: [
-          { id: 'f-ago-1', fileName: 'Extrato_Movimento_Ago.txt', fileType: 'Extrato TXT', totalAmount: 512000.00, category: 'Movimento', lines: [{ id: '1', account: 'Folha Pagamento', amount: 512000.00 }], isExpanded: false, uploadDate: '2026-08-31' },
-          { id: 'f-ago-2', fileName: 'Extrato_Saude_FUS_Ago.txt', fileType: 'Extrato TXT', totalAmount: 345000.00, category: 'FUS / Saúde', lines: [{ id: '2', account: 'Medicamentos & Plantões', amount: 345000.00 }], isExpanded: false, uploadDate: '2026-08-31' },
-          { id: 'f-ago-3', fileName: 'Extrato_Educacao_Ago.txt', fileType: 'Extrato TXT', totalAmount: 238000.00, category: 'Educação', lines: [{ id: '3', account: 'Merenda & Transporte', amount: 238000.00 }], isExpanded: false, uploadDate: '2026-08-31' },
-          { id: 'f-ago-4', fileName: 'Extrato_FUNDEB_Ago.txt', fileType: 'Extrato TXT', totalAmount: 425000.00, category: 'FUNDEB', lines: [{ id: '4', account: 'Professores Efetivos', amount: 425000.00 }], isExpanded: false, uploadDate: '2026-08-31' },
-          { id: 'f-ago-5', fileName: 'Extrato_Custeio_Ago.txt', fileType: 'Extrato TXT', totalAmount: 95000.00, category: 'Custeio', lines: [{ id: '5', account: 'Manutenção Predial', amount: 95000.00 }], isExpanded: false, uploadDate: '2026-08-31' },
-        ],
-        invoices: [
-          { id: 'nf-ago-1', category: 'FUS / Saúde', amount: 92100.00, description: 'Nota Ref. Medicamentos', date: '2026-08-14' },
-          { id: 'nf-ago-2', category: 'Educação', amount: 68900.00, description: 'Nota Ref. Merenda', date: '2026-08-20' },
-          { id: 'nf-ago-3', category: 'Custeio', amount: 45000.00, description: 'Nota Ref. Reparos', date: '2026-08-25' },
-        ],
-        savedAt: '2026-08-31T18:00:00.000Z'
-      }
-    };
+    return {};
   });
 
   // Estado do Mês Selecionado Atual
   const [currentFiles, setCurrentFiles] = useState<ExtratoFile[]>(() => {
-    return monthlyHistory['2026-09']?.files || [
-      {
-        id: 'f-set-1',
-        fileName: 'Extrato_Conta_Movimento_Set2026.txt',
-        fileType: 'Extrato TXT',
-        totalAmount: 548000.00,
-        category: 'Movimento',
-        lines: [
-          { id: 'l1', account: 'Folha Salarial Servidores', amount: 490000.00, date: '2026-09-05' },
-          { id: 'l2', account: 'Encargos INSS / FGTS', amount: 58000.00, date: '2026-09-07' },
-        ],
-        isExpanded: false,
-        uploadDate: '2026-09-01'
-      },
-      {
-        id: 'f-set-2',
-        fileName: 'Extrato_Saude_FUS_Set2026.txt',
-        fileType: 'Extrato TXT',
-        totalAmount: 382500.00,
-        category: 'FUS / Saúde',
-        lines: [
-          { id: 'l3', account: 'Hospital Municipal - Insumos', amount: 195000.00, date: '2026-09-02' },
-          { id: 'l4', account: 'Contrato Médicos Plantonistas', amount: 187500.00, date: '2026-09-03' },
-        ],
-        isExpanded: false,
-        uploadDate: '2026-09-01'
-      },
-      {
-        id: 'f-set-3',
-        fileName: 'Extrato_Educacao_Set2026.txt',
-        fileType: 'Extrato TXT',
-        totalAmount: 265000.00,
-        category: 'Educação',
-        lines: [
-          { id: 'l5', account: 'Transporte Escolar Rural', amount: 145000.00, date: '2026-09-04' },
-          { id: 'l6', account: 'Aquisição de Merenda Escolar', amount: 120000.00, date: '2026-09-04' },
-        ],
-        isExpanded: false,
-        uploadDate: '2026-09-01'
-      },
-      {
-        id: 'f-set-4',
-        fileName: 'Extrato_FUNDEB_Set2026.txt',
-        fileType: 'Extrato TXT',
-        totalAmount: 450000.00,
-        category: 'FUNDEB',
-        lines: [
-          { id: 'l7', account: 'Remuneração Magistério 70%', amount: 450000.00, date: '2026-09-05' },
-        ],
-        isExpanded: false,
-        uploadDate: '2026-09-01'
-      },
-      {
-        id: 'f-set-5',
-        fileName: 'Extrato_Custeio_Set2026.txt',
-        fileType: 'Extrato TXT',
-        totalAmount: 115000.00,
-        category: 'Custeio',
-        lines: [
-          { id: 'l8', account: 'Energia Elétrica & Água Prédios Públicos', amount: 72000.00, date: '2026-09-06' },
-          { id: 'l9', account: 'Combustível Frota Municipal', amount: 43000.00, date: '2026-09-06' },
-        ],
-        isExpanded: false,
-        uploadDate: '2026-09-01'
-      }
-    ];
+    return monthlyHistory['2026-09']?.files || [];
   });
 
   const [currentInvoices, setCurrentInvoices] = useState<InvoiceItem[]>(() => {
-    return monthlyHistory['2026-09']?.invoices || [
-      { id: 'nf-set-1', category: 'FUS / Saúde', amount: 104500.00, description: 'Nota Ref. Medicamentos Hospital', date: '2026-09-02' },
-      { id: 'nf-set-2', category: 'Educação', amount: 78900.00, description: 'Nota Ref. Merenda Escolar', date: '2026-09-03' },
-      { id: 'nf-set-3', category: 'Custeio', amount: 43000.00, description: 'Nota Ref. Combustível', date: '2026-09-05' },
-      { id: 'nf-set-4', category: 'FUS / Saúde', amount: 35000.00, description: 'Nota Ref. Locação Equipamentos', date: '2026-09-06' }
-    ];
+    return monthlyHistory['2026-09']?.invoices || [];
   });
 
   // Modais de Cadastro
