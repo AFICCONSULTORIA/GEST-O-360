@@ -122,6 +122,8 @@
     font-family: 'Times New Roman', serif;
     color: #4b5563;
     margin-top: 10px;
+  }
+  
   /* Relatório Financeiro Impresso */
   .financial-report-print {
     display: block !important;
