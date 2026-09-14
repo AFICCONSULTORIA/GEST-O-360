@@ -750,24 +750,25 @@ export const ComparativoExtratos: React.FC = () => {
       <div className="financial-report-screen space-y-8 animate-in fade-in duration-300 font-['Inter'] print:hidden">
         
         {/* 1. CABEÇALHO DO COMPARATIVO & SELETOR DE MÊS */}
-        <div className="bg-slate-900 dark:bg-black rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden">
-          <div className="absolute right-0 top-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900 via-slate-900 to-indigo-950 p-6 md:p-8 text-white shadow-xl border border-indigo-950/50">
+          <div className="absolute right-0 top-0 w-96 h-96 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute left-1/4 -bottom-20 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
             <div>
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-widest mb-1.5">
-                <Scale size={16} /> Extratos, Notas Fiscais & Análise Comparativa
+              <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 rounded-full text-[11px] font-black uppercase tracking-widest mb-2.5 backdrop-blur-sm">
+                <Scale size={14} className="text-emerald-400" /> Extratos, Notas Fiscais & Fechamento
               </div>
               <h2 className="text-2xl md:text-3xl font-black font-['Montserrat'] tracking-tight text-white">
                 Comparativo Visual de Contas & Fechamento Mensal
               </h2>
               <p className="text-slate-300 text-sm mt-1.5 max-w-2xl leading-relaxed">
-                Apure os totais de cada conta, separe as Notas Fiscais dos arquivos discriminados e acompanhe a evolução mês a mês para verificar aumentos de despesas.
+                Apure os totais por fonte de recurso, separe as Notas Fiscais dos arquivos discriminados e acompanhe a evolução mês a mês para controle rigoroso de despesas.
               </p>
             </div>
 
             {/* Seletor de Competência (Mês/Ano) */}
-            <div className="flex flex-wrap items-center gap-2.5 bg-slate-800/90 p-2 rounded-2xl border border-slate-700">
+            <div className="flex flex-wrap items-center gap-2.5 bg-slate-800/80 backdrop-blur-md p-2 rounded-2xl border border-slate-700/80 shadow-lg">
               <div className="flex items-center gap-2 px-3 text-xs font-bold text-slate-300">
                 <Calendar size={15} className="text-indigo-400" /> Competência:
               </div>
@@ -775,7 +776,7 @@ export const ComparativoExtratos: React.FC = () => {
               <select
                 value={selectedMonth}
                 onChange={e => handleSelectMonth(e.target.value)}
-                className="bg-slate-950 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl border border-slate-700 outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500"
+                className="bg-slate-950 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl border border-slate-700 outline-none cursor-pointer focus:ring-2 focus:ring-indigo-500 shadow-inner"
               >
                 {MONTH_OPTIONS.map(m => (
                   <option key={m.id} value={m.id}>{m.label}</option>
@@ -784,7 +785,7 @@ export const ComparativoExtratos: React.FC = () => {
 
               <button
                 onClick={handleSaveMonthClose}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-md active:scale-95"
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md shadow-emerald-600/25 active:scale-95"
                 title="Salvar fechamento do mês no histórico comparativo"
               >
                 <Save size={14} /> Salvar Mês
@@ -793,66 +794,66 @@ export const ComparativoExtratos: React.FC = () => {
           </div>
 
           {/* 2. CARDS DE TOTAIS PRINCIPAIS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-800">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-800/80">
             
             {/* Card 1: Total Geral Consolidado */}
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/60 flex flex-col justify-between hover:border-slate-600 transition-colors">
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 border border-emerald-500/30 flex flex-col justify-between hover:border-emerald-500/60 transition-all shadow-sm group">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-300 uppercase font-black tracking-wider">Total Geral Consolidado</span>
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                  <Wallet size={16} />
+                <span className="text-[11px] text-slate-300 uppercase font-black tracking-wider">Total Consolidado</span>
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold ring-1 ring-emerald-500/30">
+                  <Wallet size={18} />
                 </div>
               </div>
               <div className="mt-3">
                 <p className="text-2xl md:text-3xl font-black font-['Montserrat'] text-white">
                   {formatCurrency(grandTotalMonth)}
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">Soma de todas as contas no mês</p>
+                <p className="text-[11px] text-emerald-300/80 mt-1 font-medium">Soma geral de todas as fontes</p>
               </div>
             </div>
 
             {/* Card 2: Total Arquivos de Extrato */}
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/60 flex flex-col justify-between hover:border-slate-600 transition-colors">
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 border border-blue-500/30 flex flex-col justify-between hover:border-blue-500/60 transition-all shadow-sm group">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-300 uppercase font-black tracking-wider">Arquivos & Extratos</span>
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold">
-                  <FileSpreadsheet size={16} />
+                <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold ring-1 ring-blue-500/30">
+                  <FileSpreadsheet size={18} />
                 </div>
               </div>
               <div className="mt-3">
                 <p className="text-2xl md:text-3xl font-black font-['Montserrat'] text-sky-400">
                   {formatCurrency(totalFilesAmount)}
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">{currentFiles.length} arquivo(s) discriminado(s)</p>
+                <p className="text-[11px] text-sky-300/80 mt-1 font-medium">{currentFiles.length} arquivo(s) discriminado(s)</p>
               </div>
             </div>
 
             {/* Card 3: Total Notas Fiscais */}
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/60 flex flex-col justify-between hover:border-slate-600 transition-colors">
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 border border-amber-500/30 flex flex-col justify-between hover:border-amber-500/60 transition-all shadow-sm group">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-300 uppercase font-black tracking-wider">Notas Fiscais</span>
-                <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                  <Receipt size={16} />
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold ring-1 ring-amber-500/30">
+                  <Receipt size={18} />
                 </div>
               </div>
               <div className="mt-3">
                 <p className="text-2xl md:text-3xl font-black font-['Montserrat'] text-amber-400">
                   {formatCurrency(totalInvoicesAmount)}
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">{currentInvoices.length} nota(s) lançada(s)</p>
+                <p className="text-[11px] text-amber-300/80 mt-1 font-medium">{currentInvoices.length} nota(s) lançada(s)</p>
               </div>
             </div>
 
             {/* Card 4: Comparativo vs Mês Anterior */}
-            <div className="bg-slate-800/60 rounded-2xl p-5 border border-slate-700/60 flex flex-col justify-between hover:border-slate-600 transition-colors">
+            <div className="bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 border border-indigo-500/30 flex flex-col justify-between hover:border-indigo-500/60 transition-all shadow-sm group">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] text-slate-300 uppercase font-black tracking-wider">Variação vs Mês Anterior</span>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold ring-1 ${
                   previousMonthComparison.diff > 0 
-                    ? 'bg-rose-500/20 text-rose-400' 
-                    : 'bg-emerald-500/20 text-emerald-400'
+                    ? 'bg-rose-500/20 text-rose-400 ring-rose-500/30' 
+                    : 'bg-emerald-500/20 text-emerald-400 ring-emerald-500/30'
                 }`}>
-                  {previousMonthComparison.diff > 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
+                  {previousMonthComparison.diff > 0 ? <TrendingUp size={18} /> : <TrendingDown size={18} />}
                 </div>
               </div>
               <div className="mt-3">
@@ -864,8 +865,8 @@ export const ComparativoExtratos: React.FC = () => {
                       }`}>
                         {previousMonthComparison.diff > 0 ? '+' : ''}{previousMonthComparison.percent.toFixed(1)}%
                       </span>
-                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                        previousMonthComparison.diff > 0 ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
+                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${
+                        previousMonthComparison.diff > 0 ? 'bg-rose-500/25 text-rose-300' : 'bg-emerald-500/25 text-emerald-300'
                       }`}>
                         {previousMonthComparison.diff > 0 ? 'Aumento' : 'Redução'}
                       </span>
@@ -877,7 +878,7 @@ export const ComparativoExtratos: React.FC = () => {
                 ) : (
                   <>
                     <p className="text-xl font-bold text-slate-300">Base Inicial</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Primeiro mês registrado</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Primeira competência analisada</p>
                   </>
                 )}
               </div>
@@ -888,15 +889,16 @@ export const ComparativoExtratos: React.FC = () => {
 
         {/* 3. GRADE DE TOTAIS POR CONTA BANCÁRIA (DISCRIMINAÇÃO TOTAL) */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2 font-['Montserrat']">
                 <Layers size={18} className="text-indigo-600 dark:text-indigo-400" />
-                Totais por Conta Bancária / Categoria
+                Apuração por Conta Bancária & Fonte de Recursos
               </h3>
-              <p className="text-xs text-slate-500">Valores apurados individualmente no mês ativo.</p>
+              <p className="text-xs text-slate-500">Valores consolidados no mês para cada rubrica municipal.</p>
             </div>
-            <span className="text-xs font-bold text-slate-400">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold w-fit">
+              <span className="w-2 h-2 rounded-full bg-indigo-500" />
               {ACCOUNT_CATEGORIES.filter(c => accountCategoryTotals[c].total > 0).length} contas com movimentação
             </span>
           </div>
@@ -906,23 +908,24 @@ export const ComparativoExtratos: React.FC = () => {
               const data = accountCategoryTotals[cat];
               const hasValue = data.total > 0;
               const percentOfGrand = grandTotalMonth > 0 ? (data.total / grandTotalMonth) * 100 : 0;
+              const filesRatio = data.total > 0 ? (data.files / data.total) * 100 : 0;
 
               return (
                 <div 
                   key={cat}
                   className={`p-5 rounded-3xl border transition-all ${
                     hasValue 
-                      ? 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-700' 
-                      : 'bg-slate-50/50 dark:bg-slate-900/30 border-slate-100 dark:border-slate-800/60 opacity-60'
+                      ? 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-md hover:border-indigo-300 dark:hover:border-indigo-700' 
+                      : 'bg-slate-50/60 dark:bg-slate-900/30 border-slate-100 dark:border-slate-800/50 opacity-60'
                   }`}
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                    <span className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900/40 rounded-lg text-[10px] font-black uppercase tracking-wider">
                       {cat}
                     </span>
                     {hasValue && (
                       <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400">
-                        {percentOfGrand.toFixed(1)}% do total
+                        {percentOfGrand.toFixed(1)}%
                       </span>
                     )}
                   </div>
@@ -930,6 +933,17 @@ export const ComparativoExtratos: React.FC = () => {
                   <p className="text-xl font-black font-['Montserrat'] text-slate-900 dark:text-white mt-2">
                     {formatCurrency(data.total)}
                   </p>
+
+                  {/* Barra de Proporção Extrato vs Notas */}
+                  {hasValue && (
+                    <div className="mt-3 h-1.5 w-full bg-amber-500/30 rounded-full overflow-hidden flex">
+                      <div 
+                        className="h-full bg-blue-500 transition-all duration-500" 
+                        style={{ width: `${filesRatio}%` }} 
+                        title={`Extratos: ${filesRatio.toFixed(0)}%`}
+                      />
+                    </div>
+                  )}
 
                   <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800/80 grid grid-cols-2 gap-2 text-[11px]">
                     <div>
@@ -948,42 +962,44 @@ export const ComparativoExtratos: React.FC = () => {
         </div>
 
         {/* 4. SUB-ABAS INTERNAS: EXTRATOS, NOTAS FISCAIS E COMPARATIVO VISUAL */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden">
           
-          {/* Navigation Tabs */}
-          <div className="flex px-6 pt-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 gap-2 overflow-x-auto">
-            <button
-              onClick={() => setViewSubTab('extratos')}
-              className={`py-3.5 px-5 font-black text-xs uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                viewSubTab === 'extratos'
-                  ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              <FileSpreadsheet size={16} /> Arquivos & Extratos Discriminados ({currentFiles.length})
-            </button>
+          {/* Segmented Control de Sub-abas */}
+          <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/50">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setViewSubTab('extratos')}
+                className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all ${
+                  viewSubTab === 'extratos'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md border border-slate-200/70 dark:border-slate-700'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <FileSpreadsheet size={16} /> Arquivos & Extratos ({currentFiles.length})
+              </button>
 
-            <button
-              onClick={() => setViewSubTab('notas')}
-              className={`py-3.5 px-5 font-black text-xs uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                viewSubTab === 'notas'
-                  ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              <Receipt size={16} /> Notas Fiscais Separadas ({currentInvoices.length})
-            </button>
+              <button
+                onClick={() => setViewSubTab('notas')}
+                className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all ${
+                  viewSubTab === 'notas'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md border border-slate-200/70 dark:border-slate-700'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <Receipt size={16} /> Notas Fiscais Separadas ({currentInvoices.length})
+              </button>
 
-            <button
-              onClick={() => setViewSubTab('comparativo')}
-              className={`py-3.5 px-5 font-black text-xs uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 shrink-0 ${
-                viewSubTab === 'comparativo'
-                  ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-              }`}
-            >
-              <BarChart3 size={16} /> Comparativo Visual Mês a Mês (Aumentos & Tendências)
-            </button>
+              <button
+                onClick={() => setViewSubTab('comparativo')}
+                className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all ${
+                  viewSubTab === 'comparativo'
+                    ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-md border border-slate-200/70 dark:border-slate-700'
+                    : 'text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800/50'
+                }`}
+              >
+                <BarChart3 size={16} /> Comparativo Visual Mês a Mês
+              </button>
+            </div>
           </div>
 
           <div className="p-6 md:p-8">
@@ -1275,21 +1291,42 @@ export const ComparativoExtratos: React.FC = () => {
                 </div>
 
                 {/* GRÁFICO 1: EVOLUÇÃO DO TOTAL GERAL MÊS A MÊS */}
-                <div className="bg-slate-50/50 dark:bg-slate-900/30 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800">
-                  <h5 className="text-xs font-black uppercase tracking-wider text-slate-500 mb-4 font-['Montserrat']">
-                    Evolução do Total Geral Consolidado (Mês a Mês)
-                  </h5>
-                  <div className="h-[320px] w-full">
+                <div className="bg-slate-50/70 dark:bg-slate-900/50 p-6 md:p-8 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+                    <div>
+                      <h5 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-white font-['Montserrat']">
+                        Evolução do Total Geral Consolidado (Mês a Mês)
+                      </h5>
+                      <p className="text-xs text-slate-500">Comparativo dinâmico entre extratos bancários, notas fiscais e montante global.</p>
+                    </div>
+                  </div>
+                  <div className="h-[340px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart data={comparativeChartData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#888" opacity={0.15} />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#888" opacity={0.12} />
                         <XAxis dataKey="monthName" axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12, fontWeight: 'bold' }} />
                         <YAxis axisLine={false} tickLine={false} tickFormatter={v => `R$ ${(v / 1000).toFixed(0)}k`} tick={{ fill: '#888', fontSize: 11 }} />
-                        <Tooltip formatter={(val: number) => formatCurrency(val)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }} />
-                        <Legend wrapperStyle={{ paddingTop: '15px' }} />
-                        <Bar dataKey="Extratos (R$)" fill="#0284c7" radius={[6, 6, 0, 0]} maxBarSize={45} />
-                        <Bar dataKey="Notas Fiscais (R$)" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={45} />
-                        <Line type="monotone" dataKey="Total Geral (R$)" stroke="#10b981" strokeWidth={3} dot={{ r: 5, fill: '#10b981' }} />
+                        <Tooltip 
+                          formatter={(val: number) => formatCurrency(val)} 
+                          contentStyle={{ 
+                            borderRadius: '16px', 
+                            border: '1px solid rgba(255,255,255,0.1)', 
+                            boxShadow: '0 10px 30px -5px rgba(0,0,0,0.2)',
+                            backgroundColor: '#0f172a',
+                            color: '#ffffff'
+                          }} 
+                        />
+                        <Legend wrapperStyle={{ paddingTop: '20px', fontWeight: 'bold', fontSize: '12px' }} />
+                        <Bar dataKey="Extratos (R$)" fill="#3b82f6" radius={[8, 8, 0, 0]} maxBarSize={42} />
+                        <Bar dataKey="Notas Fiscais (R$)" fill="#f59e0b" radius={[8, 8, 0, 0]} maxBarSize={42} />
+                        <Line 
+                          type="monotone" 
+                          dataKey="Total Geral (R$)" 
+                          stroke="#10b981" 
+                          strokeWidth={3.5} 
+                          dot={{ r: 5, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }} 
+                          activeDot={{ r: 7 }} 
+                        />
                       </ComposedChart>
                     </ResponsiveContainer>
                   </div>
