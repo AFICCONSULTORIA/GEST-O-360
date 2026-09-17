@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, Search, User, FileText, Phone, MapPin, Calendar, 
   Heart, AlertTriangle, CheckCircle2, Edit2, Trash2, XCircle, 
   Activity, Stethoscope, ChevronRight, Droplet, Clock, ShieldAlert,
-  Baby, Accessibility, Pill, ShoppingBag, History, FileSpreadsheet
+  Baby, Accessibility, Pill, ShoppingBag, History, FileSpreadsheet,
+  ClipboardCheck, Printer
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
@@ -12,6 +13,10 @@ import {
   Patient, Appointment, ExamRequest, MedicationDispensation, HealthUnit, HealthProfessional, DEFAULT_HEALTH_UNITS, 
   formatCPF, formatSUS, formatPhone, getAge 
 } from '../types';
+import { ExamResultModal } from './ExamResultModal';
+import { PrescribeExamsModal } from './PrescribeExamsModal';
+import { parseExamResult } from '../utils/examTemplates';
+import { printExamGuide } from '../utils/printReceipt';
 
 interface SaudePatientsProps {
   patients: Patient[];
@@ -59,6 +64,16 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
   const [selectedPatientForDrawer, setSelectedPatientForDrawer] = useState<Patient | null>(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [selectedRequestForResult, setSelectedRequestForResult] = useState<ExamRequest | null>(null);
+  const [isPrescribingExamsForPatient, setIsPrescribingExamsForPatient] = useState<Patient | null>(null);
+  const [localExtraRequests, setLocalExtraRequests] = useState<ExamRequest[]>([]);
+
+  // Mesclar solicitações do servidor com solicitações geradas recentemente na sessão
+  const effectiveRequests = useMemo(() => {
+    const existingIds = new Set(requests.map(r => r.id));
+    const newItems = localExtraRequests.filter(r => !existingIds.has(r.id));
+    return [...newItems, ...requests];
+  }, [requests, localExtraRequests]);
 
   const filteredPatients = patients.filter(p => {
     const matchSearch = 
@@ -232,7 +247,7 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
             const age = getAge(patient.birth_date);
             const cleanCpf = (patient.cpf || '').replace(/\D/g, '');
             const patientApts = appointments.filter(a => (a.patient_cpf || '').replace(/\D/g, '') === cleanCpf || a.patient_id === patient.id);
-            const patientExams = requests.filter(r => (r.patient_cpf || '').replace(/\D/g, '') === cleanCpf || r.patient_id === patient.id);
+            const patientExams = effectiveRequests.filter(r => (r.patient_cpf || '').replace(/\D/g, '') === cleanCpf || r.patient_id === patient.id);
             const patientDisps = dispensations.filter(d => (d.patient_cpf || '').replace(/\D/g, '') === cleanCpf || d.patient_id === patient.id);
             
             const attendedCount = patientApts.filter(a => a.status === 'Atendido').length;
@@ -377,7 +392,7 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
           <PatientDrawer 
             patient={selectedPatientForDrawer}
             appointments={appointments.filter(a => (a.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || a.patient_id === selectedPatientForDrawer.id)}
-            requests={requests.filter(r => (r.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || r.patient_id === selectedPatientForDrawer.id)}
+            requests={effectiveRequests.filter(r => (r.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || r.patient_id === selectedPatientForDrawer.id)}
             dispensations={dispensations.filter(d => (d.patient_cpf || '').replace(/\D/g, '') === (selectedPatientForDrawer.cpf || '').replace(/\D/g, '') || d.patient_id === selectedPatientForDrawer.id)}
             onClose={() => setSelectedPatientForDrawer(null)}
             onEdit={() => {
@@ -391,16 +406,48 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
               }
             }}
             onNewExam={() => {
-              if (onNewExamForPatient) {
-                onNewExamForPatient(selectedPatientForDrawer);
-                setSelectedPatientForDrawer(null);
-              }
+              setIsPrescribingExamsForPatient(selectedPatientForDrawer);
+            }}
+            onRequestPrescribeExams={() => {
+              setIsPrescribingExamsForPatient(selectedPatientForDrawer);
             }}
             onNewDispensation={() => {
               if (onNewDispensationForPatient) {
                 onNewDispensationForPatient(selectedPatientForDrawer);
                 setSelectedPatientForDrawer(null);
               }
+            }}
+            onOpenResultForExam={(exam) => setSelectedRequestForResult(exam)}
+            currentInstitution={currentInstitution}
+          />
+        )}
+
+        {/* MODAL DE LANÇAMENTO / EDIÇÃO DE RESULTADO DE EXAME */}
+        {selectedRequestForResult && (
+          <ExamResultModal 
+            req={selectedRequestForResult}
+            onClose={() => setSelectedRequestForResult(null)}
+            onSuccess={() => {
+              setSelectedRequestForResult(null);
+              onRefresh();
+            }}
+          />
+        )}
+
+        {/* MODAL DE PRESCRIÇÃO MÉDICA ÁGIL DE EXAMES NA FICHA DO PACIENTE */}
+        {isPrescribingExamsForPatient && (
+          <PrescribeExamsModal 
+            patient={isPrescribingExamsForPatient}
+            units={units}
+            professionals={professionals}
+            allExamRequests={effectiveRequests}
+            currentInstitution={currentInstitution}
+            onClose={() => setIsPrescribingExamsForPatient(null)}
+            onSuccess={(newRequests) => {
+              setLocalExtraRequests(prev => [...newRequests, ...prev]);
+              setIsPrescribingExamsForPatient(null);
+              onRefresh();
+              showToast(`${newRequests.length} exame(s) prescrito(s) com sucesso no prontuário!`, 'success');
             }}
           />
         )}
@@ -706,7 +753,10 @@ interface PatientDrawerProps {
   onEdit: () => void;
   onNewAppointment: () => void;
   onNewExam?: () => void;
+  onRequestPrescribeExams?: () => void;
   onNewDispensation?: () => void;
+  onOpenResultForExam?: (exam: ExamRequest) => void;
+  currentInstitution?: { id: string; name?: string } | null;
 }
 
 const PatientDrawer: React.FC<PatientDrawerProps> = ({
@@ -718,7 +768,10 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
   onEdit,
   onNewAppointment,
   onNewExam,
-  onNewDispensation
+  onRequestPrescribeExams,
+  onNewDispensation,
+  onOpenResultForExam,
+  currentInstitution
 }) => {
   const [activeTab, setActiveTab] = useState<'consultas' | 'exames' | 'farmacia' | 'dados'>('consultas');
   const age = getAge(patient.birth_date);
@@ -773,10 +826,10 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
           >
             <Calendar size={14} /> Agendar Consulta
           </button>
-          {onNewExam && (
+          {(onRequestPrescribeExams || onNewExam) && (
             <button 
-              onClick={onNewExam}
-              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5"
+              onClick={onRequestPrescribeExams || onNewExam}
+              className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-sm flex items-center gap-1.5 cursor-pointer"
             >
               <Activity size={14} /> Solicitar Exame
             </button>
@@ -874,41 +927,112 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
           {/* TAB 2: EXAMES PRESCRITOS & REALIZADOS */}
           {activeTab === 'exames' && (
             <div className="space-y-3">
+              {/* Cabeçalho da Aba de Exames com Ação Direta de Prescrição */}
+              <div className="flex justify-between items-center bg-blue-50/70 dark:bg-blue-950/20 p-3.5 rounded-2xl border border-blue-200 dark:border-blue-900/40">
+                <div>
+                  <span className="font-black text-xs text-blue-950 dark:text-blue-200 block">
+                    Exames Prescritos ({requests.length})
+                  </span>
+                  <span className="text-[11px] text-blue-700/80 dark:text-blue-400/80">
+                    Histórico de solicitações laboratoriais e de imagem
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onRequestPrescribeExams || onNewExam}
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                >
+                  <Plus size={13} /> + Nova Solicitação de Exame
+                </button>
+              </div>
+
               {requests.length === 0 ? (
                 <div className="p-8 text-center text-neutral-400 italic bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl">
                   Nenhum exame prescrito para este paciente ainda.
                 </div>
               ) : (
-                requests.map(req => (
-                  <div key={req.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2 text-xs">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-black text-neutral-900 dark:text-white">{req.exam_name}</h4>
-                        <p className="text-[11px] text-neutral-400">Categoria: {req.category} · Prescrito por: {req.doctor_name}</p>
-                      </div>
-                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
-                        req.status === 'Realizado' ? 'bg-emerald-100 text-emerald-700' :
-                        req.status === 'Agendado' ? 'bg-purple-100 text-purple-700' :
-                        req.status === 'Bloqueado por Duplicidade' ? 'bg-rose-100 text-rose-700' :
-                        'bg-blue-100 text-blue-700'
-                      }`}>
-                        {req.status}
-                      </span>
-                    </div>
+                requests.map(req => {
+                  const parsed = parseExamResult(req.result_notes);
+                  const isBlocked = req.status === 'Bloqueado por Duplicidade';
 
-                    <div className="flex items-center gap-4 text-[11px] text-neutral-500 font-mono">
-                      <span>Data do Pedido: {req.requested_date?.split('-').reverse().join('/')}</span>
-                      {req.performed_date && <span className="text-emerald-600 font-bold">Feito em: {req.performed_date.split('-').reverse().join('/')}</span>}
-                    </div>
+                  return (
+                    <div key={req.id} className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2.5 text-xs">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-black text-neutral-900 dark:text-white">{req.exam_name}</h4>
+                          <p className="text-[11px] text-neutral-400">Categoria: {req.category} · Prescrito por: {req.doctor_name}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
+                            req.status === 'Realizado' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' :
+                            req.status === 'Agendado' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300' :
+                            req.status === 'Bloqueado por Duplicidade' ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' :
+                            'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                          }`}>
+                            {req.status}
+                          </span>
 
-                    {req.result_notes && (
-                      <div className="p-2.5 bg-white dark:bg-neutral-900 rounded-xl text-[11px] border border-neutral-200 dark:border-neutral-700">
-                        <span className="font-bold block text-neutral-700 dark:text-neutral-300">Laudo / Resultado:</span>
-                        <p className="text-neutral-500 mt-0.5">{req.result_notes}</p>
+                          {!isBlocked && (
+                            <button
+                              type="button"
+                              onClick={() => printExamGuide(req, currentInstitution?.name || 'Prefeitura Municipal')}
+                              title="Imprimir Guia Oficial deste Exame"
+                              className="p-1.5 text-neutral-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Printer size={14} />
+                            </button>
+                          )}
+
+                          {!isBlocked && onOpenResultForExam && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenResultForExam(req)}
+                              title={req.status === 'Realizado' ? "Editar Resultado / Laudo" : "Lançar Resultado"}
+                              className="p-1.5 text-neutral-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <ClipboardCheck size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                ))
+
+                      <div className="flex items-center gap-4 text-[11px] text-neutral-500 font-mono">
+                        <span>Data do Pedido: {req.requested_date?.split('-').reverse().join('/')}</span>
+                        {req.performed_date && <span className="text-emerald-600 font-bold">Feito em: {req.performed_date.split('-').reverse().join('/')}</span>}
+                      </div>
+
+                      {/* Parâmetros estruturados */}
+                      {parsed && parsed.parameters && parsed.parameters.length > 0 && (
+                        <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 space-y-1.5">
+                          <span className="font-bold text-[10px] uppercase text-neutral-500 block">
+                            Parâmetros com Laudo ({parsed.parameters.length}):
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {parsed.parameters.map(p => (
+                              <div key={p.id} className="flex justify-between items-center text-[11px] px-2 py-1 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
+                                <span className="text-neutral-700 dark:text-neutral-300 font-medium truncate max-w-[140px]">{p.name}</span>
+                                <div className="flex items-center gap-1 font-mono font-bold">
+                                  <span>{p.value} {p.unit}</span>
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    p.status === 'normal' ? 'bg-emerald-500' : p.status === 'alto' ? 'bg-rose-500' : 'bg-blue-500'
+                                  }`} title={p.status}></span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Laudo Textual */}
+                      {parsed && parsed.conclusion && (
+                        <div className="p-2.5 bg-emerald-50/70 dark:bg-emerald-950/20 rounded-xl text-[11px] border border-emerald-200 dark:border-emerald-900/40 text-neutral-700 dark:text-neutral-300">
+                          <span className="font-bold block text-emerald-800 dark:text-emerald-300">Laudo:</span>
+                          <p className="whitespace-pre-wrap mt-0.5">{parsed.conclusion}</p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           )}

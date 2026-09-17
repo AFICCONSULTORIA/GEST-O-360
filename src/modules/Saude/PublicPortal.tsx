@@ -5,7 +5,8 @@ import {
   XCircle, Search, Clock, Activity, CalendarCheck2, Home,
   Building2, User, Phone, MapPin, AlertCircle, Sparkles,
   Info, ShieldCheck, Check, Stethoscope, Pill, Lock, LogOut,
-  UserPlus, Edit3, ShieldAlert, ArrowRight, Eye, RefreshCw
+  UserPlus, Edit3, ShieldAlert, ArrowRight, Eye, RefreshCw,
+  TrendingUp, ClipboardCheck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -14,6 +15,7 @@ import {
   formatCPF, formatSUS, formatPhone, getAge,
   maskCPF, maskSUS, maskPhone, maskName, generateUUID, isValidUUID
 } from './types';
+import { parseExamResult } from './utils/examTemplates';
 
 interface PublicSaudePortalProps {
   darkMode: boolean;
@@ -821,41 +823,109 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                     {/* SUB-ABA 2: EXAMES */}
                     {subTabMinhaSaude === 'exames' && (
                       <div className="space-y-4">
+
                         {patientExams.length === 0 ? (
                           <div className="p-12 text-center bg-neutral-50 dark:bg-neutral-800/30 rounded-3xl border border-neutral-100 dark:border-neutral-800">
                             <Activity size={36} className="mx-auto mb-2 text-neutral-300" />
                             <p className="font-bold text-sm">Nenhum exame prescrito ou registrado para seu CPF.</p>
                           </div>
                         ) : (
-                          patientExams.map(exam => (
-                            <div key={exam.id} className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-2 text-xs">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h4 className="text-base font-black text-neutral-900 dark:text-white">{exam.exam_name}</h4>
-                                  <p className="text-[11px] text-neutral-400">Categoria: {exam.category} · Solicitante: {exam.doctor_name}</p>
-                                </div>
-                                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
-                                  exam.status === 'Realizado' ? 'bg-emerald-100 text-emerald-700' :
-                                  exam.status === 'Agendado' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-blue-100 text-blue-700'
-                                }`}>
-                                  {exam.status}
-                                </span>
-                              </div>
+                          patientExams.map(exam => {
+                            const parsed = parseExamResult(exam.result_notes);
+                            const sameTypeExams = patientExams.filter(pe => pe.exam_name === exam.exam_name);
 
-                              <div className="grid grid-cols-2 gap-2 text-neutral-500 pt-1">
-                                <span>Solicitado em: {exam.requested_date?.split('-').reverse().join('/')}</span>
-                                {exam.scheduled_date && <span>Data Agendada: {exam.scheduled_date.split('-').reverse().join('/')}</span>}
-                              </div>
-
-                              {exam.result_notes && (
-                                <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-700 mt-2">
-                                  <span className="font-bold block text-neutral-800 dark:text-neutral-200">Resultado / Laudo:</span>
-                                  <p className="text-neutral-600 dark:text-neutral-400 mt-0.5">{exam.result_notes}</p>
+                            return (
+                              <div key={exam.id} className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-3 text-xs">
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <h4 className="text-base font-black text-neutral-900 dark:text-white">{exam.exam_name}</h4>
+                                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300">
+                                        {exam.category}
+                                      </span>
+                                    </div>
+                                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                                      Solicitante: {exam.doctor_name} · Unidade: {exam.requesting_unit || 'UBS de Referência'}
+                                    </p>
+                                  </div>
+                                  <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
+                                    exam.status === 'Realizado' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' :
+                                    exam.status === 'Agendado' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300' :
+                                    'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                                  }`}>
+                                    {exam.status}
+                                  </span>
                                 </div>
-                              )}
-                            </div>
-                          ))
+
+                                <div className="grid grid-cols-2 gap-2 text-neutral-500 pt-1 font-mono text-[11px]">
+                                  <span>Solicitado em: {exam.requested_date?.split('-').reverse().join('/')}</span>
+                                  {exam.performed_date ? (
+                                    <span className="text-emerald-600 font-bold">Feito em: {exam.performed_date.split('-').reverse().join('/')}</span>
+                                  ) : exam.scheduled_date ? (
+                                    <span className="text-purple-600 font-bold">Agendado p/: {exam.scheduled_date.split('-').reverse().join('/')}</span>
+                                  ) : null}
+                                </div>
+
+                                {/* Resultados e Parâmetros */}
+                                {parsed && (
+                                  <div className="space-y-3 pt-2">
+                                    {/* Tabela de Parâmetros */}
+                                    {parsed.parameters && parsed.parameters.length > 0 && (
+                                      <div className="border border-neutral-200 dark:border-neutral-700 rounded-2xl overflow-hidden bg-white dark:bg-neutral-900">
+                                        <div className="bg-neutral-50 dark:bg-neutral-800/60 p-2.5 border-b border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-[11px] font-bold">
+                                          <span className="text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                                            <Activity size={12} className="text-emerald-600" /> Indicadores Avaliados no Laudo
+                                          </span>
+                                          <span className="text-neutral-400 text-[10px]">{parsed.parameters.length} parâmetros</span>
+                                        </div>
+                                        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                                          {parsed.parameters.map(p => (
+                                            <div key={p.id} className="p-3 flex justify-between items-center text-xs">
+                                              <div>
+                                                <span className="font-bold text-neutral-900 dark:text-white">{p.name}</span>
+                                                {p.reference_range && (
+                                                  <span className="text-[10px] text-neutral-400 block font-mono">Ref: {p.reference_range}</span>
+                                                )}
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="font-mono font-black text-xs text-neutral-900 dark:text-white">
+                                                  {p.value} {p.unit}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                                                  p.status === 'normal' 
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' 
+                                                    : p.status === 'alto' 
+                                                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                                                    : p.status === 'baixo'
+                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
+                                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                                }`}>
+                                                  {p.status}
+                                                </span>
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Laudo Textual */}
+                                    {parsed.conclusion && (
+                                      <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl text-xs space-y-1">
+                                        <span className="font-black text-[10px] uppercase text-emerald-800 dark:text-emerald-300 block">Laudo do Resultado:</span>
+                                        <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{parsed.conclusion}</p>
+                                        {parsed.professional_name && (
+                                          <p className="text-[10px] text-emerald-700 dark:text-emerald-400 pt-1 font-mono">
+                                            Responsável: {parsed.professional_name} {parsed.professional_council ? `(${parsed.professional_council})` : ''}
+                                          </p>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     )}

@@ -4,7 +4,8 @@ import {
   FileSpreadsheet, Plus, Search, AlertTriangle, CheckCircle2, Clock, 
   Calendar, User, Stethoscope, AlertCircle, XCircle, ShieldAlert, 
   Printer, ArrowRight, Activity, Filter, FileText, Check, Ban,
-  Building2, Sparkles, DollarSign, RefreshCw, ChevronRight, Eye
+  Building2, Sparkles, DollarSign, RefreshCw, ChevronRight, Eye,
+  TrendingUp, ClipboardCheck
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
@@ -15,6 +16,8 @@ import {
   generateUUID, isValidUUID
 } from '../types';
 import { printExamGuide } from '../utils/printReceipt';
+import { ExamResultModal } from './ExamResultModal';
+import { parseExamResult } from '../utils/examTemplates';
 
 interface SaudeExamsProps {
   requests: ExamRequest[];
@@ -47,6 +50,7 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
   const [selectedRequestForPrint, setSelectedRequestForPrint] = useState<ExamRequest | null>(null);
   const [selectedRequestForComplete, setSelectedRequestForComplete] = useState<ExamRequest | null>(null);
   const [selectedRequestForSchedule, setSelectedRequestForSchedule] = useState<ExamRequest | null>(null);
+  const [selectedRequestForResult, setSelectedRequestForResult] = useState<ExamRequest | null>(null);
 
   // KPIs
   const totalRequests = requests.length;
@@ -331,7 +335,7 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
                         <div className="font-bold text-neutral-900 dark:text-white flex items-center gap-1.5">
                           {req.exam_name}
                         </div>
-                        <div className="flex items-center gap-2 mt-1">
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
                           <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
                             {req.category}
                           </span>
@@ -341,6 +345,20 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
                             </span>
                           )}
                         </div>
+
+                        {/* Badge de Parâmetros Lançados */}
+                        {(() => {
+                          const parsed = parseExamResult(req.result_notes);
+                          if (parsed && parsed.parameters && parsed.parameters.length > 0) {
+                            return (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/40 w-fit">
+                                <Activity size={10} />
+                                {parsed.parameters.length} parâmetros com laudo
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </td>
 
                       {/* Médico Solicitante */}
@@ -413,14 +431,18 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
                             </button>
                           )}
 
-                          {/* Botão de Concluir / Marcar como Realizado */}
-                          {!isRealized && !isBlocked && (
+                          {/* Botão de Lançar / Editar Resultado */}
+                          {!isBlocked && (
                             <button
-                              onClick={() => setSelectedRequestForComplete(req)}
-                              title="Registrar Realização / Laudo"
-                              className="p-2 text-neutral-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-xl transition-colors"
+                              onClick={() => setSelectedRequestForResult(req)}
+                              title={isRealized ? "Editar Resultado e Laudo Laboratorial" : "Lançar Resultado e Laudo"}
+                              className={`p-2 rounded-xl transition-colors ${
+                                isRealized 
+                                  ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10' 
+                                  : 'text-neutral-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
+                              }`}
                             >
-                              <CheckCircle2 size={16} />
+                              <ClipboardCheck size={16} />
                             </button>
                           )}
 
@@ -477,7 +499,13 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
         {selectedRequestForDetails && (
           <ExamDetailsModal 
             req={selectedRequestForDetails}
+            allRequests={requests}
             onClose={() => setSelectedRequestForDetails(null)}
+            onOpenResult={() => {
+              const current = selectedRequestForDetails;
+              setSelectedRequestForDetails(null);
+              setSelectedRequestForResult(current);
+            }}
           />
         )}
 
@@ -512,6 +540,18 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
             req={selectedRequestForPrint}
             currentInstitution={currentInstitution}
             onClose={() => setSelectedRequestForPrint(null)}
+          />
+        )}
+
+        {/* MODAL 6: LANÇAMENTO E EDIÇÃO DE RESULTADOS LABORATORIAIS */}
+        {selectedRequestForResult && (
+          <ExamResultModal 
+            req={selectedRequestForResult}
+            onClose={() => setSelectedRequestForResult(null)}
+            onSuccess={() => {
+              setSelectedRequestForResult(null);
+              onRefresh();
+            }}
           />
         )}
       </AnimatePresence>
@@ -938,17 +978,24 @@ const NewExamRequestModal: React.FC<NewExamRequestModalProps> = ({
 // =========================================================
 // SUBCOMPONENTE: MODAL DE DETALHES COMPLETOS DO EXAME
 // =========================================================
-const ExamDetailsModal: React.FC<{ req: ExamRequest; onClose: () => void }> = ({ req, onClose }) => {
+const ExamDetailsModal: React.FC<{ 
+  req: ExamRequest; 
+  allRequests: ExamRequest[];
+  onClose: () => void;
+  onOpenResult?: () => void;
+}> = ({ req, allRequests, onClose, onOpenResult }) => {
+  const parsedResult = parseExamResult(req.result_notes);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
         onClick={e => e.stopPropagation()}
-        className="bg-white dark:bg-neutral-900 w-full max-w-xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800"
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800"
       >
         <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center bg-neutral-50 dark:bg-neutral-800/40">
           <div>
-            <h3 className="text-lg font-black text-neutral-900 dark:text-white">Ficha de Regulação do Exame</h3>
+            <h3 className="text-lg font-black text-neutral-900 dark:text-white">Ficha de Regulação & Laudo do Exame</h3>
             <p className="text-xs text-neutral-400 font-mono">Protocolo: {req.id}</p>
           </div>
           <button onClick={onClose} className="p-2 text-neutral-400 hover:text-white">
@@ -998,16 +1045,77 @@ const ExamDetailsModal: React.FC<{ req: ExamRequest; onClose: () => void }> = ({
             </div>
           )}
 
-          {req.result_notes && (
-            <div className="bg-emerald-50 dark:bg-emerald-950/30 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-900/40 text-emerald-900 dark:text-emerald-300 space-y-1">
-              <p className="font-black text-[10px] uppercase">Laudo / Resumo do Resultado</p>
-              <p className="whitespace-pre-wrap">{req.result_notes}</p>
+          {/* Seção Estruturada de Parâmetros e Resultados */}
+          {parsedResult && (
+            <div className="space-y-3">
+              {parsedResult.parameters && parsedResult.parameters.length > 0 && (
+                <div className="border border-neutral-200 dark:border-neutral-700 rounded-2xl overflow-hidden">
+                  <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 border-b border-neutral-200 dark:border-neutral-700 flex justify-between items-center">
+                    <span className="font-black text-[10px] uppercase text-neutral-600 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Activity size={13} className="text-emerald-600" />
+                      Parâmetros Laboratoriais Avaliados
+                    </span>
+                    <span className="text-[10px] text-neutral-400">{parsedResult.parameters.length} itens</span>
+                  </div>
+                  <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                    {parsedResult.parameters.map(p => (
+                      <div key={p.id} className="p-3 flex justify-between items-center">
+                        <div>
+                          <p className="font-bold text-neutral-900 dark:text-white">{p.name}</p>
+                          <p className="text-[10px] text-neutral-400 font-mono">Ref: {p.reference_range || '-'}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-xs text-neutral-900 dark:text-white">
+                            {p.value} {p.unit}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            p.status === 'normal' 
+                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
+                              : p.status === 'alto' 
+                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
+                              : p.status === 'baixo'
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
+                              : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
+                          }`}>
+                            {p.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedResult.conclusion && (
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-900/40 text-emerald-900 dark:text-emerald-300 space-y-1">
+                  <p className="font-black text-[10px] uppercase">Laudo Conclusivo / Parecer Técnico</p>
+                  <p className="whitespace-pre-wrap text-xs">{parsedResult.conclusion}</p>
+                  {parsedResult.professional_name && (
+                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 pt-1 font-mono">
+                      Responsável: {parsedResult.professional_name} {parsedResult.professional_council ? `(${parsedResult.professional_council})` : ''}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="p-6 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
-          <button onClick={onClose} className="px-6 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded-2xl font-bold text-xs">
+        <div className="p-5 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap justify-between items-center gap-2 bg-neutral-50 dark:bg-neutral-800/30">
+          <div className="flex items-center gap-2">
+
+            {onOpenResult && (
+              <button
+                type="button"
+                onClick={onOpenResult}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <ClipboardCheck size={14} /> {req.status === 'Realizado' ? 'Editar Resultado' : 'Lançar Resultado'}
+              </button>
+            )}
+          </div>
+
+          <button onClick={onClose} className="px-5 py-2.5 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-neutral-800 dark:text-white rounded-xl font-bold text-xs">
             Fechar
           </button>
         </div>

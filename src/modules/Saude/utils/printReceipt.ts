@@ -493,3 +493,134 @@ export const printDailyAgendaList = (
 
   printCleanDocument(html, `Lista_Atendimentos_${date}`);
 };
+
+
+
+/**
+ * Emite a Requisição Médica Oficial de Exames (Prescrição Ambulatorial em Lote)
+ * Utilizada pelo médico diretamente no consultório para entrega ao paciente.
+ */
+export const printPrescriptionExamRequisition = ({
+  patient,
+  exams,
+  doctorName,
+  doctorCrm,
+  clinicalIndication,
+  isUrgent,
+  requestingUnit,
+  institutionName = 'Prefeitura Municipal'
+}: {
+  patient: { name: string; cpf: string; sus_number?: string; birth_date?: string; phone?: string };
+  exams: Array<{ name: string; category?: string; notes?: string }>;
+  doctorName: string;
+  doctorCrm?: string;
+  clinicalIndication?: string;
+  isUrgent?: boolean;
+  requestingUnit?: string;
+  institutionName?: string;
+}) => {
+  const currentDate = new Date().toLocaleDateString('pt-BR');
+  const birthDateFormatted = patient.birth_date
+    ? patient.birth_date.split('-').reverse().join('/')
+    : '---';
+
+  const examItemsHtml = exams.map((ex, idx) => `
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; padding: 7px 10px; background: ${idx % 2 === 0 ? '#f9fafb' : '#ffffff'}; border-bottom: 1px solid #e5e7eb;">
+      <div>
+        <span style="font-weight: 800; font-size: 11.5px; color: #111827;">${idx + 1}. ${ex.name}</span>
+        ${ex.category ? `<span style="display: inline-block; margin-left: 8px; font-size: 9px; padding: 2px 6px; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-weight: bold; text-transform: uppercase;">${ex.category}</span>` : ''}
+        ${ex.notes ? `<div style="font-size: 9.5px; color: #4b5563; margin-top: 2px; font-style: italic;">Obs: ${ex.notes}</div>` : ''}
+      </div>
+      <div style="font-size: 10px; font-weight: 700; color: #6b7280; white-space: nowrap;">
+        [ &nbsp; ] Solicitado
+      </div>
+    </div>
+  `).join('');
+
+  const html = `
+    <div class="receipt-container">
+      <div class="receipt-card">
+        <div class="header">
+          <h1>${institutionName}</h1>
+          <h2>SISTEMA ÚNICO DE SAÚDE · ATENÇÃO PRIMÁRIA E ESPECIALIZADA</h2>
+          <div class="doc-type" style="background: #047857;">Requisição Médica de Exames Laboratoriais e Imagem</div>
+          <div class="meta-row">
+            <span><strong>DATA DA PRESCRIÇÃO:</strong> ${currentDate}</span>
+            <span><strong>CARÁTER:</strong> ${isUrgent ? '<span style="color: #b91c1c; font-weight: 900;">🚨 URGÊNCIA CLÍNICA</span>' : 'ELETIVO / ROTINA'}</span>
+            <span><strong>UNIDADE:</strong> ${requestingUnit || 'UBS Central de Saúde'}</span>
+          </div>
+        </div>
+
+        <div class="section-title">Identificação do Paciente</div>
+        <div class="info-grid">
+          <div class="info-item" style="grid-column: span 2;">
+            <span class="info-label">Nome Completo do Munícipe</span>
+            <span class="info-value" style="font-size: 13px; font-weight: 900; color: #111827;">${patient.name}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">CPF</span>
+            <span class="info-value" style="font-family: monospace; font-weight: bold;">${patient.cpf}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Cartão Nacional do SUS</span>
+            <span class="info-value" style="font-family: monospace; font-weight: bold;">${patient.sus_number || 'Não informado'}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Data de Nascimento</span>
+            <span class="info-value">${birthDateFormatted}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">Telefone de Contato</span>
+            <span class="info-value">${patient.phone || 'Não informado'}</span>
+          </div>
+        </div>
+
+        <div class="section-title">Procedimentos / Exames Solicitados (${exams.length})</div>
+        <div style="border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; margin-bottom: 12px;">
+          ${examItemsHtml}
+        </div>
+
+        ${clinicalIndication ? `
+          <div class="section-title">Indicação Clínica / Hipótese Diagnóstica / CID-10</div>
+          <div style="font-size: 11px; color: #1f2937; padding: 8px 12px; background: #f3f4f6; border-radius: 6px; border: 1px solid #e5e7eb; margin-bottom: 12px; line-height: 1.4;">
+            ${clinicalIndication}
+          </div>
+        ` : ''}
+
+        <div class="warning-box" style="border-color: #2563eb; background: #eff6ff;">
+          <strong style="color: #1e40af;">ORIENTAÇÕES IMPORTANTES AO USUÁRIO:</strong>
+          <ul style="margin-left: 16px; margin-top: 4px; line-height: 1.4; color: #1e3a8a;">
+            <li>Encaminhe este pedido à <strong>Central de Marcação / Regulação da sua UBS</strong> para agendamento dos exames.</li>
+            <li>Compareça no dia e horário informados munido desta requisição médica, <strong>Cartão do SUS</strong> e <strong>Documento com Foto</strong>.</li>
+            <li>Em caso de exames de sangue, verifique a necessidade de jejum de 8 a 12 horas conforme prescrição médica.</li>
+          </ul>
+        </div>
+
+        <div class="signatures" style="margin-top: 36px;">
+          <div>
+            <div class="sig-line">
+              <strong>${doctorName}</strong><br>
+              <span style="font-size: 10px; font-weight: normal; color: #4b5563;">${doctorCrm ? `CRM: ${doctorCrm}` : 'Médico(a) Solicitante'}</span>
+            </div>
+            <div class="sig-sub">Assinatura e Carimbo Médico</div>
+          </div>
+          <div>
+            <div class="sig-line" style="font-size: 10px; color: #6b7280; padding-top: 14px;">
+              Data do Recebimento: ____/____/________
+            </div>
+            <div class="sig-sub">Central de Regulação / Laboratório</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 20px; border-top: 1px solid #e5e7eb; padding-top: 6px; display: flex; justify-content: space-between; font-size: 8px; color: #9ca3af;">
+          <span>Sistema Integrado de Gestão Pública de Saúde · Município 360</span>
+          <span>Emissão: ${currentDate}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  printCleanDocument(html, `Pedido_Exames_${patient.name.replace(/\s+/g, '_')}`);
+};
+
+

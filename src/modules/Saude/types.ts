@@ -117,9 +117,35 @@ export interface ExamRequest {
   duplicate_override_reason?: string; // Justificativa médica da liberação excepcional
   last_exam_date?: string | null;
   days_since_last_exam?: number | null;
-  result_notes?: string; // Resumo do laudo / entrega de resultado
+  result_notes?: string; // Resumo do laudo / entrega de resultado (ou JSON com ExamResultData)
   notes?: string;
   created_at?: string;
+}
+
+// === TIPOS PARA RESULTADOS E LAUDOS ESTRUTURADOS DE EXAMES ===
+
+export type ParameterStatus = 'normal' | 'alto' | 'baixo' | 'alterado';
+
+export interface ExamParameterResult {
+  id: string;
+  name: string; // Ex: "Glicose de Jejum", "Colesterol Total", "Hemoglobina"
+  value: string; // Ex: "92", "14.5", "Negativo"
+  unit?: string; // Ex: "mg/dL", "g/dL", "%", "milhões/mm³"
+  reference_range?: string; // Ex: "70 a 99 mg/dL"
+  min_ref?: number; // Ex: 70
+  max_ref?: number; // Ex: 99
+  status: ParameterStatus;
+}
+
+export interface ExamResultData {
+  performed_date: string;
+  executing_unit?: string;
+  professional_name?: string;
+  professional_council?: string; // Ex: CRM 12345/SP, CRBM 4567, CRF 8910
+  conclusion?: string; // Laudo / Conclusão diagnóstica
+  parameters: ExamParameterResult[];
+  notes?: string;
+  recorded_at?: string;
 }
 
 // === TIPOS PARA DISPENSAÇÃO DA FARMÁCIA POPULAR / MUNICIPAL ===
