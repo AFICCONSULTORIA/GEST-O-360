@@ -71,15 +71,40 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       const { data: examData } = await examQuery.order('requested_date', { ascending: false });
       if (examData) setExamRequests(examData as ExamRequest[]);
 
-      // 5. Carregar Tipos de Exames
+      // 5. Carregar Tipos de Exames & Prazos de Carência
       let typeQuery = supabase.from('exam_types').select('*');
       if (currentInstitution?.id) typeQuery = typeQuery.eq('institution_id', currentInstitution.id);
       const { data: typeData } = await typeQuery.order('name');
+
+      let localCustomTypes: ExamType[] = [];
+      try {
+        const rawLocal = localStorage.getItem('gestao360_custom_exam_types');
+        if (rawLocal) localCustomTypes = JSON.parse(rawLocal);
+      } catch (e) {
+        console.error('Erro ao ler exames locais:', e);
+      }
+
       if (typeData && typeData.length > 0) {
-        setExamTypes(typeData as ExamType[]);
+        const map = new Map<string, ExamType>();
+        (typeData as ExamType[]).forEach(t => map.set(t.name.toLowerCase(), t));
+        localCustomTypes.forEach(t => {
+          if (!map.has(t.name.toLowerCase())) map.set(t.name.toLowerCase(), t);
+        });
+        setExamTypes(Array.from(map.values()));
       } else {
-        // Fallback para catálogo padrão municipal
-        setExamTypes(DEFAULT_EXAM_TYPES.map((t, idx) => ({ ...t, id: `def_${idx}` } as ExamType)));
+        // Inicializar com o catálogo padrão municipal no banco e localmente
+        const initialTypes = DEFAULT_EXAM_TYPES.map(t => ({
+          ...t,
+          id: generateUUID(),
+          institution_id: currentInstitution?.id || null
+        } as ExamType));
+
+        supabase.from('exam_types').insert(initialTypes).then(() => {}, () => {});
+
+        const map = new Map<string, ExamType>();
+        initialTypes.forEach(t => map.set(t.name.toLowerCase(), t));
+        localCustomTypes.forEach(t => map.set(t.name.toLowerCase(), t));
+        setExamTypes(Array.from(map.values()));
       }
 
       // 6. Carregar Dispensações da Farmácia
@@ -331,6 +356,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
               patients={patients}
               appointments={appointments}
               requests={examRequests}
+              examTypes={examTypes}
               dispensations={dispensations}
               units={units}
               professionals={professionals}

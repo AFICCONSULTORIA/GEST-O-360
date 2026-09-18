@@ -117,23 +117,25 @@ export interface ExamRequest {
   duplicate_override_reason?: string; // Justificativa médica da liberação excepcional
   last_exam_date?: string | null;
   days_since_last_exam?: number | null;
-  result_notes?: string; // Resumo do laudo / entrega de resultado (ou JSON com ExamResultData)
+  result_notes?: string; // Resumo do laudo / entrega de resultado (ou JSON com ExamResultData incluindo PDF)
+  result_pdf_url?: string; // Atalho direto para visualização do PDF
+  result_pdf_name?: string;
   notes?: string;
   created_at?: string;
 }
 
-// === TIPOS PARA RESULTADOS E LAUDOS ESTRUTURADOS DE EXAMES ===
+// === TIPOS PARA RESULTADOS E LAUDOS / PDF DE EXAMES ===
 
 export type ParameterStatus = 'normal' | 'alto' | 'baixo' | 'alterado';
 
 export interface ExamParameterResult {
   id: string;
-  name: string; // Ex: "Glicose de Jejum", "Colesterol Total", "Hemoglobina"
-  value: string; // Ex: "92", "14.5", "Negativo"
-  unit?: string; // Ex: "mg/dL", "g/dL", "%", "milhões/mm³"
-  reference_range?: string; // Ex: "70 a 99 mg/dL"
-  min_ref?: number; // Ex: 70
-  max_ref?: number; // Ex: 99
+  name: string;
+  value: string;
+  unit?: string;
+  reference_range?: string;
+  min_ref?: number;
+  max_ref?: number;
   status: ParameterStatus;
 }
 
@@ -141,9 +143,12 @@ export interface ExamResultData {
   performed_date: string;
   executing_unit?: string;
   professional_name?: string;
-  professional_council?: string; // Ex: CRM 12345/SP, CRBM 4567, CRF 8910
-  conclusion?: string; // Laudo / Conclusão diagnóstica
-  parameters: ExamParameterResult[];
+  professional_council?: string;
+  conclusion?: string;
+  pdf_url?: string; // Data URL Base64 do arquivo PDF anexado ou link de armazenamento
+  pdf_name?: string; // Nome original do arquivo (ex: hemograma_completo.pdf)
+  pdf_size?: number; // Tamanho do arquivo em bytes
+  parameters?: ExamParameterResult[];
   notes?: string;
   recorded_at?: string;
 }

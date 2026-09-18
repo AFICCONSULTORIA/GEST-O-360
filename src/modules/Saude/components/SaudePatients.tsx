@@ -5,23 +5,25 @@ import {
   Heart, AlertTriangle, CheckCircle2, Edit2, Trash2, XCircle, 
   Activity, Stethoscope, ChevronRight, Droplet, Clock, ShieldAlert,
   Baby, Accessibility, Pill, ShoppingBag, History, FileSpreadsheet,
-  ClipboardCheck, Printer
+  ClipboardCheck, Printer, Eye, Download
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
 import { 
-  Patient, Appointment, ExamRequest, MedicationDispensation, HealthUnit, HealthProfessional, DEFAULT_HEALTH_UNITS, 
+  Patient, Appointment, ExamRequest, ExamType, MedicationDispensation, HealthUnit, HealthProfessional, DEFAULT_HEALTH_UNITS, 
   formatCPF, formatSUS, formatPhone, getAge 
 } from '../types';
 import { ExamResultModal } from './ExamResultModal';
 import { PrescribeExamsModal } from './PrescribeExamsModal';
 import { parseExamResult } from '../utils/examTemplates';
 import { printExamGuide } from '../utils/printReceipt';
+import { openPdfInNewTab, downloadPdfFile, formatFileSize } from '../utils/pdfHelper';
 
 interface SaudePatientsProps {
   patients: Patient[];
   appointments: Appointment[];
   requests?: ExamRequest[];
+  examTypes?: ExamType[];
   dispensations?: MedicationDispensation[];
   units: HealthUnit[];
   professionals: HealthProfessional[];
@@ -48,6 +50,7 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
   patients,
   appointments,
   requests = [],
+  examTypes = [],
   dispensations = [],
   units,
   professionals,
@@ -441,6 +444,7 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
             units={units}
             professionals={professionals}
             allExamRequests={effectiveRequests}
+            examTypes={examTypes}
             currentInstitution={currentInstitution}
             onClose={() => setIsPrescribingExamsForPatient(null)}
             onSuccess={(newRequests) => {
@@ -1001,33 +1005,77 @@ const PatientDrawer: React.FC<PatientDrawerProps> = ({
                         {req.performed_date && <span className="text-emerald-600 font-bold">Feito em: {req.performed_date.split('-').reverse().join('/')}</span>}
                       </div>
 
-                      {/* Parâmetros estruturados */}
-                      {parsed && parsed.parameters && parsed.parameters.length > 0 && (
-                        <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 space-y-1.5">
-                          <span className="font-bold text-[10px] uppercase text-neutral-500 block">
-                            Parâmetros com Laudo ({parsed.parameters.length}):
-                          </span>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                            {parsed.parameters.map(p => (
-                              <div key={p.id} className="flex justify-between items-center text-[11px] px-2 py-1 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
-                                <span className="text-neutral-700 dark:text-neutral-300 font-medium truncate max-w-[140px]">{p.name}</span>
-                                <div className="flex items-center gap-1 font-mono font-bold">
-                                  <span>{p.value} {p.unit}</span>
-                                  <span className={`w-2 h-2 rounded-full ${
-                                    p.status === 'normal' ? 'bg-emerald-500' : p.status === 'alto' ? 'bg-rose-500' : 'bg-blue-500'
-                                  }`} title={p.status}></span>
-                                </div>
-                              </div>
-                            ))}
+                      {/* Documento PDF do Exame / Laudo Anexado */}
+                      {parsed?.pdf_url ? (
+                        <div className="p-3 bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex flex-wrap justify-between items-center gap-2">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-sm">
+                              <FileText size={16} />
+                            </div>
+                            <div>
+                              <span className="font-black text-neutral-900 dark:text-white block text-xs truncate max-w-[220px]">
+                                {parsed.pdf_name || `${req.exam_name}.pdf`}
+                              </span>
+                              <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                                {formatFileSize(parsed.pdf_size)} · Laudo em PDF
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openPdfInNewTab(parsed.pdf_url!, parsed.pdf_name)}
+                              className="px-2.5 py-1 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-blue-600 dark:text-blue-400 border border-neutral-200 dark:border-neutral-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                              title="Visualizar documento em tela inteira"
+                            >
+                              <Eye size={12} /> Ver PDF
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadPdfFile(parsed.pdf_url!, parsed.pdf_name)}
+                              className="p-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 rounded-lg transition-all cursor-pointer shadow-xs"
+                              title="Baixar arquivo PDF"
+                            >
+                              <Download size={13} />
+                            </button>
+                            {onOpenResultForExam && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenResultForExam(req)}
+                                className="px-2 py-1 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-500 hover:text-neutral-700 rounded-lg text-[10px] font-semibold border border-neutral-200 dark:border-neutral-700 cursor-pointer"
+                                title="Substituir ou atualizar arquivo"
+                              >
+                                Trocar
+                              </button>
+                            )}
                           </div>
                         </div>
+                      ) : (
+                        /* Botão para anexar PDF diretamente quando não há arquivo */
+                        onOpenResultForExam && !isBlocked && (
+                          <div className="pt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => onOpenResultForExam(req)}
+                              className="w-full py-2 px-3 bg-neutral-100 hover:bg-blue-50 dark:bg-neutral-800/60 dark:hover:bg-blue-950/20 text-neutral-600 hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-300 border border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <FileText size={13} className="text-blue-600" /> + Anexar Exame em PDF
+                            </button>
+                          </div>
+                        )
                       )}
 
-                      {/* Laudo Textual */}
+                      {/* Observações / Conclusão Textual se houver */}
                       {parsed && parsed.conclusion && (
-                        <div className="p-2.5 bg-emerald-50/70 dark:bg-emerald-950/20 rounded-xl text-[11px] border border-emerald-200 dark:border-emerald-900/40 text-neutral-700 dark:text-neutral-300">
-                          <span className="font-bold block text-emerald-800 dark:text-emerald-300">Laudo:</span>
+                        <div className="p-2.5 bg-neutral-100/60 dark:bg-neutral-800/40 rounded-xl text-[11px] border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300">
+                          <span className="font-bold block text-neutral-900 dark:text-white">Parecer do Laudo:</span>
                           <p className="whitespace-pre-wrap mt-0.5">{parsed.conclusion}</p>
+                          {parsed.professional_name && (
+                            <p className="text-[10px] text-neutral-400 font-mono mt-1">
+                              Responsável: {parsed.professional_name} {parsed.professional_council ? `(${parsed.professional_council})` : ''}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>

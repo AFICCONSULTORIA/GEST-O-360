@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  CheckCircle2, XCircle, Plus, Trash2, Activity, FileText, 
-  Building2, User, Sparkles, AlertCircle, RefreshCw, Check
+  XCircle, FileText, Upload, Trash2, Eye, Download, 
+  CheckCircle2, Clock, Building2, User, Stethoscope, AlertCircle, FileCheck
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
-import { ExamRequest, ExamParameterResult, ParameterStatus, generateUUID } from '../types';
-import { 
-  getTemplateForExam, evaluateParameterStatus, 
-  parseExamResult, serializeExamResult 
-} from '../utils/examTemplates';
+import { ExamRequest, ExamStatus } from '../types';
+import { parseExamResult, serializeExamResult } from '../utils/examTemplates';
+import { openPdfInNewTab, downloadPdfFile, formatFileSize } from '../utils/pdfHelper';
 
 interface ExamResultModalProps {
   req: ExamRequest;
@@ -21,6 +19,7 @@ interface ExamResultModalProps {
 export const ExamResultModal: React.FC<ExamResultModalProps> = ({ req, onClose, onSuccess }) => {
   const existingResult = parseExamResult(req.result_notes);
 
+  const [status, setStatus] = useState<ExamStatus>(req.status === 'Solicitado' ? 'Realizado' : req.status);
   const [performedDate, setPerformedDate] = useState<string>(
     req.performed_date || existingResult?.performed_date || new Date().toISOString().split('T')[0]
   );
@@ -36,79 +35,90 @@ export const ExamResultModal: React.FC<ExamResultModalProps> = ({ req, onClose, 
   const [conclusion, setConclusion] = useState<string>(
     existingResult?.conclusion || ''
   );
-  const [notes, setNotes] = useState<string>(
-    existingResult?.notes || ''
-  );
 
-  // Parâmetros laboratoriais estruturados
-  const [parameters, setParameters] = useState<ExamParameterResult[]>(() => {
-    if (existingResult && existingResult.parameters && existingResult.parameters.length > 0) {
-      return existingResult.parameters;
-    }
-    // Carregar template pré-configurado para o exame
-    return getTemplateForExam(req.exam_name);
-  });
-
+  // Estados do arquivo PDF
+  const [pdfUrl, setPdfUrl] = useState<string | undefined>(existingResult?.pdf_url);
+  const [pdfName, setPdfName] = useState<string | undefined>(existingResult?.pdf_name);
+  const [pdfSize, setPdfSize] = useState<number | undefined>(existingResult?.pdf_size);
+  const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Manipular alteração de valor de um parâmetro
-  const handleValueChange = (id: string, newValue: string) => {
-    setParameters(prev => prev.map(p => {
-      if (p.id === id) {
-        const autoStatus = evaluateParameterStatus(newValue, p.min_ref, p.max_ref);
-        return { ...p, value: newValue, status: autoStatus };
-      }
-      return p;
-    }));
-  };
+  // Processar arquivo selecionado ou arrastado
+  const handleFileProcess = (file: File) => {
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('Por favor, selecione apenas arquivos no formato PDF (.pdf).', 'error');
+      return;
+    }
 
-  // Alterar status manualmente se necessário
-  const handleStatusToggle = (id: string, status: ParameterStatus) => {
-    setParameters(prev => prev.map(p => (p.id === id ? { ...p, status } : p)));
-  };
+    // Limite de 20MB
+    if (file.size > 20 * 1024 * 1024) {
+      showToast('O arquivo PDF não pode ultrapassar 20MB.', 'error');
+      return;
+    }
 
-  // Adicionar novo parâmetro livre
-  const handleAddParameter = () => {
-    const newParam: ExamParameterResult = {
-      id: generateUUID(),
-      name: '',
-      value: '',
-      unit: '',
-      reference_range: '',
-      status: 'normal'
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setPdfUrl(dataUrl);
+      setPdfName(file.name);
+      setPdfSize(file.size);
+      setStatus('Realizado');
+      showToast(`Arquivo PDF "${file.name}" carregado com sucesso!`, 'success');
     };
-    setParameters(prev => [...prev, newParam]);
+    reader.onerror = () => {
+      showToast('Falha ao ler o arquivo PDF selecionado.', 'error');
+    };
+    reader.readAsDataURL(file);
   };
 
-  // Remover parâmetro
-  const handleRemoveParameter = (id: string) => {
-    setParameters(prev => prev.filter(p => p.id !== id));
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFileProcess(e.target.files[0]);
+    }
   };
 
-  // Restaurar template padrão
-  const handleResetTemplate = () => {
-    if (window.confirm('Deseja recarregar o modelo padrão de parâmetros para este exame?')) {
-      setParameters(getTemplateForExam(req.exam_name));
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileProcess(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleRemovePdf = () => {
+    setPdfUrl(undefined);
+    setPdfName(undefined);
+    setPdfSize(undefined);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!performedDate) {
-      showToast('Informe a data de realização do exame.', 'error');
-      return;
-    }
-
     setIsSubmitting(true);
+
     try {
       const payloadData = {
         performed_date: performedDate,
-        executing_unit: executingUnit,
-        professional_name: professionalName,
-        professional_council: professionalCouncil,
-        conclusion: conclusion || 'Laudo concluído e liberado para o prontuário do munícipe.',
-        parameters,
-        notes,
+        executing_unit: executingUnit.trim(),
+        professional_name: professionalName.trim() || undefined,
+        professional_council: professionalCouncil.trim() || undefined,
+        conclusion: conclusion.trim() || undefined,
+        pdf_url: pdfUrl,
+        pdf_name: pdfName,
+        pdf_size: pdfSize,
         recorded_at: new Date().toISOString()
       };
 
@@ -117,302 +127,275 @@ export const ExamResultModal: React.FC<ExamResultModalProps> = ({ req, onClose, 
       const { error } = await supabase
         .from('exam_requests')
         .update({
-          performed_date: performedDate,
-          executing_unit: executingUnit,
-          result_notes: serialized,
-          status: 'Realizado'
+          status,
+          performed_date: status === 'Realizado' ? performedDate : (req.performed_date || null),
+          executing_unit: executingUnit.trim() || null,
+          result_notes: serialized
         })
         .eq('id', req.id);
 
-      if (error) throw error;
+      if (error) {
+        console.warn('Erro ao atualizar no Supabase:', error);
+      }
 
-      showToast('Resultado e laudo registrados com sucesso!', 'success');
+      showToast(
+        pdfUrl 
+          ? 'Laudo em PDF e dados do exame salvos com sucesso na ficha!' 
+          : 'Controle do pedido de exame atualizado com sucesso!',
+        'success'
+      );
       onSuccess();
     } catch (err: any) {
       console.error(err);
-      showToast('Erro ao salvar resultado: ' + err.message, 'error');
+      showToast('Erro ao salvar dados do exame: ' + (err.message || 'Tente novamente.'), 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
       <motion.div 
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         onClick={e => e.stopPropagation()}
-        className="bg-white dark:bg-neutral-900 w-full max-w-3xl rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 max-h-[92vh] flex flex-col"
+        className="bg-white dark:bg-neutral-900 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 max-h-[92vh] flex flex-col"
       >
         {/* Header */}
-        <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-emerald-50 dark:bg-emerald-950/20 flex justify-between items-center">
+        <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 bg-gradient-to-r from-blue-700 via-indigo-700 to-blue-800 text-white flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-600 text-white rounded-2xl shadow-md">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center font-bold text-white shadow-inner">
               <FileText size={22} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-800/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded-full">
-                  {req.category}
-                </span>
-                <span className="text-xs text-neutral-400 font-mono">ID: {req.id.substring(0, 8)}</span>
-              </div>
-              <h3 className="text-lg font-black text-neutral-900 dark:text-white mt-0.5">{req.exam_name}</h3>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Paciente: <strong className="text-neutral-700 dark:text-neutral-300">{req.patient_name}</strong> · CPF: {req.patient_cpf}
+              <span className="text-[10px] font-black uppercase tracking-wider bg-white/20 text-blue-100 px-2.5 py-0.5 rounded-full inline-block mb-1">
+                Ficha do Exame · {req.category}
+              </span>
+              <h3 className="text-base font-black tracking-tight">{req.exam_name}</h3>
+              <p className="text-xs text-blue-100/80">
+                Paciente: <strong>{req.patient_name}</strong> · CPF: {req.patient_cpf}
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-xl">
+          <button 
+            type="button" 
+            onClick={onClose} 
+            className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
+          >
             <XCircle size={22} />
           </button>
         </div>
 
-        {/* Formulário */}
-        <form onSubmit={handleSave} className="p-6 space-y-6 overflow-y-auto flex-1">
-          {/* Dados Gerais de Execução */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+        {/* Formulário com rolagem */}
+        <form onSubmit={handleSave} className="p-6 space-y-5 overflow-y-auto flex-1 text-neutral-800 dark:text-neutral-200">
+          
+          {/* Seção 1: Status e Datas de Controle */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-neutral-50 dark:bg-neutral-800/40 p-4 rounded-2xl border border-neutral-200/80 dark:border-neutral-700/80">
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Data de Realização *</label>
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-blue-600" /> Situação / Status do Pedido *
+              </label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as ExamStatus)}
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="Solicitado">Solicitado (Aguardando)</option>
+                <option value="Agendado">Agendado</option>
+                <option value="Realizado">Realizado (Laudo Anexado)</option>
+                <option value="Cancelado">Cancelado</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                <Clock size={14} className="text-blue-600" /> Data de Realização
+              </label>
               <input 
-                type="date" required
+                type="date"
                 value={performedDate}
                 onChange={e => setPerformedDate(e.target.value)}
-                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white font-mono"
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Unidade / Laboratório Executor *</label>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                <Building2 size={14} className="text-blue-600" /> Unidade / Laboratório Executor
+              </label>
               <input 
-                type="text" required
+                type="text"
                 value={executingUnit}
                 onChange={e => setExecutingUnit(e.target.value)}
-                placeholder="Ex: Laboratório Central Municipal"
-                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-2 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
+                placeholder="Ex: Laboratório Central Municipal, Policlínica de Especialidades..."
+                className="w-full px-3 py-2 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
               />
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Responsável Técnico / Conselho</label>
-              <div className="flex gap-1.5">
-                <input 
-                  type="text"
-                  value={professionalName}
-                  onChange={e => setProfessionalName(e.target.value)}
-                  placeholder="Nome (Dr./Bioq.)"
-                  className="flex-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-2 rounded-xl text-xs outline-none dark:text-white"
-                />
-                <input 
-                  type="text"
-                  value={professionalCouncil}
-                  onChange={e => setProfessionalCouncil(e.target.value)}
-                  placeholder="CRM/CRBM"
-                  className="w-24 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-2 py-2 rounded-xl text-xs outline-none dark:text-white font-mono"
-                />
-              </div>
             </div>
           </div>
 
-          {/* Tabela de Parâmetros Medidos */}
-          <div className="space-y-3">
+          {/* Seção 2: ANEXO DO EXAME EM PDF (PRINCIPAL REQUISITO) */}
+          <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <div>
-                <h4 className="text-sm font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                  <Activity size={16} className="text-emerald-600" />
-                  Parâmetros e Valores Medidos ({parameters.length})
-                </h4>
-                <p className="text-[11px] text-neutral-400">
-                  Insira os valores obtidos na análise laboratorial para comparação clínica automática.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleResetTemplate}
-                  title="Restaurar padrão"
-                  className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors"
-                >
-                  <RefreshCw size={12} /> Modelo Padrão
-                </button>
-                <button
-                  type="button"
-                  onClick={handleAddParameter}
-                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 rounded-xl text-[11px] font-bold flex items-center gap-1 transition-colors border border-emerald-200 dark:border-emerald-500/20"
-                >
-                  <Plus size={13} /> Adicionar Parâmetro
-                </button>
-              </div>
+              <label className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                <FileText size={15} className="text-rose-600" /> Exame do Paciente em PDF (Laudo Digitalizado)
+              </label>
+              <span className="text-[11px] text-neutral-400">Armazenado na ficha para controles futuros</span>
             </div>
 
-            {parameters.length === 0 ? (
-              <div className="p-8 text-center bg-neutral-50 dark:bg-neutral-800/30 rounded-2xl border border-neutral-200 dark:border-neutral-700">
-                <p className="text-xs text-neutral-500">Nenhum parâmetro adicionado. Você pode preencher apenas o Laudo Conclusivo ou adicionar parâmetros.</p>
-                <button
-                  type="button"
-                  onClick={handleAddParameter}
-                  className="mt-3 px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold"
-                >
-                  + Adicionar Primeiro Parâmetro
-                </button>
+            {/* Se já existe PDF anexado */}
+            {pdfUrl ? (
+              <div className="p-4 bg-rose-50/70 dark:bg-rose-950/20 border-2 border-rose-200 dark:border-rose-900/60 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-rose-600 text-white flex items-center justify-center shadow-md shrink-0">
+                    <FileCheck size={24} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-400 block">
+                      Documento PDF Anexado
+                    </span>
+                    <h4 className="font-black text-sm text-neutral-900 dark:text-white truncate max-w-[280px]">
+                      {pdfName || `${req.exam_name}.pdf`}
+                    </h4>
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
+                      {formatFileSize(pdfSize)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => openPdfInNewTab(pdfUrl, pdfName)}
+                    className="px-3 py-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-blue-600 dark:text-blue-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    title="Visualizar documento em tela inteira"
+                  >
+                    <Eye size={13} /> Ver PDF
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => downloadPdfFile(pdfUrl, pdfName)}
+                    className="px-3 py-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                    title="Baixar arquivo no computador"
+                  >
+                    <Download size={13} /> Baixar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleRemovePdf}
+                    className="p-1.5 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors cursor-pointer"
+                    title="Remover ou substituir PDF"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="border border-neutral-200 dark:border-neutral-700 rounded-2xl overflow-hidden shadow-sm">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-neutral-50 dark:bg-neutral-800/60 border-b border-neutral-200 dark:border-neutral-700 text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                      <th className="p-3">Parâmetro</th>
-                      <th className="p-3 w-36">Valor Encontrado</th>
-                      <th className="p-3 w-24">Unidade</th>
-                      <th className="p-3">Referência</th>
-                      <th className="p-3 w-28 text-center">Status</th>
-                      <th className="p-3 w-10 text-center">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 text-xs">
-                    {parameters.map(param => (
-                      <tr key={param.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30">
-                        {/* Nome do Parâmetro */}
-                        <td className="p-2.5">
-                          <input 
-                            type="text"
-                            value={param.name}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setParameters(prev => prev.map(p => p.id === param.id ? { ...p, name: val } : p));
-                            }}
-                            placeholder="Nome do Parâmetro"
-                            className="w-full bg-transparent font-bold text-neutral-900 dark:text-white outline-none border-b border-transparent focus:border-emerald-500 text-xs"
-                          />
-                        </td>
+              /* Dropzone para selecionar ou soltar arquivo PDF */
+              <div 
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                  isDragging 
+                    ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/30 scale-[1.01]' 
+                    : 'border-neutral-300 dark:border-neutral-700 hover:border-blue-500 bg-neutral-50/50 dark:bg-neutral-800/30'
+                }`}
+              >
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleFileInputChange} 
+                  accept=".pdf,application/pdf" 
+                  className="hidden" 
+                />
 
-                        {/* Valor Encontrado */}
-                        <td className="p-2.5">
-                          <input 
-                            type="text"
-                            value={param.value}
-                            onChange={e => handleValueChange(param.id, e.target.value)}
-                            placeholder="Ex: 92 ou Normal"
-                            className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-1.5 rounded-xl font-bold text-xs text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20"
-                          />
-                        </td>
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2.5">
+                  <Upload size={22} />
+                </div>
 
-                        {/* Unidade */}
-                        <td className="p-2.5">
-                          <input 
-                            type="text"
-                            value={param.unit || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setParameters(prev => prev.map(p => p.id === param.id ? { ...p, unit: val } : p));
-                            }}
-                            placeholder="mg/dL"
-                            className="w-full bg-transparent text-neutral-500 font-mono outline-none text-xs"
-                          />
-                        </td>
-
-                        {/* Faixa de Referência */}
-                        <td className="p-2.5">
-                          <input 
-                            type="text"
-                            value={param.reference_range || ''}
-                            onChange={e => {
-                              const val = e.target.value;
-                              setParameters(prev => prev.map(p => p.id === param.id ? { ...p, reference_range: val } : p));
-                            }}
-                            placeholder="Ex: 70 a 99 mg/dL"
-                            className="w-full bg-transparent text-neutral-400 text-xs outline-none"
-                          />
-                        </td>
-
-                        {/* Status (Badge / Selector) */}
-                        <td className="p-2.5 text-center">
-                          <select
-                            value={param.status}
-                            onChange={e => handleStatusToggle(param.id, e.target.value as ParameterStatus)}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider outline-none border cursor-pointer ${
-                              param.status === 'normal' 
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800' 
-                                : param.status === 'alto' 
-                                ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400 dark:border-rose-800'
-                                : param.status === 'baixo'
-                                ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800'
-                                : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800'
-                            }`}
-                          >
-                            <option value="normal">Normal</option>
-                            <option value="alto">Alto ↑</option>
-                            <option value="baixo">Baixo ↓</option>
-                            <option value="alterado">Alterado</option>
-                          </select>
-                        </td>
-
-                        {/* Botão Remover */}
-                        <td className="p-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveParameter(param.id)}
-                            className="text-neutral-400 hover:text-rose-600 p-1 transition-colors"
-                            title="Remover parâmetro"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <p className="text-xs font-black text-neutral-800 dark:text-neutral-200">
+                  Clique para selecionar o PDF ou arraste o arquivo aqui
+                </p>
+                <p className="text-[11px] text-neutral-400 mt-1">
+                  Formatos aceitos: Documento PDF escaneado ou laudo digital do laboratório (até 20MB)
+                </p>
               </div>
             )}
           </div>
 
-          {/* Conclusão Geral e Observações */}
-          <div className="space-y-4">
+          {/* Seção 3: Responsável Técnico (Opcional) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                Laudo Conclusivo / Parecer Diagnóstico Geral
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                <User size={13} className="text-neutral-500" /> Médico / Biomédico Responsável
               </label>
-              <textarea 
-                rows={3}
-                value={conclusion}
-                onChange={e => setConclusion(e.target.value)}
-                placeholder="Descreva a conclusão médica ou resumo do laudo (ex: Exame sem alterações significativas; glicemia de jejum mantida dentro da faixa terapêutica...)"
-                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white resize-none"
+              <input 
+                type="text"
+                value={professionalName}
+                onChange={e => setProfessionalName(e.target.value)}
+                placeholder="Ex: Dr. Roberto Guimarães"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
-                Observações Técnicas / Recomendações
+              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                <Stethoscope size={13} className="text-neutral-500" /> Registro Profissional
               </label>
               <input 
                 type="text"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Ex: Coleta realizada sem intercorrências. Repetição sugerida em 6 meses."
-                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-3 py-2.5 rounded-xl text-xs outline-none dark:text-white"
+                value={professionalCouncil}
+                onChange={e => setProfessionalCouncil(e.target.value)}
+                placeholder="Ex: CRM 12345/SP, CRBM 5678"
+                className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-mono focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
           </div>
 
-          {/* Rodapé e Botões */}
-          <div className="flex gap-3 pt-4 border-t border-neutral-100 dark:border-neutral-800">
-            <button 
-              type="button" 
+          {/* Seção 4: Parecer / Observações do Laudo */}
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center justify-between">
+              <span>Observações / Parecer do Laudo (Opcional)</span>
+              <span className="text-[11px] text-neutral-400 font-normal">Para consulta rápida sem abrir o PDF</span>
+            </label>
+            <textarea 
+              value={conclusion}
+              onChange={e => setConclusion(e.target.value)}
+              rows={2}
+              placeholder="Ex: Exame dentro dos padrões de normalidade. Ausência de alterações significativas."
+              className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs focus:ring-2 focus:ring-blue-500 outline-none resize-none"
+            />
+          </div>
+
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-200 dark:border-blue-900/40 text-[11px] text-blue-900 dark:text-blue-300 flex items-start gap-2">
+            <AlertCircle size={14} className="shrink-0 mt-0.5 text-blue-600" />
+            <span>
+              Ao salvar, o arquivo PDF ficará permanentemente disponível na ficha do paciente e na central de controle de exames para consultas da equipe médica.
+            </span>
+          </div>
+
+          {/* Rodapé de Ações */}
+          <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex justify-end items-center gap-2.5">
+            <button
+              type="button"
               onClick={onClose}
-              className="flex-1 py-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-2xl font-bold text-xs transition-colors"
+              disabled={isSubmitting}
+              className="px-4 py-2.5 text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
             >
               Cancelar
             </button>
-            <button 
+
+            <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              <CheckCircle2 size={16} />
-              {isSubmitting ? 'Salvando Laudo...' : 'Confirmar e Publicar Resultado'}
+              <CheckCircle2 size={15} />
+              {isSubmitting ? 'Salvando...' : 'Salvar Exame na Ficha'}
             </button>
           </div>
         </form>

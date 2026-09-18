@@ -6,7 +6,7 @@ import {
   Building2, User, Phone, MapPin, AlertCircle, Sparkles,
   Info, ShieldCheck, Check, Stethoscope, Pill, Lock, LogOut,
   UserPlus, Edit3, ShieldAlert, ArrowRight, Eye, RefreshCw,
-  TrendingUp, ClipboardCheck
+  TrendingUp, ClipboardCheck, Download
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -16,6 +16,7 @@ import {
   maskCPF, maskSUS, maskPhone, maskName, generateUUID, isValidUUID
 } from './types';
 import { parseExamResult } from './utils/examTemplates';
+import { openPdfInNewTab, downloadPdfFile, formatFileSize } from './utils/pdfHelper';
 
 interface PublicSaudePortalProps {
   darkMode: boolean;
@@ -866,60 +867,52 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                                   ) : null}
                                 </div>
 
-                                {/* Resultados e Parâmetros */}
-                                {parsed && (
-                                  <div className="space-y-3 pt-2">
-                                    {/* Tabela de Parâmetros */}
-                                    {parsed.parameters && parsed.parameters.length > 0 && (
-                                      <div className="border border-neutral-200 dark:border-neutral-700 rounded-2xl overflow-hidden bg-white dark:bg-neutral-900">
-                                        <div className="bg-neutral-50 dark:bg-neutral-800/60 p-2.5 border-b border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-[11px] font-bold">
-                                          <span className="text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-                                            <Activity size={12} className="text-emerald-600" /> Indicadores Avaliados no Laudo
-                                          </span>
-                                          <span className="text-neutral-400 text-[10px]">{parsed.parameters.length} parâmetros</span>
-                                        </div>
-                                        <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                                          {parsed.parameters.map(p => (
-                                            <div key={p.id} className="p-3 flex justify-between items-center text-xs">
-                                              <div>
-                                                <span className="font-bold text-neutral-900 dark:text-white">{p.name}</span>
-                                                {p.reference_range && (
-                                                  <span className="text-[10px] text-neutral-400 block font-mono">Ref: {p.reference_range}</span>
-                                                )}
-                                              </div>
-                                              <div className="flex items-center gap-2">
-                                                <span className="font-mono font-black text-xs text-neutral-900 dark:text-white">
-                                                  {p.value} {p.unit}
-                                                </span>
-                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                                                  p.status === 'normal' 
-                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800' 
-                                                    : p.status === 'alto' 
-                                                    ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
-                                                    : p.status === 'baixo'
-                                                    ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800'
-                                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                                                }`}>
-                                                  {p.status}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
+                                {/* Documento PDF do Exame / Laudo Disponível para o Munícipe */}
+                                {parsed?.pdf_url && (
+                                  <div className="mt-2 p-3 bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex flex-wrap justify-between items-center gap-2">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-xs">
+                                        <FileText size={16} />
                                       </div>
-                                    )}
+                                      <div>
+                                        <span className="font-black text-neutral-900 dark:text-white block text-xs truncate max-w-[200px]">
+                                          {parsed.pdf_name || `${exam.exam_name}.pdf`}
+                                        </span>
+                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                                          {formatFileSize(parsed.pdf_size)} · Laudo Digitalizado
+                                        </span>
+                                      </div>
+                                    </div>
 
-                                    {/* Laudo Textual */}
-                                    {parsed.conclusion && (
-                                      <div className="p-3.5 bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 rounded-2xl text-xs space-y-1">
-                                        <span className="font-black text-[10px] uppercase text-emerald-800 dark:text-emerald-300 block">Laudo do Resultado:</span>
-                                        <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{parsed.conclusion}</p>
-                                        {parsed.professional_name && (
-                                          <p className="text-[10px] text-emerald-700 dark:text-emerald-400 pt-1 font-mono">
-                                            Responsável: {parsed.professional_name} {parsed.professional_council ? `(${parsed.professional_council})` : ''}
-                                          </p>
-                                        )}
-                                      </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => openPdfInNewTab(parsed.pdf_url!, parsed.pdf_name)}
+                                        className="px-2.5 py-1 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-blue-600 dark:text-blue-400 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                      >
+                                        <Eye size={12} /> Ver Laudo
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => downloadPdfFile(parsed.pdf_url!, parsed.pdf_name)}
+                                        className="p-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 rounded-lg transition-all cursor-pointer shadow-xs"
+                                        title="Baixar Laudo em PDF"
+                                      >
+                                        <Download size={13} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Laudo Textual se houver */}
+                                {parsed?.conclusion && (
+                                  <div className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs space-y-1">
+                                    <span className="font-black text-[10px] uppercase text-neutral-600 dark:text-neutral-300 block">Síntese do Laudo:</span>
+                                    <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{parsed.conclusion}</p>
+                                    {parsed.professional_name && (
+                                      <p className="text-[10px] text-neutral-400 pt-1 font-mono">
+                                        Responsável: {parsed.professional_name} {parsed.professional_council ? `(${parsed.professional_council})` : ''}
+                                      </p>
                                     )}
                                   </div>
                                 )}

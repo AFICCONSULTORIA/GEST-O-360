@@ -5,7 +5,7 @@ import {
   Calendar, User, Stethoscope, AlertCircle, XCircle, ShieldAlert, 
   Printer, ArrowRight, Activity, Filter, FileText, Check, Ban,
   Building2, Sparkles, DollarSign, RefreshCw, ChevronRight, Eye,
-  TrendingUp, ClipboardCheck
+  TrendingUp, ClipboardCheck, Download
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
@@ -18,6 +18,8 @@ import {
 import { printExamGuide } from '../utils/printReceipt';
 import { ExamResultModal } from './ExamResultModal';
 import { parseExamResult } from '../utils/examTemplates';
+import { openPdfInNewTab, downloadPdfFile, formatFileSize } from '../utils/pdfHelper';
+import { ManageExamTypesModal } from './ManageExamTypesModal';
 
 interface SaudeExamsProps {
   requests: ExamRequest[];
@@ -46,6 +48,7 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
   const [selectedCategory, setSelectedCategory] = useState<string>('todas');
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
+  const [isManageTypesModalOpen, setIsManageTypesModalOpen] = useState(false);
   const [selectedRequestForDetails, setSelectedRequestForDetails] = useState<ExamRequest | null>(null);
   const [selectedRequestForPrint, setSelectedRequestForPrint] = useState<ExamRequest | null>(null);
   const [selectedRequestForComplete, setSelectedRequestForComplete] = useState<ExamRequest | null>(null);
@@ -201,6 +204,16 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
             ))}
           </select>
 
+          {/* Botão de Catálogo & Carências */}
+          <button 
+            type="button"
+            onClick={() => setIsManageTypesModalOpen(true)}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2 cursor-pointer"
+            title="Cadastrar novos tipos de exame e definir prazos de carência"
+          >
+            <ShieldAlert size={16} /> Catálogo & Carências
+          </button>
+
           {/* Botão de Nova Solicitação */}
           <button 
             onClick={() => setIsNewRequestModalOpen(true)}
@@ -346,15 +359,23 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
                           )}
                         </div>
 
-                        {/* Badge de Parâmetros Lançados */}
+                        {/* Indicador de Laudo / Exame em PDF Anexado */}
                         {(() => {
                           const parsed = parseExamResult(req.result_notes);
-                          if (parsed && parsed.parameters && parsed.parameters.length > 0) {
+                          if (parsed?.pdf_url) {
                             return (
-                              <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/40 w-fit">
-                                <Activity size={10} />
-                                {parsed.parameters.length} parâmetros com laudo
-                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openPdfInNewTab(parsed.pdf_url!, parsed.pdf_name);
+                                }}
+                                className="mt-1 flex items-center gap-1 text-[10px] font-black text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800/50 w-fit transition-colors cursor-pointer"
+                                title="Clique para abrir e visualizar o exame em PDF"
+                              >
+                                <FileText size={10} className="text-rose-600" />
+                                Laudo em PDF
+                              </button>
                             );
                           }
                           return null;
@@ -486,6 +507,7 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
             professionals={professionals}
             allRequests={requests}
             prefilledPatient={onNewRequestPrefilled}
+            onOpenManageExamTypes={() => setIsManageTypesModalOpen(true)}
             onClose={() => setIsNewRequestModalOpen(false)}
             onSuccess={() => {
               setIsNewRequestModalOpen(false);
@@ -554,6 +576,16 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
             }}
           />
         )}
+
+        {/* MODAL 7: CATÁLOGO DE EXAMES & PRAZOS DE CARÊNCIA */}
+        {isManageTypesModalOpen && (
+          <ManageExamTypesModal
+            examTypes={examTypes}
+            currentInstitution={currentInstitution}
+            onClose={() => setIsManageTypesModalOpen(false)}
+            onRefresh={onRefresh}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -569,6 +601,7 @@ interface NewExamRequestModalProps {
   professionals: HealthProfessional[];
   allRequests: ExamRequest[];
   prefilledPatient?: Patient | null;
+  onOpenManageExamTypes?: () => void;
   onClose: () => void;
   onSuccess: () => void;
   currentInstitution?: { id: string } | null;
@@ -581,6 +614,7 @@ const NewExamRequestModal: React.FC<NewExamRequestModalProps> = ({
   professionals,
   allRequests,
   prefilledPatient,
+  onOpenManageExamTypes,
   onClose,
   onSuccess,
   currentInstitution
@@ -664,7 +698,7 @@ const NewExamRequestModal: React.FC<NewExamRequestModalProps> = ({
 
     // Se houver duplicidade e o usuário NÃO marcou justificativa de override, bloqueia o envio
     if (duplicityCheck.isDuplicate && !formData.is_duplicate_override) {
-      showToast('Exame bloqueado por repetição em menos de 30 dias. Justificativa médica exigida para liberação.', 'error');
+      showToast(`Exame bloqueado por repetição em menos de ${minInterval} dias. Justificativa médica exigida para liberação.`, 'error');
       return;
     }
 
@@ -814,9 +848,20 @@ const NewExamRequestModal: React.FC<NewExamRequestModalProps> = ({
 
             {/* Seleção do Exame */}
             <div className="space-y-1 md:col-span-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                Procedimento / Exame Solicitado *
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
+                  Procedimento / Exame Solicitado *
+                </label>
+                {onOpenManageExamTypes && (
+                  <button
+                    type="button"
+                    onClick={onOpenManageExamTypes}
+                    className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus size={12} /> Cadastrar Novo Exame / Carência
+                  </button>
+                )}
+              </div>
               <select 
                 value={formData.exam_name}
                 onChange={e => handleSelectExamType(e.target.value)}
@@ -1045,72 +1090,93 @@ const ExamDetailsModal: React.FC<{
             </div>
           )}
 
-          {/* Seção Estruturada de Parâmetros e Resultados */}
-          {parsedResult && (
-            <div className="space-y-3">
-              {parsedResult.parameters && parsedResult.parameters.length > 0 && (
-                <div className="border border-neutral-200 dark:border-neutral-700 rounded-2xl overflow-hidden">
-                  <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 border-b border-neutral-200 dark:border-neutral-700 flex justify-between items-center">
-                    <span className="font-black text-[10px] uppercase text-neutral-600 dark:text-neutral-300 flex items-center gap-1.5">
-                      <Activity size={13} className="text-emerald-600" />
-                      Parâmetros Laboratoriais Avaliados
-                    </span>
-                    <span className="text-[10px] text-neutral-400">{parsedResult.parameters.length} itens</span>
-                  </div>
-                  <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-                    {parsedResult.parameters.map(p => (
-                      <div key={p.id} className="p-3 flex justify-between items-center">
-                        <div>
-                          <p className="font-bold text-neutral-900 dark:text-white">{p.name}</p>
-                          <p className="text-[10px] text-neutral-400 font-mono">Ref: {p.reference_range || '-'}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-black text-xs text-neutral-900 dark:text-white">
-                            {p.value} {p.unit}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                            p.status === 'normal' 
-                              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400' 
-                              : p.status === 'alto' 
-                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-400'
-                              : p.status === 'baixo'
-                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400'
-                              : 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'
-                          }`}>
-                            {p.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+          {/* Seção de Laudo e Anexo em PDF do Exame */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 flex items-center gap-1.5">
+              <FileText size={14} className="text-rose-600" /> Documento / Laudo em PDF do Paciente
+            </h4>
 
-              {parsedResult.conclusion && (
-                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-900/40 text-emerald-900 dark:text-emerald-300 space-y-1">
-                  <p className="font-black text-[10px] uppercase">Laudo Conclusivo / Parecer Técnico</p>
-                  <p className="whitespace-pre-wrap text-xs">{parsedResult.conclusion}</p>
-                  {parsedResult.professional_name && (
-                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 pt-1 font-mono">
-                      Responsável: {parsedResult.professional_name} {parsedResult.professional_council ? `(${parsedResult.professional_council})` : ''}
+            {parsedResult?.pdf_url ? (
+              <div className="p-4 bg-rose-50/70 dark:bg-rose-950/25 border-2 border-rose-200 dark:border-rose-900/60 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-md shrink-0">
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-rose-600 dark:text-rose-400 block">
+                      Arquivo PDF Disponível na Ficha
+                    </span>
+                    <h5 className="font-black text-sm text-neutral-900 dark:text-white truncate max-w-[280px]">
+                      {parsedResult.pdf_name || `${req.exam_name}.pdf`}
+                    </h5>
+                    <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
+                      {formatFileSize(parsedResult.pdf_size)}
                     </p>
-                  )}
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openPdfInNewTab(parsedResult.pdf_url!, parsedResult.pdf_name)}
+                    className="px-3.5 py-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-blue-600 dark:text-blue-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Visualizar laudo do exame em tela inteira"
+                  >
+                    <Eye size={13} /> Visualizar PDF
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => downloadPdfFile(parsedResult.pdf_url!, parsedResult.pdf_name)}
+                    className="px-3 py-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Baixar arquivo PDF"
+                  >
+                    <Download size={13} /> Baixar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-dashed border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-xs">
+                <div className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400">
+                  <AlertCircle size={15} className="text-amber-500" />
+                  <span>Nenhum arquivo PDF do exame foi anexado ainda.</span>
+                </div>
+                {onOpenResult && (
+                  <button
+                    type="button"
+                    onClick={onOpenResult}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    + Anexar PDF Agora
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Parecer / Conclusão Textual */}
+            {parsedResult && parsedResult.conclusion && (
+              <div className="bg-neutral-100/70 dark:bg-neutral-800/60 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-700 space-y-1 text-xs">
+                <p className="font-black text-[10px] uppercase text-neutral-600 dark:text-neutral-300">Parecer / Síntese do Laudo</p>
+                <p className="whitespace-pre-wrap text-neutral-800 dark:text-neutral-200">{parsedResult.conclusion}</p>
+                {parsedResult.professional_name && (
+                  <p className="text-[10px] text-neutral-400 pt-1 font-mono">
+                    Responsável Técnico: {parsedResult.professional_name} {parsedResult.professional_council ? `(${parsedResult.professional_council})` : ''}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="p-5 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap justify-between items-center gap-2 bg-neutral-50 dark:bg-neutral-800/30">
           <div className="flex items-center gap-2">
-
             {onOpenResult && (
               <button
                 type="button"
                 onClick={onOpenResult}
-                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
               >
-                <ClipboardCheck size={14} /> {req.status === 'Realizado' ? 'Editar Resultado' : 'Lançar Resultado'}
+                <FileText size={14} /> {parsedResult?.pdf_url ? 'Gerenciar Laudo / PDF' : 'Anexar Laudo em PDF'}
               </button>
             )}
           </div>

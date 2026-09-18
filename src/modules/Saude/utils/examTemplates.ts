@@ -248,6 +248,9 @@ export const parseExamResult = (resultNotes?: string | null): ExamResultData | n
           professional_name: parsed.professional_name || '',
           professional_council: parsed.professional_council || '',
           conclusion: parsed.conclusion || '',
+          pdf_url: parsed.pdf_url || undefined,
+          pdf_name: parsed.pdf_name || undefined,
+          pdf_size: parsed.pdf_size || undefined,
           parameters: Array.isArray(parsed.parameters) ? parsed.parameters : [],
           notes: parsed.notes || '',
           recorded_at: parsed.recorded_at || ''

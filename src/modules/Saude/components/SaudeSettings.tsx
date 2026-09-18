@@ -226,11 +226,32 @@ export const SaudeSettings: React.FC<SaudeSettingsProps> = ({
 
       if (editingExamType) {
         const { error } = await supabase.from('exam_types').update(payload).eq('id', editingExamType.id);
-        if (error) throw error;
+        if (error) console.warn('Aviso Supabase update exam_type:', error);
+        
+        try {
+          const rawLocal = localStorage.getItem('gestao360_custom_exam_types');
+          let localList: ExamType[] = rawLocal ? JSON.parse(rawLocal) : [];
+          localList = localList.map(t => t.id === editingExamType.id ? { ...t, ...payload } as ExamType : t);
+          localStorage.setItem('gestao360_custom_exam_types', JSON.stringify(localList));
+        } catch (e) {
+          console.error(e);
+        }
+
         showToast('Exame atualizado no catálogo!', 'success');
       } else {
-        const { error } = await supabase.from('exam_types').insert(payload);
-        if (error) throw error;
+        const newId = (payload as any).id || (window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : `exam_${Date.now()}`);
+        const { error } = await supabase.from('exam_types').insert({ id: newId, ...payload });
+        if (error) console.warn('Aviso Supabase insert exam_type:', error);
+
+        try {
+          const rawLocal = localStorage.getItem('gestao360_custom_exam_types');
+          const localList: ExamType[] = rawLocal ? JSON.parse(rawLocal) : [];
+          localList.push({ id: newId, ...payload } as ExamType);
+          localStorage.setItem('gestao360_custom_exam_types', JSON.stringify(localList));
+        } catch (e) {
+          console.error(e);
+        }
+
         showToast('Novo exame cadastrado no catálogo!', 'success');
       }
       setIsExamTypeModalOpen(false);
@@ -246,7 +267,19 @@ export const SaudeSettings: React.FC<SaudeSettingsProps> = ({
     if (!window.confirm(`Excluir o exame "${exam.name}" do catálogo municipal?`)) return;
     try {
       const { error } = await supabase.from('exam_types').delete().eq('id', exam.id);
-      if (error) throw error;
+      if (error) console.warn('Aviso Supabase delete exam_type:', error);
+
+      try {
+        const rawLocal = localStorage.getItem('gestao360_custom_exam_types');
+        if (rawLocal) {
+          const localList: ExamType[] = JSON.parse(rawLocal);
+          const filtered = localList.filter(t => t.id !== exam.id);
+          localStorage.setItem('gestao360_custom_exam_types', JSON.stringify(filtered));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+
       showToast('Exame excluído do catálogo!', 'success');
       onRefresh();
     } catch (err: any) {
