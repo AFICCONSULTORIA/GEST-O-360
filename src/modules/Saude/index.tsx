@@ -134,6 +134,12 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
 
     } catch (err) {
       console.error('Erro ao buscar dados de saúde:', err);
+      const demoApts = localStorage.getItem('gestao360_demo_saude_appointments');
+      if (demoApts) { try { setAppointments(JSON.parse(demoApts)); } catch (e) {} }
+      const demoPats = localStorage.getItem('gestao360_demo_saude_patients');
+      if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (e) {} }
+      const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
+      if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (e) {} }
     } finally {
       setIsLoading(false);
     }
@@ -181,7 +187,14 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
 
   useEffect(() => {
     const handleReload = (e: any) => {
-      if (!e.detail?.module || e.detail.module === 'saude' || e.detail.module === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'saude' || mod === 'all') {
+        const demoApts = localStorage.getItem('gestao360_demo_saude_appointments');
+        if (demoApts) { try { setAppointments(JSON.parse(demoApts)); } catch (e) {} }
+        const demoPats = localStorage.getItem('gestao360_demo_saude_patients');
+        if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (e) {} }
+        const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
+        if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (e) {} }
         loadData();
       }
     };

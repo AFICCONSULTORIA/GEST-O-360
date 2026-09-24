@@ -804,7 +804,14 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
   React.useEffect(() => {
     loadCompanies();
     const handleReload = (e: any) => {
-      if (!e.detail?.moduleKey || e.detail.moduleKey === 'certificates' || e.detail.moduleKey === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'certificates' || mod === 'all') {
+        const demoStorage = localStorage.getItem('gestao360_demo_certificates');
+        if (demoStorage) {
+          try {
+            setCompanies(JSON.parse(demoStorage));
+          } catch (e) {}
+        }
         loadCompanies();
       }
     };

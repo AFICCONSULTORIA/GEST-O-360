@@ -40,7 +40,12 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
   React.useEffect(() => {
     loadContracts();
     const handleReload = (e: any) => {
-      if (!e.detail?.module || e.detail.module === 'contracts' || e.detail.module === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'contracts' || mod === 'all') {
+        const demoSaved = localStorage.getItem('gestao360_demo_contracts');
+        if (demoSaved) {
+          try { setContracts(JSON.parse(demoSaved)); } catch (e) {}
+        }
         loadContracts();
       }
     };

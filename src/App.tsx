@@ -410,43 +410,73 @@ export default function App() {
         }
       } catch (err) {
         console.error('Erro ao buscar dados do Supabase:', err);
+        // Fallback imediato para dados demo locais caso haja erro no Supabase
+        const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
+        if (demoPat) { try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) {} }
+        const demoOrd = localStorage.getItem('gestao360_demo_orders');
+        if (demoOrd) { try { setOrders(JSON.parse(demoOrd)); } catch (e) {} }
+        const demoCtrl = localStorage.getItem('gestao360_demo_controls');
+        if (demoCtrl) { try { setControls(JSON.parse(demoCtrl)); } catch (e) {} }
+        const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
+        if (demoDoc) { try { setDocRecords(JSON.parse(demoDoc)); } catch (e) {} }
       }
     };
 
     fetchGlobalData();
 
     const handleReload = (e: any) => {
-      const moduleKey = e.detail?.moduleKey;
-      if (!moduleKey || moduleKey === 'all') {
-        fetchGlobalData();
-      } else if (moduleKey === 'patrimonio') {
+      const moduleKey = e.detail?.moduleKey || e.detail?.module;
+
+      const loadLocalPatrimonio = () => {
         const stored = localStorage.getItem('gestao360_demo_patrimonio');
         if (stored) {
           try { setPatrimonioItems(JSON.parse(stored)); } catch (err) {}
         } else {
           setPatrimonioItems([]);
         }
-      } else if (moduleKey === 'orders') {
+      };
+
+      const loadLocalOrders = () => {
         const stored = localStorage.getItem('gestao360_demo_orders');
         if (stored) {
           try { setOrders(JSON.parse(stored)); } catch (err) {}
         } else {
           setOrders([]);
         }
-      } else if (moduleKey === 'controls') {
+      };
+
+      const loadLocalControls = () => {
         const stored = localStorage.getItem('gestao360_demo_controls');
         if (stored) {
           try { setControls(JSON.parse(stored)); } catch (err) {}
         } else {
           setControls([]);
         }
-      } else if (moduleKey === 'doc_records') {
+      };
+
+      const loadLocalDocRecords = () => {
         const stored = localStorage.getItem('gestao360_demo_doc_records');
         if (stored) {
           try { setDocRecords(JSON.parse(stored)); } catch (err) {}
         } else {
           setDocRecords([]);
         }
+      };
+
+      if (!moduleKey || moduleKey === 'all' || moduleKey === 'home' || moduleKey === 'mayor') {
+        loadLocalPatrimonio();
+        loadLocalOrders();
+        loadLocalControls();
+        loadLocalDocRecords();
+        fetchGlobalData();
+      } else if (moduleKey === 'patrimonio') {
+        loadLocalPatrimonio();
+      } else if (moduleKey === 'orders') {
+        loadLocalOrders();
+      } else if (moduleKey === 'controls') {
+        loadLocalControls();
+      } else if (moduleKey === 'doc_records' || moduleKey === 'doc_numbers') {
+        loadLocalDocRecords();
       }
     };
     window.addEventListener('gestao360:reload-module', handleReload);

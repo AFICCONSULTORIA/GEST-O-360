@@ -58,7 +58,12 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
   useEffect(() => {
     fetchNews();
     const handleReload = (e: any) => {
-      if (!e.detail?.module || e.detail.module === 'noticias' || e.detail.module === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'noticias' || mod === 'all') {
+        const saved = localStorage.getItem('gestao360_municipal_news');
+        if (saved) {
+          try { setNews(JSON.parse(saved)); } catch (e) {}
+        }
         fetchNews();
       }
     };

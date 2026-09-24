@@ -24,6 +24,13 @@ import {
 import { INITIAL_MOCK_LAWS } from '../modules/Laws';
 import { RADAR_DATA, MOCK_TEMPLATES } from './mockData';
 import { MOCK_DEFAULT_FORMS } from '../modules/PublicForms/templates';
+import { 
+  INITIAL_COMISSOES, 
+  INITIAL_SESSOES, 
+  INITIAL_INDICACOES, 
+  INITIAL_PNTP_CRITERIOS, 
+  INITIAL_SUGESTOES 
+} from '../modules/Camara/services/camaraService';
 
 export { DEMO_USER, DEMO_INSTITUTION };
 
@@ -43,6 +50,9 @@ export const isDemoEnvironment = (): boolean => {
   // 3. Subdomínio de demonstração (ex: demo.localhost ou demo.gestao360sistema.com.br)
   const sub = getSubdomain();
   if (sub === 'demo' || sub === 'demonstracao') return true;
+
+  // 4. Desenvolvimento Local (localhost / 127.0.0.1)
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return true;
 
   return false;
 };
@@ -126,7 +136,7 @@ export const hasDemoDataForModule = (moduleKey: string): boolean => {
     case 'certificates':
       return !!localStorage.getItem('gestao360_demo_certificates');
     case 'servicos_publicos':
-      return !!localStorage.getItem('gestao360_demo_servicos_publicos');
+      return !!localStorage.getItem('gestao360_demo_demandas') || !!localStorage.getItem('gestao360_demo_servicos_publicos');
     case 'meio_ambiente':
       return !!localStorage.getItem('gestao360_demo_meio_ambiente');
     case 'protocol':
@@ -140,6 +150,9 @@ export const hasDemoDataForModule = (moduleKey: string): boolean => {
     case 'admin_financas':
     case 'financas':
       return !!localStorage.getItem('fin_monthly_history');
+    case 'home':
+    case 'mayor':
+      return !!localStorage.getItem('gestao360_demo_patrimonio') || !!localStorage.getItem('gestao360_demo_controls');
     default:
       return false;
   }
@@ -155,92 +168,84 @@ export const seedDemoDataForModule = async (
   try {
     const instId = options.institutionId || DEMO_INSTITUTION.id;
 
+    const syncBackground = (fn: () => any) => {
+      try {
+        Promise.resolve(fn()).catch(e => console.debug('Supabase background sync skipped:', e));
+      } catch (e) {
+        console.debug('Supabase background sync invocation error:', e);
+      }
+    };
+
     switch (moduleKey) {
       case 'patrimonio': {
         const items = DEMO_PATRIMONIO.map(p => ({ ...p, institution_id: instId }));
         localStorage.setItem('gestao360_demo_patrimonio', JSON.stringify(items));
-        try {
-          await supabase.from('patrimonio').upsert(items.map(p => ({
-            id: p.id,
-            code: p.code,
-            item_type: p.itemType,
-            object_name: p.objectName,
-            location: p.location,
-            status: p.status,
-            condition: p.condition,
-            department: p.department,
-            year: p.year,
-            plate: p.plate,
-            model: p.model,
-            image_urls: p.imageUrls,
-            created_by_name: p.createdByName,
-            institution_id: instId
-          })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for patrimonio:', e);
-        }
+        syncBackground(() => supabase.from('patrimonio').upsert(items.map(p => ({
+          id: p.id,
+          code: p.code,
+          item_type: p.itemType,
+          object_name: p.objectName,
+          location: p.location,
+          status: p.status,
+          condition: p.condition,
+          department: p.department,
+          year: p.year,
+          plate: p.plate,
+          model: p.model,
+          image_urls: p.imageUrls,
+          created_by_name: p.createdByName,
+          institution_id: instId
+        }))));
         break;
       }
 
       case 'orders': {
         const orders = DEMO_ORDERS.map(o => ({ ...o, institution_id: instId }));
         localStorage.setItem('gestao360_demo_orders', JSON.stringify(orders));
-        try {
-          await supabase.from('orders').upsert(orders.map(o => ({
-            id: o.id,
-            type: o.type,
-            description: o.description,
-            requester: o.requester,
-            date_requested: o.dateRequested,
-            quotation_number: o.quotationNumber,
-            winning_supplier: o.winningSupplier,
-            status: o.status,
-            institution_id: instId
-          })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for orders:', e);
-        }
+        syncBackground(() => supabase.from('orders').upsert(orders.map(o => ({
+          id: o.id,
+          type: o.type,
+          description: o.description,
+          requester: o.requester,
+          date_requested: o.dateRequested,
+          quotation_number: o.quotationNumber,
+          winning_supplier: o.winningSupplier,
+          status: o.status,
+          institution_id: instId
+        }))));
         break;
       }
 
       case 'controls': {
         const controls = DEMO_CONTROLS.map(c => ({ ...c, institution_id: instId }));
         localStorage.setItem('gestao360_demo_controls', JSON.stringify(controls));
-        try {
-          await supabase.from('controls').upsert(controls.map(c => ({
-            id: c.id,
-            task: c.task,
-            status: c.status,
-            department: c.department,
-            deadline: c.deadline,
-            notes: c.notes,
-            history: c.history,
-            institution_id: instId
-          })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for controls:', e);
-        }
+        syncBackground(() => supabase.from('controls').upsert(controls.map(c => ({
+          id: c.id,
+          task: c.task,
+          status: c.status,
+          department: c.department,
+          deadline: c.deadline,
+          notes: c.notes,
+          history: c.history,
+          institution_id: instId
+        }))));
         break;
       }
 
       case 'contracts': {
         const contracts = DEMO_CONTRACTS.map(c => ({ ...c, institution_id: instId }));
         localStorage.setItem('gestao360_demo_contracts', JSON.stringify(contracts));
-        try {
-          await supabase.from('contracts').upsert(contracts.map(c => ({
-            id: c.id,
-            number: c.number,
-            object: c.object,
-            vendor_name: c.vendorName,
-            amount: c.amount,
-            category: c.category,
-            status: c.status,
-            deadline: c.deadline,
-            institution_id: instId
-          })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for contracts:', e);
-        }
+        syncBackground(() => supabase.from('contracts').upsert(contracts.map(c => ({
+          id: c.id,
+          number: c.number,
+          object: c.object,
+          vendor_name: c.vendorName,
+          amount: c.amount,
+          category: c.category,
+          status: c.status,
+          deadline: c.deadline,
+          institution_id: instId
+        }))));
         break;
       }
 
@@ -250,102 +255,73 @@ export const seedDemoDataForModule = async (
         localStorage.setItem('gestao360_demo_saude_medications', JSON.stringify(DEMO_MEDICATIONS));
         localStorage.setItem('gestao360_demo_saude_exams', JSON.stringify(DEMO_EXAMS));
 
-        try {
-          await supabase.from('patients').upsert(DEMO_PATIENTS.map(p => ({ ...p, institution_id: instId })));
-          await supabase.from('appointments').upsert(DEMO_APPOINTMENTS.map(a => ({ ...a, institution_id: instId })));
-          await supabase.from('medications').upsert(DEMO_MEDICATIONS.map(m => ({ ...m, institution_id: instId })));
-          await supabase.from('exam_requests').upsert(DEMO_EXAMS.map(e => ({ ...e, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for saude:', e);
-        }
+        syncBackground(() => supabase.from('patients').upsert(DEMO_PATIENTS.map(p => ({ ...p, institution_id: instId }))));
+        syncBackground(() => supabase.from('appointments').upsert(DEMO_APPOINTMENTS.map(a => ({ ...a, institution_id: instId }))));
+        syncBackground(() => supabase.from('medications').upsert(DEMO_MEDICATIONS.map(m => ({ ...m, institution_id: instId }))));
+        syncBackground(() => supabase.from('exam_requests').upsert(DEMO_EXAMS.map(e => ({ ...e, institution_id: instId }))));
         break;
       }
 
       case 'camara': {
         localStorage.setItem('camara_360_vereadores_v2', JSON.stringify(DEMO_VEREADORES));
         localStorage.setItem('camara_360_materias_v2', JSON.stringify(DEMO_MATERIAS));
-        try {
-          await supabase.from('camara_vereadores').upsert(DEMO_VEREADORES);
-          await supabase.from('camara_materias').upsert(DEMO_MATERIAS);
-        } catch (e) {
-          console.debug('Supabase sync skipped for camara:', e);
-        }
+        localStorage.setItem('camara_360_comissoes_v2', JSON.stringify(INITIAL_COMISSOES));
+        localStorage.setItem('camara_360_sessoes_v2', JSON.stringify(INITIAL_SESSOES));
+        localStorage.setItem('camara_360_indicacoes_v2', JSON.stringify(INITIAL_INDICACOES));
+        localStorage.setItem('camara_360_pntp_v2', JSON.stringify(INITIAL_PNTP_CRITERIOS));
+        localStorage.setItem('camara_360_sugestoes_v2', JSON.stringify(INITIAL_SUGESTOES));
+
+        syncBackground(() => supabase.from('camara_vereadores').upsert(DEMO_VEREADORES));
+        syncBackground(() => supabase.from('camara_materias').upsert(DEMO_MATERIAS));
         break;
       }
 
       case 'noticias': {
         localStorage.setItem('gestao360_municipal_news', JSON.stringify(DEMO_NEWS));
-        try {
-          await supabase.from('municipal_news').upsert(DEMO_NEWS.map(n => ({ ...n, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for noticias:', e);
-        }
+        syncBackground(() => supabase.from('municipal_news').upsert(DEMO_NEWS.map(n => ({ ...n, institution_id: instId }))));
         break;
       }
 
       case 'laws': {
         localStorage.setItem('gestao360_demo_laws', JSON.stringify(INITIAL_MOCK_LAWS));
-        try {
-          await supabase.from('municipal_laws').upsert(INITIAL_MOCK_LAWS.map(l => ({ ...l, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for laws:', e);
-        }
+        syncBackground(() => supabase.from('municipal_laws').upsert(INITIAL_MOCK_LAWS.map(l => ({ ...l, institution_id: instId }))));
         break;
       }
 
       case 'certificates': {
         localStorage.setItem('gestao360_demo_certificates', JSON.stringify(DEMO_COMPANIES));
-        try {
-          await supabase.from('company_certificates').upsert(DEMO_COMPANIES.map(c => ({
-            id: c.id,
-            company_name: c.companyName,
-            cnpj: c.cnpj,
-            certificates: c.certificates,
-            institution_id: instId
-          })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for certificates:', e);
-        }
+        syncBackground(() => supabase.from('company_certificates').upsert(DEMO_COMPANIES.map(c => ({
+          id: c.id,
+          company_name: c.companyName,
+          cnpj: c.cnpj,
+          certificates: c.certificates,
+          institution_id: instId
+        }))));
         break;
       }
 
       case 'servicos_publicos': {
         localStorage.setItem('gestao360_demo_servicos_publicos', JSON.stringify(DEMO_DEMANDAS));
-        try {
-          await supabase.from('servicos_publicos_demandas').upsert(DEMO_DEMANDAS.map(d => ({ ...d, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for servicos_publicos:', e);
-        }
+        localStorage.setItem('gestao360_demo_demandas', JSON.stringify(DEMO_DEMANDAS));
+        syncBackground(() => supabase.from('servicos_publicos_demandas').upsert(DEMO_DEMANDAS.map(d => ({ ...d, institution_id: instId }))));
         break;
       }
 
       case 'meio_ambiente': {
         localStorage.setItem('gestao360_demo_meio_ambiente', JSON.stringify(DEMO_ENVIRONMENTAL_REPORTS));
-        try {
-          await supabase.from('meio_ambiente_denuncias').upsert(DEMO_ENVIRONMENTAL_REPORTS.map(r => ({ ...r, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for meio_ambiente:', e);
-        }
+        syncBackground(() => supabase.from('meio_ambiente_denuncias').upsert(DEMO_ENVIRONMENTAL_REPORTS.map(r => ({ ...r, institution_id: instId }))));
         break;
       }
 
       case 'protocol': {
         localStorage.setItem('gestao360_demo_protocols', JSON.stringify(DEMO_PROTOCOLS));
-        try {
-          await supabase.from('protocols').upsert(DEMO_PROTOCOLS.map(p => ({ ...p, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for protocol:', e);
-        }
+        syncBackground(() => supabase.from('protocols').upsert(DEMO_PROTOCOLS.map(p => ({ ...p, institution_id: instId }))));
         break;
       }
 
       case 'doc_numbers': {
         localStorage.setItem('gestao360_demo_doc_records', JSON.stringify(DEMO_DOC_RECORDS));
-        try {
-          await supabase.from('document_records').upsert(DEMO_DOC_RECORDS.map(d => ({ ...d, institution_id: instId })));
-        } catch (e) {
-          console.debug('Supabase sync skipped for doc_numbers:', e);
-        }
+        syncBackground(() => supabase.from('document_records').upsert(DEMO_DOC_RECORDS.map(d => ({ ...d, institution_id: instId }))));
         break;
       }
 
@@ -364,22 +340,18 @@ export const seedDemoDataForModule = async (
           fichaUrl: ''
         };
         localStorage.setItem('gestao360_demo_creche_settings', JSON.stringify(crecheData));
-        try {
-          await supabase.from('creche_settings').upsert([{
-            id: 'creche_settings_demo',
-            bercario_total: crecheData.bercarioTotal,
-            bercario_occupied: crecheData.bercarioOccupied,
-            maternal1_total: crecheData.maternal1Total,
-            maternal1_occupied: crecheData.maternal1Occupied,
-            maternal2_total: crecheData.maternal2Total,
-            maternal2_occupied: crecheData.maternal2Occupied,
-            decreto_name: crecheData.decretoName,
-            decreto_description: crecheData.decretoDescription,
-            is_open: crecheData.isOpen
-          }]);
-        } catch (e) {
-          console.debug('Supabase sync skipped for creche:', e);
-        }
+        syncBackground(() => supabase.from('creche_settings').upsert([{
+          id: 'creche_settings_demo',
+          bercario_total: crecheData.bercarioTotal,
+          bercario_occupied: crecheData.bercarioOccupied,
+          maternal1_total: crecheData.maternal1Total,
+          maternal1_occupied: crecheData.maternal1Occupied,
+          maternal2_total: crecheData.maternal2Total,
+          maternal2_occupied: crecheData.maternal2Occupied,
+          decreto_name: crecheData.decretoName,
+          decreto_description: crecheData.decretoDescription,
+          is_open: crecheData.isOpen
+        }]));
         break;
       }
 
@@ -496,6 +468,8 @@ export const seedDemoDataForModule = async (
     window.dispatchEvent(new CustomEvent('gestao360:reload-module', { 
       detail: { 
         module: moduleKey,
+        moduleKey: moduleKey,
+        action: 'seed',
         timestamp: Date.now()
       } 
     }));
@@ -542,6 +516,11 @@ export const clearDemoDataForModule = (moduleKey: string, options: { silent?: bo
       case 'camara':
         localStorage.removeItem('camara_360_vereadores_v2');
         localStorage.removeItem('camara_360_materias_v2');
+        localStorage.removeItem('camara_360_comissoes_v2');
+        localStorage.removeItem('camara_360_sessoes_v2');
+        localStorage.removeItem('camara_360_indicacoes_v2');
+        localStorage.removeItem('camara_360_pntp_v2');
+        localStorage.removeItem('camara_360_sugestoes_v2');
         break;
       case 'noticias':
         localStorage.removeItem('gestao360_municipal_news');
@@ -554,6 +533,7 @@ export const clearDemoDataForModule = (moduleKey: string, options: { silent?: bo
         break;
       case 'servicos_publicos':
         localStorage.removeItem('gestao360_demo_servicos_publicos');
+        localStorage.removeItem('gestao360_demo_demandas');
         break;
       case 'meio_ambiente':
         localStorage.removeItem('gestao360_demo_meio_ambiente');
@@ -581,8 +561,10 @@ export const clearDemoDataForModule = (moduleKey: string, options: { silent?: bo
           'gestao360_demo_patrimonio', 'gestao360_demo_orders', 'gestao360_demo_controls',
           'gestao360_demo_contracts', 'gestao360_demo_saude_patients', 'gestao360_demo_saude_appointments',
           'gestao360_demo_saude_medications', 'gestao360_demo_saude_exams', 'camara_360_vereadores_v2',
-          'camara_360_materias_v2', 'gestao360_municipal_news', 'gestao360_demo_laws',
-          'gestao360_demo_certificates', 'gestao360_demo_servicos_publicos', 'gestao360_demo_meio_ambiente',
+          'camara_360_materias_v2', 'camara_360_comissoes_v2', 'camara_360_sessoes_v2',
+          'camara_360_indicacoes_v2', 'camara_360_pntp_v2', 'camara_360_sugestoes_v2',
+          'gestao360_municipal_news', 'gestao360_demo_laws', 'gestao360_demo_certificates',
+          'gestao360_demo_servicos_publicos', 'gestao360_demo_demandas', 'gestao360_demo_meio_ambiente',
           'gestao360_demo_protocols', 'gestao360_demo_doc_records', 'gestao360_demo_creche_settings',
           'gestao360_pntp_categories_2026', 'fin_monthly_history', 'gestao360_public_forms'
         ];
@@ -595,6 +577,8 @@ export const clearDemoDataForModule = (moduleKey: string, options: { silent?: bo
     window.dispatchEvent(new CustomEvent('gestao360:reload-module', { 
       detail: { 
         module: moduleKey,
+        moduleKey: moduleKey,
+        action: 'clear',
         timestamp: Date.now()
       } 
     }));

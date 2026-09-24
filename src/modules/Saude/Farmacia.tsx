@@ -78,14 +78,32 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       let medQuery = supabase.from('medications').select('*');
       if (currentInstitution?.id) medQuery = medQuery.eq('institution_id', currentInstitution.id);
       const { data: medData, error: medError } = await medQuery.order('name', { ascending: true });
-      if (medData) setMedications(medData as Medication[]);
+      if (!medError && medData && medData.length > 0) {
+        setMedications(medData as Medication[]);
+      } else {
+        const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
+        if (demoMeds) {
+          try { setMedications(JSON.parse(demoMeds)); } catch (e) {}
+        }
+      }
 
       let dispQuery = supabase.from('medication_dispensations').select('*');
       if (currentInstitution?.id) dispQuery = dispQuery.eq('institution_id', currentInstitution.id);
-      const { data: dispData } = await dispQuery.order('created_at', { ascending: false });
-      if (dispData) setLocalDispensations(dispData as MedicationDispensation[]);
+      const { data: dispData, error: dispError } = await dispQuery.order('created_at', { ascending: false });
+      if (!dispError && dispData && dispData.length > 0) {
+        setLocalDispensations(dispData as MedicationDispensation[]);
+      } else {
+        const demoDisp = localStorage.getItem('gestao360_demo_saude_dispensations');
+        if (demoDisp) {
+          try { setLocalDispensations(JSON.parse(demoDisp)); } catch (e) {}
+        }
+      }
     } catch (err) {
       console.error('Erro ao carregar dados da farmácia:', err);
+      const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
+      if (demoMeds) {
+        try { setMedications(JSON.parse(demoMeds)); } catch (e) {}
+      }
     } finally {
       setIsLoading(false);
     }
@@ -93,6 +111,18 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
 
   useEffect(() => {
     loadMedicationsAndDispensations();
+
+    const handleReload = (e: any) => {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'saude' || mod === 'all') {
+        const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
+        if (demoMeds) {
+          try { setMedications(JSON.parse(demoMeds)); } catch (e) {}
+        }
+        loadMedicationsAndDispensations();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
 
     const channel = supabase
       .channel('farmacia-changes')
@@ -105,6 +135,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       .subscribe();
 
     return () => {
+      window.removeEventListener('gestao360:reload-module', handleReload);
       supabase.removeChannel(channel);
     };
   }, [currentInstitution?.id]);

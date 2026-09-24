@@ -837,15 +837,19 @@ export const LawsModule = ({
       
       const { data, error } = await query;
       if (error) {
-        console.error('Error fetching laws:', error);
-        showToast('Erro ao carregar leis do banco de dados.', 'error');
-        setLaws([]);
+        console.warn('Error fetching laws from Supabase, falling back to demo laws:', error);
+        const demoLaws = localStorage.getItem('gestao360_demo_laws');
+        if (demoLaws) {
+          try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+        } else {
+          setLaws(INITIAL_MOCK_LAWS);
+        }
       } else if (data && data.length > 0) {
         setLaws(data as MunicipalLaw[]);
       } else {
         const demoLaws = localStorage.getItem('gestao360_demo_laws');
         if (demoLaws) {
-          setLaws(JSON.parse(demoLaws));
+          try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
         } else {
           setLaws(INITIAL_MOCK_LAWS);
         }
@@ -853,8 +857,11 @@ export const LawsModule = ({
     } catch (err) {
       console.error(err);
       const demoLaws = localStorage.getItem('gestao360_demo_laws');
-      if (demoLaws) setLaws(JSON.parse(demoLaws));
-      else setLaws(INITIAL_MOCK_LAWS);
+      if (demoLaws) {
+        try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+      } else {
+        setLaws(INITIAL_MOCK_LAWS);
+      }
     }
     setIsLoading(false);
   }, [institution?.id]);
@@ -862,7 +869,12 @@ export const LawsModule = ({
   React.useEffect(() => {
     loadLaws();
     const handleReload = (e: any) => {
-      if (!e.detail?.module || e.detail.module === 'laws' || e.detail.module === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'laws' || mod === 'all') {
+        const demoLaws = localStorage.getItem('gestao360_demo_laws');
+        if (demoLaws) {
+          try { setLaws(JSON.parse(demoLaws)); } catch (e) {}
+        }
         loadLaws();
       }
     };

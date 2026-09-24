@@ -99,7 +99,12 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
   useEffect(() => {
     fetchReports();
     const handleReload = (e: any) => {
-      if (!e.detail?.moduleKey || e.detail.moduleKey === 'meio_ambiente' || e.detail.moduleKey === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'meio_ambiente' || mod === 'all') {
+        const demoStorage = localStorage.getItem('gestao360_demo_meio_ambiente');
+        if (demoStorage) {
+          try { setReports(JSON.parse(demoStorage)); } catch (e) {}
+        }
         fetchReports();
       }
     };

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Vereador } from '../types';
 import { VereadorFormModal } from './VereadorFormModal';
+import { DemoFillButton } from '../../../components/DemoFillButton';
 
 interface VereadoresGabinetesProps {
   vereadores: Vereador[];
@@ -43,15 +44,18 @@ export const VereadoresGabinetes: React.FC<VereadoresGabinetesProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setSelectedVereadorToEdit(null);
-            setIsFormOpen(true);
-          }}
-          className="px-6 py-3 bg-[#003B6F] hover:bg-[#002b52] text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-[#003B6F]/20 flex items-center gap-2 transition-all cursor-pointer"
-        >
-          <Plus size={16} /> Cadastrar Vereador
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <DemoFillButton moduleKey="camara" />
+          <button
+            onClick={() => {
+              setSelectedVereadorToEdit(null);
+              setIsFormOpen(true);
+            }}
+            className="px-6 py-3 bg-[#003B6F] hover:bg-[#002b52] text-white rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-[#003B6F]/20 flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <Plus size={16} /> Cadastrar Vereador
+          </button>
+        </div>
       </div>
 
       {/* 2. MESA DIRETORA EM DESTAQUE */}

@@ -100,7 +100,12 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
   React.useEffect(() => {
     loadData();
     const handleReload = (e: any) => {
-      if (!e.detail?.moduleKey || e.detail.moduleKey === 'protocol' || e.detail.moduleKey === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'protocol' || mod === 'all') {
+        const demoStorage = localStorage.getItem('gestao360_demo_protocols');
+        if (demoStorage) {
+          try { setProtocols(JSON.parse(demoStorage)); } catch (e) {}
+        }
         loadData();
       }
     };

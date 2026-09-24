@@ -85,7 +85,12 @@ export function ServicosPublicosModule({ currentInstitution }: { currentInstitut
   React.useEffect(() => {
     fetchDemands();
     const handleReload = (e: any) => {
-      if (!e.detail?.moduleKey || e.detail.moduleKey === 'servicos_publicos' || e.detail.moduleKey === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'servicos_publicos' || mod === 'all') {
+        const demoStorage = localStorage.getItem('gestao360_demo_demandas') || localStorage.getItem('gestao360_demo_servicos_publicos');
+        if (demoStorage) {
+          try { setDemands(JSON.parse(demoStorage)); } catch (e) {}
+        }
         fetchDemands();
       }
     };

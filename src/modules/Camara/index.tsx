@@ -83,7 +83,8 @@ export const CamaraModule: React.FC = () => {
   useEffect(() => {
     loadData();
     const handleReload = (e: any) => {
-      if (!e.detail?.module || e.detail.module === 'camara' || e.detail.module === 'all') {
+      const mod = e.detail?.moduleKey || e.detail?.module;
+      if (!mod || mod === 'camara' || mod === 'all') {
         loadData();
       }
     };
