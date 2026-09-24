@@ -9,6 +9,7 @@ import { CompanyCertificates } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 export const DEFAULT_STATE_LINKS: Record<string, string> = {
   AC: 'https://sefaznet.ac.gov.br/sefazonline/servlet/wcertidaonegativa',
@@ -777,18 +778,39 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
     return saved ? JSON.parse(saved) : DEFAULT_STATE_LINKS;
   });
 
-  React.useEffect(() => {
+  const loadCompanies = React.useCallback(() => {
+    setIsLoading(true);
     let query = supabase.from('company_certificates').select('*');
     if (institution?.id) query = query.eq('institution_id', institution.id);
     query.then(({ data, error }) => {
       setIsLoading(false);
-      if (error) {
-        console.error("Erro ao buscar empresas:", error);
+      if (error || !data || data.length === 0) {
+        const demoStorage = localStorage.getItem('gestao360_demo_certificates');
+        if (demoStorage) {
+          try {
+            setCompanies(JSON.parse(demoStorage));
+            return;
+          } catch (e) {
+            console.error("Erro ao carregar dados demo de certidões:", e);
+          }
+        }
+        if (error) console.error("Erro ao buscar empresas:", error);
       } else if (data) {
         setCompanies(data.map(c => ({ ...c, companyName: c.company_name } as CompanyCertificates)));
       }
     });
-  }, []);
+  }, [institution?.id]);
+
+  React.useEffect(() => {
+    loadCompanies();
+    const handleReload = (e: any) => {
+      if (!e.detail?.moduleKey || e.detail.moduleKey === 'certificates' || e.detail.moduleKey === 'all') {
+        loadCompanies();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
+  }, [loadCompanies]);
 
   const getStatusInfo = (expiryDate: string) => {
     const today = new Date();
@@ -862,6 +884,7 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <DemoFillButton moduleKey="certificates" onSuccess={loadCompanies} />
           {canAdmin && (
             <button onClick={() => setIsConfiguringLinks(true)} className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
               <Settings size={16} /> Links
@@ -1010,8 +1033,11 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
                  </tr>
               ) : filtered.length === 0 && (
                  <tr>
-                   <td colSpan={7} className="py-10 text-center text-sm font-medium text-neutral-500">
-                     Nenhuma empresa cadastrada.
+                   <td colSpan={7} className="py-12 text-center text-sm font-medium text-neutral-500">
+                     <div className="flex flex-col items-center justify-center gap-3">
+                       <p>Nenhuma empresa cadastrada no momento.</p>
+                       <DemoFillButton moduleKey="certificates" onSuccess={loadCompanies} />
+                     </div>
                    </td>
                  </tr>
               )}

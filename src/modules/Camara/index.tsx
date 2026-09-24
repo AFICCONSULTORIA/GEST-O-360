@@ -20,6 +20,7 @@ import { RadarPNTPCamara } from './components/RadarPNTPCamara';
 import { DocumentosOficiais } from './components/DocumentosOficiais';
 import { PortalCidadaoCamara } from './components/PortalCidadaoCamara';
 import { MateriaFormModal } from './components/MateriaFormModal';
+import { DemoFillButton } from '../../components/DemoFillButton';
 import { showToast } from '../../components/ui/Toast';
 
 export type CamaraTab = 
@@ -81,6 +82,13 @@ export const CamaraModule: React.FC = () => {
 
   useEffect(() => {
     loadData();
+    const handleReload = (e: any) => {
+      if (!e.detail?.module || e.detail.module === 'camara' || e.detail.module === 'all') {
+        loadData();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, []);
 
   // Handlers de Salvamento e Atualização
@@ -214,6 +222,7 @@ export const CamaraModule: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <DemoFillButton moduleKey="camara" onSuccess={loadData} />
           <button 
             onClick={() => setIsNovaMateriaModalOpen(true)}
             className="px-6 py-3 bg-[#003B6F] hover:bg-[#002b52] text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 shadow-lg shadow-[#003B6F]/20 cursor-pointer"

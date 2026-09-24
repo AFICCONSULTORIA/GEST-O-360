@@ -58,6 +58,9 @@ import { MayorDashboard } from './components/MayorDashboard';
 import { SalesLandingPage } from './components/SalesLandingPage';
 import { LandingPage } from './components/LandingPage';
 import { Login } from './components/Login';
+import { DemoModuleBanner } from './components/DemoModuleBanner';
+import { isDemoEnvironment, setDemoEnvironment } from './lib/demoManager';
+import { DEMO_USER, DEMO_INSTITUTION } from './lib/demoData';
 
 // Types
 import { 
@@ -364,24 +367,90 @@ export default function App() {
         const { data: depts } = await fetchPaginated('departments', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
 
         if (users) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
-        if (docs) setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
-        if (ords) setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
-        if (ctrls) setControls(ctrls as CheckItem[]);
+        
+        // Doc Records
+        const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
+        if (demoDoc && (!docs || docs.length === 0)) {
+          try { setDocRecords(JSON.parse(demoDoc)); } catch (e) {}
+        } else if (docs) {
+          setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
+        }
+
+        // Orders
+        const demoOrd = localStorage.getItem('gestao360_demo_orders');
+        if (demoOrd && (!ords || ords.length === 0)) {
+          try { setOrders(JSON.parse(demoOrd)); } catch (e) {}
+        } else if (ords) {
+          setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
+        }
+
+        // Controls
+        const demoCtrl = localStorage.getItem('gestao360_demo_controls');
+        if (demoCtrl && (!ctrls || ctrls.length === 0)) {
+          try { setControls(JSON.parse(demoCtrl)); } catch (e) {}
+        } else if (ctrls) {
+          setControls(ctrls as CheckItem[]);
+        }
+
         if (insts) setInstitutions(insts as Institution[]);
         if (depts) setDepartments(depts as Department[]);
-        if (pats) setPatrimonioItems(pats.map(p => ({
-          ...p,
-          itemType: p.item_type,
-          objectName: p.object_name,
-          imageUrls: p.image_urls,
-          createdByName: p.created_by_name
-        } as PatrimonioItem)));
+
+        // Patrimonio
+        const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
+        if (demoPat && (!pats || pats.length === 0)) {
+          try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) {}
+        } else if (pats) {
+          setPatrimonioItems(pats.map(p => ({
+            ...p,
+            itemType: p.item_type,
+            objectName: p.object_name,
+            imageUrls: p.image_urls,
+            createdByName: p.created_by_name
+          } as PatrimonioItem)));
+        }
       } catch (err) {
         console.error('Erro ao buscar dados do Supabase:', err);
       }
     };
 
     fetchGlobalData();
+
+    const handleReload = (e: any) => {
+      const moduleKey = e.detail?.moduleKey;
+      if (!moduleKey || moduleKey === 'all') {
+        fetchGlobalData();
+      } else if (moduleKey === 'patrimonio') {
+        const stored = localStorage.getItem('gestao360_demo_patrimonio');
+        if (stored) {
+          try { setPatrimonioItems(JSON.parse(stored)); } catch (err) {}
+        } else {
+          setPatrimonioItems([]);
+        }
+      } else if (moduleKey === 'orders') {
+        const stored = localStorage.getItem('gestao360_demo_orders');
+        if (stored) {
+          try { setOrders(JSON.parse(stored)); } catch (err) {}
+        } else {
+          setOrders([]);
+        }
+      } else if (moduleKey === 'controls') {
+        const stored = localStorage.getItem('gestao360_demo_controls');
+        if (stored) {
+          try { setControls(JSON.parse(stored)); } catch (err) {}
+        } else {
+          setControls([]);
+        }
+      } else if (moduleKey === 'doc_records') {
+        const stored = localStorage.getItem('gestao360_demo_doc_records');
+        if (stored) {
+          try { setDocRecords(JSON.parse(stored)); } catch (err) {}
+        } else {
+          setDocRecords([]);
+        }
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, [isAuthenticated, currentInstitution, currentUser?.id]);
   const [protocols, setProtocols] = React.useState<Protocol[]>([]);
   const [editingControl, setEditingControl] = React.useState<CheckItem | null>(null);
@@ -468,7 +537,7 @@ export default function App() {
   if (isSuperAdminPortal) {
     if (!isAuthenticated) {
       return (
-        <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setIsAuthenticated(true); setCurrentUser(MOCK_USERS[0]); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={null} isSaaSAdmin={true} />
+        <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setDemoEnvironment(true); setIsAuthenticated(true); setCurrentUser(DEMO_USER); if (!currentInstitution) setCurrentInstitution(DEMO_INSTITUTION); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={null} isSaaSAdmin={true} />
       );
     }
 
@@ -626,7 +695,7 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setIsAuthenticated(true); setCurrentUser(MOCK_USERS[0]); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
+      <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setDemoEnvironment(true); setIsAuthenticated(true); setCurrentUser(DEMO_USER); if (!currentInstitution) setCurrentInstitution(DEMO_INSTITUTION); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
     );
   }
 
@@ -883,6 +952,11 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2 sm:gap-4">
+                {isDemoEnvironment() && (
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shadow-sm">
+                    <Sparkles size={13} className="text-amber-500" /> Demonstração
+                  </span>
+                )}
                 {currentUser && (
                   <button 
                     onClick={() => { setIsChangingPassword(true); setForcePasswordChange(false); }}
@@ -1059,6 +1133,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto w-full relative z-10 custom-scrollbar print:overflow-visible print:h-auto">
           <main className="min-h-full p-6 lg:p-10 pb-20 print:p-0 print:pb-0">
             <div className="max-w-[1400px] mx-auto w-full">
+            <DemoModuleBanner activeView={activeView} />
             {/* View Content */}
             <AnimatePresence mode="wait">
               <motion.div

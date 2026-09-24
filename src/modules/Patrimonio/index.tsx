@@ -11,6 +11,7 @@ import {
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 const { 
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ChevronDown, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, LayoutGrid, List, Copy, RotateCw, Loader2, ImageOff, ChevronsLeft, ChevronsRight, CheckSquare, Square
@@ -325,6 +326,7 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
               <span className="hidden sm:inline">{isSelectionMode ? 'Cancelar Seleção' : 'Selecionar Vários'}</span>
             </button>
           )}
+          <DemoFillButton moduleKey="patrimonio" />
           {canEdit && (
             <button 
               onClick={() => {
@@ -599,8 +601,9 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
             ))}
           </div>
           {paginatedItems.length === 0 && (
-            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-12 text-center text-neutral-500">
-              Nenhum item encontrado.
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-12 text-center text-neutral-500 flex flex-col items-center justify-center gap-3">
+              <p>Nenhum item encontrado.</p>
+              <DemoFillButton moduleKey="patrimonio" />
             </div>
           )}
         </div>
@@ -748,8 +751,9 @@ const PatrimonioModule = ({ items, onAdd, onEdit, onDelete, onDeleteMultiple, ca
             </div>
           ))}
           {paginatedItems.length === 0 && (
-            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-12 text-center text-neutral-500">
-              Nenhum item encontrado.
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-12 text-center text-neutral-500 flex flex-col items-center justify-center gap-3">
+              <p>Nenhum item encontrado.</p>
+              <DemoFillButton moduleKey="patrimonio" />
             </div>
           )}
         </div>

@@ -9,6 +9,7 @@ import {
   Institution, AdminUser, View, PNTPCategory, Evidence
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 // Destructure common icons to avoid changing code
 const { 
@@ -117,6 +118,7 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
               <option key={sup} value={sup}>{sup}</option>
             ))}
           </select>
+          <DemoFillButton moduleKey="orders" />
           <button 
             onClick={() => setIsAdding(true)}
             className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 whitespace-nowrap"
@@ -426,7 +428,10 @@ const OrdersModule = ({ orders, onAdd, onEdit, setOrders }: { orders: OrderItem[
               <Package size={32} />
             </div>
             <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100 mb-2">Nenhum pedido encontrado</h3>
-            <p className="text-neutral-500 dark:text-neutral-400 text-sm">Registre um novo pedido ou altere os filtros de busca.</p>
+            <p className="text-neutral-500 dark:text-neutral-400 text-sm">Registre um novo pedido ou preencha dados fictícios para demonstração.</p>
+            <div className="mt-4">
+              <DemoFillButton moduleKey="orders" />
+            </div>
           </div>
         )}
       </div>

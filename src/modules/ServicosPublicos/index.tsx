@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Wrench, Lightbulb, TreePine, Trash2, Truck, Plus, CircleOff, Search, ChevronRight, MapPin, Phone, UserCircle, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { showToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 export type CategoriaDemanda = 'Iluminação' | 'Poda de Árvore' | 'Tapa buraco' | 'Remoção de Entulho' | 'Coleta de Lixo';
 
@@ -83,6 +84,13 @@ export function ServicosPublicosModule({ currentInstitution }: { currentInstitut
 
   React.useEffect(() => {
     fetchDemands();
+    const handleReload = (e: any) => {
+      if (!e.detail?.moduleKey || e.detail.moduleKey === 'servicos_publicos' || e.detail.moduleKey === 'all') {
+        fetchDemands();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, []);
 
   const fetchDemands = async () => {
@@ -90,8 +98,17 @@ export function ServicosPublicosModule({ currentInstitution }: { currentInstitut
     if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
     const { data, error } = await query.order('created_at', { ascending: false });
     
-    if (error) {
-      console.error('Erro ao buscar demandas:', error);
+    if (error || !data || data.length === 0) {
+      const demoStorage = localStorage.getItem('gestao360_demo_demandas');
+      if (demoStorage) {
+        try {
+          setDemands(JSON.parse(demoStorage));
+          return;
+        } catch (e) {
+          console.error('Erro ao ler demandas demo:', e);
+        }
+      }
+      if (error) console.error('Erro ao buscar demandas:', error);
       return;
     }
     
@@ -145,6 +162,9 @@ export function ServicosPublicosModule({ currentInstitution }: { currentInstitut
         <div>
           <h2 className="text-3xl font-black text-neutral-900 dark:text-white tracking-tight">Serviços Públicos</h2>
           <p className="text-neutral-500 dark:text-neutral-400 mt-2">Gestão de demandas e zeladoria do município.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <DemoFillButton moduleKey="servicos_publicos" onSuccess={fetchDemands} />
         </div>
       </div>
 
@@ -254,9 +274,10 @@ export function ServicosPublicosModule({ currentInstitution }: { currentInstitut
             })}
             
             {filteredDemands.length === 0 && (
-              <div className="text-center py-12">
-                <Wrench size={48} className="mx-auto text-neutral-200 dark:text-neutral-800 mb-4" />
+              <div className="text-center py-12 flex flex-col items-center justify-center gap-3">
+                <Wrench size={48} className="mx-auto text-neutral-200 dark:text-neutral-800 mb-2" />
                 <p className="text-neutral-500 dark:text-neutral-400 font-medium">Nenhuma demanda encontrada.</p>
+                <DemoFillButton moduleKey="servicos_publicos" onSuccess={fetchDemands} />
               </div>
             )}
           </div>

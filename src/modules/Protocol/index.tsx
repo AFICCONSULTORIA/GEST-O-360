@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { hasPermission } from '../../lib/permissions';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 
 export const getAttachmentsArray = (attachment?: string): { name: string, url: string, role?: string }[] => {
@@ -76,8 +77,19 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
       deptQuery
     ]);
     
-    if (protoRes.error) console.error("Erro ao carregar protocolos:", protoRes.error);
-    else if (protoRes.data) setProtocols(protoRes.data as Protocol[]);
+    if (protoRes.error || !protoRes.data || protoRes.data.length === 0) {
+      const demoStorage = localStorage.getItem('gestao360_demo_protocols');
+      if (demoStorage) {
+        try {
+          setProtocols(JSON.parse(demoStorage));
+        } catch (e) {
+          console.error("Erro ao carregar protocolos demo:", e);
+        }
+      }
+      if (protoRes.error) console.error("Erro ao carregar protocolos:", protoRes.error);
+    } else if (protoRes.data) {
+      setProtocols(protoRes.data as Protocol[]);
+    }
     
     if (deptRes.error) console.error("Erro ao carregar secretarias:", deptRes.error);
     else if (deptRes.data) setDepartments(deptRes.data);
@@ -87,6 +99,13 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
 
   React.useEffect(() => {
     loadData();
+    const handleReload = (e: any) => {
+      if (!e.detail?.moduleKey || e.detail.moduleKey === 'protocol' || e.detail.moduleKey === 'all') {
+        loadData();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, []);
 
   const handleReceive = async (protocol: Protocol) => {
@@ -222,8 +241,9 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
             </select>
           </div>
 
-          {canEdit && (
-            <div className="lg:ml-4 flex items-end h-full pt-5">
+          <div className="lg:ml-4 flex items-end h-full pt-5 gap-3">
+            <DemoFillButton moduleKey="protocol" onSuccess={loadData} />
+            {canEdit && (
               <button 
                 onClick={() => setIsNewModalOpen(true)}
                 className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 hover:shadow-xl transition-all whitespace-nowrap"
@@ -231,8 +251,8 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
                 <FileText size={18} />
                 Novo Documento
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -288,8 +308,9 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
           Carregando protocolos...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-10 text-center text-sm font-medium text-neutral-500">
-          Nenhum protocolo encontrado.
+        <div className="py-12 text-center text-sm font-medium text-neutral-500 flex flex-col items-center justify-center gap-3">
+          <p>Nenhum protocolo encontrado.</p>
+          <DemoFillButton moduleKey="protocol" onSuccess={loadData} />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

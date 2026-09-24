@@ -4,6 +4,7 @@ import { Leaf, Search, MapPin, AlertTriangle, CheckCircle2, XCircle, FileText, I
 import { EnvironmentalReport, AdminUser } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 const MOCK_REPORTS: EnvironmentalReport[] = [
   {
@@ -51,9 +52,20 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error || !data || data.length === 0) {
+        const demoStorage = localStorage.getItem('gestao360_demo_meio_ambiente');
+        if (demoStorage) {
+          try {
+            setReports(JSON.parse(demoStorage));
+            return;
+          } catch (e) {
+            console.error('Erro ao ler denúncias demo:', e);
+          }
+        }
+        if (error) throw error;
+      }
 
-      if (data) {
+      if (data && data.length > 0) {
         const mappedReports: EnvironmentalReport[] = data.map(d => ({
           id: d.id,
           protocolo: d.protocolo,
@@ -70,6 +82,13 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
         setReports(mappedReports);
       }
     } catch (error) {
+      const demoStorage = localStorage.getItem('gestao360_demo_meio_ambiente');
+      if (demoStorage) {
+        try {
+          setReports(JSON.parse(demoStorage));
+          return;
+        } catch (e) {}
+      }
       console.error('Erro ao buscar denúncias:', error);
       showToast('Erro ao carregar denúncias', 'error');
     } finally {
@@ -79,6 +98,13 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
 
   useEffect(() => {
     fetchReports();
+    const handleReload = (e: any) => {
+      if (!e.detail?.moduleKey || e.detail.moduleKey === 'meio_ambiente' || e.detail.moduleKey === 'all') {
+        fetchReports();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, []);
 
   const updateStatus = async (id: string, newStatus: 'Pendente' | 'Em Análise' | 'Resolvido') => {
@@ -173,6 +199,8 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
             <option value="Em Análise">Em Análise</option>
             <option value="Resolvido">Resolvidos</option>
           </select>
+
+          <DemoFillButton moduleKey="meio_ambiente" onSuccess={fetchReports} />
         </div>
       </div>
 
@@ -231,6 +259,14 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
           </div>
         ))}
       </div>
+
+      {filtered.length === 0 && (
+        <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-12 border border-neutral-100 dark:border-neutral-800 text-center flex flex-col items-center justify-center gap-3">
+          <Leaf size={48} className="mx-auto text-neutral-300 dark:text-neutral-700" />
+          <p className="text-neutral-500 dark:text-neutral-400 font-medium">Nenhuma denúncia ambiental encontrada.</p>
+          <DemoFillButton moduleKey="meio_ambiente" onSuccess={fetchReports} />
+        </div>
+      )}
 
       <AnimatePresence>
         {selectedReport && (

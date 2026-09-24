@@ -31,6 +31,7 @@ import { NewsEditor } from './NewsEditor';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 interface NoticiasModuleProps {
   currentUser?: AdminUser | null;
@@ -56,6 +57,13 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
   // Carregar notícias
   useEffect(() => {
     fetchNews();
+    const handleReload = (e: any) => {
+      if (!e.detail?.module || e.detail.module === 'noticias' || e.detail.module === 'all') {
+        fetchNews();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, [currentInstitution?.id]);
 
   const fetchNews = async () => {
@@ -331,6 +339,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <DemoFillButton moduleKey="noticias" onSuccess={fetchNews} />
           <a
             href="/noticias"
             target="_blank"

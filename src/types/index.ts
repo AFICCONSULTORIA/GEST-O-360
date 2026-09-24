@@ -159,6 +159,10 @@ export interface PatrimonioItem {
   plate?: string;
   chassis?: string;
   model?: string;
+  renavam?: string;
+  fuelType?: string;
+  color?: string;
+  powerCv?: string;
   description?: string;
   createdByName?: string;
   createdAt?: string;
@@ -202,6 +206,7 @@ export interface Institution {
   name: string;
   subdomain?: string;
   logo_url?: string;
+  theme_color?: string;
   cert_links?: any;
   state_links?: any;
 }
@@ -226,8 +231,6 @@ export interface AdminUser {
   classes?: string[];
 }
 
-
-
 export interface DocumentTemplate {
   id: string;
   title: string;
@@ -244,14 +247,20 @@ export interface DocumentTemplate {
 
 export interface Contract {
   id: string;
-  title: string;
-  contractor: string;
-  value: number;
-  startDate: string;
-  endDate: string;
-  status: 'active' | 'expiring' | 'expired';
-  department: string;
-  alertSent: boolean;
+  title?: string;
+  contractor?: string;
+  value?: number;
+  startDate?: string;
+  endDate?: string;
+  status: 'active' | 'expiring' | 'expired' | 'risk' | 'review';
+  department?: string;
+  alertSent?: boolean;
+  number?: string;
+  object?: string;
+  vendorName?: string;
+  amount?: number;
+  category?: string;
+  deadline?: string;
 }
 
 export interface EnvironmentalReport {

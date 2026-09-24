@@ -10,6 +10,7 @@ import {
   Institution, AdminUser, View, PNTPCategory, Evidence
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 // Destructure common icons to avoid changing code
 const { 
@@ -19,15 +20,33 @@ const {
 const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
   const [contracts, setContracts] = React.useState<Contract[]>(MOCK_CONTRACTS);
   
-  React.useEffect(() => {
+  const loadContracts = () => {
     let query = supabase.from('contracts').select('*');
     if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
     query.then(({ data }) => {
       if (data && data.length > 0) {
         setContracts(data.map(c => ({ ...c, vendorName: c.vendor_name } as Contract)));
+      } else {
+        const demoSaved = localStorage.getItem('gestao360_demo_contracts');
+        if (demoSaved) {
+          setContracts(JSON.parse(demoSaved));
+        } else {
+          setContracts(MOCK_CONTRACTS);
+        }
       }
     });
-  }, []);
+  };
+
+  React.useEffect(() => {
+    loadContracts();
+    const handleReload = (e: any) => {
+      if (!e.detail?.module || e.detail.module === 'contracts' || e.detail.module === 'all') {
+        loadContracts();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
+  }, [currentInstitution?.id]);
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -36,7 +55,8 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
           <h2 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Licitações & <span className="text-neutral-400 font-normal">Contratos</span></h2>
           <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Fiscalização proativa e monitoramento da Lei 14.133/21.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <DemoFillButton moduleKey="contracts" onSuccess={loadContracts} />
           <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest border border-neutral-100 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
             <Download size={16} /> Relatórios Lupa
           </button>

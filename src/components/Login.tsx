@@ -4,6 +4,7 @@ import { Home, Users, Lock, EyeOff, Eye, ChevronRight, Sparkles, Shield, Sun, Mo
 
 import { supabase } from '../lib/supabase';
 import { getSubdomain } from '../lib/subdomain';
+import { isDemoEnvironment, setDemoEnvironment } from '../lib/demoManager';
 import { Institution } from '../types';
 import { LogoCompass } from './LogoCompass';
 
@@ -228,12 +229,16 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
             </div>
 
             {/* Botão Demo */}
-            {onDemoLogin && getSubdomain() === 'demo' && (
+            {onDemoLogin && (getSubdomain() === 'demo' || isDemoEnvironment() || window.location.hostname === 'localhost' || window.location.search.includes('demo') || (currentInstitution && currentInstitution.name.toLowerCase().includes('demonstra'))) && (
               <button
                 type="button"
-                onClick={onDemoLogin}
-                className="w-full py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-[0.1em] sm:tracking-[0.15em] text-[9px] sm:text-[10px] bg-neutral-900/5 dark:bg-white/5 hover:bg-neutral-900/10 dark:hover:bg-white/10 border border-neutral-900/10 dark:border-white/10 text-neutral-600 dark:text-white/60 hover:text-neutral-900 dark:hover:text-white transition-all"
+                onClick={() => {
+                  setDemoEnvironment(true);
+                  onDemoLogin();
+                }}
+                className="w-full py-3 sm:py-3.5 rounded-xl sm:rounded-2xl font-black uppercase tracking-[0.1em] sm:tracking-[0.15em] text-[9px] sm:text-[10px] bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-700 dark:text-purple-300 hover:text-purple-900 dark:hover:text-purple-100 transition-all flex items-center justify-center gap-2 shadow-sm"
               >
+                <Sparkles size={14} className="text-purple-500 animate-pulse" />
                 Entrar sem Senha (Demonstração)
               </button>
             )}

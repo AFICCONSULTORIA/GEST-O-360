@@ -12,6 +12,7 @@ import { MunicipalLaw, LawType, LawStatus, LawCategory, AdminUser, Institution }
 import { hasPermission } from '../../lib/permissions';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
+import { DemoFillButton } from '../../components/DemoFillButton';
 
 export const INITIAL_MOCK_LAWS: MunicipalLaw[] = [
   {
@@ -839,18 +840,34 @@ export const LawsModule = ({
         console.error('Error fetching laws:', error);
         showToast('Erro ao carregar leis do banco de dados.', 'error');
         setLaws([]);
+      } else if (data && data.length > 0) {
+        setLaws(data as MunicipalLaw[]);
       } else {
-        setLaws((data || []) as MunicipalLaw[]);
+        const demoLaws = localStorage.getItem('gestao360_demo_laws');
+        if (demoLaws) {
+          setLaws(JSON.parse(demoLaws));
+        } else {
+          setLaws(INITIAL_MOCK_LAWS);
+        }
       }
     } catch (err) {
       console.error(err);
-      setLaws([]);
+      const demoLaws = localStorage.getItem('gestao360_demo_laws');
+      if (demoLaws) setLaws(JSON.parse(demoLaws));
+      else setLaws(INITIAL_MOCK_LAWS);
     }
     setIsLoading(false);
   }, [institution?.id]);
 
   React.useEffect(() => {
     loadLaws();
+    const handleReload = (e: any) => {
+      if (!e.detail?.module || e.detail.module === 'laws' || e.detail.module === 'all') {
+        loadLaws();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, [loadLaws]);
 
   // Save / Update
@@ -979,7 +996,8 @@ export const LawsModule = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <DemoFillButton moduleKey="laws" onSuccess={loadLaws} />
           <button
             onClick={loadLaws}
             className="p-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-neutral-600 dark:text-neutral-300 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all shadow-sm"

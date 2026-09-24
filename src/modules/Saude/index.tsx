@@ -14,6 +14,7 @@ import { SaudeAgenda } from './components/SaudeAgenda';
 import { SaudePatients } from './components/SaudePatients';
 import { SaudeSettings } from './components/SaudeSettings';
 import { SaudeExams } from './components/SaudeExams';
+import { DemoFillButton } from '../../components/DemoFillButton';
 import { 
   Appointment, Patient, HealthUnit, HealthProfessional, ExamRequest, ExamType, MedicationDispensation,
   COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, DEFAULT_EXAM_TYPES,
@@ -45,14 +46,26 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       // 1. Carregar Agendamentos
       let aptQuery = supabase.from('appointments').select('*');
       if (currentInstitution?.id) aptQuery = aptQuery.eq('institution_id', currentInstitution.id);
-      const { data: aptData, error: aptError } = await aptQuery.order('appointment_date', { ascending: true });
-      if (aptData) setAppointments(aptData as Appointment[]);
+      const { data: aptData } = await aptQuery.order('appointment_date', { ascending: true });
+      if (aptData && aptData.length > 0) {
+        setAppointments(aptData as Appointment[]);
+      } else {
+        const demoApts = localStorage.getItem('gestao360_demo_saude_appointments');
+        if (demoApts) setAppointments(JSON.parse(demoApts));
+        else setAppointments([]);
+      }
 
       // 2. Carregar Pacientes
       let patQuery = supabase.from('patients').select('*');
       if (currentInstitution?.id) patQuery = patQuery.eq('institution_id', currentInstitution.id);
       const { data: patData } = await patQuery.order('name', { ascending: true });
-      if (patData) setPatients(patData as Patient[]);
+      if (patData && patData.length > 0) {
+        setPatients(patData as Patient[]);
+      } else {
+        const demoPats = localStorage.getItem('gestao360_demo_saude_patients');
+        if (demoPats) setPatients(JSON.parse(demoPats));
+        else setPatients([]);
+      }
 
       // 3. Carregar Unidades e Profissionais
       let unitsQuery = supabase.from('health_units').select('*');
@@ -69,7 +82,13 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
       let examQuery = supabase.from('exam_requests').select('*');
       if (currentInstitution?.id) examQuery = examQuery.eq('institution_id', currentInstitution.id);
       const { data: examData } = await examQuery.order('requested_date', { ascending: false });
-      if (examData) setExamRequests(examData as ExamRequest[]);
+      if (examData && examData.length > 0) {
+        setExamRequests(examData as ExamRequest[]);
+      } else {
+        const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
+        if (demoExams) setExamRequests(JSON.parse(demoExams));
+        else setExamRequests([]);
+      }
 
       // 5. Carregar Tipos de Exames & Prazos de Carência
       let typeQuery = supabase.from('exam_types').select('*');
@@ -160,6 +179,16 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
     };
   }, [currentInstitution?.id]);
 
+  useEffect(() => {
+    const handleReload = (e: any) => {
+      if (!e.detail?.module || e.detail.module === 'saude' || e.detail.module === 'all') {
+        loadData();
+      }
+    };
+    window.addEventListener('gestao360:reload-module', handleReload);
+    return () => window.removeEventListener('gestao360:reload-module', handleReload);
+  }, []);
+
   const queueCount = appointments.filter(a => a.status === 'Aguardando Regulação').length;
   const todayStr = new Date().toISOString().split('T')[0];
   const todayAppointmentsCount = appointments.filter(a => a.appointment_date === todayStr && a.status !== 'Aguardando Regulação').length;
@@ -194,6 +223,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <DemoFillButton moduleKey="saude" onSuccess={loadData} />
           <button 
             onClick={() => handleOpenNewAppointment()}
             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2"
