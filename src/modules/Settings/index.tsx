@@ -269,6 +269,15 @@ export const SettingsModule = ({
         error.message?.includes('schema cache') ||
         error.message?.includes('does not exist');
 
+      const isAmbiguous = 
+        error.message?.includes('best candidate') ||
+        error.message?.includes('Could not choose');
+
+      if (isAmbiguous) {
+        showToast('Sobrecarga de função detectada. Execute o script database/setup_reset_password_rpc.sql no Supabase para remover a duplicata.', 'warning');
+        return;
+      }
+
       if (isMissingFunction) {
         // 3. Fallback: Se a função RPC não existir no Supabase, tenta enviar e-mail de recuperação e marca troca de senha
         try {
