@@ -228,8 +228,8 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
               </div>
             </div>
 
-            {/* Botão Demo */}
-            {onDemoLogin && (getSubdomain() === 'demo' || isDemoEnvironment() || window.location.hostname === 'localhost' || window.location.search.includes('demo') || (currentInstitution && currentInstitution.name.toLowerCase().includes('demonstra'))) && (
+            {/* Botão Demo (Exibido estritamente em demo.gestao360sistema ou subdomínio demo, NUNCA em municípios) */}
+            {onDemoLogin && isDemoEnvironment(currentInstitution) && (
               <button
                 type="button"
                 onClick={() => {

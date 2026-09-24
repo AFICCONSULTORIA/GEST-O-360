@@ -982,7 +982,7 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2 sm:gap-4">
-                {isDemoEnvironment() && (
+                {isDemoEnvironment(currentInstitution) && (
                   <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shadow-sm">
                     <Sparkles size={13} className="text-amber-500" /> Demonstração
                   </span>
@@ -1163,7 +1163,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto w-full relative z-10 custom-scrollbar print:overflow-visible print:h-auto">
           <main className="min-h-full p-6 lg:p-10 pb-20 print:p-0 print:pb-0">
             <div className="max-w-[1400px] mx-auto w-full">
-            <DemoModuleBanner activeView={activeView} />
+            <DemoModuleBanner activeView={activeView} currentInstitution={currentInstitution} />
             {/* View Content */}
             <AnimatePresence mode="wait">
               <motion.div

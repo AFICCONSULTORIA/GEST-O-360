@@ -36,23 +36,49 @@ export { DEMO_USER, DEMO_INSTITUTION };
 
 /**
  * Verifica se a aplicação está em ambiente de demonstração.
+ * 
+ * REGRA RIGOROSA:
+ * Municípios reais (ex: torixoreu.gestao360sistema.com.br, aracruz.gestao360sistema.com.br)
+ * NUNCA devem exibir ferramentas, banners ou botões de preenchimento com dados de demonstração.
+ * 
+ * O ambiente de demonstração fica restrito a:
+ * - demo.gestao360sistema.com.br (ou subdomínio 'demo' / 'demonstracao')
+ * - demo.localhost (desenvolvimento local com subdomínio demo)
+ * - Parâmetro explícito ?demo=true em localhost quando NÃO estiver em subdomínio de município
  */
-export const isDemoEnvironment = (): boolean => {
+export const isDemoEnvironment = (institution?: { subdomain?: string | null; name?: string } | null): boolean => {
   if (typeof window === 'undefined') return false;
 
-  // 1. Flag explícita em localStorage ou sessionStorage
-  if (localStorage.getItem('gestao360_demo_mode') === 'true') return true;
-  if (sessionStorage.getItem('gestao360_demo_mode') === 'true') return true;
-
-  // 2. Parâmetro na URL (?demo=true ou hash #demo)
-  if (window.location.search.includes('demo=true') || window.location.hash.includes('demo')) return true;
-
-  // 3. Subdomínio de demonstração (ex: demo.localhost ou demo.gestao360sistema.com.br)
+  const hostname = window.location.hostname.toLowerCase();
   const sub = getSubdomain();
-  if (sub === 'demo' || sub === 'demonstracao') return true;
 
-  // 4. Desenvolvimento Local (localhost / 127.0.0.1)
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') return true;
+  // 1. REGRA MÁXIMA DE SEGURANÇA: Se estiver em um subdomínio de município real, NUNCA é demo!
+  if (sub && sub !== 'demo' && sub !== 'demonstracao' && sub !== 'admin') {
+    return false;
+  }
+
+  // 2. Se a instituição ativa fornecida for de um município real, NUNCA é demo!
+  if (institution && institution.subdomain && institution.subdomain !== 'demo' && institution.subdomain !== 'demonstracao') {
+    return false;
+  }
+
+  // 3. Subdomínio oficial de demonstração (ex: demo.gestao360sistema.com.br, demo.gestao360sistema, demo.localhost)
+  if (
+    sub === 'demo' || 
+    sub === 'demonstracao' || 
+    hostname.startsWith('demo.gestao360sistema') ||
+    hostname === 'demo.localhost'
+  ) {
+    return true;
+  }
+
+  // 4. Desenvolvimento local (localhost / 127.0.0.1) SOMENTE com parâmetro explícito ?demo=true ou flag de teste
+  if (
+    (hostname === 'localhost' || hostname === '127.0.0.1') &&
+    (window.location.search.includes('demo=true') || window.location.hash.includes('demo') || localStorage.getItem('gestao360_demo_mode') === 'true')
+  ) {
+    return true;
+  }
 
   return false;
 };
@@ -62,6 +88,14 @@ export const isDemoEnvironment = (): boolean => {
  */
 export const setDemoEnvironment = (enabled: boolean): void => {
   if (typeof window === 'undefined') return;
+  const sub = getSubdomain();
+  // Se for subdomínio de município, bloqueia ativação de demo
+  if (sub && sub !== 'demo' && sub !== 'demonstracao' && sub !== 'admin') {
+    localStorage.removeItem('gestao360_demo_mode');
+    sessionStorage.removeItem('gestao360_demo_mode');
+    return;
+  }
+
   if (enabled) {
     localStorage.setItem('gestao360_demo_mode', 'true');
     window.dispatchEvent(new CustomEvent('gestao360:demo-mode-changed', { detail: { enabled: true } }));
@@ -165,6 +199,12 @@ export const seedDemoDataForModule = async (
   moduleKey: string, 
   options: { institutionId?: string; silent?: boolean } = {}
 ): Promise<boolean> => {
+  // SEGURANÇA MUNICIPAL: Bloqueia geração de dados se não for ambiente de demonstração
+  if (!isDemoEnvironment()) {
+    console.warn(`[DemoManager] Bloqueado: tentativa de gerar dados demo em ambiente de município.`);
+    return false;
+  }
+
   try {
     const instId = options.institutionId || DEMO_INSTITUTION.id;
 

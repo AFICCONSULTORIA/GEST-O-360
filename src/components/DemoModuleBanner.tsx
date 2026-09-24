@@ -17,18 +17,26 @@ import {
   clearDemoDataForModule, 
   hasDemoDataForModule, 
   getModuleFriendlyName,
-  setDemoEnvironment
+  setDemoEnvironment,
+  isDemoEnvironment
 } from '../lib/demoManager';
 
 interface DemoModuleBannerProps {
   activeView: string;
   onRefreshView?: () => void;
+  currentInstitution?: { subdomain?: string | null; name?: string } | null;
 }
 
 export const DemoModuleBanner: React.FC<DemoModuleBannerProps> = ({ 
   activeView,
-  onRefreshView 
+  onRefreshView,
+  currentInstitution
 }) => {
+  // SEGURANÇA MUNICIPAL: Em municípios reais (fora do demo.gestao360sistema), o banner NUNCA é renderizado!
+  if (!isDemoEnvironment(currentInstitution)) {
+    return null;
+  }
+
   const [loading, setLoading] = useState(false);
   const [hasData, setHasData] = useState(false);
   const [showOptions, setShowOptions] = useState(false);

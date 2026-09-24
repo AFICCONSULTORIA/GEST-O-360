@@ -11,6 +11,7 @@ import {
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { AdminUser, Institution, View, Department } from '../../types';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
@@ -239,27 +240,59 @@ export const SettingsModule = ({
   };
 
   const handleResetPassword = async (user: AdminUser) => {
-    if (confirm(`Tem certeza que deseja restaurar a senha padrão (gestao123@) para o usuário ${user.name}?`)) {
-      try {
-        const { error } = await supabase.rpc('reset_user_password', { target_user_id: user.id });
-        
-        if (error) {
-          console.error("Erro ao resetar senha:", error);
-          if (error.message.includes('function reset_user_password does not exist')) {
-            showToast('A função no banco de dados não foi criada. Execute o script SQL no Supabase.', 'warning');
-          } else {
-            showToast('Erro ao resetar senha: ' + error.message, 'error');
-          }
-          return;
-        }
+    if (!confirm(`Tem certeza que deseja restaurar a senha padrão (gestao123@) para o usuário ${user.name}?`)) {
+      return;
+    }
 
-        // Atualiza o lastLogin localmente para "Nunca" forçando a troca
+    const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
+    // 1. Se for usuário de demonstração ou ID não-UUID
+    if (!isUUID(user.id) || isDemoEnvironment()) {
+      setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
+      showToast(`Senha de ${user.name} restaurada para o padrão (gestao123@) com sucesso!`, 'success');
+      return;
+    }
+
+    try {
+      // 2. Tenta invocar a função RPC do Postgres
+      const { error } = await supabase.rpc('reset_user_password', { target_user_id: user.id });
+      
+      if (!error) {
         setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
-        showToast('Senha restaurada para o padrão com sucesso!', 'success');
-      } catch (err) {
-        console.error("Erro inesperado:", err);
-        showToast('Erro inesperado ao resetar senha.', 'error');
+        showToast('Senha restaurada para o padrão (gestao123@) com sucesso!', 'success');
+        return;
       }
+
+      console.error("Erro ao resetar senha via RPC:", error);
+      const isMissingFunction = 
+        error.message?.includes('Could not find the function') || 
+        error.message?.includes('schema cache') ||
+        error.message?.includes('does not exist');
+
+      if (isMissingFunction) {
+        // 3. Fallback: Se a função RPC não existir no Supabase, tenta enviar e-mail de recuperação e marca troca de senha
+        try {
+          await supabase.from('admin_users').update({ last_login: 'Nunca' }).eq('id', user.id);
+          setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
+
+          const { error: emailError } = await supabase.auth.resetPasswordForEmail(user.email, {
+            redirectTo: window.location.origin + '/servidores'
+          });
+
+          if (!emailError) {
+            showToast(`E-mail com link de redefinição de senha enviado para ${user.email}!`, 'info');
+          } else {
+            showToast('Execute o script "database/setup_reset_password_rpc.sql" no SQL Editor do Supabase para ativar o reset direto.', 'warning');
+          }
+        } catch (fallbackErr) {
+          showToast('Função reset_user_password não criada no Supabase. Execute o script em database/setup_reset_password_rpc.sql', 'warning');
+        }
+      } else {
+        showToast('Erro ao resetar senha: ' + error.message, 'error');
+      }
+    } catch (err: any) {
+      console.error("Erro inesperado ao resetar senha:", err);
+      showToast('Erro inesperado ao resetar senha.', 'error');
     }
   };
 

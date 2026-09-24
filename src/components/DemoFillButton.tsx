@@ -8,6 +8,7 @@ interface DemoFillButtonProps {
   variant?: 'primary' | 'secondary' | 'empty-state';
   onSuccess?: () => void;
   label?: string;
+  currentInstitution?: { subdomain?: string | null; name?: string } | null;
 }
 
 export const DemoFillButton: React.FC<DemoFillButtonProps> = ({
@@ -15,13 +16,14 @@ export const DemoFillButton: React.FC<DemoFillButtonProps> = ({
   className = '',
   variant = 'secondary',
   onSuccess,
-  label
+  label,
+  currentInstitution
 }) => {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  // Exibe apenas se estiver em ambiente de demonstração
-  if (!isDemoEnvironment()) {
+  // Exibe apenas se estiver em ambiente de demonstração (bloqueado em municípios reais)
+  if (!isDemoEnvironment(currentInstitution)) {
     return null;
   }
 
