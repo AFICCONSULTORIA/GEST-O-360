@@ -205,7 +205,7 @@ export const SaaSControlCenter = ({
         role: newUser.role,
         status: newUser.status,
         last_login: newUser.lastLogin,
-        permissions: newUser.permissions || ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'settings', 'patrimonio'],
+        permissions: newUser.permissions || ['home', 'controls', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'ouvidoria', 'settings', 'patrimonio'],
         institution_id: newUser.institution_id || null,
         department_id: newUser.department_id || null
       });
@@ -1084,6 +1084,7 @@ export const SaaSControlCenter = ({
                         { id: 'risk', label: 'Riscos' },
                         { id: 'reports', label: 'Relatórios' },
                         { id: 'templates', label: 'Templates' },
+                        { id: 'ouvidoria', label: 'Ouvidoria Municipal' },
                         { id: 'settings', label: 'Configurações' },
                         { id: 'support', label: 'Suporte' }
                       ].map(mod => (
@@ -1107,7 +1108,7 @@ export const SaaSControlCenter = ({
                     <div className="flex gap-2 mt-2 ml-1">
                       <button 
                         type="button" 
-                        onClick={() => setUserFormData({ ...userFormData, permissions: ['home', 'controls', 'protocol', 'orders', 'contracts', 'pntp', 'education', 'saude', 'obras', 'administracao', 'financas', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'patrimonio', 'certificates', 'laws', 'doc_numbers', 'calendar', 'norms', 'risk', 'reports', 'templates', 'settings', 'support'] })} 
+                        onClick={() => setUserFormData({ ...userFormData, permissions: ['home', 'controls', 'protocol', 'orders', 'contracts', 'pntp', 'education', 'saude', 'obras', 'administracao', 'financas', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'patrimonio', 'certificates', 'laws', 'doc_numbers', 'calendar', 'norms', 'risk', 'reports', 'templates', 'ouvidoria', 'settings', 'support'] })} 
                         className="text-[10px] font-bold text-purple-600 hover:text-purple-700 dark:text-purple-400 transition-colors"
                       >
                         Marcar Todos

@@ -40,6 +40,8 @@ import { PublicFormsModule } from './modules/PublicForms';
 import { PublicFormRouteLoader } from './modules/PublicForms/PublicFormRouteLoader';
 import { NoticiasModule } from './modules/Noticias';
 import { PublicNewsPortal } from './modules/Noticias/PublicNewsPortal';
+import { OuvidoriaModule } from './modules/Ouvidoria';
+import { PublicOuvidoriaPortal } from './modules/Ouvidoria/PublicPortal';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -547,6 +549,7 @@ export default function App() {
   }
 
   const currentPath = window.location.pathname;
+  const currentSubdomain = getSubdomain();
   const isPublicPortal = currentPath === '/agendamento';
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
@@ -554,6 +557,10 @@ export default function App() {
   const isCrechePortal = currentPath === '/cmei' || currentPath.startsWith('/cmei/');
   const isMeioAmbientePortal = currentPath === '/meio-ambiente';
   const isNoticiasPortal = currentPath === '/noticias' || currentPath.startsWith('/noticias');
+  const isOuvidoriaPortal = 
+    currentPath === '/ouvidoria' || 
+    currentPath.startsWith('/ouvidoria/') || 
+    (currentSubdomain && currentSubdomain.toLowerCase() === 'ouvidoria');
   const isPublicFormRoute = 
     currentPath.startsWith('/formulario') || 
     currentPath.startsWith('/form') || 
@@ -713,6 +720,21 @@ export default function App() {
     return (
       <div className={darkMode ? 'dark' : ''}>
         <PublicNewsPortal darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
+      </div>
+    );
+  }
+
+  if (isOuvidoriaPortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <PublicOuvidoriaPortal 
+          darkMode={darkMode} 
+          setDarkMode={setDarkMode} 
+          currentInstitution={currentInstitution} 
+          onNavigateHome={() => {
+            window.location.href = '/';
+          }}
+        />
       </div>
     );
   }
@@ -1435,6 +1457,7 @@ export default function App() {
             {activeView === 'communication' && <CommunicationCenter />}
             {activeView === 'forms' && <PublicFormsModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'noticias' && <NoticiasModule currentUser={currentUser} currentInstitution={currentInstitution} />}
+            {activeView === 'ouvidoria' && <OuvidoriaModule currentInstitution={currentInstitution} currentUser={currentUser} />}
           </motion.div>
         </AnimatePresence>
         </div>

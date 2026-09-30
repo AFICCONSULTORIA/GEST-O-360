@@ -19,7 +19,8 @@ import {
   DEMO_COMPANIES, 
   DEMO_DEMANDAS, 
   DEMO_ENVIRONMENTAL_REPORTS, 
-  DEMO_DOC_RECORDS 
+  DEMO_DOC_RECORDS,
+  DEMO_OUVIDORIA_MANIFESTACOES 
 } from './demoData';
 import { INITIAL_MOCK_LAWS } from '../modules/Laws';
 import { RADAR_DATA, MOCK_TEMPLATES } from './mockData';
@@ -139,6 +140,7 @@ export const getModuleFriendlyName = (moduleKey: string): string => {
     norms: 'Atos Normativos',
     reports: 'Relatórios Executivos',
     templates: 'Modelos de Documentos',
+    ouvidoria: 'Ouvidoria Municipal',
     settings: 'Configurações'
   };
   return map[moduleKey] || moduleKey;
@@ -187,6 +189,8 @@ export const hasDemoDataForModule = (moduleKey: string): boolean => {
     case 'home':
     case 'mayor':
       return !!localStorage.getItem('gestao360_demo_patrimonio') || !!localStorage.getItem('gestao360_demo_controls');
+    case 'ouvidoria':
+      return !!localStorage.getItem('gestao360_ouvidoria_manifestacoes');
     default:
       return false;
   }
@@ -476,6 +480,39 @@ export const seedDemoDataForModule = async (
         break;
       }
 
+      case 'ouvidoria': {
+        const manifestations = DEMO_OUVIDORIA_MANIFESTACOES.map(m => ({ ...m, institution_id: instId }));
+        localStorage.setItem('gestao360_ouvidoria_manifestacoes', JSON.stringify(manifestations));
+        syncBackground(() => supabase.from('ouvidoria_manifestacoes').upsert(manifestations.map(m => ({
+          protocolo: m.protocolo,
+          codigo_acesso: m.codigo_acesso,
+          tipo: m.tipo,
+          assunto: m.assunto,
+          descricao: m.descricao,
+          bairro: m.bairro,
+          logradouro: m.logradouro,
+          ponto_referencia: m.ponto_referencia,
+          privacidade: m.privacidade,
+          cidadao_nome: m.cidadao_nome,
+          cidadao_cpf: m.cidadao_cpf,
+          cidadao_telefone: m.cidadao_telefone,
+          cidadao_email: m.cidadao_email,
+          status: m.status,
+          prioridade: m.prioridade,
+          secretaria_sugerida: m.secretaria_sugerida,
+          secretaria_destino: m.secretaria_destino,
+          data_manifestacao: m.data_manifestacao,
+          prazo_limite: m.prazo_limite,
+          prorrogado: m.prorrogado,
+          justificativa_prorrogacao: m.justificativa_prorrogacao,
+          resposta_oficial: m.resposta_oficial,
+          respondido_por: m.respondido_por,
+          respondido_em: m.respondido_em,
+          institution_id: instId
+        }))));
+        break;
+      }
+
       case 'home':
       case 'mayor': {
         // Alimenta os dados centrais do Dashboard e visão do prefeito
@@ -491,7 +528,7 @@ export const seedDemoDataForModule = async (
           'patrimonio', 'orders', 'controls', 'contracts', 'saude',
           'camara', 'noticias', 'laws', 'certificates', 'servicos_publicos',
           'meio_ambiente', 'protocol', 'doc_numbers', 'education', 'pntp',
-          'financas', 'forms'
+          'financas', 'forms', 'ouvidoria'
         ];
         for (const m of modules) {
           await seedDemoDataForModule(m, { institutionId: instId, silent: true });

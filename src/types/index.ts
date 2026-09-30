@@ -1,4 +1,4 @@
-export type View = 'home' | 'mayor' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms' | 'noticias';
+export type View = 'home' | 'mayor' | 'controls' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms' | 'noticias' | 'ouvidoria';
 
 export type LawType = 
   | 'Lei Orgânica' 
@@ -386,3 +386,50 @@ export interface MunicipalNews {
   updated_at?: string;
 }
 
+export type OuvidoriaTipo = 'Sugestao' | 'Elogio' | 'Solicitacao' | 'Reclamacao' | 'Denuncia';
+export type OuvidoriaPrivacidade = 'identificada' | 'sigilosa' | 'anonima';
+export type OuvidoriaStatus = 'Nova' | 'Em Analise' | 'Encaminhada' | 'Prorrogada' | 'Respondida' | 'Arquivada';
+export type OuvidoriaPrioridade = 'Baixa' | 'Normal' | 'Alta' | 'Urgente';
+
+export interface OuvidoriaManifestacao {
+  id: string;
+  protocolo: string;
+  codigo_acesso: string;
+  tipo: OuvidoriaTipo;
+  assunto: string;
+  descricao: string;
+  bairro?: string;
+  logradouro?: string;
+  ponto_referencia?: string;
+  privacidade: OuvidoriaPrivacidade;
+  cidadao_nome?: string;
+  cidadao_cpf?: string;
+  cidadao_email?: string;
+  cidadao_telefone?: string;
+  status: OuvidoriaStatus;
+  prioridade: OuvidoriaPrioridade;
+  secretaria_sugerida?: string;
+  secretaria_destino?: string;
+  data_manifestacao: string;
+  prazo_limite: string;
+  prorrogado?: boolean;
+  justificativa_prorrogacao?: string;
+  resposta_oficial?: string;
+  respondido_por?: string;
+  respondido_em?: string;
+  anexos?: string[];
+  institution_id?: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface OuvidoriaHistorico {
+  id: string;
+  manifestacao_id: string;
+  autor_nome: string;
+  autor_tipo: 'Sistema' | 'Ouvidor' | 'Secretaria' | 'Cidadao';
+  acao: string;
+  descricao?: string;
+  visivel_ao_cidadao: boolean;
+  created_at: string;
+}

@@ -21,7 +21,7 @@ export const DEMO_USER: AdminUser = {
     'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude',
     'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura',
     'assistencia_social', 'esporte', 'planejamento', 'camara', 'noticias',
-    'forms', 'communication', 'settings', 'support', 'patrimonio', 'templates'
+    'forms', 'communication', 'settings', 'support', 'patrimonio', 'templates', 'ouvidoria'
   ] as any
 };
 
@@ -902,3 +902,5 @@ export const DEMO_DOC_RECORDS: DocumentRecord[] = [
     dateCreated: '2026-09-02'
   }
 ];
+
+export { DEMO_OUVIDORIA_MANIFESTACOES } from '../modules/Ouvidoria/demoData';

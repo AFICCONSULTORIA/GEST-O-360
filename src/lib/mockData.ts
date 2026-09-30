@@ -29,7 +29,8 @@ import {
   Scale,
   Activity,
   ClipboardList,
-  Newspaper
+  Newspaper,
+  Headphones
 } from 'lucide-react';
 
 
@@ -133,6 +134,7 @@ export const NAVBAR_CATEGORIES = [
       { id: 'assistencia_social', label: 'Assistência Social', icon: HeartHandshake },
       { id: 'esporte', label: 'Esporte', icon: Trophy },
       { id: 'planejamento', label: 'Planejamento', icon: Map },
+      { id: 'ouvidoria', label: 'Ouvidoria Municipal', icon: Headphones },
     ]
   },
   {
@@ -186,6 +188,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'noticias', label: 'Notícias & Divulgação Municipal' },
   { id: 'forms', label: 'Formulários & Consultas Populares' },
   { id: 'communication', label: 'Comunicação WhatsApp' },
+  { id: 'ouvidoria', label: 'Ouvidoria Municipal' },
   { id: 'settings', label: 'Configurações' }
 ];
 

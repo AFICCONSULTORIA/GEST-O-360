@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'motion/react';
 import { 
-  Sun, Moon, Globe, Calendar, HeartPulse, GraduationCap, Lock, ChevronRight, Baby, Newspaper
+  Sun, Moon, Globe, Calendar, HeartPulse, GraduationCap, Lock, ChevronRight, Baby, Newspaper, Headphones
 } from 'lucide-react';
 
 import { LogoCompass } from './LogoCompass';
@@ -189,6 +189,29 @@ export const LandingPage = ({ darkMode, setDarkMode, currentInstitution }: { dar
             </div>
             <div className="relative mt-8 flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
               <span>Portal da Educação</span>
+              <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
+            </div>
+          </a>
+
+          {/* Card Ouvidoria Municipal */}
+          <a
+            href="/ouvidoria"
+            className="group relative bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/80 rounded-[32px] p-8 text-left hover:shadow-2xl hover:shadow-teal-500/10 hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-teal-50/50 to-transparent dark:from-teal-950/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="relative space-y-5">
+              <div className="w-14 h-14 bg-teal-50 dark:bg-teal-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-teal-600 group-hover:text-white dark:group-hover:text-neutral-950 transition-all duration-300 text-teal-600 dark:text-teal-400 shadow-sm">
+                <Headphones size={24} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white tracking-tight group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">Ouvidoria Municipal</h2>
+                <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mt-2 font-medium">
+                  Canal oficial para envio de elogios, sugestões, solicitações, reclamações e denúncias, com opção de sigilo e protocolo.
+                </p>
+              </div>
+            </div>
+            <div className="relative mt-8 flex items-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
+              <span>Acessar Ouvidoria</span>
               <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
             </div>
           </a>

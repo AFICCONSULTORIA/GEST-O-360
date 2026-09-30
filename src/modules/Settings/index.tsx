@@ -6,7 +6,7 @@ import {
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
   BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
   HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale, Activity,
-  ClipboardList
+  ClipboardList, Headphones
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -44,7 +44,8 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'patrimonio', label: 'Patrimônio' },
   { id: 'templates', label: 'Modelos de Documentos' },
   { id: 'camara', label: 'Câmara Municipal' },
-  { id: 'forms', label: 'Formulários & Consultas Públicas' }
+  { id: 'forms', label: 'Formulários & Consultas Públicas' },
+  { id: 'ouvidoria', label: 'Ouvidoria Municipal' }
 ];
 
 interface PermissionDef {
@@ -104,6 +105,7 @@ const PERMISSION_GROUPS: {
       { id: 'assistencia_social', label: 'Assistência Social', desc: 'Cadastro único e programas assistenciais', icon: HeartHandshake },
       { id: 'esporte', label: 'Esportes e Lazer', desc: 'Eventos esportivos e praças de esportes', icon: Trophy },
       { id: 'planejamento', label: 'Planejamento Urbano', desc: 'Plano diretor, zoneamento e diretrizes', icon: Map },
+      { id: 'ouvidoria', label: 'Ouvidoria Municipal', desc: 'Gestão, triagem e resposta de manifestações dos cidadãos', icon: Headphones },
     ]
   },
   {
