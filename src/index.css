@@ -18,6 +18,135 @@
   .text-label-md { font-size: 14px; line-height: 1.2; font-weight: 600; letter-spacing: 0.01em; }
 }
 
+/* ==============================================================
+   ACESSIBILIDADE CIDADÃ: MODO ALTO CONTRASTE (e-MAG / WCAG AAA)
+   Preto Absoluto (#000000), Branco (#FFFFFF), Amarelo Ouro (#FFFF00)
+   ============================================================== */
+html.ouvidoria-high-contrast,
+.ouvidoria-high-contrast {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+
+html.ouvidoria-high-contrast body,
+.ouvidoria-high-contrast main,
+.ouvidoria-high-contrast section,
+.ouvidoria-high-contrast header,
+.ouvidoria-high-contrast footer,
+.ouvidoria-high-contrast form {
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+}
+
+.ouvidoria-high-contrast [class*="bg-white"],
+.ouvidoria-high-contrast [class*="bg-neutral-"],
+.ouvidoria-high-contrast [class*="bg-emerald-"],
+.ouvidoria-high-contrast [class*="bg-amber-"],
+.ouvidoria-high-contrast [class*="bg-sky-"],
+.ouvidoria-high-contrast [class*="bg-orange-"],
+.ouvidoria-high-contrast [class*="bg-rose-"],
+.ouvidoria-high-contrast [class*="bg-indigo-"] {
+  background-color: #000000 !important;
+  border-color: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast h1,
+.ouvidoria-high-contrast h2,
+.ouvidoria-high-contrast h3,
+.ouvidoria-high-contrast h4,
+.ouvidoria-high-contrast strong,
+.ouvidoria-high-contrast b,
+.ouvidoria-high-contrast .font-black,
+.ouvidoria-high-contrast .font-bold {
+  color: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast [class*="text-emerald-"],
+.ouvidoria-high-contrast [class*="text-amber-"],
+.ouvidoria-high-contrast [class*="text-sky-"],
+.ouvidoria-high-contrast [class*="text-orange-"],
+.ouvidoria-high-contrast [class*="text-rose-"],
+.ouvidoria-high-contrast [class*="text-indigo-"] {
+  color: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast p,
+.ouvidoria-high-contrast span,
+.ouvidoria-high-contrast label,
+.ouvidoria-high-contrast li {
+  color: #FFFFFF !important;
+}
+
+.ouvidoria-high-contrast .text-neutral-400,
+.ouvidoria-high-contrast .text-neutral-500,
+.ouvidoria-high-contrast .text-neutral-600,
+.ouvidoria-high-contrast .text-neutral-700 {
+  color: #E2E8F0 !important;
+}
+
+.ouvidoria-high-contrast input,
+.ouvidoria-high-contrast textarea,
+.ouvidoria-high-contrast select {
+  background-color: #000000 !important;
+  color: #FFFF00 !important;
+  border: 2px solid #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast input::placeholder,
+.ouvidoria-high-contrast textarea::placeholder {
+  color: #CBD5E1 !important;
+}
+
+.ouvidoria-high-contrast input:focus,
+.ouvidoria-high-contrast textarea:focus,
+.ouvidoria-high-contrast select:focus {
+  outline: 3px solid #FFFF00 !important;
+  outline-offset: 2px !important;
+}
+
+.ouvidoria-high-contrast button {
+  border-color: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast button.bg-emerald-600,
+.ouvidoria-high-contrast button.bg-emerald-500,
+.ouvidoria-high-contrast button.bg-neutral-900 {
+  background-color: #000000 !important;
+  color: #FFFF00 !important;
+  border: 2px solid #FFFF00 !important;
+}
+
+/* Botões ativos na barra de acessibilidade em alto contraste */
+.ouvidoria-high-contrast button.bg-yellow-400,
+.ouvidoria-high-contrast nav[aria-label="Barra de Acessibilidade"] button.bg-emerald-600 {
+  background-color: #FFFF00 !important;
+  color: #000000 !important;
+  border-color: #FFFF00 !important;
+  font-weight: 900 !important;
+}
+
+.ouvidoria-high-contrast button:hover:not(:disabled) {
+  background-color: #FFFF00 !important;
+  color: #000000 !important;
+}
+
+.ouvidoria-high-contrast svg {
+  stroke: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast button:hover svg {
+  stroke: #000000 !important;
+}
+
+.ouvidoria-high-contrast [class*="border-"] {
+  border-color: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast nav[aria-label="Barra de Acessibilidade"] {
+  background-color: #000000 !important;
+  border-bottom: 2px solid #FFFF00 !important;
+}
+
 
 @layer base {
   body {

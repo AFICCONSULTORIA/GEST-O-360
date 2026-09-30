@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Building2, MessageSquare, Lightbulb, ThumbsUp, HelpCircle, 
@@ -110,10 +110,43 @@ export function PublicOuvidoriaPortal({
   currentInstitution,
   onNavigateHome
 }: PublicPortalProps) {
-  // Acessibilidade: Alto Contraste & Tamanho da Fonte
-  const [highContrast, setHighContrast] = useState(false);
-  const [fontSizeOffset, setFontSizeOffset] = useState<0 | 2 | 4>(0); // 0 = padrão, 2 = grande, 4 = extragrande
+  // Acessibilidade: Alto Contraste & Tamanho da Fonte com persistência e aplicação real
+  const [highContrast, setHighContrast] = useState<boolean>(() => {
+    return localStorage.getItem('gestao360_ouvidoria_contrast') === 'true';
+  });
+  const [fontSizeOffset, setFontSizeOffset] = useState<-2 | 0 | 2 | 4>(() => {
+    const saved = localStorage.getItem('gestao360_ouvidoria_font_size');
+    return saved !== null ? (Number(saved) as any) : 0;
+  });
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
+  // Acessibilidade: Atualiza a raiz do documento (rem) e persiste o tamanho da fonte
+  useEffect(() => {
+    localStorage.setItem('gestao360_ouvidoria_font_size', String(fontSizeOffset));
+    const root = document.documentElement;
+    const baseSize = 16;
+    root.style.fontSize = `${baseSize + fontSizeOffset}px`;
+    return () => {
+      root.style.fontSize = '';
+    };
+  }, [fontSizeOffset]);
+
+  // Acessibilidade: Ativa classe de alto contraste no elemento raiz (HTML) e no Body
+  useEffect(() => {
+    localStorage.setItem('gestao360_ouvidoria_contrast', String(highContrast));
+    const root = document.documentElement;
+    if (highContrast) {
+      root.classList.add('ouvidoria-high-contrast');
+      document.body.classList.add('ouvidoria-high-contrast');
+    } else {
+      root.classList.remove('ouvidoria-high-contrast');
+      document.body.classList.remove('ouvidoria-high-contrast');
+    }
+    return () => {
+      root.classList.remove('ouvidoria-high-contrast');
+      document.body.classList.remove('ouvidoria-high-contrast');
+    };
+  }, [highContrast]);
 
   // Navegação do Portal (Nova manifestação vs Consulta)
   const [activeTab, setActiveTab] = useState<'nova' | 'consultar'>('nova');
@@ -376,10 +409,9 @@ export function PublicOuvidoriaPortal({
 
   return (
     <div 
-      className={`min-h-[100dvh] flex flex-col font-sans transition-colors relative selection:bg-emerald-500 selection:text-white ${
+      className={`ouvidoria-portal-root min-h-[100dvh] flex flex-col font-sans transition-colors relative selection:bg-emerald-500 selection:text-white ${
         darkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-[#F8F9FA] text-neutral-900'
-      } ${highContrast ? 'contrast-more' : ''}`}
-      style={{ fontSize: `${16 + fontSizeOffset}px` }}
+      } ${highContrast ? 'ouvidoria-high-contrast' : ''}`}
     >
       {/* ================= BARRA DE ACESSIBILIDADE OFICIAL ================= */}
       <nav 
@@ -394,25 +426,53 @@ export function PublicOuvidoriaPortal({
           <div className="flex items-center bg-neutral-800 rounded-lg p-0.5 border border-neutral-700">
             <button 
               type="button"
+              onClick={() => setFontSizeOffset(-2)}
+              aria-label="Diminuir fonte (14px)"
+              title="Diminuir texto"
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                fontSizeOffset === -2 
+                  ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400' 
+                  : 'text-neutral-300 hover:text-white'
+              }`}
+            >
+              A-
+            </button>
+            <button 
+              type="button"
               onClick={() => setFontSizeOffset(0)}
-              aria-label="Tamanho de fonte padrão"
-              className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${fontSizeOffset === 0 ? 'bg-emerald-600 text-white shadow-sm' : 'text-neutral-300 hover:text-white'}`}
+              aria-label="Tamanho de fonte padrão (16px)"
+              title="Tamanho padrão"
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                fontSizeOffset === 0 
+                  ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400' 
+                  : 'text-neutral-300 hover:text-white'
+              }`}
             >
               A
             </button>
             <button 
               type="button"
               onClick={() => setFontSizeOffset(2)}
-              aria-label="Aumentar fonte"
-              className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${fontSizeOffset === 2 ? 'bg-emerald-600 text-white shadow-sm' : 'text-neutral-300 hover:text-white'}`}
+              aria-label="Aumentar fonte (18px)"
+              title="Aumentar texto"
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                fontSizeOffset === 2 
+                  ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400' 
+                  : 'text-neutral-300 hover:text-white'
+              }`}
             >
               A+
             </button>
             <button 
               type="button"
               onClick={() => setFontSizeOffset(4)}
-              aria-label="Aumentar muito a fonte"
-              className={`px-2 py-0.5 rounded text-xs font-bold transition-all ${fontSizeOffset === 4 ? 'bg-emerald-600 text-white shadow-sm' : 'text-neutral-300 hover:text-white'}`}
+              aria-label="Aumentar muito a fonte (20px)"
+              title="Texto extragrande"
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                fontSizeOffset === 4 
+                  ? 'bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-400' 
+                  : 'text-neutral-300 hover:text-white'
+              }`}
             >
               A++
             </button>
@@ -422,11 +482,13 @@ export function PublicOuvidoriaPortal({
             type="button"
             onClick={() => setHighContrast(!highContrast)}
             aria-pressed={highContrast}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${
-              highContrast ? 'bg-yellow-400 text-black border-yellow-300' : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white'
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg border text-xs font-bold transition-all ${
+              highContrast 
+                ? 'bg-yellow-400 text-black border-yellow-300 ring-2 ring-yellow-400 font-black shadow-md' 
+                : 'bg-neutral-800 text-neutral-300 border-neutral-700 hover:text-white hover:bg-neutral-700'
             }`}
           >
-            <span>🌓 Alto Contraste</span>
+            <span>🌓 Alto Contraste {highContrast ? '✓' : ''}</span>
           </button>
 
           <button 
