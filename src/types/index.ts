@@ -391,6 +391,13 @@ export type OuvidoriaPrivacidade = 'identificada' | 'sigilosa' | 'anonima';
 export type OuvidoriaStatus = 'Nova' | 'Em Analise' | 'Encaminhada' | 'Prorrogada' | 'Respondida' | 'Arquivada';
 export type OuvidoriaPrioridade = 'Baixa' | 'Normal' | 'Alta' | 'Urgente';
 
+export interface OuvidoriaAnexo {
+  name: string;
+  size?: number | string;
+  type?: string;
+  url: string;
+}
+
 export interface OuvidoriaManifestacao {
   id: string;
   protocolo: string;
@@ -417,7 +424,8 @@ export interface OuvidoriaManifestacao {
   resposta_oficial?: string;
   respondido_por?: string;
   respondido_em?: string;
-  anexos?: string[];
+  anexos?: (string | OuvidoriaAnexo)[];
+  anexos_resposta?: (string | OuvidoriaAnexo)[];
   institution_id?: string;
   created_at: string;
   updated_at?: string;

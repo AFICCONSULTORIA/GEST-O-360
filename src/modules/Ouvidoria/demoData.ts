@@ -22,6 +22,14 @@ export const DEMO_OUVIDORIA_MANIFESTACOES: OuvidoriaManifestacao[] = [
     secretaria_destino: 'Secretaria de Obras e Serviços Urbanos',
     data_manifestacao: new Date(Date.now() - 4 * 86400000).toISOString().split('T')[0],
     prazo_limite: new Date(Date.now() + 16 * 86400000).toISOString(),
+    anexos: [
+      {
+        name: 'foto_poste_apagado.jpg',
+        size: '1.8 MB',
+        type: 'image/jpeg',
+        url: 'https://images.unsplash.com/photo-1517486808906-6ca8b3f04846?auto=format&fit=crop&q=80&w=800'
+      }
+    ],
     created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
   },
   {
@@ -48,6 +56,14 @@ export const DEMO_OUVIDORIA_MANIFESTACOES: OuvidoriaManifestacao[] = [
     resposta_oficial: 'Prezada Sra. Luciana, a Secretaria Municipal de Saúde agradece imensamente seu reconhecimento. Seu elogio foi compartilhado com a coordenação da UBS Central e anotado na pasta funcional dos servidores envolvidos. Agradecemos sua manifestação!',
     respondido_por: 'Ouvidoria Geral / Gabinete da Saúde',
     respondido_em: new Date(Date.now() - 2 * 86400000).toISOString(),
+    anexos_resposta: [
+      {
+        name: 'oficio_elogio_funcional_042.pdf',
+        size: '310 KB',
+        type: 'application/pdf',
+        url: '#'
+      }
+    ],
     created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
   },
   {
@@ -70,6 +86,20 @@ export const DEMO_OUVIDORIA_MANIFESTACOES: OuvidoriaManifestacao[] = [
     secretaria_destino: 'Secretaria de Meio Ambiente e Fiscalização de Posturas',
     data_manifestacao: new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0],
     prazo_limite: new Date(Date.now() + 14 * 86400000).toISOString(),
+    anexos: [
+      {
+        name: 'foto_descarte_entulho_1.jpg',
+        size: '2.4 MB',
+        type: 'image/jpeg',
+        url: 'https://images.unsplash.com/photo-1605600659908-0ef719419d41?auto=format&fit=crop&q=80&w=800'
+      },
+      {
+        name: 'coordenadas_gps_area_preservacao.pdf',
+        size: '420 KB',
+        type: 'application/pdf',
+        url: '#'
+      }
+    ],
     created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
   },
   {

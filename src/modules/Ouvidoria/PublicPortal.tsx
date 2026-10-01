@@ -6,10 +6,11 @@ import {
   Share2, ArrowLeft, ArrowRight, Eye, EyeOff, Lock, User, 
   Phone, Mail, FileText, MapPin, Sparkles, Volume2, VolumeX, 
   Sun, Moon, Search, Calendar, Clock, ChevronRight, Check,
-  AlertCircle, Home, Send, ShieldCheck, Info
+  AlertCircle, Home, Send, ShieldCheck, Info, Paperclip, 
+  Upload, Trash2, ExternalLink, File, ImageIcon, X, Maximize2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Institution, OuvidoriaTipo, OuvidoriaPrivacidade, OuvidoriaManifestacao } from '../../types';
+import { Institution, OuvidoriaTipo, OuvidoriaPrivacidade, OuvidoriaManifestacao, OuvidoriaAnexo } from '../../types';
 
 interface PublicPortalProps {
   darkMode: boolean;
@@ -167,7 +168,122 @@ export function PublicOuvidoriaPortal({
     cidadao_cpf: '',
     cidadao_email: '',
     cidadao_telefone: '',
+    anexos: [] as OuvidoriaAnexo[],
   });
+
+  // Upload e Visualização de Anexos
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [selectedPreviewImage, setSelectedPreviewImage] = useState<string | null>(null);
+
+  // Auxiliares de Formatação e Upload
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const getNormalizedAnexo = (anexo: string | OuvidoriaAnexo): OuvidoriaAnexo => {
+    if (typeof anexo === 'string') {
+      const filename = anexo.split('/').pop()?.split('?')[0] || 'documento';
+      const isImg = /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(filename);
+      return {
+        name: filename,
+        url: anexo,
+        type: isImg ? 'image/jpeg' : 'application/pdf',
+        size: 'Arquivo'
+      };
+    }
+    return anexo;
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    if (formData.anexos.length + files.length > 5) {
+      alert('Você pode anexar no máximo 5 arquivos por manifestação.');
+      e.target.value = '';
+      return;
+    }
+
+    setIsUploadingFiles(true);
+    const newAnexos: OuvidoriaAnexo[] = [...formData.anexos];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+
+      // Limite de 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        alert(`O arquivo "${file.name}" ultrapassa o limite permitido de 10MB.`);
+        continue;
+      }
+
+      setUploadProgress(`Enviando ${file.name}...`);
+
+      const safeName = file.name
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9.-]/g, '_');
+      const filename = `ouvidoria-${Date.now()}-${safeName}`;
+
+      let fileUrl = '';
+
+      try {
+        const { error: uploadError } = await supabase.storage
+          .from('protocolos')
+          .upload(filename, file, { cacheControl: '3600', upsert: true });
+
+        if (!uploadError) {
+          const { data: publicData } = supabase.storage.from('protocolos').getPublicUrl(filename);
+          if (publicData?.publicUrl) {
+            fileUrl = publicData.publicUrl;
+          }
+        }
+      } catch (err) {
+        console.warn('[Ouvidoria] Upload Supabase Storage não disponível, utilizando fallback seguro local:', err);
+      }
+
+      if (!fileUrl) {
+        try {
+          fileUrl = await readFileAsDataUrl(file);
+        } catch (err) {
+          console.error('Erro ao ler arquivo localmente:', err);
+          continue;
+        }
+      }
+
+      newAnexos.push({
+        name: file.name,
+        size: formatBytes(file.size),
+        type: file.type || 'application/octet-stream',
+        url: fileUrl,
+      });
+    }
+
+    setFormData(prev => ({ ...prev, anexos: newAnexos }));
+    setIsUploadingFiles(false);
+    setUploadProgress(null);
+    e.target.value = '';
+  };
+
+  const handleRemoveAnexo = (indexToRemove: number) => {
+    setFormData(prev => ({
+      ...prev,
+      anexos: prev.anexos.filter((_, idx) => idx !== indexToRemove)
+    }));
+  };
 
   // Resultado de Sucesso
   const [generatedProtocol, setGeneratedProtocol] = useState('');
@@ -273,6 +389,7 @@ export function PublicOuvidoriaPortal({
         prioridade: formData.tipo === 'Denuncia' ? 'Alta' : 'Normal',
         data_manifestacao: new Date().toISOString().split('T')[0],
         prazo_limite: prazoDate.toISOString(),
+        anexos: formData.anexos,
         institution_id: currentInstitution?.id || undefined,
         created_at: new Date().toISOString(),
       };
@@ -298,6 +415,7 @@ export function PublicOuvidoriaPortal({
           secretaria_sugerida: newManifestacao.secretaria_sugerida,
           data_manifestacao: newManifestacao.data_manifestacao,
           prazo_limite: newManifestacao.prazo_limite,
+          anexos: newManifestacao.anexos,
           institution_id: newManifestacao.institution_id
         });
 
@@ -401,6 +519,7 @@ export function PublicOuvidoriaPortal({
       cidadao_cpf: '',
       cidadao_email: '',
       cidadao_telefone: '',
+      anexos: [],
     });
     setStep(1);
     setGeneratedProtocol('');
@@ -837,6 +956,123 @@ export function PublicOuvidoriaPortal({
                         </div>
                       </div>
                     </div>
+
+                    {/* Anexos de Comprovantes, Fotos e Documentos */}
+                    <div className="border-t border-neutral-100 dark:border-neutral-800 pt-6">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <Paperclip size={18} className="text-emerald-600 dark:text-emerald-400" />
+                          <h3 className="text-sm font-black uppercase tracking-wider text-neutral-900 dark:text-white">
+                            Anexar Documentos ou Fotos (Opcional)
+                          </h3>
+                        </div>
+                        <span className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400">
+                          {formData.anexos.length} de 5 arquivos
+                        </span>
+                      </div>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4 leading-relaxed">
+                        Envie fotos do local, imagens de comprovantes, laudos ou documentos que ajudem a instruir sua manifestação (PDF, DOC, JPG ou PNG de até 10MB por arquivo).
+                      </p>
+
+                      {/* Dropzone / Seletor de Arquivos */}
+                      {formData.anexos.length < 5 && (
+                        <div className="relative border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-emerald-500 dark:hover:border-emerald-400 rounded-2xl p-6 text-center transition-all bg-neutral-50/60 dark:bg-neutral-800/40 hover:bg-emerald-50/30 group">
+                          <input
+                            id="file-upload-input"
+                            type="file"
+                            multiple
+                            accept="image/*,.pdf,.doc,.docx,.txt"
+                            onChange={handleFileUpload}
+                            disabled={isUploadingFiles}
+                            aria-label="Selecionar arquivos para anexar"
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                          />
+                          <div className="flex flex-col items-center justify-center gap-2 pointer-events-none">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                              {isUploadingFiles ? (
+                                <div className="w-6 h-6 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                              ) : (
+                                <Upload size={22} />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                                {isUploadingFiles ? (uploadProgress || 'Enviando anexo...') : 'Clique ou arraste arquivos para anexar'}
+                              </p>
+                              <p className="text-xs text-neutral-400 mt-0.5">
+                                Formatos aceitos: PNG, JPG, PDF, DOC (máx. 10MB por arquivo)
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Lista de Anexos Adicionados */}
+                      {formData.anexos.length > 0 && (
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {formData.anexos.map((anexo, idx) => {
+                            const isImg = anexo.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(anexo.name);
+                            return (
+                              <div 
+                                key={idx}
+                                className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-800/90 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-sm relative group overflow-hidden"
+                              >
+                                {isImg ? (
+                                  <div 
+                                    onClick={() => setSelectedPreviewImage(anexo.url)}
+                                    className="w-12 h-12 rounded-xl bg-neutral-200 dark:bg-neutral-700 overflow-hidden shrink-0 cursor-pointer relative group/thumb"
+                                    title="Clique para ampliar imagem"
+                                  >
+                                    <img 
+                                      src={anexo.url} 
+                                      alt={anexo.name} 
+                                      className="w-full h-full object-cover transition-transform group-hover/thumb:scale-110"
+                                    />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                      <Maximize2 size={14} />
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                                    <FileText size={22} />
+                                  </div>
+                                )}
+
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate" title={anexo.name}>
+                                    {anexo.name}
+                                  </p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] text-neutral-400 font-medium">
+                                      {typeof anexo.size === 'string' ? anexo.size : 'Arquivo'}
+                                    </span>
+                                    <a
+                                      href={anexo.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
+                                    >
+                                      <span>Abrir</span>
+                                      <ExternalLink size={10} />
+                                    </a>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveAnexo(idx)}
+                                  className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
+                                  title="Remover este anexo"
+                                  aria-label={`Remover ${anexo.name}`}
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
@@ -1128,6 +1364,28 @@ export function PublicOuvidoriaPortal({
                     </div>
                   </div>
 
+                  {/* Anexos Enviados */}
+                  {formData.anexos.length > 0 && (
+                    <div className="p-4 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-left space-y-2">
+                      <div className="flex items-center gap-2 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        <Paperclip size={14} />
+                        <span>{formData.anexos.length} arquivo(s) anexado(s) com sucesso:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {formData.anexos.map((a, i) => (
+                          <span 
+                            key={i} 
+                            className="inline-flex items-center gap-1.5 px-3 py-1 bg-white dark:bg-neutral-800 rounded-xl border border-emerald-200 dark:border-emerald-700/60 text-xs font-medium text-neutral-800 dark:text-neutral-200 shadow-sm"
+                          >
+                            <FileText size={12} className="text-emerald-600" />
+                            <span className="truncate max-w-[200px]">{a.name}</span>
+                            <span className="text-[10px] text-neutral-400">({a.size})</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Informação sobre Prazo Legal */}
                   <div className="p-4 bg-sky-50 dark:bg-sky-950/30 rounded-2xl border border-sky-200 dark:border-sky-800 text-xs text-sky-900 dark:text-sky-300 text-left flex items-start gap-3">
                     <Clock size={20} className="shrink-0 text-sky-600 mt-0.5" />
@@ -1300,9 +1558,65 @@ export function PublicOuvidoriaPortal({
                   </div>
                 </div>
 
+                {/* Documentos e Fotos Anexados pelo Cidadão */}
+                {consultationResult.anexos && consultationResult.anexos.length > 0 && (
+                  <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 space-y-3">
+                    <span className="text-xs font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
+                      <Paperclip size={14} className="text-emerald-600 dark:text-emerald-400" /> 
+                      Documentos e Fotos Anexados pelo Munícipe ({consultationResult.anexos.length}):
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {consultationResult.anexos.map((rawAnexo, idx) => {
+                        const anexo = getNormalizedAnexo(rawAnexo);
+                        const isImg = anexo.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(anexo.name);
+                        return (
+                          <div 
+                            key={idx}
+                            className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200 dark:border-neutral-700/80 shadow-sm overflow-hidden"
+                          >
+                            {isImg ? (
+                              <div 
+                                onClick={() => setSelectedPreviewImage(anexo.url)}
+                                className="w-12 h-12 rounded-xl bg-neutral-200 dark:bg-neutral-700 overflow-hidden shrink-0 cursor-pointer relative group/thumb"
+                                title="Clique para ampliar"
+                              >
+                                <img src={anexo.url} alt={anexo.name} className="w-full h-full object-cover transition-transform group-hover/thumb:scale-110" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                  <Maximize2 size={14} />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                                <FileText size={22} />
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate" title={anexo.name}>
+                                {anexo.name}
+                              </p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-neutral-400 font-medium">{typeof anexo.size === 'string' ? anexo.size : 'Arquivo'}</span>
+                                <a
+                                  href={anexo.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
+                                >
+                                  <span>Visualizar</span>
+                                  <ExternalLink size={10} />
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Resposta Oficial (se houver) */}
                 {consultationResult.resposta_oficial ? (
-                  <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 space-y-2">
+                  <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 space-y-3">
                     <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
                       <CheckCircle2 size={18} />
                       <span>Resposta Oficial da Prefeitura:</span>
@@ -1310,6 +1624,54 @@ export function PublicOuvidoriaPortal({
                     <p className="text-sm text-neutral-800 dark:text-neutral-200 whitespace-pre-line leading-relaxed bg-white/60 dark:bg-neutral-900/60 p-4 rounded-xl border border-emerald-100 dark:border-emerald-900/40">
                       {consultationResult.resposta_oficial}
                     </p>
+
+                    {/* Anexos da Resposta Oficial */}
+                    {consultationResult.anexos_resposta && consultationResult.anexos_resposta.length > 0 && (
+                      <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-800/60">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300 block mb-2 flex items-center gap-1.5">
+                          <Paperclip size={12} /> Comprovantes e Documentos da Resposta ({consultationResult.anexos_resposta.length}):
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {consultationResult.anexos_resposta.map((rawAnexo, idx) => {
+                            const anexo = getNormalizedAnexo(rawAnexo);
+                            const isImg = anexo.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(anexo.name);
+                            return (
+                              <div 
+                                key={idx}
+                                className="flex items-center gap-2.5 p-2.5 bg-white dark:bg-neutral-900 rounded-xl border border-emerald-200 dark:border-emerald-800/60 shadow-sm"
+                              >
+                                {isImg ? (
+                                  <div 
+                                    onClick={() => setSelectedPreviewImage(anexo.url)}
+                                    className="w-10 h-10 rounded-lg bg-neutral-100 dark:bg-neutral-800 overflow-hidden shrink-0 cursor-pointer"
+                                    title="Clique para ampliar"
+                                  >
+                                    <img src={anexo.url} alt={anexo.name} className="w-full h-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                                    <FileText size={18} />
+                                  </div>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate">{anexo.name}</p>
+                                  <a
+                                    href={anexo.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
+                                  >
+                                    <span>Baixar / Visualizar</span>
+                                    <ExternalLink size={10} />
+                                  </a>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {consultationResult.respondido_em && (
                       <p className="text-[11px] text-neutral-500 dark:text-neutral-400 text-right">
                         Respondido em {new Date(consultationResult.respondido_em).toLocaleDateString('pt-BR')}
@@ -1330,6 +1692,30 @@ export function PublicOuvidoriaPortal({
         )}
 
       </main>
+
+      {/* ================= MODAL LIGHTBOX DE IMAGEM ================= */}
+      {selectedPreviewImage && (
+        <div 
+          onClick={() => setSelectedPreviewImage(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div className="relative max-w-4xl max-h-[90vh] bg-neutral-900 rounded-3xl p-3 overflow-hidden shadow-2xl border border-neutral-700" onClick={e => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={() => setSelectedPreviewImage(null)}
+              aria-label="Fechar ampliação"
+              className="absolute top-5 right-5 z-10 p-2 rounded-full bg-black/70 hover:bg-black text-white transition-all shadow-lg"
+            >
+              <X size={20} />
+            </button>
+            <img 
+              src={selectedPreviewImage} 
+              alt="Visualização ampliada do anexo" 
+              className="max-w-full max-h-[82vh] object-contain rounded-2xl mx-auto" 
+            />
+          </div>
+        </div>
+      )}
 
       {/* ================= RODAPÉ OFICIAL ================= */}
       <footer className="border-t border-neutral-200 dark:border-neutral-800 py-6 px-4 text-center text-xs text-neutral-500 dark:text-neutral-400 bg-white/50 dark:bg-neutral-900/50">

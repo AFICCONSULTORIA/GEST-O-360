@@ -42,10 +42,15 @@ CREATE TABLE IF NOT EXISTS public.ouvidoria_manifestacoes (
     
     -- Anexos e Metadados
     anexos JSONB DEFAULT '[]'::jsonb,
+    anexos_resposta JSONB DEFAULT '[]'::jsonb,
     institution_id TEXT REFERENCES public.institutions(id) ON DELETE SET NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Garante colunas de anexos caso a tabela já exista
+ALTER TABLE public.ouvidoria_manifestacoes ADD COLUMN IF NOT EXISTS anexos JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.ouvidoria_manifestacoes ADD COLUMN IF NOT EXISTS anexos_resposta JSONB DEFAULT '[]'::jsonb;
 
 -- Compatibilidade e migração automática caso a tabela tenha sido criada com tipo divergente
 DO $$ 
@@ -96,6 +101,7 @@ CREATE POLICY "Permitir inserção de manifestação" ON public.ouvidoria_manife
 DROP POLICY IF EXISTS "Permitir atualização de manifestação" ON public.ouvidoria_manifestacoes;
 CREATE POLICY "Permitir atualização de manifestação" ON public.ouvidoria_manifestacoes FOR UPDATE USING (true);
 
+-- Exclusão de Manifestações (Na aplicação GESTÃO 360, a exclusão é restrita e auditada exclusivamente para 'Super Admin')
 DROP POLICY IF EXISTS "Permitir exclusão de manifestação" ON public.ouvidoria_manifestacoes;
 CREATE POLICY "Permitir exclusão de manifestação" ON public.ouvidoria_manifestacoes FOR DELETE USING (true);
 
@@ -105,3 +111,20 @@ CREATE POLICY "Permitir leitura de histórico" ON public.ouvidoria_historico FOR
 
 DROP POLICY IF EXISTS "Permitir inserção de histórico" ON public.ouvidoria_historico;
 CREATE POLICY "Permitir inserção de histórico" ON public.ouvidoria_historico FOR INSERT WITH CHECK (true);
+
+-- ==============================================================
+-- BUCKET DE ARMAZENAMENTO PARA ANEXOS (Supabase Storage)
+-- ==============================================================
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('protocolos', 'protocolos', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+-- Políticas de Storage para o bucket 'protocolos'
+DROP POLICY IF EXISTS "Acesso público aos anexos de protocolos" ON storage.objects;
+CREATE POLICY "Acesso público aos anexos de protocolos" ON storage.objects 
+FOR SELECT USING (bucket_id = 'protocolos');
+
+DROP POLICY IF EXISTS "Upload público aos anexos de protocolos" ON storage.objects;
+CREATE POLICY "Upload público aos anexos de protocolos" ON storage.objects 
+FOR INSERT WITH CHECK (bucket_id = 'protocolos');
+
