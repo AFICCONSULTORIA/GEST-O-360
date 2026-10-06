@@ -149,19 +149,78 @@ const STORAGE_KEYS = {
   VOTES: 'gestao360_voting_votes'
 };
 
+// Camada de armazenamento ultra-resiliente (LocalStorage + SessionStorage + Cache em Memória + Eventos)
+class VotingStorage {
+  private static memoryFallback: Record<string, string> = {};
+
+  static getItem(key: string): string | null {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const val = window.localStorage.getItem(key);
+        if (val !== null) {
+          this.memoryFallback[key] = val;
+          return val;
+        }
+      }
+    } catch (e) {
+      console.warn(`[VotingStorage] Falha ao ler localStorage[${key}]:`, e);
+    }
+
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const sessVal = window.sessionStorage.getItem(key);
+        if (sessVal !== null) {
+          this.memoryFallback[key] = sessVal;
+          return sessVal;
+        }
+      }
+    } catch (_) {}
+
+    return this.memoryFallback[key] || null;
+  }
+
+  static setItem(key: string, value: string): void {
+    this.memoryFallback[key] = value;
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+      }
+    } catch (e) {
+      console.warn(`[VotingStorage] Falha ao gravar localStorage[${key}], tentando sessionStorage:`, e);
+      try {
+        if (typeof window !== 'undefined' && window.sessionStorage) {
+          window.sessionStorage.setItem(key, value);
+        }
+      } catch (_) {}
+    }
+
+    // Notificar todas as abas e componentes da aplicação
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('voting-data-changed', { detail: { key } }));
+      }
+    } catch (_) {}
+  }
+}
+
 export class VotingService {
   // --- ESCOLAS ---
   static getSchools(): SchoolUnit[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.SCHOOLS);
+    const raw = VotingStorage.getItem(STORAGE_KEYS.SCHOOLS);
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return JSON.parse(JSON.stringify(parsed));
+        }
       } catch (e) {
         console.error('Erro ao ler escolas:', e);
       }
     }
-    localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(DEFAULT_SCHOOLS));
-    return DEFAULT_SCHOOLS;
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_SCHOOLS));
+    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(defaults));
+    return defaults;
   }
 
   static getSchoolById(schoolId: string): SchoolUnit | undefined {
@@ -180,7 +239,7 @@ export class VotingService {
     } else {
       schools.push(finalSchool);
     }
-    localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
     return finalSchool;
   }
 
@@ -200,22 +259,26 @@ export class VotingService {
       };
     }
     const schools = this.getSchools().filter(s => s.id !== schoolId);
-    localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
     return { success: true };
   }
 
   // --- ELEIÇÕES ---
   static getElections(): Election[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.ELECTIONS);
+    const raw = VotingStorage.getItem(STORAGE_KEYS.ELECTIONS);
     if (raw) {
       try {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return JSON.parse(JSON.stringify(parsed));
+        }
       } catch (e) {
         console.error('Erro ao ler eleições:', e);
       }
     }
-    localStorage.setItem(STORAGE_KEYS.ELECTIONS, JSON.stringify(DEFAULT_ELECTIONS));
-    return DEFAULT_ELECTIONS;
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_ELECTIONS));
+    VotingStorage.setItem(STORAGE_KEYS.ELECTIONS, JSON.stringify(defaults));
+    return defaults;
   }
 
   static getActiveElection(): Election | null {
@@ -231,21 +294,24 @@ export class VotingService {
     } else {
       elections.push(election);
     }
-    localStorage.setItem(STORAGE_KEYS.ELECTIONS, JSON.stringify(elections));
+    VotingStorage.setItem(STORAGE_KEYS.ELECTIONS, JSON.stringify(elections));
   }
 
   // --- CANDIDATOS ---
   static getCandidates(schoolId?: string): Candidate[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.CANDIDATES);
-    let candidates: Candidate[] = DEFAULT_CANDIDATES;
+    const raw = VotingStorage.getItem(STORAGE_KEYS.CANDIDATES);
+    let candidates: Candidate[] = JSON.parse(JSON.stringify(DEFAULT_CANDIDATES));
     if (raw) {
       try {
-        candidates = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          candidates = JSON.parse(JSON.stringify(parsed));
+        }
       } catch (e) {
         console.error('Erro ao ler candidatos:', e);
       }
     } else {
-      localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(DEFAULT_CANDIDATES));
+      VotingStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidates));
     }
 
     if (schoolId && schoolId !== 'ALL') {
@@ -255,29 +321,36 @@ export class VotingService {
   }
 
   static saveCandidate(candidate: Candidate): Candidate {
-    const candidates = this.getCandidates();
-    const idx = candidates.findIndex(c => c.id === candidate.id);
+    const candidates = this.getCandidates(); // Busca todos sem filtro
+    const finalCandidate: Candidate = {
+      ...candidate,
+      id: candidate.id || `cand-${Date.now()}`
+    };
+    const idx = candidates.findIndex(c => c.id === finalCandidate.id);
     if (idx >= 0) {
-      candidates[idx] = candidate;
+      candidates[idx] = finalCandidate;
     } else {
-      candidates.push(candidate);
+      candidates.push(finalCandidate);
     }
-    localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidates));
-    return candidate;
+    VotingStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidates));
+    return finalCandidate;
   }
 
   static deleteCandidate(candidateId: string): void {
     const candidates = this.getCandidates().filter(c => c.id !== candidateId);
-    localStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidates));
+    VotingStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidates));
   }
 
   // --- VOTOS ---
   static getVotes(schoolId?: string): VoteRecord[] {
-    const raw = localStorage.getItem(STORAGE_KEYS.VOTES);
+    const raw = VotingStorage.getItem(STORAGE_KEYS.VOTES);
     let votes: VoteRecord[] = [];
     if (raw) {
       try {
-        votes = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          votes = parsed;
+        }
       } catch (e) {
         console.error('Erro ao ler votos:', e);
       }
@@ -357,7 +430,7 @@ export class VotingService {
 
     const votes = this.getVotes();
     votes.push(newVote);
-    localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(votes));
+    VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(votes));
 
     return {
       success: true,
@@ -453,10 +526,10 @@ export class VotingService {
    */
   static resetSchoolVotes(schoolId?: string): void {
     if (!schoolId || schoolId === 'ALL') {
-      localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify([]));
+      VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify([]));
     } else {
       const remaining = this.getVotes().filter(v => v.schoolId !== schoolId);
-      localStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(remaining));
+      VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(remaining));
     }
   }
 }

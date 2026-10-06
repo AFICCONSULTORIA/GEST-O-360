@@ -54,6 +54,9 @@ export const EducationVotingAdmin: React.FC = () => {
   const [searchSchool, setSearchSchool] = useState('');
   const [schoolCategoryFilter, setSchoolCategoryFilter] = useState<string>('ALL');
 
+  // Filtro de Candidatos por Escola
+  const [candidateSchoolFilter, setCandidateSchoolFilter] = useState<string>('ALL');
+
   // Modal de Escola (Nova / Edição)
   const [isSchoolModalOpen, setIsSchoolModalOpen] = useState(false);
   const [editingSchool, setEditingSchool] = useState<SchoolUnit | null>(null);
@@ -89,6 +92,19 @@ export const EducationVotingAdmin: React.FC = () => {
 
   useEffect(() => {
     loadAllData();
+
+    // Sincronização em tempo real entre abas e componentes
+    const handleStorageChange = () => {
+      loadAllData();
+    };
+
+    window.addEventListener('voting-data-changed', handleStorageChange);
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      window.removeEventListener('voting-data-changed', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -106,9 +122,13 @@ export const EducationVotingAdmin: React.FC = () => {
     setElections(loadedElections);
     setActiveElection(currentElection);
 
-    const defaultSchool = loadedSchools[0]?.id || 'escola-darcy-ribeiro';
-    setSelectedSchoolId(defaultSchool);
-    updateSchoolData(defaultSchool);
+    // Se a escola selecionada não existir mais, seleciona a primeira
+    setSelectedSchoolId(prev => {
+      const exists = loadedSchools.some(s => s.id === prev);
+      const nextId = exists ? prev : (loadedSchools[0]?.id || 'escola-darcy-ribeiro');
+      updateSchoolData(nextId);
+      return nextId;
+    });
   };
 
   const updateSchoolData = (schoolId: string) => {
@@ -122,13 +142,18 @@ export const EducationVotingAdmin: React.FC = () => {
   };
 
   // --- Ações de Candidato ---
-  const handleOpenNewCandidateModal = () => {
+  const handleOpenNewCandidateModal = (targetSchoolId?: string) => {
     setEditingCandidate(null);
+    const chosenSchool = targetSchoolId || 
+      (candidateSchoolFilter !== 'ALL' ? candidateSchoolFilter : selectedSchoolId) || 
+      schools[0]?.id || 
+      'escola-darcy-ribeiro';
+
     setCandidateFormData({
       name: '',
       viceName: '',
       number: '',
-      schoolId: selectedSchoolId,
+      schoolId: chosenSchool,
       photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400',
       bio: '',
       proposalsText: ''
@@ -161,7 +186,7 @@ export const EducationVotingAdmin: React.FC = () => {
 
     try {
       setIsUploadingPhoto(true);
-      const optimized = await optimizeAvatarImage(file, 400, 0.85);
+      const optimized = await optimizeAvatarImage(file, 260, 0.78);
       setCandidateFormData(prev => ({ ...prev, photoUrl: optimized }));
       showToast('Foto do candidato anexada com sucesso!', 'success');
     } catch (err) {
@@ -174,41 +199,56 @@ export const EducationVotingAdmin: React.FC = () => {
 
   const handleSaveCandidate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!candidateFormData.name || !candidateFormData.number) {
+    if (!candidateFormData.name.trim() || !candidateFormData.number.trim()) {
       showToast('Nome e número da chapa são obrigatórios.', 'warning');
       return;
     }
 
-    const proposals = candidateFormData.proposalsText
-      .split('\n')
-      .map(p => p.trim())
-      .filter(p => p.length > 0);
+    try {
+      const proposals = candidateFormData.proposalsText
+        .split('\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
 
-    const candidateToSave: Candidate = {
-      id: editingCandidate ? editingCandidate.id : 'cand-' + Date.now(),
-      electionId: activeElection?.id || 'eleicao-2027-2029',
-      schoolId: candidateFormData.schoolId,
-      name: candidateFormData.name,
-      viceName: candidateFormData.viceName || undefined,
-      number: candidateFormData.number,
-      photoUrl: candidateFormData.photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400',
-      bio: candidateFormData.bio,
-      proposals: proposals.length > 0 ? proposals : ['Gestão democrática e participativa na unidade escolar.'],
-      active: true,
-      createdAt: editingCandidate ? editingCandidate.createdAt : new Date().toISOString()
-    };
+      const candidateToSave: Candidate = {
+        id: editingCandidate ? editingCandidate.id : 'cand-' + Date.now(),
+        electionId: activeElection?.id || 'eleicao-2027-2029',
+        schoolId: candidateFormData.schoolId,
+        name: candidateFormData.name.trim(),
+        viceName: candidateFormData.viceName?.trim() || undefined,
+        number: candidateFormData.number.trim(),
+        photoUrl: candidateFormData.photoUrl || 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400',
+        bio: candidateFormData.bio.trim(),
+        proposals: proposals.length > 0 ? proposals : ['Gestão democrática e participativa na unidade escolar.'],
+        active: true,
+        createdAt: editingCandidate ? editingCandidate.createdAt : new Date().toISOString()
+      };
 
-    VotingService.saveCandidate(candidateToSave);
-    setIsCandidateModalOpen(false);
-    updateSchoolData(selectedSchoolId);
-    showToast(editingCandidate ? 'Candidato atualizado com sucesso!' : 'Candidato cadastrado com sucesso!', 'success');
+      const saved = VotingService.saveCandidate(candidateToSave);
+      setIsCandidateModalOpen(false);
+
+      // Sincroniza a escola selecionada e filtros para o candidato aparecer instantaneamente
+      setSelectedSchoolId(saved.schoolId);
+      updateSchoolData(saved.schoolId);
+
+      const targetSchoolName = schools.find(s => s.id === saved.schoolId)?.name || 'escola';
+      showToast(
+        editingCandidate 
+          ? `Chapa ${saved.number} (${saved.name}) atualizada com sucesso!` 
+          : `Chapa ${saved.number} (${saved.name}) cadastrada e salva com sucesso em ${targetSchoolName}!`, 
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Erro ao salvar candidato:', err);
+      showToast('Erro ao salvar candidato: ' + (err?.message || 'Verifique os dados.'), 'error');
+    }
   };
 
   const handleDeleteCandidate = (candId: string) => {
     if (window.confirm('Tem certeza que deseja excluir esta chapa/candidato?')) {
       VotingService.deleteCandidate(candId);
       updateSchoolData(selectedSchoolId);
-      showToast('Candidato removido.', 'info');
+      showToast('Candidato removido com sucesso.', 'info');
     }
   };
 
@@ -293,16 +333,26 @@ export const EducationVotingAdmin: React.FC = () => {
       createdAt: editingSchool ? editingSchool.createdAt : new Date().toISOString()
     };
 
-    VotingService.saveSchool(schoolToSave);
-    const updatedSchools = VotingService.getSchools();
-    setSchools(updatedSchools);
-    setIsSchoolModalOpen(false);
+    try {
+      const saved = VotingService.saveSchool(schoolToSave);
+      const updatedSchools = VotingService.getSchools();
+      setSchools(updatedSchools);
+      setIsSchoolModalOpen(false);
 
-    if (!selectedSchoolId || (editingSchool && editingSchool.id === selectedSchoolId)) {
-      setSelectedSchoolId(schoolToSave.id);
-      updateSchoolData(schoolToSave.id);
+      // Sempre atualiza e seleciona a escola recém-salva para ficar ativa imediatamente
+      setSelectedSchoolId(saved.id);
+      updateSchoolData(saved.id);
+
+      showToast(
+        editingSchool 
+          ? `Escola "${saved.name}" atualizada com sucesso!` 
+          : `Escola "${saved.name}" cadastrada e salva com sucesso!`, 
+        'success'
+      );
+    } catch (err: any) {
+      console.error('Erro ao salvar escola:', err);
+      showToast('Erro ao salvar escola: ' + (err?.message || 'Verifique os dados.'), 'error');
     }
-    showToast(editingSchool ? 'Escola atualizada com sucesso!' : 'Nova escola cadastrada com sucesso!', 'success');
   };
 
   const handleDeleteSchool = (schoolId: string) => {
@@ -629,86 +679,152 @@ export const EducationVotingAdmin: React.FC = () => {
       {/* ========================================================== */}
       {/* ABA 2: GERENCIAMENTO DE CANDIDATOS & FOTOS */}
       {/* ========================================================== */}
-      {activeTab === 'candidatos' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h4 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                <Users className="text-emerald-500" size={20} />
-                Chapas e Candidatos Cadastrados
-              </h4>
-              <p className="text-xs text-neutral-500">Cadastre os candidatos a diretor e vice com suas fotos e planos de gestão.</p>
+      {activeTab === 'candidatos' && (() => {
+        const allNetworkCandidates = VotingService.getCandidates('ALL');
+        const displayedCandidates = candidateSchoolFilter === 'ALL'
+          ? allNetworkCandidates
+          : allNetworkCandidates.filter(c => c.schoolId === candidateSchoolFilter);
+
+        return (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h4 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                  <Users className="text-emerald-500" size={20} />
+                  Chapas e Candidatos Cadastrados
+                </h4>
+                <p className="text-xs text-neutral-500">Cadastre os candidatos a diretor e vice com suas fotos e planos de gestão.</p>
+              </div>
+
+              <button
+                onClick={() => handleOpenNewCandidateModal(candidateSchoolFilter !== 'ALL' ? candidateSchoolFilter : undefined)}
+                className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+              >
+                <Plus size={16} /> Novo Candidato / Chapa
+              </button>
             </div>
 
-            <button
-              onClick={handleOpenNewCandidateModal}
-              className="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
-            >
-              <Plus size={16} /> Novo Candidato / Chapa
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {candidates.map(cand => (
-              <div
-                key={cand.id}
-                className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col justify-between"
+            {/* Barra de Filtro de Escola para os Candidatos */}
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl p-3 border border-neutral-100 dark:border-neutral-800 shadow-sm flex items-center gap-2 overflow-x-auto max-w-full">
+              <span className="text-xs font-black uppercase tracking-wider text-neutral-400 pl-2 shrink-0 flex items-center gap-1.5">
+                <School size={14} className="text-emerald-500" /> Filtrar Escola:
+              </span>
+              <button
+                onClick={() => setCandidateSchoolFilter('ALL')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+                  candidateSchoolFilter === 'ALL'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200'
+                }`}
               >
-                <div>
-                  <div className="flex items-start justify-between gap-3 mb-4">
-                    <div className="relative">
-                      <img 
-                        src={cand.photoUrl} 
-                        alt={cand.name}
-                        className="w-20 h-20 rounded-2xl object-cover ring-2 ring-emerald-500/30 bg-neutral-100" 
-                      />
-                      <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white font-black text-xs px-2 py-0.5 rounded-lg shadow-sm font-mono">
-                        Chapa {cand.number}
+                Todas as Unidades ({allNetworkCandidates.length})
+              </button>
+              {schools.map(s => {
+                const count = allNetworkCandidates.filter(c => c.schoolId === s.id).length;
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setCandidateSchoolFilter(s.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+                      candidateSchoolFilter === s.id
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200'
+                    }`}
+                  >
+                    {s.name} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {displayedCandidates.length === 0 ? (
+              <div className="bg-white dark:bg-neutral-900 rounded-3xl p-12 text-center border border-neutral-100 dark:border-neutral-800">
+                <Users size={48} className="mx-auto text-neutral-300 dark:text-neutral-700 mb-3" />
+                <h5 className="font-black text-neutral-700 dark:text-neutral-300 text-base">
+                  Nenhum candidato cadastrado nesta seleção
+                </h5>
+                <p className="text-xs text-neutral-400 mt-1 max-w-sm mx-auto">
+                  Clique no botão abaixo para registrar a primeira chapa e candidato a diretor escolar.
+                </p>
+                <button
+                  onClick={() => handleOpenNewCandidateModal(candidateSchoolFilter !== 'ALL' ? candidateSchoolFilter : undefined)}
+                  className="mt-4 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider inline-flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                >
+                  <Plus size={16} /> Cadastrar Nova Chapa
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {displayedCandidates.map(cand => (
+                  <div
+                    key={cand.id}
+                    className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Escola Vinculada */}
+                      <div className="mb-3">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-500/20">
+                          <School size={12} />
+                          {schools.find(s => s.id === cand.schoolId)?.name || 'Rede Municipal'}
+                        </span>
                       </div>
+
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="relative">
+                          <img 
+                            src={cand.photoUrl} 
+                            alt={cand.name}
+                            className="w-20 h-20 rounded-2xl object-cover ring-2 ring-emerald-500/30 bg-neutral-100" 
+                          />
+                          <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white font-black text-xs px-2 py-0.5 rounded-lg shadow-sm font-mono">
+                            Chapa {cand.number}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditCandidateModal(cand)}
+                            className="p-2 rounded-xl text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                            title="Editar candidato"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteCandidate(cand.id)}
+                            className="p-2 rounded-xl text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
+                            title="Excluir candidato"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <h5 className="font-black text-base text-neutral-900 dark:text-white leading-tight">
+                        {cand.name}
+                      </h5>
+                      {cand.viceName && (
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                          Vice: <strong>{cand.viceName}</strong>
+                        </p>
+                      )}
+
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-3 mt-3">
+                        {cand.bio}
+                      </p>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEditCandidateModal(cand)}
-                        className="p-2 rounded-xl text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
-                        title="Editar candidato"
-                      >
-                        <Edit3 size={16} />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteCandidate(cand.id)}
-                        className="p-2 rounded-xl text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
-                        title="Excluir candidato"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                    <div className="mt-4 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                        {cand.proposals.length} propostas no plano
+                      </span>
                     </div>
                   </div>
-
-                  <h5 className="font-black text-base text-neutral-900 dark:text-white leading-tight">
-                    {cand.name}
-                  </h5>
-                  {cand.viceName && (
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                      Vice: <strong>{cand.viceName}</strong>
-                    </p>
-                  )}
-
-                  <p className="text-xs text-neutral-600 dark:text-neutral-400 line-clamp-3 mt-3">
-                    {cand.bio}
-                  </p>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
-                    {cand.proposals.length} propostas no plano
-                  </span>
-                </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ========================================================== */}
       {/* ABA: ESCOLAS & UNIDADES ESCOLARES */}
@@ -968,7 +1084,7 @@ export const EducationVotingAdmin: React.FC = () => {
                         <button
                           onClick={() => {
                             setSelectedSchoolId(sch.id);
-                            handleOpenNewCandidateModal();
+                            handleOpenNewCandidateModal(sch.id);
                           }}
                           className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer"
                         >

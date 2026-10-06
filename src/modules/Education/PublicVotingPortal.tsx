@@ -68,15 +68,37 @@ export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const loadedSchools = VotingService.getSchools();
-    const activeElection = VotingService.getActiveElection();
-    setSchools(loadedSchools);
-    setElection(activeElection);
+    const reloadPortalData = () => {
+      const loadedSchools = VotingService.getSchools();
+      const activeElection = VotingService.getActiveElection();
+      setSchools(loadedSchools);
+      setElection(activeElection);
 
-    if (loadedSchools.length > 0) {
-      setSelectedSchool(loadedSchools[0]);
-      setCandidates(VotingService.getCandidates(loadedSchools[0].id));
-    }
+      setSelectedSchool(prev => {
+        if (prev) {
+          const match = loadedSchools.find(s => s.id === prev.id);
+          if (match) {
+            setCandidates(VotingService.getCandidates(match.id));
+            return match;
+          }
+        }
+        if (loadedSchools.length > 0) {
+          setCandidates(VotingService.getCandidates(loadedSchools[0].id));
+          return loadedSchools[0];
+        }
+        return null;
+      });
+    };
+
+    reloadPortalData();
+
+    window.addEventListener('voting-data-changed', reloadPortalData);
+    window.addEventListener('storage', reloadPortalData);
+
+    return () => {
+      window.removeEventListener('voting-data-changed', reloadPortalData);
+      window.removeEventListener('storage', reloadPortalData);
+    };
   }, []);
 
   const handleSelectSchool = (school: SchoolUnit) => {
