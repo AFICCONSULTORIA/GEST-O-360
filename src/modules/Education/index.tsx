@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  GraduationCap, Baby 
+  GraduationCap, Baby, Vote 
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
+import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 
 export const EducationModule: React.FC = () => {
-  const [educationView, setEducationView] = useState<'creche'>('creche');
+  const [educationView, setEducationView] = useState<'creche' | 'votacao'>('creche');
 
   const navigationTabs = [
     { id: 'creche', label: 'Vagas CMEI', icon: Baby },
+    { id: 'votacao', label: 'Eleição de Diretores', icon: Vote },
   ] as const;
 
   return (
@@ -36,7 +38,7 @@ export const EducationModule: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setEducationView(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap ${
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap cursor-pointer ${
                   educationView === tab.id 
                     ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm' 
                     : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
@@ -61,6 +63,18 @@ export const EducationModule: React.FC = () => {
             transition={{ duration: 0.2 }}
           >
             <EducationCrecheAdmin />
+          </motion.div>
+        )}
+
+        {educationView === 'votacao' && (
+          <motion.div 
+            key="votacao"
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }} 
+            transition={{ duration: 0.2 }}
+          >
+            <EducationVotingAdmin />
           </motion.div>
         )}
       </AnimatePresence>

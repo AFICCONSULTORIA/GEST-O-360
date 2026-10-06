@@ -4,7 +4,7 @@ import {
   GraduationCap, BookOpen, Brain, Star, Award, 
   ArrowRight, ChevronLeft, ChevronRight, PlayCircle, 
   FileText, CheckCircle2, User, Users, BookMarked, MonitorPlay,
-  School, Lock, Loader2, Sparkles, Baby, Key, Eye, EyeOff, AlertCircle
+  School, Lock, Loader2, Sparkles, Baby, Key, Eye, EyeOff, AlertCircle, Vote
 } from 'lucide-react';
 import { StudentPortal } from './StudentPortal';
 import { TeacherDashboard } from './TeacherDashboard';
@@ -164,22 +164,43 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
         </p>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 relative z-10 mb-8">
+      <div className="max-w-4xl mx-auto px-4 relative z-10 mb-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
         <a 
           href="/cmei"
-          className="group flex items-center justify-between p-6 bg-gradient-to-r from-pink-500 to-rose-500 rounded-[2rem] shadow-xl shadow-pink-500/20 hover:shadow-pink-500/40 hover:-translate-y-1 transition-all duration-300"
+          className="group flex items-center justify-between p-5 bg-gradient-to-r from-pink-500 to-rose-500 rounded-[2rem] shadow-xl shadow-pink-500/20 hover:shadow-pink-500/40 hover:-translate-y-1 transition-all duration-300 text-left"
         >
-          <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
-              <Baby size={32} />
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
+              <Baby size={28} />
             </div>
             <div>
-              <h3 className="text-2xl font-black text-white">Vagas no CMEI</h3>
-              <p className="text-pink-100 font-medium">Consulte vagas ofertadas, fila única e critérios de seleção.</p>
+              <h3 className="text-xl font-black text-white">Vagas no CMEI</h3>
+              <p className="text-pink-100 text-xs sm:text-sm font-medium">Fila única e critérios de seleção.</p>
             </div>
           </div>
-          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:bg-white group-hover:text-pink-600 transition-colors">
-            <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform" />
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:bg-white group-hover:text-pink-600 transition-colors">
+            <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+          </div>
+        </a>
+
+        <a 
+          href="/votacao"
+          className="group flex items-center justify-between p-5 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-[2rem] shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:-translate-y-1 transition-all duration-300 text-left"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center text-white shrink-0 group-hover:scale-110 transition-transform">
+              <Vote size={28} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-xl font-black text-white">Eleição de Diretores</h3>
+                <span className="px-2 py-0.5 text-[10px] font-black bg-white/30 text-white rounded-full uppercase tracking-wider animate-pulse">Ao Vivo</span>
+              </div>
+              <p className="text-emerald-100 text-xs sm:text-sm font-medium">Votação com CPF oficial nas escolas.</p>
+            </div>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0 group-hover:bg-white group-hover:text-emerald-700 transition-colors">
+            <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
           </div>
         </a>
       </div>

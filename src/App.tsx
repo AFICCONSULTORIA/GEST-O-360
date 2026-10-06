@@ -24,6 +24,7 @@ import { ServicosPublicosModule } from './modules/ServicosPublicos';
 import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
 import { PublicEducacaoPortal } from './modules/Education/PublicPortal';
 import { PublicCrechePortal } from './modules/Education/PublicCrechePortal';
+import { PublicVotingPortal } from './modules/Education/PublicVotingPortal';
 import { MeioAmbienteModule } from './modules/MeioAmbiente';
 import { PublicMeioAmbientePortal } from './modules/MeioAmbiente/PublicPortal';
 import { CamaraModule } from './modules/Camara';
@@ -555,6 +556,13 @@ export default function App() {
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isEducacaoPortal = currentPath === '/educacao';
   const isCrechePortal = currentPath === '/cmei' || currentPath.startsWith('/cmei/');
+  const decodedPath = decodeURIComponent(currentPath).toLowerCase();
+  const isVotacaoPortal = 
+    decodedPath === '/votacao' || 
+    decodedPath === '/votação' || 
+    decodedPath.startsWith('/votacao/') || 
+    decodedPath.startsWith('/votação/') || 
+    (currentSubdomain && (currentSubdomain.toLowerCase() === 'votacao' || currentSubdomain.toLowerCase() === 'eleicao'));
   const isMeioAmbientePortal = currentPath === '/meio-ambiente';
   const isNoticiasPortal = currentPath === '/noticias' || currentPath.startsWith('/noticias');
   const isOuvidoriaPortal = 
@@ -686,6 +694,23 @@ export default function App() {
             </button>
           </div>
           <PublicCrechePortal darkMode={darkMode} currentInstitution={currentInstitution} />
+      </div>
+    );
+  }
+
+  if (isVotacaoPortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+         <div className="absolute top-10 right-10 z-50 print:hidden">
+            <button 
+              onClick={() => setDarkMode(!darkMode)}
+              className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all cursor-pointer"
+              title="Alternar tema"
+            >
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+          <PublicVotingPortal darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }
