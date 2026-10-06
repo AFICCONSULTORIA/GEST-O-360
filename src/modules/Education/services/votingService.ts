@@ -164,15 +164,44 @@ export class VotingService {
     return DEFAULT_SCHOOLS;
   }
 
-  static saveSchool(school: SchoolUnit): void {
+  static getSchoolById(schoolId: string): SchoolUnit | undefined {
+    return this.getSchools().find(s => s.id === schoolId);
+  }
+
+  static saveSchool(school: SchoolUnit): SchoolUnit {
     const schools = this.getSchools();
-    const idx = schools.findIndex(s => s.id === school.id);
+    const finalSchool: SchoolUnit = {
+      ...school,
+      id: school.id || `escola-${Date.now()}`
+    };
+    const idx = schools.findIndex(s => s.id === finalSchool.id);
     if (idx >= 0) {
-      schools[idx] = school;
+      schools[idx] = finalSchool;
     } else {
-      schools.push(school);
+      schools.push(finalSchool);
     }
     localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+    return finalSchool;
+  }
+
+  static deleteSchool(schoolId: string): { success: boolean; error?: string } {
+    const votes = this.getVotes(schoolId);
+    if (votes.length > 0) {
+      return { 
+        success: false, 
+        error: `Não é possível excluir esta escola porque já existem ${votes.length} voto(s) computados na urna.` 
+      };
+    }
+    const candidates = this.getCandidates(schoolId);
+    if (candidates.length > 0) {
+      return {
+        success: false,
+        error: `Não é possível excluir esta escola porque existem ${candidates.length} candidato(s)/chapa(s) vinculados a ela. Remova os candidatos primeiro.`
+      };
+    }
+    const schools = this.getSchools().filter(s => s.id !== schoolId);
+    localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+    return { success: true };
   }
 
   // --- ELEIÇÕES ---

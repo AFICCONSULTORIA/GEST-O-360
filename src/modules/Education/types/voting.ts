@@ -18,7 +18,12 @@ export interface SchoolUnit {
   code: string;
   category: 'CMEI' | 'EMEF' | 'EMEB' | 'Integral';
   address: string;
+  neighborhood?: string;
+  phone?: string;
+  directorName?: string;
   totalVotersEstimated?: number;
+  votingStatus?: 'ready' | 'open' | 'closed';
+  createdAt?: string;
 }
 
 export interface Candidate {

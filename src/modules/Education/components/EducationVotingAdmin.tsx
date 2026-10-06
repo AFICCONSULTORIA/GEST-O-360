@@ -23,7 +23,10 @@ import {
   X,
   Lock,
   Calendar,
-  Check
+  Check,
+  MapPin,
+  Phone,
+  Building2
 } from 'lucide-react';
 import { VotingService } from '../services/votingService';
 import { SchoolUnit, Candidate, Election, VoteRecord, SchoolElectionStats, VoterSegment, VOTER_SEGMENT_LABELS } from '../types/voting';
@@ -41,11 +44,30 @@ export const EducationVotingAdmin: React.FC = () => {
   const [stats, setStats] = useState<SchoolElectionStats | null>(null);
 
   // Sub-abas do painel
-  // 'apuracao' | 'candidatos' | 'auditoria' | 'config'
-  const [activeTab, setActiveTab] = useState<'apuracao' | 'candidatos' | 'auditoria' | 'config'>('apuracao');
+  // 'apuracao' | 'candidatos' | 'escolas' | 'auditoria' | 'config'
+  const [activeTab, setActiveTab] = useState<'apuracao' | 'candidatos' | 'escolas' | 'auditoria' | 'config'>('apuracao');
 
   // Filtro na auditoria
   const [searchAudit, setSearchAudit] = useState('');
+
+  // Filtro e busca de Escolas
+  const [searchSchool, setSearchSchool] = useState('');
+  const [schoolCategoryFilter, setSchoolCategoryFilter] = useState<string>('ALL');
+
+  // Modal de Escola (Nova / Edição)
+  const [isSchoolModalOpen, setIsSchoolModalOpen] = useState(false);
+  const [editingSchool, setEditingSchool] = useState<SchoolUnit | null>(null);
+  const [schoolFormData, setSchoolFormData] = useState({
+    name: '',
+    code: '',
+    category: 'EMEF' as 'CMEI' | 'EMEF' | 'EMEB' | 'Integral',
+    address: '',
+    neighborhood: '',
+    phone: '',
+    directorName: '',
+    totalVotersEstimated: 450,
+    votingStatus: 'open' as 'ready' | 'open' | 'closed'
+  });
 
   // Modal de Candidato (Novo / Edição)
   const [isCandidateModalOpen, setIsCandidateModalOpen] = useState(false);
@@ -217,6 +239,105 @@ export const EducationVotingAdmin: React.FC = () => {
     window.print();
   };
 
+  // --- Ações de Unidades Escolares ---
+  const handleOpenNewSchoolModal = () => {
+    setEditingSchool(null);
+    setSchoolFormData({
+      name: '',
+      code: `ESC-00${schools.length + 1}`,
+      category: 'EMEF',
+      address: '',
+      neighborhood: '',
+      phone: '',
+      directorName: '',
+      totalVotersEstimated: 450,
+      votingStatus: 'open'
+    });
+    setIsSchoolModalOpen(true);
+  };
+
+  const handleOpenEditSchoolModal = (school: SchoolUnit) => {
+    setEditingSchool(school);
+    setSchoolFormData({
+      name: school.name,
+      code: school.code,
+      category: school.category,
+      address: school.address,
+      neighborhood: school.neighborhood || '',
+      phone: school.phone || '',
+      directorName: school.directorName || '',
+      totalVotersEstimated: school.totalVotersEstimated || 400,
+      votingStatus: school.votingStatus || 'open'
+    });
+    setIsSchoolModalOpen(true);
+  };
+
+  const handleSaveSchool = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schoolFormData.name.trim()) {
+      showToast('O nome da unidade escolar é obrigatório.', 'warning');
+      return;
+    }
+
+    const schoolToSave: SchoolUnit = {
+      id: editingSchool ? editingSchool.id : `escola-${Date.now()}`,
+      name: schoolFormData.name.trim(),
+      code: schoolFormData.code.trim() || `ESC-00${schools.length + 1}`,
+      category: schoolFormData.category,
+      address: schoolFormData.address.trim() || 'Endereço a definir',
+      neighborhood: schoolFormData.neighborhood.trim() || undefined,
+      phone: schoolFormData.phone.trim() || undefined,
+      directorName: schoolFormData.directorName.trim() || undefined,
+      totalVotersEstimated: Number(schoolFormData.totalVotersEstimated) || 300,
+      votingStatus: schoolFormData.votingStatus,
+      createdAt: editingSchool ? editingSchool.createdAt : new Date().toISOString()
+    };
+
+    VotingService.saveSchool(schoolToSave);
+    const updatedSchools = VotingService.getSchools();
+    setSchools(updatedSchools);
+    setIsSchoolModalOpen(false);
+
+    if (!selectedSchoolId || (editingSchool && editingSchool.id === selectedSchoolId)) {
+      setSelectedSchoolId(schoolToSave.id);
+      updateSchoolData(schoolToSave.id);
+    }
+    showToast(editingSchool ? 'Escola atualizada com sucesso!' : 'Nova escola cadastrada com sucesso!', 'success');
+  };
+
+  const handleDeleteSchool = (schoolId: string) => {
+    const targetSchool = schools.find(s => s.id === schoolId);
+    if (!window.confirm(`Tem certeza que deseja excluir a escola "${targetSchool?.name}"?`)) {
+      return;
+    }
+    const res = VotingService.deleteSchool(schoolId);
+    if (!res.success) {
+      showToast(res.error || 'Erro ao remover escola.', 'error');
+      return;
+    }
+    const updatedSchools = VotingService.getSchools();
+    setSchools(updatedSchools);
+    if (selectedSchoolId === schoolId) {
+      const nextSchool = updatedSchools[0]?.id || '';
+      setSelectedSchoolId(nextSchool);
+      if (nextSchool) updateSchoolData(nextSchool);
+    }
+    showToast('Escola removida com sucesso.', 'info');
+  };
+
+  // Escolas filtradas
+  const filteredSchools = schools.filter(s => {
+    const matchCategory = schoolCategoryFilter === 'ALL' || s.category === schoolCategoryFilter;
+    if (!searchSchool) return matchCategory;
+    const q = searchSchool.toLowerCase();
+    const matchQuery = s.name.toLowerCase().includes(q) ||
+      s.code.toLowerCase().includes(q) ||
+      (s.address && s.address.toLowerCase().includes(q)) ||
+      (s.neighborhood && s.neighborhood.toLowerCase().includes(q)) ||
+      (s.directorName && s.directorName.toLowerCase().includes(q));
+    return matchCategory && matchQuery;
+  });
+
   // Auditoria filtrada
   const filteredVotes = votes.filter(v => {
     if (!searchAudit) return true;
@@ -290,7 +411,7 @@ export const EducationVotingAdmin: React.FC = () => {
         <div className="mt-8 pt-6 border-t border-neutral-100 dark:border-neutral-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
           
           {/* Seletor de Escola */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <span className="text-xs font-black uppercase tracking-wider text-neutral-500 flex items-center gap-1.5 shrink-0">
               <School size={16} className="text-emerald-500" /> Escola:
             </span>
@@ -303,13 +424,23 @@ export const EducationVotingAdmin: React.FC = () => {
                 <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={handleOpenNewSchoolModal}
+              title="Cadastrar Nova Unidade Escolar"
+              className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
+            >
+              <Plus size={15} />
+              <span className="hidden sm:inline">Nova Escola</span>
+            </button>
           </div>
 
           {/* Abas */}
-          <div className="flex bg-neutral-100 dark:bg-neutral-800/60 p-1.5 rounded-2xl gap-1">
+          <div className="flex bg-neutral-100 dark:bg-neutral-800/60 p-1.5 rounded-2xl gap-1 overflow-x-auto max-w-full">
             {[
               { id: 'apuracao', label: 'Apuração dos Votos', icon: BarChart3 },
               { id: 'candidatos', label: 'Candidatos & Chapas', icon: Users },
+              { id: 'escolas', label: 'Escolas & Urnas', icon: School },
               { id: 'auditoria', label: 'Auditoria (CPFs)', icon: ShieldCheck },
               { id: 'config', label: 'Configuração da Urna', icon: Lock },
             ].map(tab => (
@@ -575,6 +706,297 @@ export const EducationVotingAdmin: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================== */}
+      {/* ABA: ESCOLAS & UNIDADES ESCOLARES */}
+      {/* ========================================================== */}
+      {activeTab === 'escolas' && (
+        <div className="space-y-6">
+          
+          {/* Header e Ações das Escolas */}
+          <div className="bg-white dark:bg-neutral-900 rounded-3xl p-6 md:p-8 border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div>
+              <h4 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2.5">
+                <School className="text-emerald-500" size={24} />
+                Unidades Escolares & Urnas da Rede
+              </h4>
+              <p className="text-xs text-neutral-500 mt-1 max-w-xl">
+                Cadastre novas escolas municipais, configure os polos de votação e acompanhe o fluxo eleitoral por unidade.
+              </p>
+            </div>
+
+            <button
+              onClick={handleOpenNewSchoolModal}
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+            >
+              <Plus size={16} /> Cadastrar Nova Escola
+            </button>
+          </div>
+
+          {/* Cards de Métricas Gerais da Rede */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">Total de Escolas</span>
+                <h4 className="text-2xl font-black text-neutral-900 dark:text-white mt-1">{schools.length}</h4>
+                <p className="text-xs text-neutral-500 mt-0.5">Polos eleitorais ativos</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-500/10 text-blue-600 flex items-center justify-center font-bold">
+                <Building2 size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">Eleitores Aptos</span>
+                <h4 className="text-2xl font-black text-neutral-900 dark:text-white mt-1">
+                  {schools.reduce((acc, s) => acc + (s.totalVotersEstimated || 0), 0).toLocaleString('pt-BR')}
+                </h4>
+                <p className="text-xs text-neutral-500 mt-0.5">Comunidade escolar estimada</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-bold">
+                <Users size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">Chapas Inscritas</span>
+                <h4 className="text-2xl font-black text-neutral-900 dark:text-white mt-1">
+                  {VotingService.getCandidates().length}
+                </h4>
+                <p className="text-xs text-neutral-500 mt-0.5">Candidatos a diretor(a)</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-600 flex items-center justify-center font-bold">
+                <Award size={22} />
+              </div>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">Votos na Rede</span>
+                <h4 className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                  {VotingService.getVotes().length}
+                </h4>
+                <p className="text-xs text-neutral-500 mt-0.5">Votos já computados</p>
+              </div>
+              <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-bold">
+                <Vote size={22} />
+              </div>
+            </div>
+          </div>
+
+          {/* Filtros e Busca */}
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl p-4 border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
+            
+            {/* Categorias Pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                { id: 'ALL', label: `Todas (${schools.length})` },
+                { id: 'EMEF', label: `EMEF (${schools.filter(s => s.category === 'EMEF').length})` },
+                { id: 'CMEI', label: `CMEI (${schools.filter(s => s.category === 'CMEI').length})` },
+                { id: 'EMEB', label: `EMEB (${schools.filter(s => s.category === 'EMEB').length})` },
+                { id: 'Integral', label: `Integral (${schools.filter(s => s.category === 'Integral').length})` },
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setSchoolCategoryFilter(f.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    schoolCategoryFilter === f.id
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-200'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Input de Busca */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" size={15} />
+              <input
+                type="text"
+                placeholder="Buscar por nome, código, bairro..."
+                value={searchSchool}
+                onChange={(e) => setSearchSchool(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              />
+            </div>
+          </div>
+
+          {/* Grid de Escolas */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredSchools.length === 0 ? (
+              <div className="col-span-full bg-white dark:bg-neutral-900 rounded-3xl p-12 text-center border border-neutral-100 dark:border-neutral-800">
+                <School size={48} className="mx-auto text-neutral-300 dark:text-neutral-700 mb-3" />
+                <h5 className="font-black text-neutral-700 dark:text-neutral-300 text-base">Nenhuma unidade escolar encontrada</h5>
+                <p className="text-xs text-neutral-400 mt-1 max-w-sm mx-auto">
+                  Altere os termos de busca ou clique no botão abaixo para adicionar uma nova escola à rede.
+                </p>
+                <button
+                  onClick={handleOpenNewSchoolModal}
+                  className="mt-4 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider inline-flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                >
+                  <Plus size={16} /> Cadastrar Nova Escola
+                </button>
+              </div>
+            ) : (
+              filteredSchools.map(sch => {
+                const schoolCandidates = VotingService.getCandidates(sch.id);
+                const schoolVotes = VotingService.getVotes(sch.id);
+                const participationRate = Math.min(100, Math.round((schoolVotes.length / (sch.totalVotersEstimated || 1)) * 100));
+
+                const categoryBadge = 
+                  sch.category === 'CMEI' ? 'bg-pink-100 dark:bg-pink-500/20 text-pink-700 dark:text-pink-300' :
+                  sch.category === 'EMEF' ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300' :
+                  sch.category === 'EMEB' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300' :
+                  'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300';
+
+                return (
+                  <div 
+                    key={sch.id}
+                    className="bg-white dark:bg-neutral-900 rounded-3xl p-6 border border-neutral-100 dark:border-neutral-800 shadow-sm hover:shadow-md transition-all flex flex-col justify-between group"
+                  >
+                    <div>
+                      {/* Top Badges */}
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${categoryBadge}`}>
+                            {sch.category}
+                          </span>
+                          <span className="font-mono text-[10px] font-bold text-neutral-400 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-lg">
+                            {sch.code}
+                          </span>
+                        </div>
+
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                          sch.votingStatus === 'closed'
+                            ? 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800'
+                            : sch.votingStatus === 'ready'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+                            : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                        }`}>
+                          {sch.votingStatus === 'closed' ? 'Encerrada' : sch.votingStatus === 'ready' ? 'Preparada' : 'Urna Ativa'}
+                        </span>
+                      </div>
+
+                      {/* Nome da Escola */}
+                      <h5 className="font-black text-lg text-neutral-900 dark:text-white leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                        {sch.name}
+                      </h5>
+
+                      {/* Informações detalhadas */}
+                      <div className="mt-3.5 space-y-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                        <div className="flex items-start gap-2">
+                          <MapPin size={14} className="text-emerald-500 shrink-0 mt-0.5" />
+                          <span className="line-clamp-2">
+                            {sch.address}
+                            {sch.neighborhood && ` • ${sch.neighborhood}`}
+                          </span>
+                        </div>
+
+                        {sch.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone size={14} className="text-neutral-400 shrink-0" />
+                            <span>{sch.phone}</span>
+                          </div>
+                        )}
+
+                        {sch.directorName && (
+                          <div className="flex items-center gap-2">
+                            <Users size={14} className="text-neutral-400 shrink-0" />
+                            <span>Direção: <strong className="text-neutral-700 dark:text-neutral-300">{sch.directorName}</strong></span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Indicadores Eleitorais */}
+                      <div className="mt-5 p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-100 dark:border-neutral-800">
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Chapas</span>
+                            <span className="text-base font-black text-neutral-900 dark:text-white">
+                              {schoolCandidates.length}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Votos</span>
+                            <span className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                              {schoolVotes.length}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-neutral-400 block uppercase">Aptos</span>
+                            <span className="text-base font-black text-neutral-700 dark:text-neutral-300">
+                              {sch.totalVotersEstimated || 0}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Barra de Progresso de Participação */}
+                        <div className="mt-3">
+                          <div className="flex justify-between text-[10px] font-bold text-neutral-400 mb-1">
+                            <span>Participação Eleitoral</span>
+                            <span className="text-emerald-600 dark:text-emerald-400">{participationRate}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                              style={{ width: `${participationRate}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Barra de Ações do Card */}
+                    <div className="mt-5 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => {
+                            setSelectedSchoolId(sch.id);
+                            setActiveTab('apuracao');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all cursor-pointer"
+                        >
+                          Apuração
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedSchoolId(sch.id);
+                            handleOpenNewCandidateModal();
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs font-bold transition-all cursor-pointer"
+                        >
+                          + Chapa
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleOpenEditSchoolModal(sch)}
+                          className="p-2 rounded-xl text-neutral-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors cursor-pointer"
+                          title="Editar escola"
+                        >
+                          <Edit3 size={15} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSchool(sch.id)}
+                          className="p-2 rounded-xl text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          title="Excluir escola"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -911,6 +1333,193 @@ export const EducationVotingAdmin: React.FC = () => {
                     className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-500/25 transition-all"
                   >
                     Salvar Candidato
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================== */}
+      {/* MODAL DE CADASTRO / EDIÇÃO DE ESCOLA */}
+      {/* ========================================================== */}
+      <AnimatePresence>
+        {isSchoolModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-[32px] max-w-xl w-full p-6 md:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl relative my-8"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h4 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    <School className="text-emerald-500" size={24} />
+                    {editingSchool ? 'Editar Unidade Escolar' : 'Cadastrar Nova Escola'}
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Configure os dados da instituição de ensino para o pleito eleitoral.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSchoolModalOpen(false)}
+                  className="p-2 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveSchool} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Nome da Escola *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={schoolFormData.name}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Ex: EMEF Profª Cora Coralina"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Código / INEP *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={schoolFormData.code}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, code: e.target.value }))}
+                      placeholder="Ex: ESC-004"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-black font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Categoria / Nível *
+                    </label>
+                    <select
+                      value={schoolFormData.category}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, category: e.target.value as any }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-bold text-neutral-900 dark:text-white"
+                    >
+                      <option value="EMEF">EMEF - Ensino Fundamental</option>
+                      <option value="CMEI">CMEI - Educação Infantil</option>
+                      <option value="EMEB">EMEB - Educação Básica</option>
+                      <option value="Integral">Integral - Tempo Integral</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Status da Urna na Escola
+                    </label>
+                    <select
+                      value={schoolFormData.votingStatus}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, votingStatus: e.target.value as any }))}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-bold text-neutral-900 dark:text-white"
+                    >
+                      <option value="open">Urna Aberta (Recebendo votos)</option>
+                      <option value="ready">Pronta (Em preparação / Zerésima)</option>
+                      <option value="closed">Encerrada (Votação finalizada)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Endereço da Unidade
+                    </label>
+                    <input
+                      type="text"
+                      value={schoolFormData.address}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="Ex: Av. Brasil, 1500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Bairro / Região
+                    </label>
+                    <input
+                      type="text"
+                      value={schoolFormData.neighborhood}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, neighborhood: e.target.value }))}
+                      placeholder="Ex: Jardim América"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Telefone da Escola
+                    </label>
+                    <input
+                      type="text"
+                      value={schoolFormData.phone}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="Ex: (11) 4567-8900"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Diretor(a) Atual
+                    </label>
+                    <input
+                      type="text"
+                      value={schoolFormData.directorName}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, directorName: e.target.value }))}
+                      placeholder="Ex: Profª Marina Duarte"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs text-neutral-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Eleitores Aptos (Est.)
+                    </label>
+                    <input
+                      type="number"
+                      min={10}
+                      value={schoolFormData.totalVotersEstimated}
+                      onChange={(e) => setSchoolFormData(prev => ({ ...prev, totalVotersEstimated: Number(e.target.value) }))}
+                      placeholder="Ex: 500"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-xs font-mono font-bold text-neutral-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex justify-end gap-2.5 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsSchoolModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl text-neutral-600 dark:text-neutral-300 text-xs font-bold hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-emerald-500/25 transition-all cursor-pointer"
+                  >
+                    Salvar Escola
                   </button>
                 </div>
               </form>
