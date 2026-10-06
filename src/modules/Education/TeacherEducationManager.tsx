@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Plus, Edit2, Trash2, BookOpen, Compass, Map, Calculator, PlayCircle, Layers, CheckCircle2, X, ChevronDown, ChevronUp, Video, FileText, HelpCircle, Save, GripVertical, Zap, Coins, ArrowUp, ArrowDown, ArrowRight } from 'lucide-react';
+import { Plus, Edit2, Trash2, BookOpen, Compass, Map, Calculator, PlayCircle, Layers, CheckCircle2, X, ChevronDown, ChevronUp, Video, FileText, HelpCircle, Save, GripVertical, Zap, Coins, ArrowUp, ArrowDown, ArrowRight, Users } from 'lucide-react';
 import { Course, Module, Lesson } from '../../lib/api/education';
 import { StudentPortal } from './StudentPortal';
 
@@ -18,9 +18,62 @@ export const TeacherEducationManager = () => {
 
   // Wizard States
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
-  const [wizardCourse, setWizardCourse] = useState({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
+  const [wizardCourse, setWizardCourse] = useState({ 
+    title: '', 
+    subject: 'Matemática', 
+    description: '', 
+    color: 'emerald', 
+    icon: 'BookOpen',
+    targetClasses: [] as string[]
+  });
   const [wizardModule, setWizardModule] = useState({ title: '', description: '' });
   const [wizardLesson, setWizardLesson] = useState({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0 });
+
+  const [availableClasses, setAvailableClasses] = useState<{ id: number; name: string }[]>(() => {
+    const saved = localStorage.getItem('gestao360_classes');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return [
+      { id: 1, name: 'Turma 4A' },
+      { id: 2, name: 'Turma 5B' }
+    ];
+  });
+
+  const [availableSubjects, setAvailableSubjects] = useState<string[]>(() => {
+    const saved = localStorage.getItem('gestao360_subjects');
+    if (saved) {
+      try { 
+        const parsed = JSON.parse(saved);
+        return parsed.map((s: any) => s.name);
+      } catch (e) {}
+    }
+    return ['Matemática', 'Português', 'Ciências', 'História', 'Geografia'];
+  });
+
+  useEffect(() => {
+    const handleSync = () => {
+      const savedClasses = localStorage.getItem('gestao360_classes');
+      if (savedClasses) {
+        try { setAvailableClasses(JSON.parse(savedClasses)); } catch (e) {}
+      }
+      const savedSubjects = localStorage.getItem('gestao360_subjects');
+      if (savedSubjects) {
+        try { 
+          const parsed = JSON.parse(savedSubjects);
+          setAvailableSubjects(parsed.map((s: any) => s.name));
+        } catch (e) {}
+      }
+    };
+    window.addEventListener('classes-updated', handleSync);
+    window.addEventListener('subjects-updated', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('classes-updated', handleSync);
+      window.removeEventListener('subjects-updated', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
 
   // Form states
   const [newCourse, setNewCourse] = useState({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
@@ -67,6 +120,13 @@ export const TeacherEducationManager = () => {
       if (error) {
         console.error("Erro ao carregar cursos do Supabase:", error);
       } else if (data) {
+        const savedMap = localStorage.getItem('gestao360_course_classes');
+        const courseClassesMap: Record<string, string[]> = savedMap ? JSON.parse(savedMap) : {};
+        if (!courseClassesMap['2396d918-35fc-4d6b-8abc-158f865c60f6']) {
+          courseClassesMap['2396d918-35fc-4d6b-8abc-158f865c60f6'] = ['Turma 4A', 'Turma 5B'];
+          localStorage.setItem('gestao360_course_classes', JSON.stringify(courseClassesMap));
+        }
+
         // Map to UI
         const mapped = data.map((c: any) => ({
           id: c.id,
@@ -75,6 +135,7 @@ export const TeacherEducationManager = () => {
           description: c.description,
           color: c.color,
           icon: c.icon,
+          target_classes: courseClassesMap[c.id] || [],
           modules: (c.edu_modules || []).sort((a:any, b:any) => a.order_index - b.order_index).map((m: any) => ({
             id: m.id,
             course_id: c.id,
@@ -178,11 +239,18 @@ export const TeacherEducationManager = () => {
 
       console.log("Criação em lote concluída com sucesso!");
 
+      // Salva as turmas com acesso à trilha
+      const savedMap = localStorage.getItem('gestao360_course_classes');
+      const courseClassesMap: Record<string, string[]> = savedMap ? JSON.parse(savedMap) : {};
+      courseClassesMap[courseData.id] = wizardCourse.targetClasses;
+      localStorage.setItem('gestao360_course_classes', JSON.stringify(courseClassesMap));
+      window.dispatchEvent(new CustomEvent('courses-updated'));
+
       // Sucesso total
       setSuccessModal({ show: true, message: "A trilha foi criada com sucesso e já possui a primeira fase e aula cadastradas!" });
       setView('list');
       setWizardStep(1);
-      setWizardCourse({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen' });
+      setWizardCourse({ title: '', subject: 'Matemática', description: '', color: 'emerald', icon: 'BookOpen', targetClasses: [] });
       setWizardModule({ title: '', description: '' });
       setWizardLesson({ type: 'video', title: '', duration: '', xp: 50, coins: 20, contentUrl: '', contentBody: '', quizQuestion: '', quizOptions: ['', '', '', ''], quizCorrectAnswer: 0 });
       loadCourses();
@@ -193,6 +261,19 @@ export const TeacherEducationManager = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleUpdateCourseTargetClasses = (courseId: string, targetClasses: string[]) => {
+    const savedMap = localStorage.getItem('gestao360_course_classes');
+    const courseClassesMap: Record<string, string[]> = savedMap ? JSON.parse(savedMap) : {};
+    courseClassesMap[courseId] = targetClasses;
+    localStorage.setItem('gestao360_course_classes', JSON.stringify(courseClassesMap));
+    window.dispatchEvent(new CustomEvent('courses-updated'));
+
+    if (selectedCourse && selectedCourse.id === courseId) {
+      setSelectedCourse({ ...selectedCourse, target_classes: targetClasses });
+    }
+    setCourses(prev => prev.map(c => c.id === courseId ? { ...c, target_classes: targetClasses } : c));
   };
 
   const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
@@ -502,7 +583,21 @@ export const TeacherEducationManager = () => {
                   </div>
                   <div>
                     <h4 className="font-black text-xl text-neutral-900 dark:text-white mb-1">{course.title}</h4>
-                    <p className="text-xs text-neutral-500 font-medium">{course.description}</p>
+                    <p className="text-xs text-neutral-500 font-medium mb-3">{course.description}</p>
+                    
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {course.target_classes && course.target_classes.length > 0 ? (
+                        course.target_classes.map((cls, idx) => (
+                          <span key={idx} className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/50 dark:border-indigo-800/50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <Users size={11} /> {cls}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/50 dark:border-emerald-800/50 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <CheckCircle2 size={11} /> Todas as Turmas
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex gap-2 mt-auto pt-4 border-t border-neutral-100 dark:border-neutral-800">
@@ -582,11 +677,9 @@ export const TeacherEducationManager = () => {
                     <div>
                       <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Matéria</label>
                       <select value={wizardCourse.subject} onChange={e => setWizardCourse({...wizardCourse, subject: e.target.value})} className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all">
-                        <option>Matemática</option>
-                        <option>Ciências</option>
-                        <option>Português</option>
-                        <option>História</option>
-                        <option>Geografia</option>
+                        {availableSubjects.map((sub, sIdx) => (
+                          <option key={sIdx} value={sub}>{sub}</option>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -603,6 +696,66 @@ export const TeacherEducationManager = () => {
                   <div>
                     <label className="text-xs font-black text-neutral-500 uppercase tracking-widest pl-4 mb-2 block">Descrição Breve</label>
                     <textarea value={wizardCourse.description} onChange={e => setWizardCourse({...wizardCourse, description: e.target.value})} rows={3} placeholder="Descreva sobre o que é esta trilha..." className="w-full px-6 py-4 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-[24px] focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none text-base font-bold transition-all resize-none"></textarea>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2 pl-4 pr-1">
+                      <label className="text-xs font-black text-neutral-500 uppercase tracking-widest block">
+                        Turmas com Acesso a esta Trilha
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (wizardCourse.targetClasses.length === availableClasses.length) {
+                            setWizardCourse({ ...wizardCourse, targetClasses: [] });
+                          } else {
+                            setWizardCourse({ ...wizardCourse, targetClasses: availableClasses.map(c => c.name) });
+                          }
+                        }}
+                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        {wizardCourse.targetClasses.length === availableClasses.length ? 'Desmarcar Todas' : 'Selecionar Todas'}
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-neutral-400 pl-4 mb-3">
+                      Selecione as turmas que terão acesso a esta trilha. Deixe vazio para disponibilizar para todas as turmas.
+                    </p>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {availableClasses.map((cls) => {
+                        const isSelected = wizardCourse.targetClasses.includes(cls.name);
+                        return (
+                          <label
+                            key={cls.id}
+                            className={`flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${isSelected ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-sm' : 'bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-neutral-300'}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setWizardCourse({
+                                    ...wizardCourse,
+                                    targetClasses: [...wizardCourse.targetClasses, cls.name]
+                                  });
+                                } else {
+                                  setWizardCourse({
+                                    ...wizardCourse,
+                                    targetClasses: wizardCourse.targetClasses.filter(c => c !== cls.name)
+                                  });
+                                }
+                              }}
+                              className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800"
+                            />
+                            <div className="flex items-center gap-2">
+                              <Users size={16} className={isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-neutral-400'} />
+                              <span className="text-sm font-bold">{cls.name}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -748,6 +901,61 @@ export const TeacherEducationManager = () => {
           </div>
 
           <div className="space-y-6">
+            {/* Turmas com Acesso nesta Trilha */}
+            <div className="bg-white/80 dark:bg-neutral-900/80 p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm backdrop-blur-md space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-black text-lg text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Users className="text-indigo-500" size={20} />
+                    Turmas Autorizadas para esta Trilha
+                  </h4>
+                  <p className="text-xs text-neutral-500 font-medium">
+                    Defina quais turmas podem visualizar e realizar as fases desta trilha.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allNames = availableClasses.map(c => c.name);
+                      const current = selectedCourse.target_classes || [];
+                      const next = current.length === allNames.length ? [] : allNames;
+                      handleUpdateCourseTargetClasses(selectedCourse.id, next);
+                    }}
+                    className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  >
+                    {(selectedCourse.target_classes || []).length === availableClasses.length ? 'Desmarcar Todas' : 'Liberar para Todas as Turmas'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                {availableClasses.map((cls) => {
+                  const isChecked = (selectedCourse.target_classes || []).includes(cls.name);
+                  return (
+                    <label
+                      key={cls.id}
+                      className={`flex items-center gap-2.5 p-3 rounded-xl border-2 transition-all cursor-pointer ${isChecked ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-sm' : 'bg-neutral-50 dark:bg-neutral-800/60 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300'}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          const current = selectedCourse.target_classes || [];
+                          const updated = e.target.checked
+                            ? [...current, cls.name]
+                            : current.filter(c => c !== cls.name);
+                          handleUpdateCourseTargetClasses(selectedCourse.id, updated);
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800"
+                      />
+                      <span className="text-xs font-bold">{cls.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="flex justify-between items-center bg-white/80 dark:bg-neutral-900/80 p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm backdrop-blur-md">
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-2xl bg-${selectedCourse.color}-100 dark:bg-${selectedCourse.color}-500/20 text-${selectedCourse.color}-500 flex items-center justify-center`}>

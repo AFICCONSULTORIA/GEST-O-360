@@ -5,6 +5,7 @@ import {
   Search, 
   Bell
 } from 'lucide-react';
+import { EducationAvatar } from './EducationAvatar';
 
 interface StudentHeaderProps {
   activeView: string;
@@ -15,6 +16,7 @@ interface StudentHeaderProps {
     streak: number;
     coins: number;
     avatar: string;
+    hasPracticedToday?: boolean;
   };
   setActiveView: (view: any) => void;
 }
@@ -50,10 +52,34 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
           <span className="text-[10px] font-bold text-amber-500/70">Nível {studentData.level}</span>
         </div>
 
-        {/* Streak Pill */}
-        <div className="hidden lg:flex items-center gap-1.5 bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-600 dark:text-orange-400 px-3 py-1.5 rounded-full">
-          <Flame size={14} fill="currentColor" />
-          <span className="text-xs font-black">{studentData.streak} dias 🔥</span>
+        {/* Streak Pill - Estilo Duolingo (Aceso 🔥 vs Apagado 🕯️) */}
+        <div 
+          className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all duration-300 ${
+            studentData.hasPracticedToday
+              ? 'bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-orange-500/15 border-orange-300 dark:border-orange-500/40 text-orange-600 dark:text-orange-400 shadow-sm shadow-orange-500/10'
+              : 'bg-neutral-100 dark:bg-neutral-800/80 border-neutral-200 dark:border-neutral-700/60 text-neutral-400 dark:text-neutral-500'
+          }`}
+          title={
+            studentData.hasPracticedToday
+              ? `Ofensiva de ${studentData.streak} dias ativa hoje! Fogo aceso 🔥`
+              : `Ofensiva de ${studentData.streak} dias: faça uma atividade hoje para acender o fogo! 🕯️`
+          }
+        >
+          <Flame 
+            size={14} 
+            className={`transition-all duration-300 ${studentData.hasPracticedToday ? 'text-orange-500 animate-pulse' : 'text-neutral-400 dark:text-neutral-500 opacity-60'}`} 
+            fill={studentData.hasPracticedToday ? "currentColor" : "none"} 
+          />
+          <span className="text-xs font-black">
+            {studentData.streak} {studentData.streak === 1 ? 'dia' : 'dias'}
+          </span>
+          {studentData.hasPracticedToday ? (
+            <span className="text-xs leading-none">🔥</span>
+          ) : (
+            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700/80 text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
+              Pendente
+            </span>
+          )}
         </div>
 
         {/* Coins Pill */}
@@ -82,14 +108,16 @@ export const StudentHeader: React.FC<StudentHeaderProps> = ({
         
         {/* Profile avatar */}
         <button 
-          className="flex items-center gap-2.5 bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-700/80 rounded-xl px-2.5 py-1.5 transition-all group active:scale-95"
+          className="flex items-center gap-2.5 bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-200 dark:hover:bg-neutral-700/80 rounded-xl px-2 py-1.5 transition-all group active:scale-95"
           onClick={() => setActiveView('settings')}
+          title="Meu Perfil"
         >
-          <div className="w-7 h-7 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-sm shrink-0">
-            <div className="w-full h-full rounded-full overflow-hidden border border-white dark:border-neutral-900 bg-white">
-              <img alt={studentData.name} src={studentData.avatar} className="w-full h-full object-cover" />
-            </div>
-          </div>
+          <EducationAvatar 
+            src={studentData.avatar} 
+            name={studentData.name} 
+            role="student" 
+            size="xs" 
+          />
           <span className="text-sm font-bold text-neutral-700 dark:text-neutral-300 hidden lg:block group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">{studentData.name.split(' ')[0]}</span>
         </button>
       </div>

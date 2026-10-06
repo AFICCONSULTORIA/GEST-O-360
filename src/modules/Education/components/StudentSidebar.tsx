@@ -8,8 +8,10 @@ import {
   Settings, 
   Store,
   X, 
-  Sparkles
+  Sparkles,
+  Flame
 } from 'lucide-react';
+import { EducationAvatar } from './EducationAvatar';
 
 interface StudentSidebarProps {
   onBack: () => void;
@@ -23,6 +25,9 @@ interface StudentSidebarProps {
     title: string;
     xp: number;
     nextLevelXp: number;
+    streak?: number;
+    hasPracticedToday?: boolean;
+    avatar?: string;
   };
   xpPercentage: number;
 }
@@ -76,11 +81,12 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           }}
         >
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full p-0.5 bg-gradient-to-tr from-emerald-400 to-sky-400 shadow-md shrink-0">
-              <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-900 bg-white">
-                <img alt="Avatar" src={studentData.avatar || "https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v"} className="w-full h-full object-cover" />
-              </div>
-            </div>
+            <EducationAvatar 
+              src={studentData.avatar} 
+              name={studentData.name} 
+              role="student" 
+              size="sm" 
+            />
             <div className="flex-1 min-w-0">
               <p className="font-black text-sm text-neutral-900 dark:text-white leading-none truncate">{studentData.name}</p>
               <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-medium">{studentData.title}</p>
@@ -96,6 +102,20 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
               <div className="h-full bg-gradient-to-r from-emerald-400 to-sky-400 rounded-full relative" style={{ width: `${xpPercentage}%` }}>
                 <div className="absolute inset-0 bg-white/30 animate-pulse rounded-full"></div>
               </div>
+            </div>
+          </div>
+
+          {/* Ofensiva Status Pill */}
+          <div className="mt-3 pt-2.5 border-t border-neutral-200/50 dark:border-neutral-700/50 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">Ofensiva diária:</span>
+            <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${
+              studentData.hasPracticedToday
+                ? 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/30'
+                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-700'
+            }`}>
+              <Flame size={11} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "text-orange-500 animate-pulse" : "opacity-60"} />
+              <span>{studentData.streak || 0} dias</span>
+              {studentData.hasPracticedToday ? <span>🔥</span> : <span className="text-[9px] font-normal">(apagado)</span>}
             </div>
           </div>
         </div>

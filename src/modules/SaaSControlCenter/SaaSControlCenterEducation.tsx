@@ -173,17 +173,30 @@ const TeacherModal = ({
   );
 };
 
+import { generateEnrollmentCode } from '../../lib/api/education';
+
 const StudentModal = ({ 
   isOpen, onClose, onSave, editingStudent, institutions, schools 
 }: { 
   isOpen: boolean, onClose: () => void, onSave: (s: any) => void, editingStudent: any, institutions: Institution[], schools: any[] 
 }) => {
-  const [formData, setFormData] = useState({ name: '', title: 'Iniciante', level: 1, xp: 0, school_id: '', institution_id: institutions[0]?.id || '' });
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    enrollment_code: '',
+    password: '123',
+    title: 'Iniciante', 
+    level: 1, 
+    xp: 0, 
+    school_id: '', 
+    institution_id: institutions[0]?.id || '' 
+  });
 
   useEffect(() => {
     if (editingStudent) {
       setFormData({ 
         name: editingStudent.name || '', 
+        enrollment_code: editingStudent.enrollment_code || editingStudent.enrollmentId || '',
+        password: editingStudent.password || '123',
         title: editingStudent.title || 'Iniciante', 
         level: editingStudent.level || 1, 
         xp: editingStudent.xp || 0,
@@ -191,7 +204,16 @@ const StudentModal = ({
         institution_id: editingStudent.institution_id || institutions[0]?.id || '' 
       });
     } else {
-      setFormData({ name: '', title: 'Iniciante', level: 1, xp: 0, school_id: '', institution_id: institutions[0]?.id || '' });
+      setFormData({ 
+        name: '', 
+        enrollment_code: '',
+        password: '123',
+        title: 'Iniciante', 
+        level: 1, 
+        xp: 0, 
+        school_id: '', 
+        institution_id: institutions[0]?.id || '' 
+      });
     }
   }, [editingStudent, isOpen, institutions]);
 
@@ -238,11 +260,43 @@ const StudentModal = ({
             <input 
               type="text" 
               value={formData.name} 
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              onChange={e => {
+                const name = e.target.value;
+                const autoCode = generateEnrollmentCode(name, Math.floor(Math.random() * 800) + 1);
+                setFormData({ 
+                  ...formData, 
+                  name,
+                  enrollment_code: formData.enrollment_code || autoCode
+                });
+              }}
               className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm font-bold outline-none"
-              placeholder="Ex: Enzo Gabriel"
+              placeholder="Ex: Arthur da Silva"
             />
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-neutral-500 mb-1">🎟️ Matrícula (3 Letras + 3 Núm.)</label>
+              <input 
+                type="text" 
+                value={formData.enrollment_code} 
+                onChange={e => setFormData({ ...formData, enrollment_code: e.target.value.toUpperCase() })}
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm font-black text-amber-600 uppercase tracking-widest outline-none"
+                placeholder="Ex: ART001"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-neutral-500 mb-1">🔑 Senha de Acesso</label>
+              <input 
+                type="text" 
+                value={formData.password} 
+                onChange={e => setFormData({ ...formData, password: e.target.value })}
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 px-4 py-3 rounded-xl text-sm font-bold outline-none"
+                placeholder="123"
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-neutral-500 mb-1">Nível</label>
@@ -266,8 +320,11 @@ const StudentModal = ({
         </div>
 
         <button 
-          onClick={() => onSave(formData)}
-          className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2"
+          onClick={() => {
+            const finalCode = formData.enrollment_code || generateEnrollmentCode(formData.name, 1);
+            onSave({ ...formData, enrollment_code: finalCode, password: formData.password || '123' });
+          }}
+          className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold uppercase tracking-widest text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20"
         >
           <Save size={16} /> Salvar Aluno
         </button>

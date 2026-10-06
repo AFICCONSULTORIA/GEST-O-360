@@ -86,10 +86,10 @@ export const StreakAnimationOverlay: React.FC<StreakAnimationOverlayProps> = ({
           </div>
 
           <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 tracking-tight">
-            Sequência Diária!
+            Ofensiva em Chamas! 🔥
           </h2>
           <p className="text-neutral-500 font-medium mb-8">
-            Você completou sua primeira atividade do dia. Continue assim!
+            Você completou sua primeira atividade de hoje e acendeu o fogo da sua ofensiva!
           </p>
 
           <div className="flex items-baseline gap-2 mb-8">

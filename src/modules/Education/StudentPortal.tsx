@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { fetchStudentProfile, awardStudent, spendCoins, fetchCoursesWithProgress, completeLesson } from '../../lib/api/education';
+import { fetchStudentProfile, awardStudent, spendCoins, fetchCoursesWithProgress, completeLesson, DEFAULT_DEMO_STUDENTS } from '../../lib/api/education';
 import { 
   ArrowLeft,
   Bell,
@@ -9,8 +9,16 @@ import {
   Send,
   Paperclip,
   Sparkles,
-  MessageSquare
+  MessageSquare,
+  Flame
 } from 'lucide-react';
+
+import { 
+  getLocalDateString, 
+  calculateDuolingoStreak, 
+  calculateWeeklyActivity, 
+  seedInitialStreakDates 
+} from './utils/streakUtils';
 
 import { StudentSidebar } from './components/StudentSidebar';
 import { StudentHeader } from './components/StudentHeader';
@@ -24,6 +32,7 @@ import { StudentAchievements } from './components/StudentAchievements';
 import { StudentSettings } from './components/StudentSettings';
 import { StudentStore } from './components/StudentStore';
 import { StreakAnimationOverlay } from './components/StreakAnimationOverlay';
+import { EducationAvatar } from './components/EducationAvatar';
 
 // --- TYPES ---
 export interface QuizQuestion {
@@ -71,12 +80,15 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
   // -- Chat State --
   const [chatMessages, setChatMessages] = useState<any[]>([]);
   const [newMessageText, setNewMessageText] = useState('');
-  const studentId = 2; // Arthur da Silva (ID 2)
+  const [studentId, setStudentId] = useState<string>(() => {
+    return localStorage.getItem('edu_student_id') || '2';
+  });
   const [selectedChatTeacher, setSelectedChatTeacher] = useState<any>(null);
 
+  const teacherPhoto = localStorage.getItem('gestao360_teacher_photo') || '';
   const mockTeachers = [
-    { id: 1, name: 'Prof. Carlos (Matemática)', avatar: 'https://i.pravatar.cc/150?img=11', status: 'Online agora' },
-    { id: 2, name: 'Profa. Sofia (Português)', avatar: 'https://i.pravatar.cc/150?img=5', status: 'Visto por último às 14:00' }
+    { id: 1, name: 'Prof. Carlos (Matemática)', avatar: teacherPhoto, status: 'Online agora' },
+    { id: 2, name: 'Profa. Sofia (Português)', avatar: '', status: 'Visto por último às 14:00' }
   ];
 
   const totalUnreadCount = chatMessages.filter((m: any) => m.sender === 'teacher' && !m.read).length;
@@ -89,7 +101,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
         let updated = false;
         
         students = students.map((s: any) => {
-          if (s.id === studentId) {
+          if (String(s.id) === String(studentId) || s.enrollmentId === studentId) {
             let sUpdated = false;
             const newMessages = (s.messages || []).map((m: any) => {
               if (m.sender === 'teacher' && !m.read && m.teacherId === selectedChatTeacher.id) {
@@ -108,7 +120,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
         if (updated) {
           localStorage.setItem('gestao360_students', JSON.stringify(students));
-          const me = students.find((s: any) => s.id === studentId);
+          const me = students.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
           if (me) {
             setChatMessages(me.messages || []);
           }
@@ -116,14 +128,14 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
         }
       }
     }
-  }, [isChatOpen, chatMessages, selectedChatTeacher]);
+  }, [isChatOpen, chatMessages, selectedChatTeacher, studentId]);
 
   useEffect(() => {
     const loadMessages = () => {
       const saved = localStorage.getItem('gestao360_students');
       if (saved) {
         const students = JSON.parse(saved);
-        const me = students.find((s: any) => s.id === studentId);
+        const me = students.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
         if (me) {
           setChatMessages(me.messages || []);
         }
@@ -148,7 +160,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
       window.removeEventListener('students-updated', handleStudentsUpdated);
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, []);
+  }, [studentId]);
 
   const handleSendChatMessage = () => {
     if (!newMessageText.trim() || !selectedChatTeacher) return;
@@ -164,14 +176,14 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
     if (saved) {
       let students = JSON.parse(saved);
       students = students.map((s: any) => 
-        s.id === studentId 
+        (String(s.id) === String(studentId) || s.enrollmentId === studentId)
           ? { ...s, messages: [...(s.messages || []), newMessage] }
           : s
       );
       
       localStorage.setItem('gestao360_students', JSON.stringify(students));
       
-      const me = students.find((s: any) => s.id === studentId);
+      const me = students.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
       if (me) {
         setChatMessages(me.messages || []);
       }
@@ -240,7 +252,8 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
     highestStreak: 12,
     streakFreezes: 0,
     weeklyActivity: [false, false, false, false, false, false, false],
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v',
+    hasPracticedToday: false,
+    avatar: '',
     inventory: [] as string[]
   });
 
@@ -254,7 +267,34 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
       const studentId = localStorage.getItem('edu_student_id');
       
       const coursesData = await fetchCoursesWithProgress(studentId || undefined);
-      setCourses(coursesData);
+
+      // Identificar turma do estudante para controle de acesso às trilhas
+      let studentClass = '';
+      const savedStudents = localStorage.getItem('gestao360_students');
+      if (savedStudents && studentId) {
+        try {
+          const list = JSON.parse(savedStudents);
+          const currentStudent = list.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
+          if (currentStudent) {
+            const savedClasses = localStorage.getItem('gestao360_classes');
+            if (savedClasses && currentStudent.classId) {
+              const cList = JSON.parse(savedClasses);
+              const foundC = cList.find((c: any) => c.id === currentStudent.classId);
+              if (foundC) studentClass = foundC.name;
+            }
+            if (!studentClass && currentStudent.studentClass) {
+              studentClass = currentStudent.studentClass;
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Filtra apenas as trilhas destinadas à turma do aluno (ou abertas para todas)
+      const allowedCourses = (!previewCourseId && studentClass)
+        ? coursesData.filter((c: any) => !c.target_classes || c.target_classes.length === 0 || c.target_classes.includes(studentClass))
+        : coursesData;
+
+      setCourses(allowedCourses);
 
       if (previewCourseId) {
         const pCourse = coursesData.find((c: any) => c.id === previewCourseId);
@@ -264,73 +304,88 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
         }
       }
 
-      // Carregar Streak e atividade local
+      // Carregar Streak e atividade local estilo Duolingo
       let localActivity = { dates: [] as string[], freezes: 0, highestStreak: 0, avatar: '', inventory: [] as string[] };
       if (studentId) {
         const storedAct = localStorage.getItem(`edu_activity_${studentId}`);
         if (storedAct) {
-          localActivity = { ...localActivity, ...JSON.parse(storedAct) };
-        }
-      }
-
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      const dates = localActivity.dates.map((d: string) => {
-        const date = new Date(d);
-        date.setHours(0,0,0,0);
-        return date.getTime();
-      }).sort((a: number,b: number) => b - a);
-
-      let currentStreak = 0;
-      let checkDate = new Date(today.getTime());
-      let freezesLeft = localActivity.freezes;
-      
-      for (let i = 0; i < 365; i++) {
-        const timeToCheck = checkDate.getTime();
-        const hasActivity = dates.includes(timeToCheck);
-        
-        if (hasActivity) {
-          currentStreak++;
-        } else {
-          if (timeToCheck === today.getTime()) {
-            // OK if no activity today yet
-          } else if (freezesLeft > 0) {
-            freezesLeft--;
-          } else {
-            break;
-          }
-        }
-        checkDate.setDate(checkDate.getDate() - 1);
-      }
-
-      const weeklyActivity = [false, false, false, false, false, false, false];
-      const startOfWeek = new Date(today);
-      const dayOfWeek = startOfWeek.getDay() || 7; 
-      startOfWeek.setDate(startOfWeek.getDate() - dayOfWeek + 1); 
-      
-      for (let i=0; i<7; i++) {
-        const d = new Date(startOfWeek);
-        d.setDate(d.getDate() + i);
-        if (dates.includes(d.getTime())) {
-          weeklyActivity[i] = true;
+          try {
+            localActivity = { ...localActivity, ...JSON.parse(storedAct) };
+          } catch (e) {}
         }
       }
 
       if (studentId) {
-        const data = await fetchStudentProfile(studentId);
-        if (data) {
+        let profile = await fetchStudentProfile(studentId);
+        
+        // Fallback local caso não encontre no Supabase
+        if (!profile) {
+          const savedStudents = localStorage.getItem('gestao360_students');
+          if (savedStudents) {
+            try {
+              const parsed = JSON.parse(savedStudents);
+              const found = parsed.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
+              if (found) {
+                profile = {
+                  id: String(found.id),
+                  enrollment_code: found.enrollmentId || found.enrollment_code || 'ART001',
+                  name: found.name,
+                  level: found.level || 1,
+                  title: found.title || 'Explorador Aprendiz',
+                  xp: found.xp || 0,
+                  coins: found.coins || 0,
+                  streak: found.streak || 0
+                };
+              }
+            } catch (e) {
+              console.warn('Erro ao ler gestao360_students:', e);
+            }
+          }
+        }
+
+        // Fallback final nos alunos de demonstração
+        if (!profile) {
+          const demo = DEFAULT_DEMO_STUDENTS.find(s => s.id === String(studentId) || s.enrollment_code === studentId);
+          if (demo) {
+            profile = {
+              id: demo.id,
+              enrollment_code: demo.enrollment_code,
+              name: demo.name,
+              level: demo.level,
+              title: demo.title,
+              xp: demo.xp,
+              coins: demo.coins,
+              streak: demo.streak
+            };
+          }
+        }
+
+        // Se o histórico de datas estiver vazio mas o aluno tiver um streak pré-definido,
+        // inicializa o histórico com os dias anteriores terminando em ontem (para que hoje comece com fogo apagado).
+        const initialStreak = profile?.streak ?? 12;
+        if ((!localActivity.dates || localActivity.dates.length === 0) && initialStreak > 0) {
+          localActivity.dates = seedInitialStreakDates(initialStreak);
+          localActivity.highestStreak = Math.max(localActivity.highestStreak || 0, initialStreak);
+          localStorage.setItem(`edu_activity_${studentId}`, JSON.stringify(localActivity));
+        }
+
+        // Calcular estado exato da ofensiva (Duolingo)
+        const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
+        const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
+
+        if (profile) {
           setStudentData(prev => ({
             ...prev,
-            id: data.id, 
-            name: data.name,
-            level: data.level,
-            title: data.title,
-            xp: data.xp,
-            coins: data.coins,
-            streak: currentStreak > 0 ? currentStreak : data.streak,
-            highestStreak: Math.max(localActivity.highestStreak, currentStreak),
-            streakFreezes: localActivity.freezes,
+            id: profile.id, 
+            name: profile.name,
+            level: profile.level,
+            title: profile.title,
+            xp: profile.xp,
+            coins: profile.coins,
+            streak: streakData.currentStreak,
+            hasPracticedToday: streakData.hasPracticedToday,
+            highestStreak: Math.max(localActivity.highestStreak || 0, streakData.currentStreak),
+            streakFreezes: streakData.freezesRemaining,
             weeklyActivity,
             avatar: localActivity.avatar || prev.avatar,
             inventory: localActivity.inventory || prev.inventory
@@ -358,80 +413,71 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
   }, [studentData.avatar, studentData.inventory, studentData.streakFreezes, studentData.id]);
 
   const registerStudentActivity = (studentId: string) => {
+    const todayStr = getLocalDateString();
     const storedAct = localStorage.getItem(`edu_activity_${studentId}`);
     let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
-    
-    // Obter formato YYYY-MM-DD com timezone local corrigido
-    const todayObj = new Date();
-    const tzOffset = todayObj.getTimezoneOffset() * 60000;
-    const todayStr = new Date(todayObj.getTime() - tzOffset).toISOString().split('T')[0];
-    
-    const isDevMode = true; // ATIVADO: Sempre contar para poder testar a animação
-    
-    if (!localActivity.dates.includes(todayStr) || isDevMode) {
-      if (!localActivity.dates.includes(todayStr)) {
-        localActivity.dates.push(todayStr);
-      }
-      
-      const dates = localActivity.dates.map((d: string) => {
-        const parts = d.split('-');
-        const date = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
-        date.setHours(0,0,0,0);
-        return date.getTime();
-      }).sort((a: number,b: number) => b - a);
-
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      
-      let currentStreak = 0;
-      let checkDate = new Date(today.getTime());
-      let freezesLeft = localActivity.freezes;
-      
-      for (let i = 0; i < 365; i++) {
-        const timeToCheck = checkDate.getTime();
-        const hasActivity = dates.includes(timeToCheck);
-        
-        if (hasActivity) {
-          currentStreak++;
-        } else {
-          if (timeToCheck === today.getTime()) {
-             // ok
-          } else if (freezesLeft > 0) {
-            freezesLeft--;
-          } else {
-            break;
-          }
-        }
-        checkDate.setDate(checkDate.getDate() - 1);
-      }
-
-      localActivity.highestStreak = Math.max(localActivity.highestStreak, currentStreak);
-      localActivity.freezes = freezesLeft; // consumo de freeze se necessário
-      localStorage.setItem(`edu_activity_${studentId}`, JSON.stringify(localActivity));
-
-      const dayOfWeek = today.getDay() || 7;
-
-      setStudentData(prev => {
-        const newWeekly = [...prev.weeklyActivity];
-        newWeekly[dayOfWeek - 1] = true;
-        
-        // No modo Dev, sempre incrementamos para forçar a animação
-        const nextStreak = isDevMode ? prev.streak + 1 : currentStreak;
-
-        if (nextStreak > prev.streak) {
-          setStreakAnimationData({ prev: prev.streak, current: nextStreak });
-          setShowStreakModal(true);
-        }
-
-        return {
-          ...prev,
-          streak: nextStreak,
-          highestStreak: Math.max(localActivity.highestStreak, nextStreak),
-          streakFreezes: localActivity.freezes,
-          weeklyActivity: newWeekly
-        };
-      });
+    if (!Array.isArray(localActivity.dates)) {
+      localActivity.dates = [];
     }
+
+    // Regra Duolingo: Apenas na PRIMEIRA atividade daquele dia!
+    const alreadyPracticedToday = localActivity.dates.includes(todayStr);
+
+    if (alreadyPracticedToday) {
+      // Se já fez atividade hoje, mantém a chama acesa e não altera o streak nem exibe modal de streak
+      setStudentData(prev => ({
+        ...prev,
+        hasPracticedToday: true
+      }));
+      return;
+    }
+
+    // Primeira atividade de hoje:
+    // 1. Calcula a sequência que existia até ontem
+    const prevCalculation = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
+    const prevStreak = prevCalculation.currentStreak;
+
+    // 2. Registra o dia de hoje
+    localActivity.dates.push(todayStr);
+
+    // 3. Recalcula a nova sequência agora incluindo hoje
+    const newCalculation = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
+    const newStreak = newCalculation.currentStreak;
+
+    localActivity.highestStreak = Math.max(localActivity.highestStreak || 0, newStreak);
+    localActivity.freezes = newCalculation.freezesRemaining;
+    localStorage.setItem(`edu_activity_${studentId}`, JSON.stringify(localActivity));
+
+    // Sincroniza no gestao360_students (para refletir no painel do professor)
+    const savedStudents = localStorage.getItem('gestao360_students');
+    if (savedStudents) {
+      try {
+        const parsed = JSON.parse(savedStudents);
+        const updated = parsed.map((s: any) => {
+          if (String(s.id) === String(studentId) || s.enrollmentId === studentId) {
+            return { ...s, streak: newStreak };
+          }
+          return s;
+        });
+        localStorage.setItem('gestao360_students', JSON.stringify(updated));
+      } catch (e) {}
+    }
+
+    const newWeekly = calculateWeeklyActivity(localActivity.dates);
+
+    // 4. Dispara a animação e o modal comemorativo da ofensiva apenas na 1ª atividade do dia
+    setStreakAnimationData({ prev: prevStreak, current: newStreak });
+    setShowStreakModal(true);
+
+    // 5. Atualiza o estado global: Fogo ACENDE! 🔥
+    setStudentData(prev => ({
+      ...prev,
+      streak: newStreak,
+      hasPracticedToday: true,
+      highestStreak: Math.max(localActivity.highestStreak || 0, newStreak),
+      streakFreezes: localActivity.freezes,
+      weeklyActivity: newWeekly
+    }));
   };
 
   const handleAward = async (xp: number, coins: number) => {
@@ -490,7 +536,21 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
+          {/* Mobile Streak Pill estilo Duolingo (Aceso vs Apagado) */}
+          <div 
+            className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border transition-all ${
+              studentData.hasPracticedToday
+                ? 'bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/30 text-orange-600 dark:text-orange-400'
+                : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-400'
+            }`}
+            title={studentData.hasPracticedToday ? "Ofensiva ativa hoje! Fogo aceso 🔥" : "Faça uma lição hoje para acender o fogo! 🕯️"}
+          >
+            <Flame size={13} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "text-orange-500 animate-pulse" : "text-neutral-400 opacity-60"} />
+            <span>{studentData.streak}</span>
+            {studentData.hasPracticedToday && <span>🔥</span>}
+          </div>
+
           <button className="p-2 rounded-xl text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-emerald-600 transition-all relative">
             <Bell size={20} />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white dark:border-neutral-900 animate-pulse"></span>
@@ -531,6 +591,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             setActiveView={setActiveView}
             handleAccessCourse={handleAccessCourse}
             handleStartLesson={handleStartLesson}
+            studentData={studentData}
           />
         )}
 
@@ -638,9 +699,12 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
                       className="flex items-center gap-4 p-3 hover:bg-neutral-50 dark:hover:bg-neutral-800 rounded-2xl cursor-pointer transition-colors"
                     >
                       <div className="relative">
-                        <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-neutral-200 dark:border-neutral-700">
-                          <img src={teacher.avatar} alt={teacher.name} className="w-full h-full object-cover" />
-                        </div>
+                        <EducationAvatar 
+                          src={teacher.avatar} 
+                          name={teacher.name} 
+                          role="teacher" 
+                          size="md" 
+                        />
                         {teacher.id === 1 && (
                           <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-neutral-900"></div>
                         )}
@@ -679,9 +743,12 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
                 </button>
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="relative shrink-0">
-                    <div className="w-10 h-10 rounded-full bg-white/20 overflow-hidden border border-white/30">
-                      <img src={selectedChatTeacher.avatar} alt={selectedChatTeacher.name} className="w-full h-full object-cover" />
-                    </div>
+                    <EducationAvatar 
+                      src={selectedChatTeacher.avatar} 
+                      name={selectedChatTeacher.name} 
+                      role="teacher" 
+                      size="sm" 
+                    />
                     {selectedChatTeacher.id === 1 && (
                       <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-300 rounded-full border-2 border-emerald-600"></div>
                     )}

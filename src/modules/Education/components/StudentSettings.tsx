@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { 
   Settings, 
   Image as ImageIcon, 
@@ -6,8 +6,20 @@ import {
   Bell, 
   ToggleRight, 
   ToggleLeft,
-  CheckCircle2
+  CheckCircle2,
+  Camera,
+  RotateCcw,
+  User,
+  Flame,
+  Calendar
 } from 'lucide-react';
+import { EducationAvatar, optimizeAvatarImage } from './EducationAvatar';
+import { 
+  getLocalDateString, 
+  calculateDuolingoStreak, 
+  calculateWeeklyActivity, 
+  seedInitialStreakDates 
+} from '../utils/streakUtils';
 
 interface StudentSettingsProps {
   studentData: {
@@ -15,18 +27,14 @@ interface StudentSettingsProps {
     name: string;
     coins: number;
     xp: number;
+    streak?: number;
+    hasPracticedToday?: boolean;
     streakFreezes?: number;
     avatar: string;
     inventory: string[];
   };
   setStudentData: React.Dispatch<React.SetStateAction<any>>;
 }
-
-const DEFAULT_AVATARS = [
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuD67XhB0DJ40aaTrcWE9Iu_CcFYker9wsK8fJp4A7tzRdu9BapL31HGEWE1YNiLn0vGagwV83hToRXj61oJHwqa90jNR9WsRsmG3nfD2pkzQbohLj66VPCTSk5ZgEEIr7s-KDWO0w3dGS9shn0V2SiFXd5iEDWQqlK76AiiDEsS5dkMZO5pxzNAt30M4FdnuuDXFNVVg797dlHMBDUiIpllNfDj8CTg1sGQSelXwDbN03csF-YcHbv5tjK3HL8OvXoSpjanR_rgKewT',
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuDllRObvU5JxFTVh5peqsNKPqwOqP1l8lebIwbcOdWvzvHUyxWhDg43f0OcCFOnycftt_-hr-wNyLYuGKNAh6GHqpMby3k04-V7DZlITdVNLGB21dKL50vmm7l20NHjDpfO5mVgsqP9p8WskMxObv699qRM9aApARfS64JeVrxkhH7WIu9ioZMXSFXdgNd0A1K0Yd64IhHTrIQeSneQl-04iEuBW5ABmM_Va3_iVbWnsrdHQ1jMh8T7vzz8r_4inEwnTz4gQyLMte8j',
-];
 
 const PREMIUM_AVATARS: Record<string, string> = {
   'avatar_ninja': 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23334155"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🥷</text></svg>',
@@ -40,19 +48,117 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
   setStudentData,
 }) => {
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = React.useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
-    setToastMessage('Suas escolhas mágicas foram salvas!');
+    setToastMessage('Suas alterações foram salvas com sucesso!');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSimulateNewDay = () => {
+    if (!studentData.id) return;
+    const todayStr = getLocalDateString();
+    const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
+    let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
+    
+    // Remove hoje do histórico de datas para simular que o dia começou agora (fogo apagado)
+    localActivity.dates = (localActivity.dates || []).filter((d: string) => d !== todayStr);
+    localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
+    
+    const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
+    const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
+
+    setStudentData((prev: any) => ({
+      ...prev,
+      streak: streakData.currentStreak,
+      hasPracticedToday: false,
+      weeklyActivity
+    }));
+
+    setToastMessage('Fogo apagado! Dia simulado como novo: complete uma aula para acender a ofensiva.');
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleResetStreak = () => {
+    if (!studentData.id) return;
+    const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
+    let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
+    localActivity.dates = [];
+    localActivity.highestStreak = 0;
+    localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
+
+    setStudentData((prev: any) => ({
+      ...prev,
+      streak: 0,
+      highestStreak: 0,
+      hasPracticedToday: false,
+      weeklyActivity: [false, false, false, false, false, false, false]
+    }));
+
+    setToastMessage('Ofensiva reiniciada para 0 dias.');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  const handleSetArthur12Streak = () => {
+    if (!studentData.id) return;
+    const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
+    let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
+    localActivity.dates = seedInitialStreakDates(12);
+    localActivity.highestStreak = 12;
+    localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
+
+    const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
+    const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
+
+    setStudentData((prev: any) => ({
+      ...prev,
+      streak: 12,
+      highestStreak: 12,
+      hasPracticedToday: false,
+      weeklyActivity
+    }));
+
+    setToastMessage('Ofensiva configurada para 12 dias (com fogo apagado para hoje).');
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setToastMessage('Por favor, selecione um arquivo de imagem válido.');
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    try {
+      setIsProcessingPhoto(true);
+      const optimizedBase64 = await optimizeAvatarImage(file, 360, 0.85);
+      setStudentData((prev: any) => ({ ...prev, avatar: optimizedBase64 }));
+      setToastMessage('Foto atualizada com sucesso!');
+      setTimeout(() => setToastMessage(null), 3000);
+    } catch (err) {
+      console.error('Erro ao processar imagem:', err);
+      setToastMessage('Erro ao carregar imagem. Tente outra foto.');
+      setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsProcessingPhoto(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleResetToDefault = () => {
+    setStudentData((prev: any) => ({ ...prev, avatar: '' }));
+    setToastMessage('Ícone padrão escolar restaurado!');
     setTimeout(() => setToastMessage(null), 3000);
   };
   
-  // Combinar avatares disponíveis
-  const availableAvatars = [
-    ...DEFAULT_AVATARS,
-    ...(studentData.inventory || [])
-      .filter(item => item.startsWith('avatar_'))
-      .map(item => PREMIUM_AVATARS[item])
-  ];
+  // Avatares desbloqueados do inventário
+  const unlockedAvatars = (studentData.inventory || [])
+    .filter(item => item.startsWith('avatar_'))
+    .map(item => ({ id: item, url: PREMIUM_AVATARS[item] }));
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -61,24 +167,71 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
           <Settings className="text-emerald-500" size={32} />
           Meu Perfil e Opções
         </h2>
-        <p className="text-neutral-500 dark:text-neutral-400">Personalize sua experiência no Gestão 360 Educação e deixe tudo com a sua cara!</p>
+        <p className="text-neutral-500 dark:text-neutral-400">Personalize sua foto, ícone e nome no Gestão 360 Educação!</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Meu Perfil Mágico */}
         <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
           <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-            <ImageIcon className="text-sky-500" size={24} />
-            Configurações Básicas
+            <ImageIcon className="text-emerald-500" size={24} />
+            Foto do Aluno e Dados
           </h3>
 
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-emerald-500 to-sky-500 p-1 shadow-lg shadow-sky-500/20">
-                <div className="w-full h-full rounded-full overflow-hidden border-4 border-white dark:border-neutral-900 bg-white dark:bg-neutral-800 flex items-center justify-center">
-                  <img alt="Seu Avatar" src={studentData.avatar} className="w-full h-full object-cover" />
+          <div className="flex flex-col items-center gap-5">
+            <div className="relative group">
+              <div className="p-1 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 shadow-xl shadow-emerald-500/20">
+                <div className="rounded-full overflow-hidden border-4 border-white dark:border-neutral-900 bg-white dark:bg-neutral-800">
+                  <EducationAvatar 
+                    src={studentData.avatar} 
+                    name={studentData.name} 
+                    role="student" 
+                    size="xl" 
+                  />
                 </div>
               </div>
+
+              {/* Botão de upload sobreposto */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingPhoto}
+                title="Adicionar ou trocar foto"
+                className="absolute bottom-1 right-1 p-2.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+              >
+                <Camera size={18} />
+              </button>
+            </div>
+
+            <input 
+              ref={fileInputRef}
+              type="file" 
+              accept="image/*" 
+              onChange={handleFileChange}
+              className="hidden" 
+            />
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isProcessingPhoto}
+                className="px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs rounded-2xl transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Camera size={16} />
+                {isProcessingPhoto ? 'Processando...' : 'Carregar Minha Foto'}
+              </button>
+
+              {studentData.avatar && (
+                <button
+                  type="button"
+                  onClick={handleResetToDefault}
+                  className="px-4 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 font-bold text-xs rounded-2xl transition-all flex items-center gap-2 cursor-pointer"
+                >
+                  <RotateCcw size={14} />
+                  Usar Ícone Padrão
+                </button>
+              )}
             </div>
             
             <div className="w-full space-y-4 mt-2">
@@ -100,19 +253,62 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
           <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
             <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
               <Sparkles className="text-amber-500" size={24} />
-              Escolher Avatar
+              Escolher Aparência
             </h3>
             
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-              {availableAvatars.map((url, i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              {/* Opção 1: Ícone Padrão */}
+              <div 
+                onClick={handleResetToDefault}
+                className={`relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-4 transition-all hover:scale-105 ${
+                  !studentData.avatar 
+                    ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-lg shadow-emerald-500/10 scale-105' 
+                    : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-200 dark:hover:border-emerald-900'
+                }`}
+              >
+                <div className="w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 flex items-center justify-center text-white shadow-md">
+                  <User size={26} />
+                </div>
+                <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 text-center">Ícone Padrão</span>
+                {!studentData.avatar && (
+                  <div className="absolute top-2 right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs">
+                    ✓
+                  </div>
+                )}
+              </div>
+
+              {/* Se o aluno tem foto própria carregada */}
+              {studentData.avatar && !studentData.avatar.startsWith('data:image/svg+xml') && (
                 <div 
-                  key={i}
-                  onClick={() => setStudentData((prev: any) => ({ ...prev, avatar: url }))}
-                  className={`relative cursor-pointer rounded-2xl overflow-hidden aspect-square border-4 transition-all hover:scale-105 ${studentData.avatar === url ? 'border-emerald-500 shadow-lg shadow-emerald-500/20 scale-105' : 'border-transparent hover:border-emerald-200 dark:hover:border-emerald-900'}`}
+                  className="relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-4 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-lg shadow-emerald-500/10 scale-105"
                 >
-                  <img src={url} alt={`Avatar ${i}`} className="w-full h-full object-cover bg-white" />
-                  {studentData.avatar === url && (
-                    <div className="absolute top-1 right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs">
+                  <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white dark:border-neutral-800 shadow-md">
+                    <img src={studentData.avatar} alt="Foto Própria" className="w-full h-full object-cover" />
+                  </div>
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 text-center">Foto Pessoal</span>
+                  <div className="absolute top-2 right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs">
+                    ✓
+                  </div>
+                </div>
+              )}
+
+              {/* Avatares da Loja (se possuir) */}
+              {unlockedAvatars.map((av) => (
+                <div 
+                  key={av.id}
+                  onClick={() => setStudentData((prev: any) => ({ ...prev, avatar: av.url }))}
+                  className={`relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-4 transition-all hover:scale-105 ${
+                    studentData.avatar === av.url 
+                      ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-lg shadow-emerald-500/20 scale-105' 
+                      : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-200 dark:hover:border-emerald-900'
+                  }`}
+                >
+                  <img src={av.url} alt={av.id} className="w-14 h-14 rounded-full object-cover shadow-sm bg-white" />
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 text-center capitalize">
+                    {av.id.replace('avatar_', '')}
+                  </span>
+                  {studentData.avatar === av.url && (
+                    <div className="absolute top-2 right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs">
                       ✓
                     </div>
                   )}
@@ -120,7 +316,7 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
               ))}
             </div>
             
-            <p className="text-xs text-neutral-500 text-center mt-2">Você pode desbloquear mais avatares na Loja de Recompensas!</p>
+            <p className="text-xs text-neutral-500 text-center mt-1">Você pode carregar uma foto pessoal ou desbloquear avatares divertidos na Loja de Recompensas!</p>
           </div>
 
           {/* Notificações */}
@@ -152,6 +348,56 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 </div>
                 <ToggleLeft size={32} className="text-neutral-400" />
               </div>
+            </div>
+          </div>
+
+          {/* Gerenciador da Ofensiva Diária (Duolingo) */}
+          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                <Flame className={studentData.hasPracticedToday ? "text-orange-500" : "text-neutral-400"} size={24} fill={studentData.hasPracticedToday ? "currentColor" : "none"} />
+                Ofensiva Diária (Estilo Duolingo)
+              </h3>
+              <div className={`px-3 py-1 rounded-full text-xs font-black border flex items-center gap-1.5 transition-all ${
+                studentData.hasPracticedToday
+                  ? 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/30'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700'
+              }`}>
+                {studentData.hasPracticedToday ? '🔥 Fogo Aceso Hoje' : '🕯️ Fogo Apagado (Pendente)'}
+              </div>
+            </div>
+
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              O sistema conta a ofensiva estritamente na <strong>primeira atividade</strong> de cada dia. Caso você ainda não tenha feito uma atividade hoje, o fogo permanece apagado. Use os controles abaixo para simular ou ajustar o teste da sequência:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={handleSimulateNewDay}
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs transition-all border border-amber-200/60 dark:border-amber-500/30 cursor-pointer shadow-sm active:scale-95"
+              >
+                <Calendar size={14} />
+                Simular Novo Dia (Apagar Fogo)
+              </button>
+              
+              <button
+                type="button"
+                onClick={handleSetArthur12Streak}
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/10 dark:hover:bg-orange-500/20 text-orange-700 dark:text-orange-300 font-bold text-xs transition-all border border-orange-200/60 dark:border-orange-500/30 cursor-pointer shadow-sm active:scale-95"
+              >
+                <Flame size={14} />
+                Definir 12 Dias (Pendente)
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetStreak}
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all border border-neutral-200 dark:border-neutral-700 cursor-pointer shadow-sm active:scale-95"
+              >
+                <RotateCcw size={14} />
+                Zerar Ofensiva
+              </button>
             </div>
           </div>
         </div>

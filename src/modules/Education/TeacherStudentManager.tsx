@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, Search, Filter, ChevronRight, Award, Zap, Coins, Flame, 
   Target, TrendingUp, AlertTriangle, ShieldCheck, Mail, Gift, 
-  X, CheckCircle2, Clock, BarChart3, Star, Edit2, Trash2, Printer, Send, MessageSquare, ArrowLeft
+  X, CheckCircle2, Clock, BarChart3, Star, Edit2, Trash2, Printer, Send, MessageSquare, ArrowLeft,
+  Key, Copy, Check, Camera, RotateCcw, Plus
 } from 'lucide-react';
+import { generateEnrollmentCode } from '../../lib/api/education';
+import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
 
 const MOCK_SUBJECTS = [
   { id: 1, name: 'Matemática', color: 'bg-blue-500' },
@@ -19,34 +22,122 @@ const MOCK_CLASSES = [
 ];
 
 const MOCK_STUDENTS = [
-  { id: 1, classId: 1, name: 'Mariana Santos', email: 'mariana.santos@escola.gov.br', level: 8, xp: 2100, nextLevelXp: 2500, coins: 650, streak: 21, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCnnyLKW0EKdD-3a9_Ki-2ePeEPYn_-aHYBmwPrJ-0YC5mwsgc9JGY5ABaWdwKGRtqZ7nRtUY7Ga081pqIaC55W0zFGzKk3cIzq-r2oSkoJKOe7fGOnhkbkOKR3yizGPn-9oysGSfAGQ0jJ_N0ZTzRFNJuyX7iR92YyK_FFwN7xaGwh7gEI2soTtGtCrznm5Q87EnFDayT0mKpSii6802d-mztafH4O1irxwjjHfakV6o3zQKn_SbBEz-v2C10MjzY7wRLz_GbaAe0Z', status: 'Excelente', grade: 9.5, completedTrails: 4, subjectGrades: [{ subject: 'Matemática', grade: 9.5, xp: 1100, streak: 10 }, { subject: 'Português', grade: 9.5, xp: 1000, streak: 11 }], evaluations: [{ subject: 'Matemática', bimonthly: ['A', 'A', 'A', null], absences: 2 }, { subject: 'Português', bimonthly: ['A', 'ED', 'A', null], absences: 0 }, { subject: 'Ciências', bimonthly: ['A', 'A', 'ED', null], absences: 1 }], feedback: 'Mariana demonstra excelente compreensão matemática e avançou muito na leitura neste bimestre. É colaborativa e muito participativa nas aulas.', messages: [{ sender: 'teacher', text: 'Olá Mariana, parabéns pelas ótimas notas neste bimestre!', time: '10:00' }, { sender: 'student', text: 'Muito obrigada, professor!', time: '10:15' }] },
-  { id: 2, classId: 1, name: 'Arthur da Silva', email: 'arthur.silva@escola.gov.br', level: 7, xp: 1850, nextLevelXp: 2000, coins: 450, streak: 12, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBeX7sFEA5589G61M5FQ11ZaqQTn9qJl8GaZr8fJ9vsuXdf5QZS7_LgC20cJ9A41BBNK3FlojzVjTekLKe0deHUy5bMnT7kC2cCN-HK42t8CQzbwsyqMQ-ttR7WgzdKuLyvPu3SQufNi7uvpZtvGYf8qRCpwbAych_mkOo93c2tN_H7XEjqkUWJka1Bxehf7ZHJO0B4Kj5O2cMj06TyV5Rfc83rZ-1hiB_-q3kNFMyXheJsDDBw0c0Va1FKTmB2ctbmVr_A8NlOUH3v', status: 'Excelente', grade: 8.8, completedTrails: 3, subjectGrades: [{ subject: 'Matemática', grade: 8.8, xp: 950, streak: 5 }, { subject: 'Ciências', grade: 8.8, xp: 900, streak: 7 }], evaluations: [{ subject: 'Matemática', bimonthly: ['A', 'ED', 'A', null], absences: 1 }, { subject: 'Português', bimonthly: ['ED', 'ED', 'A', null], absences: 2 }, { subject: 'Ciências', bimonthly: ['A', 'A', 'A', null], absences: 0 }], feedback: 'Arthur é curioso e adora ciências. Melhorou bastante sua concentração nas últimas semanas.', messages: [] },
-  { id: 3, classId: 1, name: 'Lucas Oliveira', email: 'lucas.oliveira@escola.gov.br', level: 5, xp: 1200, nextLevelXp: 1500, coins: 200, streak: 4, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBLv-9O5hBlmU5_LkR_8IxwSqLjfUT9l1f-b2DqKQdrRe1NmcBQQhxXv1x2Zyhk1oK7XYmwbFBs8sK8-sJY38OictlRSFj1rm3eG6zc9i9cqHsKlLPQ3_qDIGfUuPYVcXnKhWtMfDOlt1HKGQl28oO-O53I9ErFFsSECp_vberifEfzMYXQ9h2y0WuZXthEq0RDCGn7zjLbr2nbQIFvkPlcidyjXLZVvk_nJK71rD4CCDkYT2brei8pIy8MflsJr6qBXpEi0-eN-zKp', status: 'Atenção', grade: 6.5, completedTrails: 1, subjectGrades: [{ subject: 'Matemática', grade: 6.0, xp: 500, streak: 1 }, { subject: 'Português', grade: 7.0, xp: 700, streak: 3 }], evaluations: [{ subject: 'Matemática', bimonthly: ['ED', 'NA', 'ED', null], absences: 6 }, { subject: 'Português', bimonthly: ['ED', 'ED', 'ED', null], absences: 5 }, { subject: 'Ciências', bimonthly: ['A', 'ED', 'A', null], absences: 2 }], feedback: 'Lucas precisa de mais atenção e apoio em matemática. Tem faltado um pouco mais que o normal, o que impacta no seu ritmo.', messages: [{ sender: 'teacher', text: 'Lucas, notei que faltou nas últimas aulas. Precisa de alguma ajuda com o material?', time: '09:30' }] },
-  { id: 4, classId: 2, name: 'Enzo Costa', email: 'enzo.costa@escola.gov.br', level: 3, xp: 500, nextLevelXp: 800, coins: 50, streak: 1, avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDef6yKWmbZWbYLRyfSOhIQlmeg6V4JneJiJocAYmvHIIIfVDaNVv_xCDlVDB8Grfi6H3yYdPIkQ8eXY0PdHsgQ8sYnzzgY7LMXAyvN-ElPWrzIoUcwKPnHoRk--fMrPmQFx9cfrpZGmzwZMEzVmAigs3HDTeAvaJYBfw0yvfFHqCPPjFqHJINsJ3EuD7cESzeRjgx8a97jb5KeAIA-cbD_vY2UKV7AIHDUD3NDb_jE7hT4saIVqMyG9fw6V6ikuizwuAUe3E7bOWjL', status: 'Em Risco', grade: 4.2, completedTrails: 0, subjectGrades: [{ subject: 'Geografia', grade: 4.2, xp: 500, streak: 1 }], evaluations: [{ subject: 'Matemática', bimonthly: ['NA', 'NA', 'NA', null], absences: 12 }, { subject: 'Geografia', bimonthly: ['ED', 'NA', 'NA', null], absences: 10 }], feedback: 'Enzo está com muitas faltas, o que prejudicou severamente seu aprendizado neste bimestre. A coordenação já foi acionada para contato com os responsáveis.', messages: [] },
-  { id: 5, classId: 2, name: 'Beatriz Almeida', email: 'beatriz.almeida@escola.gov.br', level: 6, xp: 1600, nextLevelXp: 2000, coins: 300, streak: 8, avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=100', status: 'Excelente', grade: 9.0, completedTrails: 2, subjectGrades: [{ subject: 'Geografia', grade: 9.0, xp: 1600, streak: 8 }], evaluations: [{ subject: 'Matemática', bimonthly: ['A', 'A', 'A', null], absences: 0 }, { subject: 'Geografia', bimonthly: ['A', 'A', 'A', null], absences: 0 }], feedback: 'Beatriz é uma aluna exemplar. Sempre disposta a ajudar os colegas.', messages: [] },
-  { id: 6, classId: 2, name: 'João Pedro', email: 'joao.pedro@escola.gov.br', level: 4, xp: 950, nextLevelXp: 1200, coins: 150, streak: 2, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=100', status: 'Atenção', grade: 7.0, completedTrails: 1, subjectGrades: [{ subject: 'Geografia', grade: 7.0, xp: 950, streak: 2 }], evaluations: [{ subject: 'Matemática', bimonthly: ['ED', 'ED', 'A', null], absences: 4 }, { subject: 'Geografia', bimonthly: ['A', 'ED', 'ED', null], absences: 2 }], feedback: 'João Pedro começou o ano com algumas dificuldades em se organizar, mas apresentou melhora neste último bimestre.', messages: [] },
+  { id: 1, classId: 1, enrollmentId: 'MAR002', password: '123', name: 'Mariana Santos', email: 'mariana.santos@escola.gov.br', level: 8, xp: 2100, nextLevelXp: 2500, coins: 650, streak: 21, avatar: '', status: 'Excelente', grade: 9.5, completedTrails: 4, subjectGrades: [{ subject: 'Matemática', grade: 9.5, xp: 1100, streak: 10 }, { subject: 'Português', grade: 9.5, xp: 1000, streak: 11 }], evaluations: [{ subject: 'Matemática', bimonthly: ['A', 'A', 'A', null], absences: 2 }, { subject: 'Português', bimonthly: ['A', 'ED', 'A', null], absences: 0 }, { subject: 'Ciências', bimonthly: ['A', 'A', 'ED', null], absences: 1 }], feedback: 'Mariana demonstra excelente compreensão matemática e avançou muito na leitura neste bimestre. É colaborativa e muito participativa nas aulas.', messages: [{ sender: 'teacher', text: 'Olá Mariana, parabéns pelas ótimas notas neste bimestre!', time: '10:00' }, { sender: 'student', text: 'Muito obrigada, professor!', time: '10:15' }] },
+  { id: 2, classId: 1, enrollmentId: 'ART001', password: '123', name: 'Arthur da Silva', email: 'arthur.silva@escola.gov.br', level: 7, xp: 1850, nextLevelXp: 2000, coins: 450, streak: 12, avatar: '', status: 'Excelente', grade: 8.8, completedTrails: 3, subjectGrades: [{ subject: 'Matemática', grade: 8.8, xp: 950, streak: 5 }, { subject: 'Ciências', grade: 8.8, xp: 900, streak: 7 }], evaluations: [{ subject: 'Matemática', bimonthly: ['A', 'ED', 'A', null], absences: 1 }, { subject: 'Português', bimonthly: ['ED', 'ED', 'A', null], absences: 2 }, { subject: 'Ciências', bimonthly: ['A', 'A', 'A', null], absences: 0 }], feedback: 'Arthur é curioso e adora ciências. Melhorou bastante sua concentração nas últimas semanas.', messages: [] },
+  { id: 3, classId: 1, enrollmentId: 'LUC003', password: '123', name: 'Lucas Oliveira', email: 'lucas.oliveira@escola.gov.br', level: 5, xp: 1200, nextLevelXp: 1500, coins: 200, streak: 4, avatar: '', status: 'Atenção', grade: 6.5, completedTrails: 1, subjectGrades: [{ subject: 'Matemática', grade: 6.0, xp: 500, streak: 1 }, { subject: 'Português', grade: 7.0, xp: 700, streak: 3 }], evaluations: [{ subject: 'Matemática', bimonthly: ['ED', 'NA', 'ED', null], absences: 6 }, { subject: 'Português', bimonthly: ['ED', 'ED', 'ED', null], absences: 5 }, { subject: 'Ciências', bimonthly: ['A', 'ED', 'A', null], absences: 2 }], feedback: 'Lucas precisa de mais atenção e apoio em matemática. Tem faltado um pouco mais que o normal, o que impacta no seu ritmo.', messages: [{ sender: 'teacher', text: 'Lucas, notei que faltou nas últimas aulas. Precisa de alguma ajuda com o material?', time: '09:30' }] },
+  { id: 4, classId: 2, enrollmentId: 'ENZ004', password: '123', name: 'Enzo Costa', email: 'enzo.costa@escola.gov.br', level: 3, xp: 500, nextLevelXp: 800, coins: 50, streak: 1, avatar: '', status: 'Em Risco', grade: 4.2, completedTrails: 0, subjectGrades: [{ subject: 'Geografia', grade: 4.2, xp: 500, streak: 1 }], evaluations: [{ subject: 'Matemática', bimonthly: ['NA', 'NA', 'NA', null], absences: 12 }, { subject: 'Geografia', bimonthly: ['ED', 'NA', 'NA', null], absences: 10 }], feedback: 'Enzo está com muitas faltas, o que prejudicou severamente seu aprendizado neste bimestre. A coordenação já foi acionada para contato com os responsáveis.', messages: [] },
+  { id: 5, classId: 2, enrollmentId: 'BEA005', password: '123', name: 'Beatriz Almeida', email: 'beatriz.almeida@escola.gov.br', level: 6, xp: 1600, nextLevelXp: 2000, coins: 300, streak: 8, avatar: '', status: 'Excelente', grade: 9.0, completedTrails: 2, subjectGrades: [{ subject: 'Geografia', grade: 9.0, xp: 1600, streak: 8 }], evaluations: [{ subject: 'Matemática', bimonthly: ['A', 'A', 'A', null], absences: 0 }, { subject: 'Geografia', bimonthly: ['A', 'A', 'A', null], absences: 0 }], feedback: 'Beatriz é uma aluna exemplar. Sempre disposta a ajudar os colegas.', messages: [] },
+  { id: 6, classId: 2, enrollmentId: 'JOA006', password: '123', name: 'João Pedro', email: 'joao.pedro@escola.gov.br', level: 4, xp: 950, nextLevelXp: 1200, coins: 150, streak: 2, avatar: '', status: 'Atenção', grade: 7.0, completedTrails: 1, subjectGrades: [{ subject: 'Geografia', grade: 7.0, xp: 950, streak: 2 }], evaluations: [{ subject: 'Matemática', bimonthly: ['ED', 'ED', 'A', null], absences: 4 }, { subject: 'Geografia', bimonthly: ['A', 'ED', 'ED', null], absences: 2 }], feedback: 'João Pedro começou o ano com algumas dificuldades em se organizar, mas apresentou melhora neste último bimestre.', messages: [] },
 ];
 
 export const TeacherStudentManager = () => {
-  const [classes, setClasses] = useState(MOCK_CLASSES);
+  const [classes, setClasses] = useState<any[]>(() => {
+    const saved = localStorage.getItem('gestao360_classes');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return MOCK_CLASSES;
+  });
+
   const [students, setStudents] = useState(() => {
     const saved = localStorage.getItem('gestao360_students');
-    return saved ? JSON.parse(saved) : MOCK_STUDENTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Garante que alunos salvos tenham enrollmentId padronizado e password
+        return parsed.map((s: any, idx: number) => ({
+          ...s,
+          enrollmentId: s.enrollmentId || generateEnrollmentCode(s.name, idx + 1),
+          password: s.password || '123'
+        }));
+      } catch (e) {
+        return MOCK_STUDENTS;
+      }
+    }
+    return MOCK_STUDENTS;
   });
 
   useEffect(() => {
+    localStorage.setItem('gestao360_classes', JSON.stringify(classes));
+    window.dispatchEvent(new CustomEvent('classes-updated'));
+  }, [classes]);
+
+  useEffect(() => {
     localStorage.setItem('gestao360_students', JSON.stringify(students));
+  }, [students]);
+
+  useEffect(() => {
+    const handleSelectStudent = (e: any) => {
+      const studentId = e.detail;
+      const found = students.find((s: any) => s.id === studentId || String(s.id) === String(studentId));
+      if (found) {
+        setSelectedStudent(found);
+      }
+    };
+    window.addEventListener('select-teacher-student', handleSelectStudent);
+    return () => window.removeEventListener('select-teacher-student', handleSelectStudent);
   }, [students]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [selectedClassId, setSelectedClassId] = useState<number | 'all'>('all');
   const [isNewStudentModalOpen, setIsNewStudentModalOpen] = useState(false);
-  const [newStudentData, setNewStudentData] = useState({ name: '', enrollmentId: '', classId: 1 });
+  const [newStudentData, setNewStudentData] = useState({ 
+    name: '', 
+    enrollmentId: '', 
+    classId: 1,
+    password: '123',
+    avatar: ''
+  });
+  const [isProcessingStudentPhoto, setIsProcessingStudentPhoto] = useState(false);
+  const newStudentPhotoInputRef = React.useRef<HTMLInputElement>(null);
+  const editStudentPhotoInputRef = React.useRef<HTMLInputElement>(null);
+  const [createdStudentCredentials, setCreatedStudentCredentials] = useState<any | null>(null);
+  const [copiedCredentials, setCopiedCredentials] = useState(false);
   const [isNewClassModalOpen, setIsNewClassModalOpen] = useState(false);
   const [newClassData, setNewClassData] = useState({ name: '', subjects: [] as string[] });
   const [editingClassId, setEditingClassId] = useState<number | null>(null);
-  const [subjectsList, setSubjectsList] = useState(MOCK_SUBJECTS);
+  const [subjectsList, setSubjectsList] = useState<any[]>(() => {
+    const saved = localStorage.getItem('gestao360_subjects');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) {}
+    }
+    return MOCK_SUBJECTS;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('gestao360_subjects', JSON.stringify(subjectsList));
+    window.dispatchEvent(new CustomEvent('subjects-updated'));
+  }, [subjectsList]);
+
+  const [inlineNewSubjectName, setInlineNewSubjectName] = useState('');
+
+  const handleQuickAddSubject = () => {
+    const trimmed = inlineNewSubjectName.trim();
+    if (!trimmed) return;
+    
+    let existing = subjectsList.find(s => s.name.toLowerCase() === trimmed.toLowerCase());
+    if (!existing) {
+      const colors = ['bg-indigo-500', 'bg-teal-500', 'bg-cyan-500', 'bg-fuchsia-500', 'bg-orange-500', 'bg-pink-500', 'bg-violet-500', 'bg-lime-500'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      existing = {
+        id: Date.now(),
+        name: trimmed,
+        color: randomColor
+      };
+      setSubjectsList(prev => [...prev, existing]);
+    }
+    
+    if (!newClassData.subjects.includes(existing.name)) {
+      setNewClassData(prev => ({
+        ...prev,
+        subjects: [...prev.subjects, existing.name]
+      }));
+    }
+    
+    setInlineNewSubjectName('');
+    showToast(`Disciplina "${existing.name}" incluída na turma!`, 'success');
+  };
   const [isNewSubjectModalOpen, setIsNewSubjectModalOpen] = useState(false);
   const [newSubjectData, setNewSubjectData] = useState({ name: '', color: 'bg-indigo-500' });
   const [toast, setToast] = useState<{show: boolean, message: string, type: 'success' | 'error' | 'info'}>({ show: false, message: '', type: 'success' });
@@ -97,6 +188,52 @@ export const TeacherStudentManager = () => {
       showToast('Turma excluída com sucesso!', 'success');
     }
     setDeleteConfirmation({ show: false, id: null });
+  };
+
+  const handleNewStudentPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsProcessingStudentPhoto(true);
+      const optimized = await optimizeAvatarImage(file, 360, 0.85);
+      setNewStudentData(prev => ({ ...prev, avatar: optimized }));
+      showToast('Foto do aluno anexada!', 'success');
+    } catch (err) {
+      showToast('Erro ao carregar foto do aluno', 'error');
+    } finally {
+      setIsProcessingStudentPhoto(false);
+      if (newStudentPhotoInputRef.current) newStudentPhotoInputRef.current.value = '';
+    }
+  };
+
+  const handleEditStudentPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedStudent) return;
+    try {
+      setIsProcessingStudentPhoto(true);
+      const optimized = await optimizeAvatarImage(file, 360, 0.85);
+      const updated = students.map(s => s.id === selectedStudent.id ? { ...s, avatar: optimized } : s);
+      setStudents(updated);
+      setSelectedStudent({ ...selectedStudent, avatar: optimized });
+      localStorage.setItem('gestao360_students', JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent('students-updated'));
+      showToast('Foto do aluno atualizada com sucesso!', 'success');
+    } catch (err) {
+      showToast('Erro ao carregar foto do aluno', 'error');
+    } finally {
+      setIsProcessingStudentPhoto(false);
+      if (editStudentPhotoInputRef.current) editStudentPhotoInputRef.current.value = '';
+    }
+  };
+
+  const handleResetSelectedStudentPhoto = () => {
+    if (!selectedStudent) return;
+    const updated = students.map(s => s.id === selectedStudent.id ? { ...s, avatar: '' } : s);
+    setStudents(updated);
+    setSelectedStudent({ ...selectedStudent, avatar: '' });
+    localStorage.setItem('gestao360_students', JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('students-updated'));
+    showToast('Ícone padrão do aluno restaurado!', 'success');
   };
   // Filtrar alunos pela turma selecionada e busca
   const classStudents = selectedClassId === 'all' 
@@ -154,10 +291,13 @@ export const TeacherStudentManager = () => {
               {/* Avatar & Info */}
               <div className={`flex flex-col items-center transition-transform duration-300 group-hover:-translate-y-2 ${isFirst ? 'mb-4' : 'mb-2'}`}>
                 {isFirst && <Star className="text-amber-400 mb-2 animate-[spin_4s_linear_infinite]" size={24} fill="currentColor" />}
-                <div className={`relative ${isFirst ? 'w-20 h-20' : 'w-16 h-16'} rounded-full p-1 bg-gradient-to-tr ${color} shadow-lg ${shadow}`}>
-                  <div className="w-full h-full rounded-full overflow-hidden border-2 border-white dark:border-neutral-900">
-                    <img src={student.avatar} alt={student.name} className="w-full h-full object-cover" />
-                  </div>
+                <div className={`relative ${isFirst ? 'w-20 h-20' : 'w-16 h-16'} rounded-full p-1 bg-gradient-to-tr ${color} shadow-lg ${shadow} flex items-center justify-center`}>
+                  <EducationAvatar 
+                    src={student.avatar} 
+                    name={student.name} 
+                    role="student" 
+                    size={isFirst ? 'lg' : 'md'} 
+                  />
                   <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center font-black text-sm shadow-sm border border-neutral-100 dark:border-neutral-700">
                     #{rank}
                   </div>
@@ -355,7 +495,12 @@ export const TeacherStudentManager = () => {
                   <td className="p-4 pl-6">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <img src={student.avatar} alt={student.name} className="w-10 h-10 rounded-full border border-neutral-200 dark:border-neutral-700 object-cover" />
+                        <EducationAvatar 
+                          src={student.avatar} 
+                          name={student.name} 
+                          role="student" 
+                          size="sm" 
+                        />
                         <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-indigo-500 rounded-full border-2 border-white dark:border-neutral-900 flex items-center justify-center text-[10px] font-black text-white">
                           {student.level}
                         </div>
@@ -417,6 +562,13 @@ export const TeacherStudentManager = () => {
           <div className="absolute inset-0 bg-neutral-900/40 dark:bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedStudent(null)}></div>
           
           <div className="relative w-full max-w-md h-full bg-white dark:bg-neutral-900 shadow-2xl border-l border-neutral-200/50 dark:border-neutral-800 animate-in slide-in-from-right duration-300 flex flex-col overflow-y-auto">
+            <input 
+              ref={editStudentPhotoInputRef}
+              type="file" 
+              accept="image/*" 
+              onChange={handleEditStudentPhoto} 
+              className="hidden" 
+            />
             
             {/* Header / Cover */}
             <div className="relative h-48 bg-gradient-to-br from-indigo-600 to-sky-600 p-6 flex flex-col justify-between shrink-0">
@@ -428,17 +580,39 @@ export const TeacherStudentManager = () => {
               </button>
               
               <div className="mt-auto flex items-end gap-4">
-                <div className="relative w-24 h-24 rounded-2xl bg-white p-1 shadow-xl -mb-12">
-                  <div className="w-full h-full rounded-xl overflow-hidden">
-                    <img src={selectedStudent.avatar} alt={selectedStudent.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="absolute -top-3 -right-3 w-8 h-8 bg-indigo-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center font-black text-white text-xs">
+                <div className="relative p-1 rounded-2xl bg-white dark:bg-neutral-800 shadow-xl -mb-12 flex items-center justify-center">
+                  <EducationAvatar 
+                    src={selectedStudent.avatar} 
+                    name={selectedStudent.name} 
+                    role="student" 
+                    size="xl" 
+                  />
+                  <div className="absolute -top-2 -right-2 w-7 h-7 bg-indigo-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center font-black text-white text-xs">
                     {selectedStudent.level}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => editStudentPhotoInputRef.current?.click()}
+                    disabled={isProcessingStudentPhoto}
+                    title="Alterar foto do aluno"
+                    className="absolute -bottom-2 -right-2 p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-md transition-transform hover:scale-110 active:scale-95 cursor-pointer"
+                  >
+                    <Camera size={14} />
+                  </button>
                 </div>
-                <div className="text-white pb-2">
-                  <h2 className="font-black text-2xl leading-none shadow-black/50 drop-shadow-md">{selectedStudent.name}</h2>
-                  <p className="font-medium text-indigo-100 text-sm mt-1">{selectedStudent.email}</p>
+                <div className="text-white pb-2 flex-1 min-w-0">
+                  <h2 className="font-black text-2xl leading-none shadow-black/50 drop-shadow-md truncate">{selectedStudent.name}</h2>
+                  <p className="font-medium text-indigo-100 text-sm mt-1 truncate">{selectedStudent.email}</p>
+                  {selectedStudent.avatar && (
+                    <button
+                      type="button"
+                      onClick={handleResetSelectedStudentPhoto}
+                      className="mt-2 text-[10px] font-bold text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded-md transition-colors inline-flex items-center gap-1 cursor-pointer"
+                    >
+                      <RotateCcw size={10} />
+                      Usar Ícone Padrão
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -591,7 +765,10 @@ export const TeacherStudentManager = () => {
           <div className="absolute inset-0 bg-neutral-900/60 backdrop-blur-sm" onClick={() => setIsNewStudentModalOpen(false)}></div>
           <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-8 w-full max-w-md relative shadow-2xl border border-neutral-100 dark:border-neutral-800 animate-in zoom-in-95 duration-300">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-black text-neutral-900 dark:text-white">Cadastrar Aluno</h3>
+              <div>
+                <h3 className="text-2xl font-black text-neutral-900 dark:text-white">Cadastrar Aluno</h3>
+                <p className="text-xs text-neutral-500 mt-0.5">A matrícula é gerada automaticamente no padrão oficial</p>
+              </div>
               <button 
                 onClick={() => setIsNewStudentModalOpen(false)}
                 className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 flex items-center justify-center transition-colors"
@@ -602,36 +779,143 @@ export const TeacherStudentManager = () => {
             
             <form className="space-y-4" onSubmit={(e) => {
               e.preventDefault();
-              showToast('Aluno cadastrado com sucesso!', 'success');
+              if (!newStudentData.name.trim()) {
+                showToast('Informe o nome do aluno', 'error');
+                return;
+              }
+
+              const finalCode = newStudentData.enrollmentId || generateEnrollmentCode(newStudentData.name, students.length + 1);
+              const finalPass = newStudentData.password || '123';
+
+              const newStudent = {
+                id: Date.now(),
+                classId: newStudentData.classId,
+                enrollmentId: finalCode,
+                password: finalPass,
+                name: newStudentData.name.trim(),
+                email: `${newStudentData.name.toLowerCase().replace(/[^a-z0-9]/g, '.')}@escola.gov.br`,
+                level: 1,
+                xp: 0,
+                nextLevelXp: 500,
+                coins: 50,
+                streak: 0,
+                avatar: newStudentData.avatar || '',
+                status: 'Excelente',
+                grade: 10,
+                completedTrails: 0,
+                subjectGrades: [],
+                evaluations: [],
+                feedback: 'Aluno matriculado com sucesso na rede municipal.',
+                messages: []
+              };
+
+              const updatedStudents = [newStudent, ...students];
+              setStudents(updatedStudents);
+              localStorage.setItem('gestao360_students', JSON.stringify(updatedStudents));
+              window.dispatchEvent(new CustomEvent('students-updated'));
+
               setIsNewStudentModalOpen(false);
-              setNewStudentData({ name: '', enrollmentId: '', classId: 1 });
+              setNewStudentData({ name: '', enrollmentId: '', classId: 1, password: '123', avatar: '' });
+              setCreatedStudentCredentials(newStudent);
+              showToast('Aluno cadastrado com sucesso!', 'success');
             }}>
+              {/* Foto ou Ícone Padrão */}
+              <input 
+                ref={newStudentPhotoInputRef}
+                type="file" 
+                accept="image/*" 
+                onChange={handleNewStudentPhoto} 
+                className="hidden" 
+              />
+              <div className="flex items-center gap-4 p-3 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+                <EducationAvatar 
+                  src={newStudentData.avatar} 
+                  name={newStudentData.name || 'Aluno'} 
+                  role="student" 
+                  size="md" 
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate">
+                    {newStudentData.avatar ? 'Foto personalizada anexada' : 'Ícone Padrão Escolar'}
+                  </p>
+                  <p className="text-[11px] text-neutral-400">Padrão institucional ou foto do aluno</p>
+                  <div className="flex gap-2 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() => newStudentPhotoInputRef.current?.click()}
+                      disabled={isProcessingStudentPhoto}
+                      className="px-2.5 py-1 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Camera size={13} />
+                      {newStudentData.avatar ? 'Trocar Foto' : 'Adicionar Foto'}
+                    </button>
+                    {newStudentData.avatar && (
+                      <button
+                        type="button"
+                        onClick={() => setNewStudentData(prev => ({ ...prev, avatar: '' }))}
+                        className="px-2 py-1 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 text-neutral-700 dark:text-neutral-300 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <RotateCcw size={12} />
+                        Ícone Padrão
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Nome Completo</label>
+                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Nome Completo do Aluno</label>
                 <input 
                   type="text" 
                   required
                   value={newStudentData.name}
-                  onChange={(e) => setNewStudentData({...newStudentData, name: e.target.value})}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    const autoCode = generateEnrollmentCode(name, students.length + 1);
+                    setNewStudentData({
+                      ...newStudentData,
+                      name,
+                      enrollmentId: autoCode
+                    });
+                  }}
                   className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-medium text-neutral-900 dark:text-white"
-                  placeholder="Ex: João Silva"
+                  placeholder="Ex: Arthur da Silva"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Matrícula</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300">
+                    🎟️ Matrícula (3 Letras + 3 Dígitos)
+                  </label>
+                  <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md">Automática</span>
+                </div>
                 <input 
                   type="text" 
                   required
                   value={newStudentData.enrollmentId}
-                  onChange={(e) => setNewStudentData({...newStudentData, enrollmentId: e.target.value})}
-                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-medium text-neutral-900 dark:text-white"
-                  placeholder="Ex: 2023001"
+                  onChange={(e) => setNewStudentData({...newStudentData, enrollmentId: e.target.value.toUpperCase()})}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest text-lg"
+                  placeholder="Ex: ART001"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Turma</label>
+                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                  🔑 Senha Inicial de Acesso
+                </label>
+                <input 
+                  type="text" 
+                  required
+                  value={newStudentData.password}
+                  onChange={(e) => setNewStudentData({...newStudentData, password: e.target.value})}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all font-bold text-neutral-900 dark:text-white"
+                  placeholder="Padrão: 123"
+                />
+                <p className="text-[11px] text-neutral-400 mt-1">O aluno usará esta senha no Portal da Educação.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-neutral-700 dark:text-neutral-300 mb-1">Turma de Destino</label>
                 <select 
                   value={newStudentData.classId}
                   onChange={(e) => setNewStudentData({...newStudentData, classId: Number(e.target.value)})}
@@ -647,18 +931,80 @@ export const TeacherStudentManager = () => {
                 <button 
                   type="button"
                   onClick={() => setIsNewStudentModalOpen(false)}
-                  className="flex-1 py-3 px-4 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold rounded-xl transition-colors"
+                  className="flex-1 py-3 px-4 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 transition-colors"
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 transition-all cursor-pointer"
                 >
-                  Cadastrar
+                  Gerar Matrícula
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Comprovante de Credenciais Criadas */}
+      {createdStudentCredentials && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-neutral-900/70 backdrop-blur-md" onClick={() => setCreatedStudentCredentials(null)}></div>
+          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-8 w-full max-w-md relative shadow-2xl border-2 border-indigo-500/30 animate-in zoom-in-95 duration-300 text-center">
+            <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
+              <CheckCircle2 size={36} />
+            </div>
+
+            <h3 className="text-2xl font-black text-neutral-900 dark:text-white">Credenciais Geradas!</h3>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 mb-6">
+              Entregue estas informações ao aluno ou responsável para acessar o Portal da Educação:
+            </p>
+
+            {/* Cartão de Credenciais estilo Crachá */}
+            <div className="p-6 bg-gradient-to-br from-indigo-50 via-sky-50 to-purple-50 dark:from-neutral-800/80 dark:to-neutral-900/80 rounded-2xl border border-indigo-200/50 dark:border-indigo-800/50 text-left space-y-4 shadow-inner mb-6">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Aluno</span>
+                <p className="text-base font-black text-neutral-900 dark:text-white">{createdStudentCredentials.name}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-neutral-200/50 dark:border-neutral-700/50">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">🎟️ Matrícula</span>
+                  <p className="text-2xl font-black text-indigo-700 dark:text-indigo-300 tracking-wider">{createdStudentCredentials.enrollmentId}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">🔑 Senha</span>
+                  <p className="text-2xl font-black text-emerald-700 dark:text-emerald-300 tracking-wider">{createdStudentCredentials.password}</p>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-neutral-200/50 dark:border-neutral-700/50">
+                <span className="text-[10px] font-bold text-neutral-500">Link de Acesso: <span className="font-semibold text-neutral-700 dark:text-neutral-300">/educacao</span></span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => {
+                  const text = `*PORTAL DA EDUCAÇÃO 360*\nAluno: ${createdStudentCredentials.name}\nMatrícula: ${createdStudentCredentials.enrollmentId}\nSenha: ${createdStudentCredentials.password}\nAcesse: /educacao`;
+                  navigator.clipboard.writeText(text);
+                  setCopiedCredentials(true);
+                  showToast('Credenciais copiadas!', 'success');
+                  setTimeout(() => setCopiedCredentials(false), 2500);
+                }}
+                className="flex-1 py-3 px-4 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {copiedCredentials ? <Check size={18} className="text-emerald-500" /> : <Copy size={18} />}
+                <span>{copiedCredentials ? 'Copiado!' : 'Copiar Dados'}</span>
+              </button>
+              <button 
+                onClick={() => setCreatedStudentCredentials(null)}
+                className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 transition-all cursor-pointer"
+              >
+                Concluir
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -733,6 +1079,35 @@ export const TeacherStudentManager = () => {
                       </div>
                     </label>
                   ))}
+                </div>
+
+                {/* Inserir Outra Disciplina Diretamente na Criação da Turma */}
+                <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <label className="block text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
+                    Adicionar Outra Disciplina à Turma
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Ex: Robótica, Inglês, Filosofia..."
+                      value={inlineNewSubjectName}
+                      onChange={(e) => setInlineNewSubjectName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleQuickAddSubject();
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium text-neutral-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleQuickAddSubject}
+                      className="px-3.5 py-2 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 font-bold text-xs rounded-xl transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={14} /> Adicionar
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -837,8 +1212,13 @@ export const TeacherStudentManager = () => {
             {/* Header */}
             <div className="shrink-0 border-b border-neutral-100 dark:border-neutral-800 p-6 flex justify-between items-start bg-neutral-50/50 dark:bg-neutral-900/50">
               <div className="flex gap-4 items-center">
-                <div className="w-16 h-16 rounded-2xl bg-white dark:bg-neutral-800 shadow-sm border border-neutral-200 dark:border-neutral-700 p-1">
-                  <img src={reportCardStudent.avatar} alt={reportCardStudent.name} className="w-full h-full rounded-xl object-cover" />
+                <div className="w-16 h-16 rounded-2xl bg-white dark:bg-neutral-800 shadow-sm border border-neutral-200 dark:border-neutral-700 p-1 flex items-center justify-center">
+                  <EducationAvatar 
+                    src={reportCardStudent.avatar} 
+                    name={reportCardStudent.name} 
+                    role="student" 
+                    size="lg" 
+                  />
                 </div>
                 <div>
                   <h2 className="text-2xl font-black text-neutral-900 dark:text-white leading-none mb-1">{reportCardStudent.name}</h2>

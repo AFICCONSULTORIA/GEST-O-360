@@ -9,7 +9,8 @@ import {
   Play, 
   Award, 
   User,
-  Target
+  Target,
+  Flame
 } from 'lucide-react';
 import { Course } from '../StudentPortal';
 
@@ -19,6 +20,11 @@ interface StudentDashboardProps {
   setActiveView: (view: any) => void;
   handleAccessCourse: (course: Course) => void;
   handleStartLesson: (lesson: any) => void;
+  studentData?: {
+    streak: number;
+    hasPracticedToday?: boolean;
+    streakFreezes?: number;
+  };
 }
 
 const ONLINE_FRIENDS = [
@@ -33,6 +39,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   setActiveView,
   handleAccessCourse,
   handleStartLesson,
+  studentData,
 }) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [activeFriendId, setActiveFriendId] = useState<number | null>(null);
@@ -85,6 +92,59 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
           </div>
         </div>
       </section>
+
+      {/* Card de Ofensiva Diária Estilo Duolingo (Aceso vs Apagado) */}
+      {studentData && (
+        <section className={`rounded-[28px] p-5 md:p-6 border transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm ${
+          studentData.hasPracticedToday
+            ? 'bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/5 border-orange-200 dark:border-orange-500/30 dark:bg-orange-950/20'
+            : 'bg-neutral-100/90 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800'
+        }`}>
+          <div className="flex items-center gap-4 w-full sm:w-auto">
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
+              studentData.hasPracticedToday
+                ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/30 ring-4 ring-orange-500/20'
+                : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500'
+            }`}>
+              <Flame size={28} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "animate-pulse" : "opacity-60"} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-lg text-neutral-900 dark:text-white">
+                  {studentData.hasPracticedToday 
+                    ? `Ofensiva em Chamas! (${studentData.streak} dias)` 
+                    : `Sua Ofensiva está em Espera (${studentData.streak} dias)`}
+                </h3>
+                {studentData.hasPracticedToday ? (
+                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center gap-1">
+                    Meta Cumprida 🔥
+                  </span>
+                ) : (
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                    Fogo Apagado 🕯️
+                  </span>
+                )}
+              </div>
+              <p className="text-xs md:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
+                {studentData.hasPracticedToday 
+                  ? 'Você já completou a primeira atividade de hoje e manteve sua sequência. Volte amanhã para continuar!' 
+                  : 'Complete a primeira atividade do dia para acender a chama e somar mais um dia à sua sequência!'}
+              </p>
+            </div>
+          </div>
+          
+          <button 
+            onClick={() => setActiveView('courses')}
+            className={`px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider shrink-0 transition-all cursor-pointer whitespace-nowrap w-full sm:w-auto text-center ${
+              studentData.hasPracticedToday
+                ? 'bg-orange-100 hover:bg-orange-200 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 text-orange-700 dark:text-orange-300'
+                : 'bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-500/20 hover:scale-105 active:scale-95'
+            }`}
+          >
+            {studentData.hasPracticedToday ? 'Explorar Trilhas' : 'Praticar para Acender 🔥'}
+          </button>
+        </section>
+      )}
 
       {/* Bento Grid Content */}
       {/* Desafio do Dia */}

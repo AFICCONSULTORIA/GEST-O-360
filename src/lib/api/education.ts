@@ -10,6 +10,7 @@ export interface StudentData {
   xp: number;
   coins: number;
   streak: number;
+  password?: string;
 }
 
 export interface QuizQuestion {
@@ -49,33 +50,137 @@ export interface Course {
   description: string;
   color: 'emerald' | 'sky' | 'rose' | 'amber' | 'purple';
   icon: string;
+  target_classes?: string[];
   modules: Module[];
 }
 
 /**
- * Busca o aluno pelo código de matrícula (Login de Aluno)
+ * Gera código de matrícula padronizado:
+ * 3 primeiras letras do nome (em maiúsculas, sem acentos) + ordem numérica com 3 dígitos (ex: ART001, MAR002)
  */
-export async function loginStudent(enrollmentCode: string, institutionId?: string): Promise<StudentData | null> {
-  if (!enrollmentCode) return null;
+export function generateEnrollmentCode(name: string, sequenceNumber: number = 1): string {
+  if (!name || typeof name !== 'string') {
+    return `ALU${String(sequenceNumber).padStart(3, '0')}`;
+  }
+
+  // Remove acentos e caracteres especiais, converte para maiúsculo
+  const cleanName = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z]/g, '')
+    .toUpperCase();
+
+  const prefix = (cleanName.slice(0, 3) || 'ALU').padEnd(3, 'X');
+  const seqStr = String(Math.max(1, sequenceNumber)).padStart(3, '0');
+  return `${prefix}${seqStr}`;
+}
+
+export const DEFAULT_DEMO_STUDENTS = [
+  { id: '2', enrollment_code: 'ART001', name: 'Arthur da Silva', level: 7, title: 'Explorador Nível 7 ⚡', xp: 1850, coins: 450, streak: 12, password: '123' },
+  { id: '1', enrollment_code: 'MAR002', name: 'Mariana Santos', level: 8, title: 'Mestre da Leitura 📚', xp: 2100, coins: 650, streak: 21, password: '123' },
+  { id: '3', enrollment_code: 'LUC003', name: 'Lucas Oliveira', level: 5, title: 'Desbravador Cósmico 🚀', xp: 1200, coins: 200, streak: 4, password: '123' },
+  { id: '4', enrollment_code: 'ENZ004', name: 'Enzo Costa', level: 3, title: 'Iniciante Curioso 🌱', xp: 500, coins: 50, streak: 1, password: '123' },
+  { id: '5', enrollment_code: 'BEA005', name: 'Beatriz Almeida', level: 6, title: 'Guardiã dos Desafios 🛡️', xp: 1600, coins: 300, streak: 8, password: '123' },
+  { id: '6', enrollment_code: 'JOA006', name: 'João Pedro', level: 4, title: 'Aventureiro Nato ⚔️', xp: 950, coins: 150, streak: 2, password: '123' }
+];
+
+export interface LoginResult {
+  success: boolean;
+  student?: StudentData;
+  error?: 'NOT_FOUND' | 'INVALID_PASSWORD' | 'UNKNOWN';
+}
+
+/**
+ * Busca o aluno pelo código de matrícula e valida a senha
+ */
+export async function loginStudent(
+  enrollmentCode: string, 
+  password?: string, 
+  institutionId?: string
+): Promise<LoginResult> {
+  if (!enrollmentCode) return { success: false, error: 'NOT_FOUND' };
+
+  const cleanCode = enrollmentCode.trim().toUpperCase();
+  const cleanPass = password?.trim() || '';
 
   try {
-    const query = supabase.from('edu_students').select('*').eq('enrollment_code', enrollmentCode);
+    // 1. Tenta buscar no Supabase
+    let query = supabase.from('edu_students').select('*').eq('enrollment_code', cleanCode);
     if (institutionId) {
-      query.eq('institution_id', institutionId);
+      query = query.eq('institution_id', institutionId);
     }
     
     const { data: student, error } = await query.single();
 
-    if (error) {
-      console.error('Error logging in student:', error);
-      return null;
+    if (!error && student) {
+      const expectedPassword = student.password || '123';
+      if (cleanPass && cleanPass !== expectedPassword) {
+        return { success: false, error: 'INVALID_PASSWORD' };
+      }
+      return { success: true, student: student as StudentData };
     }
-
-    return student as StudentData;
   } catch (err) {
-    console.error('Unexpected error in loginStudent:', err);
-    return null;
+    console.warn('Supabase não disponível no momento, usando fallback local de alunos:', err);
   }
+
+  // 2. Fallback no banco local (localStorage gestao360_students)
+  try {
+    const saved = localStorage.getItem('gestao360_students');
+    if (saved) {
+      const localList = JSON.parse(saved);
+      const found = localList.find((s: any) => 
+        (s.enrollmentId && s.enrollmentId.toUpperCase() === cleanCode) ||
+        (s.enrollment_code && s.enrollment_code.toUpperCase() === cleanCode)
+      );
+
+      if (found) {
+        const expectedPassword = found.password || '123';
+        if (cleanPass && cleanPass !== expectedPassword) {
+          return { success: false, error: 'INVALID_PASSWORD' };
+        }
+        return {
+          success: true,
+          student: {
+            id: String(found.id),
+            enrollment_code: cleanCode,
+            name: found.name,
+            level: found.level || 1,
+            title: found.title || 'Explorador Aprendiz',
+            xp: found.xp || 0,
+            coins: found.coins || 0,
+            streak: found.streak || 0,
+            password: expectedPassword
+          }
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Erro ao ler gestao360_students:', e);
+  }
+
+  // 3. Fallback final nos Alunos Modelo Demo
+  const demoMatch = DEFAULT_DEMO_STUDENTS.find(s => s.enrollment_code === cleanCode);
+  if (demoMatch) {
+    if (cleanPass && cleanPass !== demoMatch.password) {
+      return { success: false, error: 'INVALID_PASSWORD' };
+    }
+    return {
+      success: true,
+      student: {
+        id: demoMatch.id,
+        enrollment_code: demoMatch.enrollment_code,
+        name: demoMatch.name,
+        level: demoMatch.level,
+        title: demoMatch.title,
+        xp: demoMatch.xp,
+        coins: demoMatch.coins,
+        streak: demoMatch.streak,
+        password: demoMatch.password
+      }
+    };
+  }
+
+  return { success: false, error: 'NOT_FOUND' };
 }
 
 /**

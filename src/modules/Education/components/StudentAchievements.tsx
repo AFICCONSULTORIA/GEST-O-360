@@ -19,6 +19,7 @@ interface StudentAchievementsProps {
     highestStreak?: number;
     coins?: number;
     weeklyActivity?: boolean[];
+    hasPracticedToday?: boolean;
   };
 }
 
@@ -153,15 +154,34 @@ export const StudentAchievements: React.FC<StudentAchievementsProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           
-          {/* Streak Widget */}
+          {/* Streak Widget estilo Duolingo */}
           <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col sm:flex-row items-center gap-6">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-orange-50 dark:bg-orange-500/10 text-orange-500 flex items-center justify-center shrink-0">
-                <Flame size={28} fill="currentColor" />
+              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-300 ${
+                studentData.hasPracticedToday
+                  ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/30 ring-4 ring-orange-500/20'
+                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 ring-4 ring-neutral-200/50 dark:ring-neutral-700/50'
+              }`}>
+                <Flame size={28} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "animate-pulse" : "opacity-60"} />
               </div>
               <div>
-                <p className="text-3xl font-black text-neutral-900 dark:text-white">{studentData.streak || 0} dias</p>
-                <p className="text-sm font-bold text-neutral-500">Sequência de Estudos 🔥</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-3xl font-black text-neutral-900 dark:text-white">{studentData.streak || 0} dias</p>
+                  {studentData.hasPracticedToday ? (
+                    <span className="text-xs font-black px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400">
+                      Fogo Aceso 🔥
+                    </span>
+                  ) : (
+                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
+                      Apagado 🕯️
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-bold text-neutral-500">
+                  {studentData.hasPracticedToday 
+                    ? 'Meta de hoje cumprida com sucesso!' 
+                    : 'Faça uma atividade hoje para acender o fogo!'}
+                </p>
               </div>
             </div>
             <div className="flex-1 w-full">
@@ -170,11 +190,11 @@ export const StudentAchievements: React.FC<StudentAchievementsProps> = ({
               </div>
               <div className="flex gap-1.5">
                 {(studentData.weeklyActivity || [false, false, false, false, false, false, false]).map((active, i) => (
-                  <div key={i} className={`flex-1 h-8 rounded-lg transition-all ${active ? 'bg-orange-400 shadow-sm shadow-orange-400/30' : 'bg-neutral-100 dark:bg-neutral-800'}`}></div>
+                  <div key={i} className={`flex-1 h-8 rounded-lg transition-all ${active ? 'bg-orange-500 shadow-sm shadow-orange-500/30' : 'bg-neutral-100 dark:bg-neutral-800'}`}></div>
                 ))}
               </div>
             </div>
-            <div className="bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-600 dark:text-orange-400 text-xs font-black px-4 py-2.5 rounded-xl shrink-0">
+            <div className="bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-600 dark:text-orange-400 text-xs font-black px-4 py-2.5 rounded-xl shrink-0 text-center">
               Recorde: {studentData.highestStreak || 0} dias!
             </div>
           </div>

@@ -4,7 +4,7 @@ import {
   GraduationCap, BookOpen, Brain, Star, Award, 
   ArrowRight, ChevronLeft, ChevronRight, PlayCircle, 
   FileText, CheckCircle2, User, Users, BookMarked, MonitorPlay,
-  School, Lock, Loader2, Sparkles, Baby
+  School, Lock, Loader2, Sparkles, Baby, Key, Eye, EyeOff, AlertCircle
 } from 'lucide-react';
 import { StudentPortal } from './StudentPortal';
 import { TeacherDashboard } from './TeacherDashboard';
@@ -55,6 +55,9 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
   // Student Login State
   const [loginPhase, setLoginPhase] = useState<'idle' | 'loading' | 'exploding'>('idle');
   const [enrollmentCode, setEnrollmentCode] = useState('');
+  const [studentPassword, setStudentPassword] = useState('');
+  const [showStudentPassword, setShowStudentPassword] = useState(false);
+  const [studentLoginError, setStudentLoginError] = useState<string | null>(null);
 
   // Teacher Login State
   const [isTeacherLoggingIn, setIsTeacherLoggingIn] = useState(false);
@@ -71,17 +74,25 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
     e.preventDefault();
     if (!enrollmentCode) return;
     
+    setStudentLoginError(null);
     setLoginPhase('loading');
     
-    const student = await loginStudent(enrollmentCode, currentInstitution?.id);
-    if (!student) {
-      alert("Código de matrícula inválido ou não encontrado!");
+    const result = await loginStudent(enrollmentCode, studentPassword, currentInstitution?.id);
+    if (!result.success || !result.student) {
       setLoginPhase('idle');
+      if (result.error === 'INVALID_PASSWORD') {
+        setStudentLoginError('Senha incorreta! Verifique os dígitos e tente novamente.');
+      } else {
+        setStudentLoginError('Matrícula não encontrada! Verifique o código (ex: ART001).');
+      }
       return;
     }
 
+    const student = result.student;
     // Armazena a sessão do aluno localmente
     localStorage.setItem('edu_student_id', student.id);
+    localStorage.setItem('edu_student_name', student.name);
+    localStorage.setItem('edu_student_code', student.enrollment_code);
     
     setTimeout(() => {
       setLoginPhase('exploding');
@@ -377,26 +388,81 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                   <p className="text-amber-600/80 dark:text-amber-400/80 mt-2 font-bold text-lg">Pronto para a aventura? 🚀</p>
                 </div>
 
-                <form onSubmit={handleStudentLogin} className="space-y-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">🎟️ Código de Matrícula</label>
+                <form onSubmit={handleStudentLogin} className="space-y-5">
+                  {studentLoginError && (
+                    <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl flex items-start gap-3 text-rose-700 dark:text-rose-300 text-xs font-bold animate-in fade-in slide-in-from-top-2">
+                      <AlertCircle size={18} className="shrink-0 text-rose-500 mt-0.5" />
+                      <span>{studentLoginError}</span>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">
+                      🎟️ Código de Matrícula
+                    </label>
                     <div className="relative group">
-                      <User size={24} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                      <User size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
                       <input 
                         type="text" 
                         required
                         value={enrollmentCode}
-                        onChange={(e) => setEnrollmentCode(e.target.value.toUpperCase())}
-                        placeholder="Ex: ALUNO123"
+                        onChange={(e) => {
+                          setEnrollmentCode(e.target.value.toUpperCase());
+                          if (studentLoginError) setStudentLoginError(null);
+                        }}
+                        placeholder="Ex: ART001"
                         className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner uppercase"
                       />
                     </div>
                   </div>
 
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">
+                      🔑 Senha de Acesso
+                    </label>
+                    <div className="relative group">
+                      <Key size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                      <input 
+                        type={showStudentPassword ? "text" : "password"} 
+                        required
+                        value={studentPassword}
+                        onChange={(e) => {
+                          setStudentPassword(e.target.value);
+                          if (studentLoginError) setStudentLoginError(null);
+                        }}
+                        placeholder="••••••"
+                        className="w-full pl-14 pr-14 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowStudentPassword(!showStudentPassword)}
+                        className="absolute right-5 top-1/2 -translate-y-1/2 text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 p-1"
+                      >
+                        {showStudentPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Atalho Demo Aluno */}
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEnrollmentCode('ART001');
+                        setStudentPassword('123');
+                        setStudentLoginError(null);
+                      }}
+                      className="w-full py-2.5 px-4 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-amber-700 dark:text-amber-300 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.01]"
+                    >
+                      <Sparkles size={14} className="text-amber-500 animate-spin" style={{ animationDuration: '6s' }} />
+                      <span>Preencher Aluno Demo: <strong>ART001</strong> (Senha: 123)</span>
+                    </button>
+                  </div>
+
                   <button 
                     type="submit"
                     disabled={loginPhase !== 'idle'}
-                    className="w-full mt-8 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 text-white py-5 rounded-3xl font-black text-xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 overflow-hidden relative group"
+                    className="w-full mt-4 bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500 text-white py-5 rounded-3xl font-black text-xl shadow-xl shadow-orange-500/30 hover:shadow-orange-500/50 hover:-translate-y-1 hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 overflow-hidden relative group cursor-pointer"
                   >
                     <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjUpIi8+PC9zdmc+')] opacity-0 group-hover:opacity-30 transition-opacity animate-[spin_10s_linear_infinite]" />
                     <span className="relative z-10">Entrar no Portal</span>
@@ -429,7 +495,7 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
           
           <button 
             onClick={() => setActiveTab('home')}
-            className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-neutral-500 hover:text-indigo-600 dark:hover:text-indigo-400 shadow-sm border border-neutral-100 dark:border-neutral-700 transition-colors mb-6"
+            className="w-10 h-10 rounded-full bg-white dark:bg-neutral-800 flex items-center justify-center text-neutral-500 hover:text-indigo-600 dark:hover:text-indigo-400 shadow-sm border border-neutral-100 dark:border-neutral-700 transition-colors mb-6 cursor-pointer"
           >
             <ChevronLeft size={20} />
           </button>
@@ -442,7 +508,7 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
             <p className="text-neutral-500 dark:text-neutral-400 mt-2 font-medium">Faça login para acessar o painel</p>
           </div>
 
-          <form onSubmit={handleTeacherLogin} className="space-y-5">
+          <form onSubmit={handleTeacherLogin} className="space-y-4">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">E-mail Profissional</label>
               <div className="relative">
@@ -452,7 +518,7 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                   required
                   value={teacherEmail}
                   onChange={(e) => setTeacherEmail(e.target.value)}
-                  placeholder="seu.email@escola.com.br"
+                  placeholder="carlos@escola.gov.br"
                   className="w-full pl-12 pr-4 py-4 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal shadow-inner"
                 />
               </div>
@@ -473,16 +539,25 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
               </div>
             </div>
 
-            <div className="flex justify-end px-2">
-              <button type="button" className="text-sm font-bold text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
-                Esqueceu a senha?
+            {/* Atalho Demo Educador */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setTeacherEmail('carlos@escola.gov.br');
+                  setTeacherPassword('123');
+                }}
+                className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.01]"
+              >
+                <Sparkles size={14} className="text-indigo-500" />
+                <span>Preencher Educador Demo: <strong>carlos@escola.gov.br</strong> (Senha: 123)</span>
               </button>
             </div>
 
             <button 
               type="submit"
               disabled={isTeacherLoggingIn}
-              className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-1 active:scale-95 transition-all flex justify-center items-center gap-2"
+              className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-1 active:scale-95 transition-all flex justify-center items-center gap-2 cursor-pointer"
             >
               {isTeacherLoggingIn ? (
                 <>
