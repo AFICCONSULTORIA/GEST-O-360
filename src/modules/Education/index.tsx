@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  GraduationCap, Baby, Vote 
+  GraduationCap, Baby, Vote, Users 
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationVotingAdmin } from './components/EducationVotingAdmin';
+import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 
 export const EducationModule: React.FC = () => {
-  const [educationView, setEducationView] = useState<'creche' | 'votacao'>('creche');
+  const [educationView, setEducationView] = useState<'staff' | 'creche' | 'votacao'>('staff');
 
   const navigationTabs = [
+    { id: 'staff', label: 'Professores & Coordenadores', icon: Users },
     { id: 'creche', label: 'Vagas CMEI', icon: Baby },
     { id: 'votacao', label: 'Eleição de Diretores', icon: Vote },
   ] as const;
@@ -20,7 +22,7 @@ export const EducationModule: React.FC = () => {
       <div className="bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center">
+            <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
               <GraduationCap size={32} />
             </div>
             <div>
@@ -28,7 +30,7 @@ export const EducationModule: React.FC = () => {
                 Secretaria de <span className="text-neutral-400 font-normal">Educação</span>
               </h2>
               <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
-                Gestão Integrada de Recursos, Rede Escolar, Logística e Controle Social.
+                Gestão Integrada de Educadores, Escolas, Rede de Ensino e Controle Social.
               </p>
             </div>
           </div>
@@ -54,6 +56,18 @@ export const EducationModule: React.FC = () => {
 
       {/* Main Content Area with Transitions */}
       <AnimatePresence mode="wait">
+        {educationView === 'staff' && (
+          <motion.div 
+            key="staff"
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }} 
+            transition={{ duration: 0.2 }}
+          >
+            <EducationStaffAdmin />
+          </motion.div>
+        )}
+
         {educationView === 'creche' && (
           <motion.div 
             key="creche"

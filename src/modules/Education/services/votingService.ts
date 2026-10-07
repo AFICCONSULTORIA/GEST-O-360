@@ -1038,3 +1038,5 @@ if (typeof window !== 'undefined') {
     console.warn('[VotingService] Falha inicial ao sincronizar com nuvem:', err);
   });
 }
+
+export const votingService = VotingService;

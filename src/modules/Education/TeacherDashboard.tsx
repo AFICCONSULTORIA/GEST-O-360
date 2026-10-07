@@ -62,20 +62,27 @@ import { SupportCommunityManager } from './SupportCommunityManager';
 import { SupportTicketsManager } from './SupportTicketsManager';
 import { TeacherInterventionPlan } from './TeacherInterventionPlan';
 import { TeacherTrainingCenter } from './TeacherTrainingCenter';
+import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
 
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt' | 'profile'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt' | 'profile' | 'staff-mgmt'>('dashboard');
   const [activeSupportTab, setActiveSupportTab] = useState<'home' | 'articles' | 'tutorials' | 'community' | 'tickets'>('home');
   const [selectedArticleCategory, setSelectedArticleCategory] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // --- Teacher Profile & Settings State ---
   const [teacherPhoto, setTeacherPhoto] = useState<string>(() => localStorage.getItem('gestao360_teacher_photo') || '');
-  const [teacherName, setTeacherName] = useState<string>(() => localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos');
-  const [teacherEmail, setTeacherEmail] = useState<string>(() => localStorage.getItem('gestao360_teacher_email') || 'carlos@escola.gov.br');
-  const [teacherSubject, setTeacherSubject] = useState<string>(() => localStorage.getItem('gestao360_teacher_subject') || 'Matemática');
+  const [teacherName, setTeacherName] = useState<string>(() => localStorage.getItem('gestao360_teacher_name') || 'Educador(a)');
+  const [teacherEmail, setTeacherEmail] = useState<string>(() => localStorage.getItem('gestao360_teacher_email') || 'educador@escola.gov.br');
+  const [teacherSubject, setTeacherSubject] = useState<string>(() => localStorage.getItem('gestao360_teacher_subject') || 'Ensino Fundamental');
+  const [teacherRole, setTeacherRole] = useState<'teacher' | 'coordinator'>(() => {
+    return (localStorage.getItem('gestao360_teacher_role') as any) || 'teacher';
+  });
+  const [teacherSchool, setTeacherSchool] = useState<string>(() => {
+    return localStorage.getItem('gestao360_teacher_school') || 'Rede Municipal';
+  });
 
   const [formTeacherName, setFormTeacherName] = useState(teacherName);
   const [formTeacherEmail, setFormTeacherEmail] = useState(teacherEmail);
@@ -249,14 +256,25 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
       }
     };
 
+    const handleTeacherUpdated = () => {
+      setTeacherName(localStorage.getItem('gestao360_teacher_name') || 'Educador(a)');
+      setTeacherEmail(localStorage.getItem('gestao360_teacher_email') || 'educador@escola.gov.br');
+      setTeacherSubject(localStorage.getItem('gestao360_teacher_subject') || 'Ensino Fundamental');
+      setTeacherPhoto(localStorage.getItem('gestao360_teacher_photo') || '');
+      setTeacherRole((localStorage.getItem('gestao360_teacher_role') as any) || 'teacher');
+      setTeacherSchool(localStorage.getItem('gestao360_teacher_school') || 'Rede Municipal');
+    };
+
     window.addEventListener('open-teacher-chat', handleOpenChat);
     window.addEventListener('students-updated', handleStudentsUpdated);
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('teacher-updated', handleTeacherUpdated);
 
     return () => {
       window.removeEventListener('open-teacher-chat', handleOpenChat);
       window.removeEventListener('students-updated', handleStudentsUpdated);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('teacher-updated', handleTeacherUpdated);
     };
   }, []);
 
@@ -397,11 +415,28 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
           </div>
 
           <h2 className="font-black text-lg text-neutral-900 dark:text-white text-center">{teacherName}</h2>
-          <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mt-1">{teacherSubject}</p>
+          <div className="flex items-center justify-center gap-1.5 mt-1 flex-wrap">
+            <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
+              teacherRole === 'coordinator' 
+                ? 'bg-purple-100 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50' 
+                : 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/50'
+            }`}>
+              {teacherRole === 'coordinator' ? 'Coordenador(a)' : 'Professor(a)'}
+            </span>
+            <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">{teacherSubject}</span>
+          </div>
+          <p className="text-[11px] text-neutral-400 text-center font-medium mt-0.5 truncate max-w-full px-2">{teacherSchool}</p>
         </div>
 
         {/* Navigation Links */}
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+          <button
+            onClick={() => setActiveView('staff-mgmt')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'staff-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <Users size={20} className={activeView !== 'staff-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Equipe Pedagógica</span>
+          </button>
           <button
             onClick={() => setActiveView('student-portal-mgmt')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'student-portal-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
@@ -471,6 +506,12 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
 
         {activeView === 'student-mgmt' && (
           <TeacherStudentManager />
+        )}
+
+        {activeView === 'staff-mgmt' && (
+          <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8">
+            <EducationStaffAdmin schoolFilter={teacherRole === 'coordinator' ? teacherSchool : undefined} isTeacherPortal={true} />
+          </div>
         )}
 
         {activeView === 'profile' && (
