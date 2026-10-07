@@ -226,14 +226,30 @@ export async function fetchCoursesWithProgress(studentId?: string, institutionId
     let progressMap: Record<string, boolean> = {};
 
     if (studentId) {
-      const { data: progressData } = await supabase
-        .from('edu_student_progress')
-        .select('lesson_id')
-        .eq('student_id', studentId);
-        
-      if (progressData) {
-        progressData.forEach(p => progressMap[p.lesson_id] = true);
+      // 1. Tenta carregar do Supabase
+      try {
+        const { data: progressData } = await supabase
+          .from('edu_student_progress')
+          .select('lesson_id')
+          .eq('student_id', studentId);
+          
+        if (progressData) {
+          progressData.forEach(p => progressMap[p.lesson_id] = true);
+        }
+      } catch (e) {
+        console.warn('Erro ao ler edu_student_progress no Supabase:', e);
       }
+
+      // 2. Mescla com progresso salvo no localStorage (garantia offline/demo)
+      try {
+        const localProg = localStorage.getItem(`edu_progress_${studentId}`);
+        if (localProg) {
+          const list: string[] = JSON.parse(localProg);
+          if (Array.isArray(list)) {
+            list.forEach(lid => progressMap[lid] = true);
+          }
+        }
+      } catch (e) {}
     }
 
     // Mapeia para as interfaces da UI
@@ -278,6 +294,17 @@ export async function fetchCoursesWithProgress(studentId?: string, institutionId
 }
 
 export async function completeLesson(studentId: string, lessonId: string, score: number = 0) {
+  // Salva no localStorage como garantia imediata
+  try {
+    const key = `edu_progress_${studentId}`;
+    const stored = localStorage.getItem(key);
+    const list: string[] = stored ? JSON.parse(stored) : [];
+    if (!list.includes(lessonId)) {
+      list.push(lessonId);
+      localStorage.setItem(key, JSON.stringify(list));
+    }
+  } catch (e) {}
+
   try {
     const { error } = await supabase
       .from('edu_student_progress')

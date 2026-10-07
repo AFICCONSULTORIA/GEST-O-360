@@ -215,7 +215,32 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
     setActiveView('trail-map');
   };
 
+  const isLessonUnlocked = (lesson: Lesson, course?: Course | null): boolean => {
+    if (!course) return true;
+    const modIndex = course.modules.findIndex(m => m.lessons.some(l => l.id === lesson.id));
+    if (modIndex === -1) return true;
+    
+    // Todos os módulos anteriores devem estar 100% concluídos
+    const prevModulesCompleted = course.modules.slice(0, modIndex).every(
+      m => m.lessons.length > 0 && m.lessons.every(l => Boolean(l.isCompleted))
+    );
+    if (!prevModulesCompleted) return false;
+
+    // Dentro do módulo atual, aulas anteriores devem estar concluídas
+    const mod = course.modules[modIndex];
+    const lessIndex = mod.lessons.findIndex(l => l.id === lesson.id);
+    if (lessIndex === -1) return true;
+    if (lesson.isCompleted) return true; // Já concluída, pode revisar
+    if (lessIndex === 0) return true; // Primeira aula do módulo liberado
+    return Boolean(mod.lessons[lessIndex - 1].isCompleted);
+  };
+
   const handleStartLesson = (lesson: Lesson) => {
+    // Proteção: impede iniciar aula de módulo bloqueado ou aula sequencial bloqueada
+    if (activeCourse && !isLessonUnlocked(lesson, activeCourse)) {
+      return;
+    }
+
     setActiveLesson(lesson);
     if (lesson.type === 'quiz') {
       setQuizState({ currentQuestionIndex: 0, selectedOption: null, isCorrect: null, score: 0, isFinished: false });
