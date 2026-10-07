@@ -94,6 +94,7 @@ export const NAVBAR_CATEGORIES = [
     icon: ShieldAlert,
     items: [
       { id: 'controls', label: 'Controles Internos', icon: ClipboardCheck },
+      { id: 'accounting_changes', label: 'Alterações na Contabilidade', icon: Scale },
       { id: 'calendar', label: 'Calendário TCE', icon: Calendar },
       { id: 'norms', label: 'Normativas', icon: BookText },
       { id: 'risk', label: 'Análise de Risco', icon: ShieldAlert },
@@ -161,6 +162,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
   { id: 'mayor', label: 'Visão do Prefeito' },
   { id: 'controls', label: 'Controles Internos' },
+  { id: 'accounting_changes', label: 'Alterações na Contabilidade' },
   { id: 'calendar', label: 'Calendário Oficial' },
   { id: 'norms', label: 'Atos Normativos' },
   { id: 'risk', label: 'Gestão de Riscos' },

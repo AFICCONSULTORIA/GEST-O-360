@@ -11,6 +11,7 @@ import { SaaSControlCenter } from './modules/SaaSControlCenter';
 
 import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
 import { ControlsModule } from './modules/Controls';
+import { AccountingChangesControl } from './modules/Controls/components/AccountingChangesControl';
 import { RiskModule } from './modules/Risk';
 import { PNTPModule } from './modules/PNTP';
 import { DocumentNumbersModule } from './modules/DocumentNumbers';
@@ -1445,7 +1446,11 @@ export default function App() {
                 onDelete={deleteControl}
                 onView={setViewingControl}
                 onViewHistory={setViewingHistory}
+                currentUser={currentUser}
               />
+            )}
+            {activeView === 'accounting_changes' && (
+              <AccountingChangesControl searchQuery={searchQuery} currentUser={currentUser} />
             )}
             {activeView === 'risk' && <RiskModule />}
             {activeView === 'pntp' && <PNTPModule selectedYear={selectedYear} />}

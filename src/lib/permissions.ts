@@ -23,9 +23,22 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
   const permissions = user.permissions || [];
 
   // Auto-grant 'noticias' for users who already have 'communication' (backward compatibility)
-  const effectivePermissions = [...permissions];
+  const effectivePermissions: string[] = [...permissions];
   if (effectivePermissions.includes('communication') && !effectivePermissions.includes('noticias')) {
     effectivePermissions.push('noticias');
+  }
+
+  // Auto-grant 'accounting_changes' for users who already have 'controls' (backward compatibility)
+  if (
+    effectivePermissions.some(p => p === 'controls' || p.startsWith('controls:')) &&
+    !effectivePermissions.some(p => p === 'accounting_changes' || p.startsWith('accounting_changes:'))
+  ) {
+    const controlsLevelGrant = effectivePermissions.find(p => p.startsWith('controls:'));
+    if (controlsLevelGrant) {
+      effectivePermissions.push(controlsLevelGrant.replace('controls:', 'accounting_changes:'));
+    } else if (effectivePermissions.includes('controls')) {
+      effectivePermissions.push('accounting_changes');
+    }
   }
 
   // 1. Procurar por permissão granular específica no formato "modulo:nivel"

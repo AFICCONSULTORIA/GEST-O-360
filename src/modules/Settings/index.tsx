@@ -17,6 +17,7 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
   { id: 'mayor', label: 'Visão do Prefeito' },
   { id: 'controls', label: 'Controles Internos' },
+  { id: 'accounting_changes', label: 'Alterações na Contabilidade' },
   { id: 'calendar', label: 'Calendário Oficial' },
   { id: 'norms', label: 'Atos Normativos' },
   { id: 'risk', label: 'Gestão de Riscos' },
@@ -65,6 +66,7 @@ const PERMISSION_GROUPS: {
     desc: 'Controle de conformidade, riscos e atividades legislativas.',
     items: [
       { id: 'controls', label: 'Controles Internos', desc: 'Monitoramento de procedimentos e prazos', icon: ClipboardCheck },
+      { id: 'accounting_changes', label: 'Alterações na Contabilidade', desc: 'Controle de solicitações, trilha de auditoria contábil e pareceres', icon: Scale },
       { id: 'risk', label: 'Gestão de Riscos', desc: 'Identificação e tratamento de riscos', icon: ShieldAlert },
       { id: 'pntp', label: 'PNTP', desc: 'Evidências do PNTP e portal de transparência', icon: Compass },
       { id: 'camara', label: 'Câmara Municipal', desc: 'Atividades legislativas, projetos de lei e indicações', icon: Landmark },

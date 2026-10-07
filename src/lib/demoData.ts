@@ -16,7 +16,7 @@ export const DEMO_USER: AdminUser = {
   status: 'Ativo',
   lastLogin: 'Agora',
   permissions: [
-    'home', 'mayor', 'controls', 'calendar', 'norms', 'risk', 'pntp',
+    'home', 'mayor', 'controls', 'accounting_changes', 'calendar', 'norms', 'risk', 'pntp',
     'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports',
     'certificates', 'laws', 'obras', 'administracao', 'financas', 'saude',
     'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura',

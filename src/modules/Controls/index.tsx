@@ -9,10 +9,12 @@ import {
   Institution, AdminUser, View, PNTPCategory, Evidence
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
+import { AccountingChangesControl } from './components/AccountingChangesControl';
+import { hasPermission } from '../../lib/permissions';
 
 // Destructure common icons to avoid changing code
 const { 
-  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, Paperclip, CheckSquare
+  Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X, Paperclip, CheckSquare, Scale
 } = LucideIcons;
 
 const ControlsModule = ({ 
@@ -21,18 +23,28 @@ const ControlsModule = ({
   onEdit, 
   onDelete, 
   onView,
-  onViewHistory
+  onViewHistory,
+  currentUser
 }: { 
   controls: CheckItem[], 
   onAddNew: () => void,
   onEdit: (c: CheckItem) => void,
   onDelete: (id: string) => void,
   onView: (c: CheckItem) => void,
-  onViewHistory: (c: CheckItem) => void
+  onViewHistory: (c: CheckItem) => void,
+  currentUser?: AdminUser | null
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'urgent' | 'completed'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [controlsTab, setControlsTab] = useState<'compliance' | 'accounting'>('compliance');
+
+  const canViewAccounting = !currentUser || hasPermission(currentUser, 'accounting_changes', 'view');
+
+  const navigationTabs = useMemo(() => [
+    { id: 'compliance' as const, label: 'Controles Internos & Compliance', icon: ClipboardCheck },
+    ...(canViewAccounting ? [{ id: 'accounting' as const, label: 'Alterações na Contabilidade', icon: Scale }] : [])
+  ], [canViewAccounting]);
 
   // Metrics (KPIs)
   const totalControls = controls.length;
@@ -72,19 +84,59 @@ const ControlsModule = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
-        <div>
-          <h2 className="text-2xl font-bold dark:text-neutral-100">Painel de Controles Internos</h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm">Monitore prazos, exigências do TCE e acompanhe as rotinas.</p>
+      {/* Top Header & Navigation Tabs */}
+      <div className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
+            {controlsTab === 'compliance' ? <ClipboardCheck size={28} /> : <Scale size={28} />}
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
+              {controlsTab === 'compliance' ? 'Painel de Controles Internos' : 'Controle de Alterações na Contabilidade'}
+            </h2>
+            <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">
+              {controlsTab === 'compliance' 
+                ? 'Monitore prazos preventivos, exigências do TCE e conformidade das rotinas municipais.' 
+                : 'Auditoria de solicitações de alterações contábeis, retificações de empenho e pareceres técnicos.'}
+            </p>
+          </div>
         </div>
-        <button 
-          onClick={onAddNew}
-          className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2"
-        >
-          <ClipboardCheck size={18} />
-          Novo Controle
-        </button>
+
+        <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 w-full md:w-auto">
+          {navigationTabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setControlsTab(tab.id as any)}
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                controlsTab === tab.id
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <tab.icon size={15} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
+
+      {controlsTab === 'accounting' ? (
+        <AccountingChangesControl searchQuery={searchTerm} currentUser={currentUser} />
+      ) : (
+        <>
+          <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+            <div>
+              <h3 className="text-lg font-bold text-neutral-900 dark:text-neutral-100">Checklists & Prazos do TCE</h3>
+              <p className="text-neutral-500 dark:text-neutral-400 text-xs">Monitore prazos, exigências do Tribunal de Contas e acompanhe as rotinas preventivas.</p>
+            </div>
+            <button 
+              onClick={onAddNew}
+              className="bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 px-6 py-2.5 rounded-2xl text-sm font-bold hover:shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+            >
+              <ClipboardCheck size={18} />
+              Novo Controle
+            </button>
+          </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -297,8 +349,10 @@ const ControlsModule = ({
           </div>
         )}
       </div>
-    </div>
-  );
+    </>
+  )}
+</div>
+);
 };
 
 export { ControlsModule };
