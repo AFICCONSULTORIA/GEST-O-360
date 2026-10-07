@@ -26,7 +26,13 @@ import {
   Check,
   MapPin,
   Phone,
-  Building2
+  Building2,
+  Cloud,
+  CloudOff,
+  Database,
+  RefreshCw,
+  Download,
+  UploadCloud
 } from 'lucide-react';
 import { VotingService } from '../services/votingService';
 import { SchoolUnit, Candidate, Election, VoteRecord, SchoolElectionStats, VoterSegment, VOTER_SEGMENT_LABELS } from '../types/voting';
@@ -90,6 +96,13 @@ export const EducationVotingAdmin: React.FC = () => {
   // Modal de Confirmação para Zerar Urna
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
+  // Sincronização em Nuvem (Supabase) e Backup
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [cloudStatus, setCloudStatus] = useState(() => VotingService.getCloudStatus());
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [isPushingCloud, setIsPushingCloud] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     loadAllData();
 
@@ -121,6 +134,7 @@ export const EducationVotingAdmin: React.FC = () => {
     setSchools(loadedSchools);
     setElections(loadedElections);
     setActiveElection(currentElection);
+    setCloudStatus(VotingService.getCloudStatus());
 
     // Se a escola selecionada não existir mais, seleciona a primeira
     setSelectedSchoolId(prev => {
@@ -129,6 +143,181 @@ export const EducationVotingAdmin: React.FC = () => {
       updateSchoolData(nextId);
       return nextId;
     });
+  };
+
+  const handleTestCloudSync = async () => {
+    setIsSyncingCloud(true);
+    try {
+      const res = await VotingService.syncFromSupabase();
+      setCloudStatus(VotingService.getCloudStatus());
+      if (res.success) {
+        showToast('Sincronização com Supabase realizada com sucesso!', 'success');
+        loadAllData();
+      } else {
+        showToast('Tabelas de votação ainda não criadas no Supabase. Execute o script SQL no Supabase SQL Editor.', 'warning');
+      }
+    } catch (e: any) {
+      showToast('Erro ao conectar ao Supabase: ' + e.message, 'error');
+    } finally {
+      setIsSyncingCloud(false);
+    }
+  };
+
+  const handlePushLocalToCloud = async () => {
+    setIsPushingCloud(true);
+    try {
+      const res = await VotingService.pushLocalToSupabase();
+      setCloudStatus(VotingService.getCloudStatus());
+      if (res.success) {
+        showToast('Todos os dados locais (escolas e candidatos) foram gravados no Supabase com sucesso!', 'success');
+        loadAllData();
+      } else {
+        showToast('Falha ao enviar para o Supabase: ' + (res.error || 'Verifique se o script SQL foi executado'), 'error');
+      }
+    } catch (e: any) {
+      showToast('Erro ao enviar dados: ' + e.message, 'error');
+    } finally {
+      setIsPushingCloud(false);
+    }
+  };
+
+  const handleExportBackup = () => {
+    try {
+      const json = VotingService.exportBackupJSON();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup_votacao_gestao360_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Backup JSON exportado com sucesso!', 'success');
+    } catch (e: any) {
+      showToast('Erro ao exportar backup: ' + e.message, 'error');
+    }
+  };
+
+  const handleImportBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const res = await VotingService.importBackupJSON(text);
+      if (res.success) {
+        showToast(`Backup restaurado! ${res.count?.schools || 0} escolas e ${res.count?.candidates || 0} candidatos carregados.`, 'success');
+        loadAllData();
+      } else {
+        showToast(res.error || 'Arquivo de backup inválido', 'error');
+      }
+    } catch (err: any) {
+      showToast('Falha ao ler arquivo: ' + err.message, 'error');
+    } finally {
+      if (importFileInputRef.current) importFileInputRef.current.value = '';
+    }
+  };
+
+  const handleCopySQL = () => {
+    const sqlCode = `-- GESTÃO 360 · MÓDULO DE VOTAÇÃO
+CREATE TABLE IF NOT EXISTS public.edu_voting_schools (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    code TEXT,
+    category TEXT DEFAULT 'EMEF',
+    address TEXT,
+    neighborhood TEXT,
+    phone TEXT,
+    director_name TEXT,
+    total_voters_estimated INTEGER DEFAULT 0,
+    voting_status TEXT DEFAULT 'open',
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.edu_voting_elections (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    school_id TEXT DEFAULT 'ALL',
+    start_date TEXT,
+    end_date TEXT,
+    status TEXT DEFAULT 'open',
+    allow_blanks BOOLEAN DEFAULT true,
+    allow_nulls BOOLEAN DEFAULT true,
+    allowed_segments TEXT[] DEFAULT ARRAY['responsavel', 'aluno', 'professor', 'funcionario', 'comunidade'],
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.edu_voting_candidates (
+    id TEXT PRIMARY KEY,
+    election_id TEXT NOT NULL,
+    school_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    name TEXT NOT NULL,
+    vice_name TEXT,
+    photo_url TEXT,
+    bio TEXT,
+    proposals TEXT[] DEFAULT '{}',
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS public.edu_voting_votes (
+    id TEXT PRIMARY KEY,
+    election_id TEXT NOT NULL,
+    school_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    voter_cpf_masked TEXT NOT NULL,
+    voter_cpf_clean TEXT NOT NULL,
+    voter_name TEXT,
+    voter_segment TEXT NOT NULL,
+    receipt_code TEXT NOT NULL,
+    timestamp TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    CONSTRAINT uq_edu_vote_election_cpf UNIQUE (election_id, voter_cpf_clean)
+);
+
+CREATE INDEX IF NOT EXISTS idx_edu_voting_candidates_school ON public.edu_voting_candidates(school_id);
+CREATE INDEX IF NOT EXISTS idx_edu_voting_candidates_election ON public.edu_voting_candidates(election_id);
+CREATE INDEX IF NOT EXISTS idx_edu_voting_votes_school ON public.edu_voting_votes(school_id);
+CREATE INDEX IF NOT EXISTS idx_edu_voting_votes_election ON public.edu_voting_votes(election_id);
+CREATE INDEX IF NOT EXISTS idx_edu_voting_votes_cpf ON public.edu_voting_votes(voter_cpf_clean);
+
+ALTER TABLE public.edu_voting_schools ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.edu_voting_elections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.edu_voting_candidates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.edu_voting_votes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso público leitura escolas votação" ON public.edu_voting_schools;
+CREATE POLICY "Acesso público leitura escolas votação" ON public.edu_voting_schools FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Acesso gerenciamento escolas votação" ON public.edu_voting_schools;
+CREATE POLICY "Acesso gerenciamento escolas votação" ON public.edu_voting_schools FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Acesso público leitura eleições" ON public.edu_voting_elections;
+CREATE POLICY "Acesso público leitura eleições" ON public.edu_voting_elections FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Acesso gerenciamento eleições" ON public.edu_voting_elections;
+CREATE POLICY "Acesso gerenciamento eleições" ON public.edu_voting_elections FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Acesso público leitura candidatos" ON public.edu_voting_candidates;
+CREATE POLICY "Acesso público leitura candidatos" ON public.edu_voting_candidates FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Acesso gerenciamento candidatos" ON public.edu_voting_candidates;
+CREATE POLICY "Acesso gerenciamento candidatos" ON public.edu_voting_candidates FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Acesso público leitura votos apuração" ON public.edu_voting_votes;
+CREATE POLICY "Acesso público leitura votos apuração" ON public.edu_voting_votes FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Acesso registro e gerenciamento votos" ON public.edu_voting_votes;
+CREATE POLICY "Acesso registro e gerenciamento votos" ON public.edu_voting_votes FOR ALL USING (true);
+
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_schools; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_elections; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_candidates; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_votes; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+`;
+    navigator.clipboard.writeText(sqlCode);
+    showToast('Script SQL copiado com sucesso! Abra o SQL Editor do Supabase e cole para executar.', 'success');
   };
 
   const updateSchoolData = (schoolId: string) => {
@@ -427,11 +616,40 @@ export const EducationVotingAdmin: React.FC = () => {
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                 Apuração em tempo real, gestão de candidatos e auditoria de votos com proteção anti-duplicidade por CPF.
               </p>
+              {cloudStatus.connected === false && (
+                <div className="mt-2.5 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 shadow-sm">
+                  <AlertTriangle size={14} className="shrink-0 text-amber-600" />
+                  <span>
+                    Atenção: Candidatos e escolas estão salvos apenas nesta máquina. 
+                    <button 
+                      type="button"
+                      onClick={() => setIsSyncModalOpen(true)} 
+                      className="underline font-bold ml-1 hover:text-amber-900 dark:hover:text-amber-100 cursor-pointer"
+                    >
+                      Clique para ativar sincronização em todos os aparelhos
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Links e Ações Rápidas */}
           <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsSyncModalOpen(true)}
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer border ${
+                cloudStatus.connected === true
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100'
+                  : 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 hover:bg-amber-100'
+              }`}
+              title="Gerenciar sincronização em nuvem e backup"
+            >
+              {cloudStatus.connected === true ? <Cloud size={15} /> : <CloudOff size={15} />}
+              <span>{cloudStatus.connected === true ? 'Nuvem Conectada' : 'Ativar na Nuvem'}</span>
+            </button>
+
             <button
               onClick={handleCopyVotingLink}
               className="px-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
@@ -1681,6 +1899,205 @@ export const EducationVotingAdmin: React.FC = () => {
                   className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider shadow-md"
                 >
                   Sim, Zerar Urna
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ========================================================== */}
+      {/* MODAL DE SINCRONIZAÇÃO EM NUVEM E BACKUP */}
+      {/* ========================================================== */}
+      <AnimatePresence>
+        {isSyncModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-[32px] max-w-2xl w-full p-6 md:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl relative my-8"
+            >
+              <button
+                type="button"
+                onClick={() => setIsSyncModalOpen(false)}
+                className="absolute top-6 right-6 p-2 rounded-full text-neutral-400 hover:text-neutral-700 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+              >
+                <X size={20} />
+              </button>
+
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
+                  <Cloud size={28} />
+                </div>
+                <div>
+                  <h4 className="text-xl font-black text-neutral-900 dark:text-white">
+                    Sincronização em Nuvem (Supabase)
+                  </h4>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Permita que escolas, candidatos e votos funcionem em qualquer computador ou celular.
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Atual da Conexão */}
+              {cloudStatus.connected === true ? (
+                <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 mb-6">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 size={20} className="text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h5 className="text-sm font-bold text-emerald-900 dark:text-emerald-200">
+                        Nuvem Supabase Ativa e Conectada!
+                      </h5>
+                      <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1 leading-relaxed">
+                        Todas as escolas, candidatos e votos estão sincronizados na nuvem em tempo real. Qualquer voto realizado em celulares ou computadores da rede municipal será computado e visualizado instantaneamente.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-3 border-t border-emerald-200/60 dark:border-emerald-800/40 flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={handlePushLocalToCloud}
+                      disabled={isPushingCloud}
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+                    >
+                      <UploadCloud size={14} className={isPushingCloud ? 'animate-bounce' : ''} />
+                      {isPushingCloud ? 'Enviando...' : 'Reenviar Dados Locais para a Nuvem'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTestCloudSync}
+                      disabled={isSyncingCloud}
+                      className="px-4 py-2 rounded-xl bg-white dark:bg-neutral-800 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={isSyncingCloud ? 'animate-spin' : ''} />
+                      {isSyncingCloud ? 'Atualizando...' : 'Recarregar da Nuvem'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 mb-6">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h5 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                        Por que os dados estão apenas nesta máquina?
+                      </h5>
+                      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1 leading-relaxed">
+                        Atualmente, as escolas e candidatos cadastrados estão salvos no <strong>armazenamento local (LocalStorage)</strong> do navegador deste computador. Para que o portal de votação funcione em <strong>outros computadores e celulares de eleitores</strong>, é necessário ativar as tabelas no banco de dados central (Supabase).
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-amber-200/60 dark:border-amber-800/40 space-y-3">
+                    <h6 className="text-xs font-black uppercase tracking-wider text-amber-900 dark:text-amber-200">
+                      Passo a Passo Rápido (Leva 1 minuto):
+                    </h6>
+                    
+                    <div className="text-xs text-amber-800 dark:text-amber-300 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-white flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">1</span>
+                        <span>Acesse o <strong>SQL Editor do Supabase</strong> do seu projeto:</span>
+                      </div>
+                      <div className="pl-7">
+                        <a
+                          href="https://supabase.com/dashboard/project/gtltiyshhjsizazriwma/sql"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-200/80 dark:bg-amber-900/60 font-bold hover:underline text-amber-950 dark:text-amber-100"
+                        >
+                          <ExternalLink size={13} /> Abrir Supabase SQL Editor
+                        </a>
+                      </div>
+
+                      <div className="flex items-start gap-2 pt-1">
+                        <span className="w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-white flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">2</span>
+                        <span>Copie o script SQL pré-configurado:</span>
+                      </div>
+                      <div className="pl-7">
+                        <button
+                          type="button"
+                          onClick={handleCopySQL}
+                          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-bold hover:bg-neutral-800 transition-all cursor-pointer shadow-sm text-xs"
+                        >
+                          <Copy size={14} /> Copiar Script SQL de Ativação
+                        </button>
+                      </div>
+
+                      <div className="flex items-start gap-2 pt-1">
+                        <span className="w-5 h-5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-white flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">3</span>
+                        <span>Cole no Supabase, clique em <strong>Run</strong> e depois clique no botão abaixo:</span>
+                      </div>
+                      <div className="pl-7 pt-1 flex flex-wrap gap-2.5">
+                        <button
+                          type="button"
+                          onClick={handleTestCloudSync}
+                          disabled={isSyncingCloud}
+                          className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                        >
+                          <RefreshCw size={14} className={isSyncingCloud ? 'animate-spin' : ''} />
+                          {isSyncingCloud ? 'Verificando...' : 'Testar e Conectar à Nuvem Agora'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handlePushLocalToCloud}
+                          disabled={isPushingCloud}
+                          className="px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-800 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 font-bold text-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <UploadCloud size={14} className={isPushingCloud ? 'animate-bounce' : ''} />
+                          {isPushingCloud ? 'Enviando...' : 'Enviar Dados Desta Máquina para a Nuvem'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Opção Alternativa: Backup & Compartilhamento JSON Imediato */}
+              <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <Database size={16} className="text-neutral-600 dark:text-neutral-400" />
+                  <h5 className="text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
+                    Backup e Transferência Imediata de Arquivo
+                  </h5>
+                </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3 leading-relaxed">
+                  Quer transferir seus candidatos e escolas para outro computador agora mesmo em 5 segundos sem esperar a configuração do banco? Baixe o arquivo e importe no outro computador:
+                </p>
+                <div className="flex flex-wrap gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleExportBackup}
+                    className="px-4 py-2 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Download size={14} /> Baixar Backup (.json)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => importFileInputRef.current?.click()}
+                    className="px-4 py-2 rounded-xl bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <Upload size={14} /> Importar Arquivo (.json)
+                  </button>
+                  <input
+                    type="file"
+                    ref={importFileInputRef}
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    className="hidden"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsSyncModalOpen(false)}
+                  className="px-6 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 text-xs font-bold hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  Fechar
                 </button>
               </div>
             </motion.div>

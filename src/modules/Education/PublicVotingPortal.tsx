@@ -114,7 +114,7 @@ export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
     setCpfError(null);
   };
 
-  const handleProceedToBallot = (e: React.FormEvent) => {
+  const handleProceedToBallot = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = voterCpf.replace(/\D/g, '');
 
@@ -133,16 +133,21 @@ export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
       return;
     }
 
-    // Verificar se o CPF já votou nesta eleição
-    const check = VotingService.hasCpfVoted(selectedSchool.id, clean, election?.id);
-    if (check.voted && check.vote) {
-      setAlreadyVotedReceipt(check.vote);
-      return;
-    }
+    setIsSubmitting(true);
+    try {
+      // Verificar se o CPF já votou nesta eleição (com checagem central na nuvem e local)
+      const check = await VotingService.hasCpfVotedAsync(selectedSchool.id, clean, election?.id);
+      if (check.voted && check.vote) {
+        setAlreadyVotedReceipt(check.vote);
+        return;
+      }
 
-    setAlreadyVotedReceipt(null);
-    setCpfError(null);
-    setStep(2);
+      setAlreadyVotedReceipt(null);
+      setCpfError(null);
+      setStep(2);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Teclado numérico na tela ou digitação
@@ -184,12 +189,12 @@ export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
     setIsConfirmModalOpen(true);
   };
 
-  const handleConfirmVote = () => {
+  const handleConfirmVote = async () => {
     if (!election || !selectedSchool || !selectedCandidateId) return;
 
     setIsSubmitting(true);
     try {
-      const result = VotingService.castVote({
+      const result = await VotingService.castVoteAsync({
         electionId: election.id,
         schoolId: selectedSchool.id,
         candidateId: selectedCandidateId,
