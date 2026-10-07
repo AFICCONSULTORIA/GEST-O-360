@@ -16,144 +16,28 @@ import {
 import { maskCPF } from '../../../lib/masks';
 import { supabase } from '../../../lib/supabase';
 
-// Escolas Padrão da Rede Municipal (Fallback / Carga Inicial)
-export const DEFAULT_SCHOOLS: SchoolUnit[] = [
-  {
-    id: 'escola-darcy-ribeiro',
-    name: 'EMEF Prof. Darcy Ribeiro',
-    code: 'ESC-001',
-    category: 'EMEF',
-    address: 'Av. das Flores, 450 - Centro',
-    totalVotersEstimated: 650,
-    votingStatus: 'open'
-  },
-  {
-    id: 'escola-cecilia-meireles',
-    name: 'EMEB Cecília Meireles',
-    code: 'ESC-002',
-    category: 'EMEB',
-    address: 'Rua Tiradentes, 120 - Jardim Primavera',
-    totalVotersEstimated: 480,
-    votingStatus: 'open'
-  },
-  {
-    id: 'cmei-pequeno-principe',
-    name: 'CMEI Pequeno Príncipe',
-    code: 'ESC-003',
-    category: 'CMEI',
-    address: 'Rua das Palmeiras, 88 - Bairro Universitário',
-    totalVotersEstimated: 320,
-    votingStatus: 'open'
-  }
-];
+// Escolas Padrão: Vazio para uso estrito de dados reais cadastrados pela gestão
+export const DEFAULT_SCHOOLS: SchoolUnit[] = [];
 
 // Eleição Padrão Ativa
 export const DEFAULT_ELECTIONS: Election[] = [
   {
-    id: 'eleicao-2027-2029',
-    title: 'Eleição Direta para Diretores Escolares - Gestão 2027/2029',
+    id: 'eleicao-diretores',
+    title: 'Eleição Direta para Diretores Escolares',
     description: 'Processo democrático de escolha dos gestores escolares da Rede Municipal de Ensino.',
     schoolId: 'ALL',
-    startDate: '2026-10-01',
-    endDate: '2026-10-31',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: '2026-12-31',
     status: 'open',
     allowBlanks: true,
     allowNulls: true,
     allowedSegments: ['responsavel', 'aluno', 'professor', 'funcionario', 'comunidade'],
-    createdAt: '2026-10-01T08:00:00Z'
+    createdAt: new Date().toISOString()
   }
 ];
 
-// Candidatos Demonstrativos
-export const DEFAULT_CANDIDATES: Candidate[] = [
-  {
-    id: 'cand-darcy-10',
-    electionId: 'eleicao-2027-2029',
-    schoolId: 'escola-darcy-ribeiro',
-    number: '10',
-    name: 'Profª Helena Souza',
-    viceName: 'Prof. Carlos Eduardo',
-    photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400',
-    bio: 'Pedagoga com pós-graduação em Gestão Escolar e 14 anos de docência na rede pública municipal.',
-    proposals: [
-      'Climatização completa de todas as salas de aula.',
-      'Implementação do Espaço Maker e Clube de Robótica.',
-      'Ampliação das oficinas de contraturno escolar e reforço pedagógico.',
-      'Gestão participativa com reuniões bimestrais do Conselho Escolar.'
-    ],
-    active: true,
-    createdAt: '2026-10-01T09:00:00Z'
-  },
-  {
-    id: 'cand-darcy-20',
-    electionId: 'eleicao-2027-2029',
-    schoolId: 'escola-darcy-ribeiro',
-    number: '20',
-    name: 'Prof. Marcos Vinícius',
-    viceName: 'Profª Renata Lima',
-    photoUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&q=80&w=400',
-    bio: 'Mestre em Educação, especialista em Metodologias Ativas e coordenador pedagógico há 8 anos.',
-    proposals: [
-      'Modernização da quadra poliesportiva com cobertura e vestiários.',
-      'Adoção de tablets educacionais nas turmas dos anos finais.',
-      'Programa Escola Segura: monitoramento digital e mediação de conflitos.',
-      'Parcerias culturais para festivais de teatro e música na escola.'
-    ],
-    active: true,
-    createdAt: '2026-10-01T09:30:00Z'
-  },
-  {
-    id: 'cand-cecilia-12',
-    electionId: 'eleicao-2027-2029',
-    schoolId: 'escola-cecilia-meireles',
-    number: '12',
-    name: 'Profª Sandra Mara',
-    viceName: 'Profª Cláudia Silva',
-    photoUrl: 'https://images.unsplash.com/photo-1580894732444-8ecded7900cd?auto=format&fit=crop&q=80&w=400',
-    bio: 'Licenciada em Letras e Pedagogia, 16 anos de experiência e atuação destacada na alfabetização.',
-    proposals: [
-      'Revitalização da biblioteca escolar com acervo digital e cantinho de leitura.',
-      'Horta comunitária pedagógica integrada à merenda escolar saudável.',
-      'Atendimento psicopedagógico presencial para crianças com TDAH e Autismo.'
-    ],
-    active: true,
-    createdAt: '2026-10-01T10:00:00Z'
-  },
-  {
-    id: 'cand-cecilia-15',
-    electionId: 'eleicao-2027-2029',
-    schoolId: 'escola-cecilia-meireles',
-    number: '15',
-    name: 'Prof. Rodrigo Mendes',
-    viceName: 'Prof. Roberto Alves',
-    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400',
-    bio: 'Especialista em Educação Inclusiva e Gestão Pública, apaixonado pela valorização dos servidores.',
-    proposals: [
-      'Projeto Escola em Tempo Integral com foco em artes e esportes.',
-      'Olimpíadas de Matemática e Ciências no ambiente escolar.',
-      'Portal da Transparência da Associação de Pais e Mestres (APM).'
-    ],
-    active: true,
-    createdAt: '2026-10-01T10:30:00Z'
-  },
-  {
-    id: 'cand-cmei-10',
-    electionId: 'eleicao-2027-2029',
-    schoolId: 'cmei-pequeno-principe',
-    number: '10',
-    name: 'Profª Juliana Andrade',
-    viceName: 'Profª Mariana Dias',
-    photoUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=400',
-    bio: 'Especialista em Primeira Infância e Psicomotricidade, com dedicação exclusiva ao atendimento infantil.',
-    proposals: [
-      'Criação de sala sensorial com recursos lúdicos e neurocompatíveis.',
-      'Reforma do playground com piso ecológico emborrachado e seguro.',
-      'Comunicação direta com os pais via aplicativo e relatórios diários de rotina.'
-    ],
-    active: true,
-    createdAt: '2026-10-01T11:00:00Z'
-  }
-];
+// Candidatos Demonstrativos: Vazio para uso estrito de dados reais
+export const DEFAULT_CANDIDATES: Candidate[] = [];
 
 const STORAGE_KEYS = {
   SCHOOLS: 'gestao360_voting_schools',
@@ -539,19 +423,25 @@ export class VotingService {
 
   static getSchools(): SchoolUnit[] {
     const raw = VotingStorage.getItem(STORAGE_KEYS.SCHOOLS);
-    if (raw) {
+    if (raw !== null) {
       try {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return JSON.parse(JSON.stringify(parsed));
+        if (Array.isArray(parsed)) {
+          // Filtrar qualquer escola demonstrativa de teste
+          return parsed.filter(s => 
+            s.id !== 'escola-darcy-ribeiro' && 
+            s.id !== 'escola-cecilia-meireles' && 
+            s.id !== 'cmei-pequeno-principe' &&
+            !s.name.toLowerCase().includes('darcy ribeiro') &&
+            !s.name.toLowerCase().includes('cecília meireles') &&
+            !s.name.toLowerCase().includes('pequeno príncipe')
+          );
         }
       } catch (e) {
         console.error('Erro ao ler escolas:', e);
       }
     }
-    const defaults = JSON.parse(JSON.stringify(DEFAULT_SCHOOLS));
-    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(defaults), false);
-    return defaults;
+    return [];
   }
 
   static getSchoolById(schoolId: string): SchoolUnit | undefined {
@@ -584,31 +474,24 @@ export class VotingService {
   }
 
   static deleteSchool(schoolId: string): { success: boolean; error?: string } {
-    const votes = this.getVotes(schoolId);
-    if (votes.length > 0) {
-      return { 
-        success: false, 
-        error: `Não é possível excluir esta escola porque já existem ${votes.length} voto(s) computados na urna.` 
-      };
-    }
-    const candidates = this.getCandidates(schoolId);
-    if (candidates.length > 0) {
-      return {
-        success: false,
-        error: `Não é possível excluir esta escola porque existem ${candidates.length} candidato(s)/chapa(s) vinculados a ela. Remova os candidatos primeiro.`
-      };
-    }
-    const schools = this.getSchools().filter(s => s.id !== schoolId);
-    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+    // 1. Remover a escola da lista
+    const currentSchools = this.getSchools();
+    const updatedSchools = currentSchools.filter(s => s.id !== schoolId);
+    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(updatedSchools));
 
-    // Deletar no Supabase
-    supabase
-      .from(DB_TABLES.SCHOOLS)
-      .delete()
-      .eq('id', schoolId)
-      .then(({ error }) => {
-        if (error) console.warn('[VotingService] Erro ao deletar escola no Supabase:', error.message);
-      });
+    // 2. Remover em cascata todos os candidatos e votos vinculados
+    const currentCandidates = this.getCandidates();
+    const updatedCandidates = currentCandidates.filter(c => c.schoolId !== schoolId);
+    VotingStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(updatedCandidates));
+
+    const currentVotes = this.getVotes();
+    const updatedVotes = currentVotes.filter(v => v.schoolId !== schoolId);
+    VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(updatedVotes));
+
+    // 3. Deletar no Supabase
+    supabase.from(DB_TABLES.SCHOOLS).delete().eq('id', schoolId).then();
+    supabase.from(DB_TABLES.CANDIDATES).delete().eq('school_id', schoolId).then();
+    supabase.from(DB_TABLES.VOTES).delete().eq('school_id', schoolId).then();
 
     return { success: true };
   }
@@ -664,18 +547,26 @@ export class VotingService {
 
   static getCandidates(schoolId?: string): Candidate[] {
     const raw = VotingStorage.getItem(STORAGE_KEYS.CANDIDATES);
-    let candidates: Candidate[] = JSON.parse(JSON.stringify(DEFAULT_CANDIDATES));
-    if (raw) {
+    let candidates: Candidate[] = [];
+    if (raw !== null) {
       try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          candidates = JSON.parse(JSON.stringify(parsed));
+          // Filtrar candidatos demonstrativos
+          candidates = parsed.filter(c => 
+            c.schoolId !== 'escola-darcy-ribeiro' &&
+            c.schoolId !== 'escola-cecilia-meireles' &&
+            c.schoolId !== 'cmei-pequeno-principe' &&
+            c.id !== 'cand-darcy-10' &&
+            c.id !== 'cand-darcy-20' &&
+            c.id !== 'cand-cecilia-12' &&
+            c.id !== 'cand-cecilia-15' &&
+            c.id !== 'cand-cmei-10'
+          );
         }
       } catch (e) {
         console.error('Erro ao ler candidatos:', e);
       }
-    } else {
-      VotingStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(candidates), false);
     }
 
     if (schoolId && schoolId !== 'ALL') {
@@ -1083,10 +974,66 @@ export class VotingService {
       return { success: false, error: 'Erro ao interpretar JSON: ' + e.message };
     }
   }
+
+  /**
+   * Remove todas as escolas e candidatos demonstrativos/falsos (Darcy Ribeiro, Cecília Meireles, etc.)
+   * mantendo exclusivamente os dados reais cadastrados pela gestão.
+   */
+  static purgeMockData(): { removedSchools: number; removedCandidates: number } {
+    const mockSchoolIds = ['escola-darcy-ribeiro', 'escola-cecilia-meireles', 'cmei-pequeno-principe'];
+    const mockCandIds = ['cand-darcy-10', 'cand-darcy-20', 'cand-cecilia-12', 'cand-cecilia-15', 'cand-cmei-10'];
+
+    const rawSchools = VotingStorage.getItem(STORAGE_KEYS.SCHOOLS);
+    let schools: SchoolUnit[] = [];
+    if (rawSchools) {
+      try { schools = JSON.parse(rawSchools); } catch (_) {}
+    }
+    const cleanSchools = schools.filter(s => 
+      !mockSchoolIds.includes(s.id) &&
+      !s.name.toLowerCase().includes('darcy ribeiro') &&
+      !s.name.toLowerCase().includes('cecília meireles') &&
+      !s.name.toLowerCase().includes('pequeno príncipe')
+    );
+    VotingStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(cleanSchools));
+
+    const rawCands = VotingStorage.getItem(STORAGE_KEYS.CANDIDATES);
+    let cands: Candidate[] = [];
+    if (rawCands) {
+      try { cands = JSON.parse(rawCands); } catch (_) {}
+    }
+    const cleanCands = cands.filter(c => 
+      !mockCandIds.includes(c.id) && 
+      !mockSchoolIds.includes(c.schoolId) &&
+      !c.name.toLowerCase().includes('helena souza') &&
+      !c.name.toLowerCase().includes('marcos vinícius')
+    );
+    VotingStorage.setItem(STORAGE_KEYS.CANDIDATES, JSON.stringify(cleanCands));
+
+    const rawVotes = VotingStorage.getItem(STORAGE_KEYS.VOTES);
+    let votes: VoteRecord[] = [];
+    if (rawVotes) {
+      try { votes = JSON.parse(rawVotes); } catch (_) {}
+    }
+    const cleanVotes = votes.filter(v => !mockSchoolIds.includes(v.schoolId));
+    VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(cleanVotes));
+
+    // Excluir também no Supabase se existirem
+    for (const id of mockSchoolIds) {
+      supabase.from(DB_TABLES.SCHOOLS).delete().eq('id', id).then();
+      supabase.from(DB_TABLES.CANDIDATES).delete().eq('school_id', id).then();
+      supabase.from(DB_TABLES.VOTES).delete().eq('school_id', id).then();
+    }
+
+    return {
+      removedSchools: schools.length - cleanSchools.length,
+      removedCandidates: cands.length - cleanCands.length
+    };
+  }
 }
 
-// Inicia sincronização em segundo plano automaticamente ao importar
+// Inicia limpeza de dados demonstrativos e sincronização em segundo plano automaticamente ao importar
 if (typeof window !== 'undefined') {
+  VotingService.purgeMockData();
   VotingService.initSync().catch(err => {
     console.warn('[VotingService] Falha inicial ao sincronizar com nuvem:', err);
   });

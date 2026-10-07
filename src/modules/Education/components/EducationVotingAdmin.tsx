@@ -44,7 +44,7 @@ export const EducationVotingAdmin: React.FC = () => {
   const [schools, setSchools] = useState<SchoolUnit[]>([]);
   const [elections, setElections] = useState<Election[]>([]);
   const [activeElection, setActiveElection] = useState<Election | null>(null);
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string>('escola-darcy-ribeiro');
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string>(() => VotingService.getSchools()[0]?.id || '');
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [votes, setVotes] = useState<VoteRecord[]>([]);
   const [stats, setStats] = useState<SchoolElectionStats | null>(null);
@@ -85,7 +85,7 @@ export const EducationVotingAdmin: React.FC = () => {
     name: '',
     viceName: '',
     number: '',
-    schoolId: 'escola-darcy-ribeiro',
+    schoolId: '',
     photoUrl: '',
     bio: '',
     proposalsText: ''
@@ -139,7 +139,7 @@ export const EducationVotingAdmin: React.FC = () => {
     // Se a escola selecionada não existir mais, seleciona a primeira
     setSelectedSchoolId(prev => {
       const exists = loadedSchools.some(s => s.id === prev);
-      const nextId = exists ? prev : (loadedSchools[0]?.id || 'escola-darcy-ribeiro');
+      const nextId = exists ? prev : (loadedSchools[0]?.id || '');
       updateSchoolData(nextId);
       return nextId;
     });
@@ -321,6 +321,12 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
   };
 
   const updateSchoolData = (schoolId: string) => {
+    if (!schoolId) {
+      setCandidates([]);
+      setVotes([]);
+      setStats(null);
+      return;
+    }
     const cands = VotingService.getCandidates(schoolId);
     const vts = VotingService.getVotes(schoolId);
     const st = VotingService.getSchoolStats(schoolId);
@@ -332,18 +338,23 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
 
   // --- Ações de Candidato ---
   const handleOpenNewCandidateModal = (targetSchoolId?: string) => {
+    if (schools.length === 0) {
+      showToast('Cadastre uma escola primeiro para poder registrar candidatos e chapas.', 'warning');
+      handleOpenNewSchoolModal();
+      return;
+    }
     setEditingCandidate(null);
     const chosenSchool = targetSchoolId || 
       (candidateSchoolFilter !== 'ALL' ? candidateSchoolFilter : selectedSchoolId) || 
       schools[0]?.id || 
-      'escola-darcy-ribeiro';
+      '';
 
     setCandidateFormData({
       name: '',
       viceName: '',
       number: '',
       schoolId: chosenSchool,
-      photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400',
+      photoUrl: '',
       bio: '',
       proposalsText: ''
     });
@@ -546,7 +557,7 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
 
   const handleDeleteSchool = (schoolId: string) => {
     const targetSchool = schools.find(s => s.id === schoolId);
-    if (!window.confirm(`Tem certeza que deseja excluir a escola "${targetSchool?.name}"?`)) {
+    if (!window.confirm(`Tem certeza que deseja excluir a escola "${targetSchool?.name || 'selecionada'}"?`)) {
       return;
     }
     const res = VotingService.deleteSchool(schoolId);
@@ -556,12 +567,18 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
     }
     const updatedSchools = VotingService.getSchools();
     setSchools(updatedSchools);
-    if (selectedSchoolId === schoolId) {
-      const nextSchool = updatedSchools[0]?.id || '';
-      setSelectedSchoolId(nextSchool);
-      if (nextSchool) updateSchoolData(nextSchool);
-    }
+    const nextSchool = updatedSchools[0]?.id || '';
+    setSelectedSchoolId(nextSchool);
+    updateSchoolData(nextSchool);
     showToast('Escola removida com sucesso.', 'info');
+  };
+
+  const handlePurgeMockData = () => {
+    if (window.confirm('Deseja remover todas as escolas e candidatos demonstrativos de teste (Darcy Ribeiro, etc.) para utilizar somente dados reais?')) {
+      const res = VotingService.purgeMockData();
+      loadAllData();
+      showToast(`Limpeza concluída! ${res.removedSchools} escola(s) demonstrativa(s) removida(s).`, 'success');
+    }
   };
 
   // Escolas filtradas
@@ -688,9 +705,13 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
               onChange={(e) => setSelectedSchoolId(e.target.value)}
               className="px-4 py-2 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-sm font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
             >
-              {schools.map(s => (
-                <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
-              ))}
+              {schools.length === 0 ? (
+                <option value="">Nenhuma escola cadastrada</option>
+              ) : (
+                schools.map(s => (
+                  <option key={s.id} value={s.id}>{s.name} ({s.category})</option>
+                ))
+              )}
             </select>
             <button
               type="button"
@@ -732,7 +753,28 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
       {/* ========================================================== */}
       {/* ABA 1: APURAÇÃO DOS VOTOS EM TEMPO REAL */}
       {/* ========================================================== */}
-      {activeTab === 'apuracao' && stats && (
+      {activeTab === 'apuracao' && schools.length === 0 && (
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl p-12 border border-neutral-100 dark:border-neutral-800 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 flex items-center justify-center mx-auto text-3xl font-black">
+            🏫
+          </div>
+          <h4 className="text-xl font-black text-neutral-900 dark:text-white">
+            Nenhuma Escola Cadastrada
+          </h4>
+          <p className="text-xs text-neutral-500 max-w-md mx-auto leading-relaxed">
+            Para iniciar o processo eleitoral com dados 100% reais, cadastre a primeira unidade escolar da sua rede municipal.
+          </p>
+          <button
+            type="button"
+            onClick={handleOpenNewSchoolModal}
+            className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 cursor-pointer inline-flex items-center gap-2"
+          >
+            <Plus size={16} /> Cadastrar Nova Escola Real
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'apuracao' && schools.length > 0 && stats && (
         <div className="space-y-6">
           
           {/* Cards de Métricas Principais */}
@@ -1062,12 +1104,23 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
               </p>
             </div>
 
-            <button
-              onClick={handleOpenNewSchoolModal}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
-            >
-              <Plus size={16} /> Cadastrar Nova Escola
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button
+                type="button"
+                onClick={handlePurgeMockData}
+                className="px-4 py-2.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-300 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-950/40 transition-all cursor-pointer flex items-center gap-2"
+                title="Remove escolas e candidatos demonstrativos (Darcy Ribeiro, etc.)"
+              >
+                <Trash2 size={15} /> Limpar Dados Demonstrativos
+              </button>
+
+              <button
+                onClick={handleOpenNewSchoolModal}
+                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+              >
+                <Plus size={16} /> Cadastrar Nova Escola
+              </button>
+            </div>
           </div>
 
           {/* Cards de Métricas Gerais da Rede */}
