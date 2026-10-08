@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { fetchStudentProfile, awardStudent, spendCoins, fetchCoursesWithProgress, completeLesson, DEFAULT_DEMO_STUDENTS } from '../../lib/api/education';
+import { 
+  getStudentProfile, 
+  getCompletedLessons, 
+  fetchStudentProfile, 
+  awardStudent, 
+  spendCoins, 
+  fetchCoursesWithProgress, 
+  completeLesson, 
+  submitQuizAttempt,
+  DEFAULT_DEMO_STUDENTS 
+} from '../../lib/api/education';
 import { 
   ArrowLeft,
   Bell,
@@ -289,17 +299,35 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
   useEffect(() => {
     async function loadData() {
       setIsLoading(true);
-      const studentId = localStorage.getItem('edu_student_id');
+      const currentStudentId = localStorage.getItem('edu_student_id') || '2';
       
-      const coursesData = await fetchCoursesWithProgress(studentId || undefined);
+      // Carrega perfil, lições concluídas e cursos em paralelo
+      const [profileData, completedLessonsList, coursesData] = await Promise.all([
+        getStudentProfile(currentStudentId),
+        getCompletedLessons(currentStudentId),
+        fetchCoursesWithProgress(currentStudentId || undefined)
+      ]);
+
+      // Marca as lições concluídas garantindo sincronização imediata
+      const completedSet = new Set(completedLessonsList);
+      const syncedCourses = coursesData.map(c => ({
+        ...c,
+        modules: c.modules.map(m => ({
+          ...m,
+          lessons: m.lessons.map(l => ({
+            ...l,
+            isCompleted: l.isCompleted || completedSet.has(String(l.id))
+          }))
+        }))
+      }));
 
       // Identificar turma do estudante para controle de acesso às trilhas
       let studentClass = '';
       const savedStudents = localStorage.getItem('gestao360_students');
-      if (savedStudents && studentId) {
+      if (savedStudents && currentStudentId) {
         try {
           const list = JSON.parse(savedStudents);
-          const currentStudent = list.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
+          const currentStudent = list.find((s: any) => String(s.id) === String(currentStudentId) || s.enrollmentId === currentStudentId);
           if (currentStudent) {
             const savedClasses = localStorage.getItem('gestao360_classes');
             if (savedClasses && currentStudent.classId) {
@@ -316,13 +344,13 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
       // Filtra apenas as trilhas destinadas à turma do aluno (ou abertas para todas)
       const allowedCourses = (!previewCourseId && studentClass)
-        ? coursesData.filter((c: any) => !c.target_classes || c.target_classes.length === 0 || c.target_classes.includes(studentClass))
-        : coursesData;
+        ? syncedCourses.filter((c: any) => !c.target_classes || c.target_classes.length === 0 || c.target_classes.includes(studentClass))
+        : syncedCourses;
 
       setCourses(allowedCourses);
 
       if (previewCourseId) {
-        const pCourse = coursesData.find((c: any) => c.id === previewCourseId);
+        const pCourse = syncedCourses.find((c: any) => c.id === previewCourseId);
         if (pCourse) {
           setActiveCourse(pCourse);
           setActiveView('trail-map');
@@ -331,8 +359,8 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
       // Carregar Streak e atividade local estilo Duolingo
       let localActivity = { dates: [] as string[], freezes: 0, highestStreak: 0, avatar: '', inventory: [] as string[] };
-      if (studentId) {
-        const storedAct = localStorage.getItem(`edu_activity_${studentId}`);
+      if (currentStudentId) {
+        const storedAct = localStorage.getItem(`edu_activity_${currentStudentId}`);
         if (storedAct) {
           try {
             localActivity = { ...localActivity, ...JSON.parse(storedAct) };
@@ -340,82 +368,83 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
         }
       }
 
-      if (studentId) {
-        let profile = await fetchStudentProfile(studentId);
-        
-        // Fallback local caso não encontre no Supabase
-        if (!profile) {
-          const savedStudents = localStorage.getItem('gestao360_students');
-          if (savedStudents) {
-            try {
-              const parsed = JSON.parse(savedStudents);
-              const found = parsed.find((s: any) => String(s.id) === String(studentId) || s.enrollmentId === studentId);
-              if (found) {
-                profile = {
-                  id: String(found.id),
-                  enrollment_code: found.enrollmentId || found.enrollment_code || 'ART001',
-                  name: found.name,
-                  level: found.level || 1,
-                  title: found.title || 'Explorador Aprendiz',
-                  xp: found.xp || 0,
-                  coins: found.coins || 0,
-                  streak: found.streak || 0
-                };
-              }
-            } catch (e) {
-              console.warn('Erro ao ler gestao360_students:', e);
+      let profile = profileData;
+
+      // Fallback local caso não encontre no Supabase
+      if (!profile) {
+        const savedStudents = localStorage.getItem('gestao360_students');
+        if (savedStudents) {
+          try {
+            const parsed = JSON.parse(savedStudents);
+            const found = parsed.find((s: any) => String(s.id) === String(currentStudentId) || s.enrollmentId === currentStudentId);
+            if (found) {
+              profile = {
+                id: String(found.id),
+                name: found.name,
+                enrollment_code: found.enrollmentId || found.enrollment_code || 'ART001',
+                level: found.level || 1,
+                title: found.title || 'Explorador Aprendiz',
+                xp: found.xp || 0,
+                coins: found.coins || 0,
+                streak: found.streak || 0
+              };
             }
+          } catch (e) {
+            console.warn('Erro ao ler gestao360_students:', e);
           }
         }
+      }
 
-        // Fallback final nos alunos de demonstração
-        if (!profile) {
-          const demo = DEFAULT_DEMO_STUDENTS.find(s => s.id === String(studentId) || s.enrollment_code === studentId);
-          if (demo) {
-            profile = {
-              id: demo.id,
-              enrollment_code: demo.enrollment_code,
-              name: demo.name,
-              level: demo.level,
-              title: demo.title,
-              xp: demo.xp,
-              coins: demo.coins,
-              streak: demo.streak
-            };
-          }
+      // Fallback final nos alunos de demonstração
+      if (!profile) {
+        const demo = DEFAULT_DEMO_STUDENTS.find(s => s.id === String(currentStudentId) || s.enrollment_code === currentStudentId);
+        if (demo) {
+          profile = {
+            id: demo.id,
+            name: demo.name,
+            enrollment_code: demo.enrollment_code,
+            level: demo.level,
+            title: demo.title,
+            xp: demo.xp,
+            coins: demo.coins,
+            streak: demo.streak
+          };
         }
+      }
 
-        // Se o histórico de datas estiver vazio mas o aluno tiver um streak pré-definido,
-        // inicializa o histórico com os dias anteriores terminando em ontem (para que hoje comece com fogo apagado).
-        const initialStreak = profile?.streak ?? 12;
-        if ((!localActivity.dates || localActivity.dates.length === 0) && initialStreak > 0) {
-          localActivity.dates = seedInitialStreakDates(initialStreak);
-          localActivity.highestStreak = Math.max(localActivity.highestStreak || 0, initialStreak);
-          localStorage.setItem(`edu_activity_${studentId}`, JSON.stringify(localActivity));
-        }
+      // Inicializa sequência caso necessário
+      const initialStreak = profile?.streak_count || profile?.streak || 12;
+      if ((!localActivity.dates || localActivity.dates.length === 0) && initialStreak > 0) {
+        localActivity.dates = seedInitialStreakDates(initialStreak);
+        localActivity.highestStreak = Math.max(localActivity.highestStreak || 0, initialStreak);
+        localStorage.setItem(`edu_activity_${currentStudentId}`, JSON.stringify(localActivity));
+      }
 
-        // Calcular estado exato da ofensiva (Duolingo)
-        const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
-        const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
+      // Calcular estado exato da ofensiva (Duolingo)
+      const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
+      const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
 
-        if (profile) {
-          setStudentData(prev => ({
-            ...prev,
-            id: profile.id, 
-            name: profile.name,
-            level: profile.level,
-            title: profile.title,
-            xp: profile.xp,
-            coins: profile.coins,
-            streak: streakData.currentStreak,
-            hasPracticedToday: streakData.hasPracticedToday,
-            highestStreak: Math.max(localActivity.highestStreak || 0, streakData.currentStreak),
-            streakFreezes: streakData.freezesRemaining,
-            weeklyActivity,
-            avatar: localActivity.avatar || prev.avatar,
-            inventory: localActivity.inventory || prev.inventory
-          }));
-        }
+      if (profile) {
+        const todayStr = getLocalDateString();
+        const hasPracticedToday = profile.last_activity_date === todayStr || streakData.hasPracticedToday;
+        const currentStreak = profile.streak_count || profile.streak || streakData.currentStreak;
+
+        setStudentData(prev => ({
+          ...prev,
+          id: profile.id, 
+          name: profile.name,
+          level: profile.level || Math.max(1, Math.floor((profile.xp || 0) / 300) + 1),
+          title: profile.title || 'Explorador Aprendiz',
+          xp: profile.xp,
+          coins: profile.coins,
+          streak: currentStreak,
+          hasPracticedToday,
+          highestStreak: Math.max(localActivity.highestStreak || 0, currentStreak),
+          streakFreezes: streakData.freezesRemaining,
+          weeklyActivity,
+          avatar: localActivity.avatar || prev.avatar,
+          inventory: localActivity.inventory || prev.inventory
+        }));
       }
       setIsLoading(false);
     }
@@ -516,7 +545,8 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
   const completeCurrentLesson = async (score: number = 0) => {
     if (!activeLesson) return;
     if (studentData.id) {
-      await completeLesson(studentData.id, activeLesson.id, score);
+      const courseId = activeCourse?.id || '00000000-0000-0000-0000-000000000000';
+      await completeLesson(studentData.id, courseId, activeLesson.id);
     }
     
     // Atualizar no estado local (cursos gerais)
@@ -643,6 +673,10 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             setActiveView={setActiveView}
             setActiveLesson={setActiveLesson}
             finishLesson={finishLesson}
+            studentId={studentData.id || studentId}
+            onLessonCompleted={(lessonId, earnedXp, earnedCoins) => {
+              handleAward(earnedXp, earnedCoins);
+            }}
           />
         )}
 
@@ -655,6 +689,10 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             quizState={quizState}
             setQuizState={setQuizState}
             finishLesson={finishLesson}
+            studentId={studentData.id || studentId}
+            onQuizSubmitted={({ earnedXp, earnedCoins }) => {
+              handleAward(earnedXp, earnedCoins);
+            }}
           />
         )}
 

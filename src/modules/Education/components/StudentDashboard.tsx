@@ -21,6 +21,10 @@ interface StudentDashboardProps {
   handleAccessCourse: (course: Course) => void;
   handleStartLesson: (lesson: any) => void;
   studentData?: {
+    name?: string;
+    xp?: number;
+    coins?: number;
+    level?: number;
     streak: number;
     hasPracticedToday?: boolean;
     streakFreezes?: number;

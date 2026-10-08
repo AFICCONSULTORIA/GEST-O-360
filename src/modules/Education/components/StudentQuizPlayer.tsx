@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   X, 
   Shield, 
   HelpCircle, 
   Trophy, 
   Check, 
-  Swords
+  Swords,
+  Zap,
+  CheckCircle2,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { Lesson } from '../StudentPortal';
+import { submitQuizAttempt } from '../../../lib/api/education';
 
 interface StudentQuizPlayerProps {
   activeLesson: Lesson;
@@ -29,6 +34,8 @@ interface StudentQuizPlayerProps {
   }>>;
   finishLesson: () => void;
   activeCourse?: any;
+  studentId?: string;
+  onQuizSubmitted?: (result: { earnedXp: number; earnedCoins: number; passed: boolean; score: number }) => void;
 }
 
 export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
@@ -39,7 +46,71 @@ export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
   setQuizState,
   finishLesson,
   activeCourse,
+  studentId,
+  onQuizSubmitted,
 }) => {
+  const [submissionResult, setSubmissionResult] = useState<{
+    isSubmitting: boolean;
+    passed: boolean;
+    scorePercent: number;
+    earnedXp: number;
+    earnedCoins: number;
+    synced: boolean;
+  } | null>(null);
+
+  const handleFinishQuiz = async (finalScore: number) => {
+    const totalQuestions = activeLesson.questions?.length || 1;
+    const scorePercent = Math.round((finalScore / totalQuestions) * 100);
+    const passed = scorePercent >= 60;
+    const baseExp = activeLesson.xp || 50;
+    const baseCoins = activeLesson.coins || 10;
+    const earnedXp = passed ? baseExp : Math.round(baseExp * (finalScore / totalQuestions));
+    const earnedCoins = passed ? baseCoins : Math.max(1, Math.round(baseCoins * (finalScore / totalQuestions)));
+
+    setSubmissionResult({
+      isSubmitting: true,
+      passed,
+      scorePercent,
+      earnedXp,
+      earnedCoins,
+      synced: false
+    });
+
+    const effStudentId = studentId || localStorage.getItem('edu_student_id') || '2';
+
+    try {
+      const res = await submitQuizAttempt({
+        studentId: effStudentId,
+        quizId: activeLesson.id,
+        score: scorePercent,
+        totalQuestions,
+        correctAnswers: finalScore,
+        earnedXp,
+        earnedCoins
+      });
+
+      setSubmissionResult(prev => prev ? {
+        ...prev,
+        isSubmitting: false,
+        synced: Boolean(res.success),
+        earnedXp: res.earnedXp ?? earnedXp,
+        earnedCoins: res.earnedCoins ?? earnedCoins,
+      } : null);
+
+      if (onQuizSubmitted) {
+        onQuizSubmitted({
+          earnedXp: res.earnedXp ?? earnedXp,
+          earnedCoins: res.earnedCoins ?? earnedCoins,
+          passed: res.passed ?? passed,
+          score: scorePercent
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao enviar quiz:', err);
+      setSubmissionResult(prev => prev ? { ...prev, isSubmitting: false, synced: true } : null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] bg-neutral-50 dark:bg-neutral-950 flex flex-col">
       {/* Header */}
@@ -73,8 +144,8 @@ export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
                 <h2 className="text-2xl font-black text-neutral-900 dark:text-white mb-2">Ops! Sem perguntas</h2>
                 <p className="text-neutral-500 mb-8 max-w-sm mx-auto">Parece que o professor ainda não adicionou as perguntas para este desafio.</p>
                 <div className="mt-8">
-                <button onClick={() => { setActiveView(activeCourse ? 'trail-map' : 'assessments'); setActiveLesson(null); }} className="px-8 py-3 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold transition-colors cursor-pointer">Voltar</button>
-              </div>
+                  <button onClick={() => { setActiveView(activeCourse ? 'trail-map' : 'assessments'); setActiveLesson(null); }} className="px-8 py-3 bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl font-bold transition-colors cursor-pointer">Voltar</button>
+                </div>
               </div>
             );
           }
@@ -120,20 +191,72 @@ export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
             </div>
           );
         })() : (
-          <div className="text-center animate-in zoom-in-95 duration-500">
-            <div className="w-32 h-32 mx-auto bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mb-6 border-4 border-amber-400">
-              <Trophy size={64} className="text-amber-500" />
+          <div className="text-center animate-in zoom-in-95 duration-500 max-w-md w-full">
+            <div className={`w-32 h-32 mx-auto rounded-full flex items-center justify-center mb-6 border-4 shadow-xl ${
+              (submissionResult?.passed ?? true)
+                ? 'bg-amber-100 dark:bg-amber-900/30 border-amber-400 text-amber-500'
+                : 'bg-rose-100 dark:bg-rose-900/30 border-rose-400 text-rose-500'
+            }`}>
+              {(submissionResult?.passed ?? true) ? (
+                <Trophy size={64} className="text-amber-500 animate-bounce" />
+              ) : (
+                <AlertCircle size={64} className="text-rose-500" />
+              )}
             </div>
-            <h2 className="text-4xl font-black text-neutral-900 dark:text-white mb-4">Desafio Concluído!</h2>
-            <p className="text-xl text-neutral-600 dark:text-neutral-400 mb-8">
-              Você acertou {quizState.score} de {activeLesson.questions?.length} perguntas.
+            
+            <h2 className="text-4xl font-black text-neutral-900 dark:text-white mb-2">
+              {(submissionResult?.passed ?? true) ? 'Desafio Concluído!' : 'Quase lá!'}
+            </h2>
+
+            <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-6">
+              Você acertou {quizState.score} de {activeLesson.questions?.length} perguntas ({submissionResult?.scorePercent ?? 0}%).
             </p>
-            <button 
-              onClick={finishLesson}
-              className="px-10 py-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg uppercase tracking-widest transition-transform hover:scale-105 shadow-xl shadow-emerald-500/20 cursor-pointer"
-            >
-              Resgatar XP e Continuar
-            </button>
+
+            {/* Card com as recompensas persistidas */}
+            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 mb-8 shadow-sm flex items-center justify-around">
+              <div className="text-center">
+                <span className="text-xs uppercase font-bold text-neutral-400 tracking-wider">XP Ganho</span>
+                <p className="text-2xl font-black text-amber-500 flex items-center justify-center gap-1 mt-1">
+                  <Zap size={20} /> +{submissionResult?.earnedXp ?? activeLesson.xp ?? 50}
+                </p>
+              </div>
+              <div className="h-10 w-[1px] bg-neutral-200 dark:bg-neutral-800"></div>
+              <div className="text-center">
+                <span className="text-xs uppercase font-bold text-neutral-400 tracking-wider">Moedas</span>
+                <p className="text-2xl font-black text-yellow-500 flex items-center justify-center gap-1 mt-1">
+                  🪙 +{submissionResult?.earnedCoins ?? activeLesson.coins ?? 10}
+                </p>
+              </div>
+              <div className="h-10 w-[1px] bg-neutral-200 dark:bg-neutral-800"></div>
+              <div className="text-center">
+                <span className="text-xs uppercase font-bold text-neutral-400 tracking-wider">Status</span>
+                <p className={`text-xs font-black px-2.5 py-1 rounded-full mt-2 inline-flex items-center gap-1 ${
+                  (submissionResult?.passed ?? true)
+                    ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
+                }`}>
+                  <CheckCircle2 size={12} />
+                  {(submissionResult?.passed ?? true) ? 'Aprovado' : 'Revisar'}
+                </p>
+              </div>
+            </div>
+
+            {submissionResult?.isSubmitting ? (
+              <button 
+                disabled
+                className="w-full py-5 bg-neutral-300 dark:bg-neutral-800 text-neutral-500 rounded-2xl font-black text-lg uppercase tracking-widest flex items-center justify-center gap-2 cursor-wait"
+              >
+                <Loader2 size={22} className="animate-spin" />
+                Salvando no Supabase...
+              </button>
+            ) : (
+              <button 
+                onClick={finishLesson}
+                className="w-full py-5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black text-lg uppercase tracking-widest transition-transform hover:scale-105 active:scale-95 shadow-xl shadow-emerald-500/20 cursor-pointer"
+              >
+                Resgatar Recompensas e Continuar
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -188,7 +311,10 @@ export const StudentQuizPlayer: React.FC<StudentQuizPlayerProps> = ({
                     isCorrect: null
                   }));
                 } else {
-                  setQuizState(prev => ({...prev, isFinished: true}));
+                  // Finalizar e disparar persistência
+                  const finalScore = quizState.score;
+                  setQuizState(prev => ({ ...prev, isFinished: true }));
+                  handleFinishQuiz(finalScore);
                 }
               }
             }}
