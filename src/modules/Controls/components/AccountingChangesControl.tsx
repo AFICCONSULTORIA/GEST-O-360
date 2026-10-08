@@ -5,7 +5,8 @@ import {
   Calendar, Printer, ShieldCheck, X, FileCheck, Scale, Award, 
   ArrowRight, CheckSquare, MessageSquare, Briefcase, Phone, Mail,
   RefreshCw, FileSpreadsheet, Paperclip, Upload, Download, ExternalLink,
-  Calculator, Landmark, Shield, Copy, Check, FileDiff, Sparkles, UserCheck
+  Calculator, Landmark, Shield, Copy, Check, FileDiff, Sparkles, UserCheck,
+  Lock, GitBranch, Layers, ShieldAlert, FileSignature, BookOpen
 } from 'lucide-react';
 import { 
   AccountingChange, 
@@ -14,9 +15,27 @@ import {
   ACCOUNTING_CHANGE_TYPES,
   ACCOUNTING_STATUS_CONFIG,
   REQUESTER_ROLES,
-  MUNICIPAL_DEPARTMENTS
+  MUNICIPAL_DEPARTMENTS,
+  TIPOS_DOCUMENTOS_CONTABEIS,
+  TIPOS_AJUSTES_CONTABEIS,
+  BASES_LEGAIS_MCASP,
+  STATUS_SRC_CONFIG,
+  TipoDocumentoContabil,
+  TipoAjusteContabil,
+  StatusSRC,
+  PartidaContabil
 } from '../types/accountingChanges';
-import { accountingChangesService } from '../services/accountingChangesService';
+import { 
+  accountingChangesService, 
+  computeSha256, 
+  generateHistoricoRazao, 
+  validateSRCDates, 
+  checkSegregationOfDuties 
+} from '../services/accountingChangesService';
+import { SRCPartidasComparativo } from './SRCPartidasComparativo';
+import { SRCTimelineAuditoria } from './SRCTimelineAuditoria';
+import { generateSRCDossierHtml } from './SRCDossierImpressao';
+import { LivroAlteracoesContabeis } from './LivroAlteracoesContabeis';
 import { AdminUser } from '../../../types';
 import { hasPermission } from '../../../lib/permissions';
 
@@ -107,6 +126,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>(''); // Filtro por data específica (dia, mês e ano)
+  const [accountingMode, setAccountingMode] = useState<'livro' | 'src'>('livro');
 
   // Modais
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -143,20 +163,50 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
   const [formCurrentState, setFormCurrentState] = useState('');
   const [formProposedState, setFormProposedState] = useState('');
 
-  // Anexos (Antes e Depois)
+  // Estados Especializados de Retificação Contábil (SRC - MCASP)
+  const [formTipoDocumentoSRC, setFormTipoDocumentoSRC] = useState<TipoDocumentoContabil>('EMPENHO');
+  const [formTipoAjusteSRC, setFormTipoAjusteSRC] = useState<TipoAjusteContabil>('ESTORNO_PARCIAL');
+  const [formDataFatoGerador, setFormDataFatoGerador] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [formDataDocumentoOrigem, setFormDataDocumentoOrigem] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [formDataLancamentoEfetivo, setFormDataLancamentoEfetivo] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [formBaseLegalMcasp, setFormBaseLegalMcasp] = useState<string>(BASES_LEGAIS_MCASP[0]);
+  const [formValorOriginal, setFormValorOriginal] = useState<string>('0');
+
+  // Partidas Contábeis (PCASP) - Lançamento Primitivo vs Retificador
+  const [formOrigDebitoCod, setFormOrigDebitoCod] = useState('3.3.9.0.30.00');
+  const [formOrigDebitoNome, setFormOrigDebitoNome] = useState('Material de Consumo');
+  const [formOrigCreditoCod, setFormOrigCreditoCod] = useState('1.1.1.1.1.00');
+  const [formOrigCreditoNome, setFormOrigCreditoNome] = useState('Caixa e Equivalentes de Caixa');
+  const [formOrigFonte, setFormOrigFonte] = useState('1.500.0000 - Recursos Ordinários');
+  const [formOrigElemento, setFormOrigElemento] = useState('3.3.90.30 - Material de Consumo');
+
+  const [formPropDebitoCod, setFormPropDebitoCod] = useState('3.3.9.0.39.00');
+  const [formPropDebitoNome, setFormPropDebitoNome] = useState('Outros Serviços de Terceiros - PJ');
+  const [formPropCreditoCod, setFormPropCreditoCod] = useState('1.1.1.1.1.00');
+  const [formPropCreditoNome, setFormPropCreditoNome] = useState('Caixa e Equivalentes de Caixa');
+  const [formPropFonte, setFormPropFonte] = useState('1.500.0000 - Recursos Ordinários');
+  const [formPropElemento, setFormPropElemento] = useState('3.3.90.39 - Outros Serviços de Terceiros');
+
+  // Anexos (Antes e Depois) com Hashes SHA-256
   const [formAttachmentBeforeName, setFormAttachmentBeforeName] = useState('');
   const [formAttachmentBeforeUrl, setFormAttachmentBeforeUrl] = useState('');
+  const [formAttachmentBeforeHash, setFormAttachmentBeforeHash] = useState('');
   const [formAttachmentAfterName, setFormAttachmentAfterName] = useState('');
   const [formAttachmentAfterUrl, setFormAttachmentAfterUrl] = useState('');
+  const [formAttachmentAfterHash, setFormAttachmentAfterHash] = useState('');
+
+  // Aba ativa no modal de visualização detalhada
+  const [viewingTab, setViewingTab] = useState<'identificacao' | 'partidas' | 'timeline' | 'historico'>('identificacao');
 
   const fileBeforeInputRef = useRef<HTMLInputElement>(null);
   const fileAfterInputRef = useRef<HTMLInputElement>(null);
 
-  // Formulário de Parecer Contábil
+  // Formulário de Parecer Contábil e Homologação
   const [reviewStatus, setReviewStatus] = useState<AccountingChangeStatus>('approved');
   const [reviewAccountantName, setReviewAccountantName] = useState('');
   const [reviewAccountantCrc, setReviewAccountantCrc] = useState('');
   const [reviewAccountantNotes, setReviewAccountantNotes] = useState('');
+  const [reviewDataLancamentoEfetivo, setReviewDataLancamentoEfetivo] = useState(new Date().toISOString().slice(0, 10));
 
   // Feedback Toast & Copied state
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -197,28 +247,31 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
     return () => window.removeEventListener('accounting-changes-updated', handleUpdated);
   }, []);
 
-  // Upload de Arquivos Antes e Depois
+  // Upload de Arquivos Antes e Depois com cálculo de integridade SHA-256
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'before' | 'after') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Limite de 10MB para o Data URL
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('O arquivo deve ter no máximo 10MB.', 'error');
+    if (file.size > 15 * 1024 * 1024) {
+      showToast('O arquivo deve ter no máximo 15MB.', 'error');
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = reader.result as string;
+      const fileHash = await computeSha256(result);
+
       if (target === 'before') {
         setFormAttachmentBeforeName(file.name);
         setFormAttachmentBeforeUrl(result);
-        showToast(`Documento Original (Antes) "${file.name}" anexado!`);
+        setFormAttachmentBeforeHash(fileHash);
+        showToast(`Doc Primitivo "${file.name}" anexado (Hash SHA-256 gerado)!`);
       } else {
         setFormAttachmentAfterName(file.name);
         setFormAttachmentAfterUrl(result);
-        showToast(`Documento Retificado (Depois) "${file.name}" anexado!`);
+        setFormAttachmentAfterHash(fileHash);
+        showToast(`Doc Retificado "${file.name}" anexado (Hash SHA-256 gerado)!`);
       }
     };
     reader.onerror = () => {
@@ -231,10 +284,12 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
     if (target === 'before') {
       setFormAttachmentBeforeName('');
       setFormAttachmentBeforeUrl('');
+      setFormAttachmentBeforeHash('');
       if (fileBeforeInputRef.current) fileBeforeInputRef.current.value = '';
     } else {
       setFormAttachmentAfterName('');
       setFormAttachmentAfterUrl('');
+      setFormAttachmentAfterHash('');
       if (fileAfterInputRef.current) fileAfterInputRef.current.value = '';
     }
   };
@@ -325,31 +380,40 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
       showToast('Você não possui permissão para registrar novas solicitações.', 'error');
       return;
     }
+    const today = new Date().toISOString().slice(0, 10);
     setEditingChange(null);
-    setFormRequesterName('');
+    setFormRequesterName(currentUser?.name || '');
     setFormRequesterRole(REQUESTER_ROLES[0]);
     setFormCustomRole('');
     setFormRequesterDepartment(MUNICIPAL_DEPARTMENTS[1]);
     setFormCustomDepartment('');
-    setFormRequesterEmail('');
+    setFormRequesterEmail(currentUser?.email || '');
     setFormRequesterPhone('');
     setFormChangeType('retificacao_empenho');
+    setFormTipoDocumentoSRC('EMPENHO');
+    setFormTipoAjusteSRC('ESTORNO_PARCIAL');
     setFormReferenceDoc('');
-    const today = new Date().toISOString().slice(0, 10);
     setFormChangeDate(today);
+    setFormDataFatoGerador(today);
+    setFormDataDocumentoOrigem(today);
+    setFormDataLancamentoEfetivo(today);
+    setFormBaseLegalMcasp(BASES_LEGAIS_MCASP[0]);
     const [y, m] = today.split('-');
     const yNum = parseInt(y, 10);
     const mIdx = parseInt(m, 10) - 1;
     setFormFiscalYear(yNum);
     setFormMonthRef(mIdx >= 0 && mIdx < 12 ? `${MONTH_NAMES[mIdx]} / ${y}` : today.slice(0, 7));
     setFormAmount('0');
+    setFormValorOriginal('0');
     setFormReason('');
     setFormCurrentState('');
     setFormProposedState('');
     setFormAttachmentBeforeName('');
     setFormAttachmentBeforeUrl('');
+    setFormAttachmentBeforeHash('');
     setFormAttachmentAfterName('');
     setFormAttachmentAfterUrl('');
+    setFormAttachmentAfterHash('');
     setIsNewModalOpen(true);
   };
 
@@ -383,18 +447,46 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
       ? item.changeDate.slice(0, 10) 
       : (item.createdAt ? item.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10));
     setFormChangeDate(initialDate);
+    setFormDataFatoGerador(item.dataFatoGerador || initialDate);
+    setFormDataDocumentoOrigem(item.dataDocumentoOrigem || initialDate);
+    setFormDataLancamentoEfetivo(item.dataLancamentoEfetivo || initialDate);
     setFormChangeType(item.changeType);
+    setFormTipoDocumentoSRC(item.tipoDocumentoSRC || 'EMPENHO');
+    setFormTipoAjusteSRC(item.tipoAjusteSRC || 'ESTORNO_PARCIAL');
+    setFormBaseLegalMcasp(item.baseLegalMcasp || BASES_LEGAIS_MCASP[0]);
     setFormReferenceDoc(item.referenceDoc);
     setFormFiscalYear(item.fiscalYear);
     setFormMonthRef(parseMonthToIso(item.monthRef));
     setFormAmount(String(item.amount || 0));
+    setFormValorOriginal(String(item.valorOriginal || item.amount || 0));
     setFormReason(item.reason);
     setFormCurrentState(item.currentState || '');
     setFormProposedState(item.proposedState || '');
+
+    if (item.partidaOriginal) {
+      setFormOrigDebitoCod(item.partidaOriginal.contaDebitoCodigo || '3.3.9.0.30.00');
+      setFormOrigDebitoNome(item.partidaOriginal.contaDebitoNome || 'Material de Consumo');
+      setFormOrigCreditoCod(item.partidaOriginal.contaCreditoCodigo || '1.1.1.1.1.00');
+      setFormOrigCreditoNome(item.partidaOriginal.contaCreditoNome || 'Caixa');
+      setFormOrigFonte(item.partidaOriginal.fonteRecursoCodigo || '1.500.0000');
+      setFormOrigElemento(item.partidaOriginal.elementoDespesaCodigo || '3.3.90.30');
+    }
+
+    if (item.partidaProposta) {
+      setFormPropDebitoCod(item.partidaProposta.contaDebitoCodigo || '3.3.9.0.39.00');
+      setFormPropDebitoNome(item.partidaProposta.contaDebitoNome || 'Serviços de Terceiros');
+      setFormPropCreditoCod(item.partidaProposta.contaCreditoCodigo || '1.1.1.1.1.00');
+      setFormPropCreditoNome(item.partidaProposta.contaCreditoNome || 'Caixa');
+      setFormPropFonte(item.partidaProposta.fonteRecursoCodigo || '1.500.0000');
+      setFormPropElemento(item.partidaProposta.elementoDespesaCodigo || '3.3.90.39');
+    }
+
     setFormAttachmentBeforeName(item.attachmentBeforeName || item.attachmentName || '');
     setFormAttachmentBeforeUrl(item.attachmentBeforeUrl || item.attachmentUrl || '');
+    setFormAttachmentBeforeHash(item.attachmentBeforeHash || '');
     setFormAttachmentAfterName(item.attachmentAfterName || '');
     setFormAttachmentAfterUrl(item.attachmentAfterUrl || '');
+    setFormAttachmentAfterHash(item.attachmentAfterHash || '');
     setIsNewModalOpen(true);
   };
 
@@ -405,10 +497,10 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
     }
     setReviewModalChange(item);
     setReviewStatus(item.status === 'pending' ? 'in_review' : item.status);
-    // Usar dados reais do usuário logado se não houver responsável definido
     setReviewAccountantName(item.accountantName || currentUser?.name || '');
     setReviewAccountantCrc(item.accountantCrc || '');
     setReviewAccountantNotes(item.accountantNotes || '');
+    setReviewDataLancamentoEfetivo(item.dataLancamentoEfetivo || new Date().toISOString().slice(0, 10));
   };
 
   const handleSaveChange = async (e: React.FormEvent) => {
@@ -442,43 +534,91 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
     }
 
     const parsedAmount = parseFloat(formAmount.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+    const parsedValorOriginal = parseFloat(formValorOriginal.replace(/[^\d.,]/g, '').replace(',', '.')) || parsedAmount;
 
-    const payload = {
+    // Validação de Temporalidade Conforme Lei 4.320/64 & TCE
+    const valCheck = validateSRCDates(formDataFatoGerador, formDataDocumentoOrigem, formFiscalYear);
+    if (!valCheck.valid) {
+      showToast(valCheck.error || 'Datas inconsistentes.', 'error');
+      return;
+    }
+
+    const partidaOriginal: PartidaContabil = {
+      contaDebitoCodigo: formOrigDebitoCod.trim(),
+      contaDebitoNome: formOrigDebitoNome.trim(),
+      contaCreditoCodigo: formOrigCreditoCod.trim(),
+      contaCreditoNome: formOrigCreditoNome.trim(),
+      fonteRecursoCodigo: formOrigFonte.trim(),
+      fonteRecursoNome: '',
+      elementoDespesaCodigo: formOrigElemento.trim(),
+      valor: parsedValorOriginal,
+      descricao: formCurrentState.trim()
+    };
+
+    const partidaProposta: PartidaContabil = {
+      contaDebitoCodigo: formPropDebitoCod.trim(),
+      contaDebitoNome: formPropDebitoNome.trim(),
+      contaCreditoCodigo: formPropCreditoCod.trim(),
+      contaCreditoNome: formPropCreditoNome.trim(),
+      fonteRecursoCodigo: formPropFonte.trim(),
+      fonteRecursoNome: '',
+      elementoDespesaCodigo: formPropElemento.trim(),
+      valor: parsedAmount,
+      descricao: formProposedState.trim()
+    };
+
+    const payload: any = {
       requesterName: formRequesterName.trim(),
       requesterRole: finalRole,
       requesterDepartment: finalDept,
       requesterEmail: formRequesterEmail.trim(),
       requesterPhone: formRequesterPhone.trim(),
       changeDate: formChangeDate,
+      dataFatoGerador: formDataFatoGerador,
+      dataDocumentoOrigem: formDataDocumentoOrigem,
+      dataLancamentoEfetivo: formDataLancamentoEfetivo,
       changeType: formChangeType,
+      tipoDocumentoSRC: formTipoDocumentoSRC,
+      tipoAjusteSRC: formTipoAjusteSRC,
       referenceDoc: formReferenceDoc.trim(),
       fiscalYear: formFiscalYear,
       monthRef: formatIsoToFriendlyMonth(formMonthRef),
       amount: parsedAmount,
+      valorOriginal: parsedValorOriginal,
       reason: formReason.trim(),
+      baseLegalMcasp: formBaseLegalMcasp.trim(),
       currentState: formCurrentState.trim(),
       proposedState: formProposedState.trim(),
+      partidaOriginal,
+      partidaProposta,
       attachmentName: formAttachmentBeforeName || formAttachmentAfterName || '',
       attachmentUrl: formAttachmentBeforeUrl || formAttachmentAfterUrl || '',
       attachmentBeforeName: formAttachmentBeforeName.trim(),
       attachmentBeforeUrl: formAttachmentBeforeUrl,
+      attachmentBeforeHash: formAttachmentBeforeHash,
       attachmentAfterName: formAttachmentAfterName.trim(),
-      attachmentAfterUrl: formAttachmentAfterUrl
+      attachmentAfterUrl: formAttachmentAfterUrl,
+      attachmentAfterHash: formAttachmentAfterHash
     };
 
-    if (editingChange) {
-      await accountingChangesService.updateChange(editingChange.id, payload);
-      showToast('Solicitação de alteração atualizada com sucesso!');
-    } else {
-      await accountingChangesService.createChange({
-        ...payload,
-        status: 'pending'
-      });
-      showToast('Solicitação de alteração registrada no controle contábil!');
-    }
+    try {
+      if (editingChange) {
+        await accountingChangesService.updateChange(editingChange.id, payload);
+        showToast('Solicitação de retificação atualizada com sucesso!');
+      } else {
+        await accountingChangesService.createChange({
+          ...payload,
+          status: 'pending',
+          statusSRC: 'AGUARDANDO_PARECER'
+        });
+        showToast('Solicitação de retificação contábil autuada com sucesso!');
+      }
 
-    setIsNewModalOpen(false);
-    loadData();
+      setIsNewModalOpen(false);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao gravar retificação contábil.', 'error');
+    }
   };
 
   const handleSaveReview = async (e: React.FormEvent) => {
@@ -494,16 +634,60 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
       return;
     }
 
-    await accountingChangesService.reviewChange(reviewModalChange.id, {
-      status: reviewStatus,
-      accountantName: reviewAccountantName.trim(),
-      accountantCrc: reviewAccountantCrc.trim(),
-      accountantNotes: reviewAccountantNotes.trim()
-    });
+    // Segregação de Funções: Solicitante não pode homologar
+    if (reviewStatus === 'approved' || reviewStatus === 'completed') {
+      const segCheck = checkSegregationOfDuties(reviewModalChange.requesterName, reviewAccountantName, 'homologacao');
+      if (!segCheck.allowed) {
+        showToast(segCheck.reason || 'Violação do Princípio da Segregação de Funções!', 'error');
+        return;
+      }
+    }
 
-    showToast('Parecer contábil registrado com sucesso!');
-    setReviewModalChange(null);
-    loadData();
+    try {
+      const etapa: any = 
+        reviewStatus === 'completed' ? 'EXECUCAO_LANCAMENTO' :
+        reviewStatus === 'approved' ? 'HOMOLOGACAO_CONTADOR_GERAL' :
+        reviewStatus === 'rejected' ? 'RECUSA' : 'PARECER_CONTABIL';
+
+      const statusSRC: any = 
+        reviewStatus === 'completed' ? 'APROVADO_EXECUTADO' :
+        reviewStatus === 'approved' ? 'AGUARDANDO_HOMOLOGACAO' :
+        reviewStatus === 'rejected' ? 'INDEFERIDO' : 'AGUARDANDO_PARECER';
+
+      await accountingChangesService.tramitarSRC(reviewModalChange.id, etapa, {
+        responsavelNome: reviewAccountantName.trim(),
+        responsavelCargo: 'Responsável Técnico Contábil',
+        responsavelCrc: reviewAccountantCrc.trim(),
+        despacho: reviewAccountantNotes.trim(),
+        dataEfetivaRazao: reviewDataLancamentoEfetivo,
+        status: reviewStatus,
+        statusSRC
+      });
+
+      showToast('Despacho e tramitação contábil gravados na trilha de auditoria!');
+      setReviewModalChange(null);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao registrar tramitação.', 'error');
+    }
+  };
+
+  const handlePrintDossier = (item: AccountingChange) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+    const html = generateSRCDossierHtml(item, {
+      municipioNome: 'Prefeitura Municipal',
+      estadoNome: 'ESTADO DE MATO GROSSO'
+    });
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 350);
   };
 
   const handleDelete = async (item: AccountingChange) => {
@@ -711,7 +895,48 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Toast Notificação */}
+      {/* Seletor de Modo: Livro da Contadora vs Processos SRC TCE */}
+      <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1.5 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => setAccountingMode('livro')}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+              accountingMode === 'livro'
+                ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <BookOpen size={16} />
+            <span>Livro da Contadora (WhatsApp & Resguardo)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setAccountingMode('src')}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+              accountingMode === 'src'
+                ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Scale size={16} />
+            <span>Processos SRC (Tribunal de Contas / PCASP)</span>
+          </button>
+        </div>
+
+        <span className="text-[11px] font-bold text-neutral-400 px-3 hidden md:inline">
+          {accountingMode === 'livro' 
+            ? 'Uso diário e ágil da Contadora para resguardo de pedidos' 
+            : 'Auditoria formal com partidas dobradas e dossiê do TCE'}
+        </span>
+      </div>
+
+      {accountingMode === 'livro' ? (
+        <LivroAlteracoesContabeis searchQuery={searchQuery} />
+      ) : (
+        <>
+          {/* Toast Notificação */}
       {toastMessage && (
         <div className={`fixed top-8 right-8 z-[200] px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 text-sm font-bold text-white transition-all animate-in slide-in-from-top-4 ${
           toastMessage.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'
@@ -1039,11 +1264,24 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                       {/* Tipo da Alteração & Doc */}
                       <td className="px-6 py-4 max-w-xs">
                         <div className="flex flex-col">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                              {item.tipoDocumentoSRC || 'EMPENHO'}
+                            </span>
+                            {item.tipoAjusteSRC && (
+                              <span className="text-[9px] font-bold uppercase text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-1.5 py-0.5 rounded">
+                                {item.tipoAjusteSRC.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
                           <span className="font-bold text-xs text-neutral-900 dark:text-neutral-100">
                             {typeObj?.label || item.changeType}
                           </span>
                           <span className="text-[11px] font-mono text-neutral-500 mt-0.5">
                             Doc: <strong className="text-neutral-800 dark:text-neutral-200">{item.referenceDoc}</strong>
+                          </span>
+                          <span className="text-[10px] text-neutral-400 mt-0.5">
+                            Fato Gerador: <strong className="text-neutral-600 dark:text-neutral-300 font-mono">{formatFullDate(item.dataFatoGerador || item.changeDate || item.createdAt)}</strong>
                           </span>
                           <p className="text-[11px] text-neutral-400 line-clamp-1 mt-1 italic" title={item.reason}>
                             "{item.reason}"
@@ -1066,7 +1304,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                               href={item.attachmentBeforeUrl || '#'}
                               download={item.attachmentBeforeName}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-[10px] font-black hover:scale-105 transition-transform w-max cursor-pointer"
-                              title={`Baixar documento anterior: ${item.attachmentBeforeName}`}
+                              title={`Baixar documento anterior: ${item.attachmentBeforeName}${item.attachmentBeforeHash ? ` (SHA-256: ${item.attachmentBeforeHash})` : ''}`}
                             >
                               <Paperclip size={11} />
                               <span className="truncate max-w-[110px]">Antes: {item.attachmentBeforeName}</span>
@@ -1080,7 +1318,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                               href={item.attachmentAfterUrl || '#'}
                               download={item.attachmentAfterName}
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-black hover:scale-105 transition-transform w-max cursor-pointer"
-                              title={`Baixar documento retificado: ${item.attachmentAfterName}`}
+                              title={`Baixar documento retificado: ${item.attachmentAfterName}${item.attachmentAfterHash ? ` (SHA-256: ${item.attachmentAfterHash})` : ''}`}
                             >
                               <Paperclip size={11} />
                               <span className="truncate max-w-[110px]">Depois: {item.attachmentAfterName}</span>
@@ -1115,6 +1353,14 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                       {/* Ações */}
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => handlePrintDossier(item)}
+                            className="p-2 text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl transition-colors cursor-pointer"
+                            title="Gerar Dossiê Oficial de Auditoria TCE (PDF)"
+                          >
+                            <FileText size={16} />
+                          </button>
+
                           <button
                             onClick={() => setViewingChange(item)}
                             className="p-2 text-neutral-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl transition-colors cursor-pointer"
@@ -1303,71 +1549,141 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                 </div>
               </div>
 
-              {/* SEÇÃO 2: Dados da Alteração Contábil */}
-              <div className="bg-neutral-50/70 dark:bg-neutral-950/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-widest flex items-center gap-2">
-                    <FileText size={16} /> 2. Dados da Alteração Contábil
-                  </h4>
-                  <span className="text-[11px] font-bold text-neutral-500">
-                    Especificações técnicas e financeiras
+              {/* SEÇÃO 2: Dados da Retificação Contábil (SRC - MCASP / Lei 4.320/64) */}
+              <div className="bg-neutral-50/70 dark:bg-neutral-950/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200/60 dark:border-neutral-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                      <FileSignature size={16} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-neutral-800 dark:text-neutral-200 uppercase tracking-widest">
+                        2. Dados da Retificação Contábil (SRC)
+                      </h4>
+                      <p className="text-[10px] text-neutral-500">
+                        Classificação orçamentária e patrimonial conforme MCASP e Lei Federal nº 4.320/1964
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    Módulo Auditável TCE-MT / MPC
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Linha 1: Tipo de Documento, Tipo de Ajuste e Número */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">Tipo de Alteração *</label>
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                      <FileText size={13} className="text-indigo-600" />
+                      Tipo de Documento *
+                    </label>
                     <select
-                      value={formChangeType}
-                      onChange={(e) => setFormChangeType(e.target.value as any)}
+                      value={formTipoDocumentoSRC}
+                      onChange={(e) => {
+                        const val = e.target.value as TipoDocumentoContabil;
+                        setFormTipoDocumentoSRC(val);
+                        // Sincronizar com o tipo legado
+                        if (val === 'EMPENHO') setFormChangeType('retificacao_empenho');
+                        else if (val === 'LIQUIDACAO') setFormChangeType('estorno_liquidacao');
+                        else if (val === 'PAGAMENTO') setFormChangeType('estorno_pagamento');
+                        else if (val === 'RESTOS_A_PAGAR') setFormChangeType('cancelamento_restos_a_pagar');
+                        else setFormChangeType('reclassificacao_contabil');
+                      }}
                       className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-sm"
                     >
-                      {ACCOUNTING_CHANGE_TYPES.map(t => (
+                      {TIPOS_DOCUMENTOS_CONTABEIS.map(t => (
+                        <option key={t.value} value={t.value}>{t.sigla} - {t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                      <GitBranch size={13} className="text-indigo-600" />
+                      Tipo de Ajuste Contábil *
+                    </label>
+                    <select
+                      value={formTipoAjusteSRC}
+                      onChange={(e) => setFormTipoAjusteSRC(e.target.value as TipoAjusteContabil)}
+                      className="w-full px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-sm"
+                    >
+                      {TIPOS_AJUSTES_CONTABEIS.map(t => (
                         <option key={t.value} value={t.value}>{t.label}</option>
                       ))}
                     </select>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">Documento de Referência *</label>
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">
+                      Nº Documento de Origem *
+                    </label>
                     <input 
                       type="text" 
                       required
                       value={formReferenceDoc}
                       onChange={(e) => setFormReferenceDoc(e.target.value)}
-                      placeholder="Ex: Empenho 2026/0542, Proc. Adm. 112/2026..."
+                      placeholder="Ex: Empenho nº 1245/2026..."
                       className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 shadow-sm"
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">Exercício Orçamentário</label>
-                    <input 
-                      type="number" 
-                      value={formFiscalYear}
-                      onChange={(e) => setFormFiscalYear(parseInt(e.target.value) || new Date().getFullYear())}
-                      className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 font-mono shadow-sm"
-                    />
+                {/* Linha 2: RIGOR TEMPORAL - As 3 Datas Exatas Obrigatórias */}
+                <div className="p-4 bg-indigo-50/40 dark:bg-indigo-950/20 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-indigo-900 dark:text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Calendar size={14} className="text-indigo-600" />
+                      Rigor Temporal Obrigatório (Tribunal de Contas)
+                    </span>
+                    <span className="text-[10px] text-indigo-700 dark:text-indigo-400 font-bold">
+                      Exigência de Auditoria Externa
+                    </span>
                   </div>
 
-                  {/* Data Específica da Alteração (Dia, Mês e Ano completos) */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1 flex items-center justify-between">
-                      <span className="flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300">
-                        <Calendar size={13} className="text-indigo-600 dark:text-indigo-400" />
-                        Data da Alteração (Dia, Mês e Ano) *
-                      </span>
-                      <span className="text-[10px] text-neutral-400 font-bold">Data Específica</span>
-                    </label>
-                    <div className="relative">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-neutral-700 dark:text-neutral-300 uppercase">
+                        1. Data do Fato Gerador Original *
+                      </label>
                       <input 
                         type="date" 
                         required
-                        value={formChangeDate}
+                        value={formDataFatoGerador}
+                        onChange={(e) => setFormDataFatoGerador(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-xs"
+                      />
+                      <span className="text-[10px] text-neutral-500 block">
+                        Fato administrativo ({formatFullDate(formDataFatoGerador)})
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-neutral-700 dark:text-neutral-300 uppercase">
+                        2. Data do Documento de Origem *
+                      </label>
+                      <input 
+                        type="date" 
+                        required
+                        value={formDataDocumentoOrigem}
+                        onChange={(e) => setFormDataDocumentoOrigem(e.target.value)}
+                        className="w-full px-3 py-2.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-xs"
+                      />
+                      <span className="text-[10px] text-neutral-500 block">
+                        Emissão do empenho/nota ({formatFullDate(formDataDocumentoOrigem)})
+                      </span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black text-indigo-700 dark:text-indigo-300 uppercase">
+                        3. Data Efetiva de Lançamento (Razão) *
+                      </label>
+                      <input 
+                        type="date" 
+                        required
+                        value={formDataLancamentoEfetivo}
                         onChange={(e) => {
                           const val = e.target.value;
+                          setFormDataLancamentoEfetivo(val);
                           setFormChangeDate(val);
                           if (val) {
                             const [y, m] = val.split('-');
@@ -1377,31 +1693,46 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                             if (mIdx >= 0 && mIdx < 12) setFormMonthRef(`${MONTH_NAMES[mIdx]} / ${y}`);
                           }
                         }}
-                        className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-indigo-200 dark:border-indigo-800 rounded-2xl text-xs font-bold text-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-sm"
+                        className="w-full px-3 py-2.5 bg-white dark:bg-neutral-900 border border-indigo-300 dark:border-indigo-700 rounded-xl text-xs font-black text-indigo-700 dark:text-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer shadow-xs"
                       />
-                    </div>
-                    <div className="flex items-center justify-between text-[11px] px-1 text-neutral-500">
-                      <span>Data: <strong className="text-indigo-600 dark:text-indigo-400 font-black">{formatFullDate(formChangeDate)}</strong> {formChangeDate ? `(${formatFullDateExtenso(formChangeDate)})` : ''}</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const today = new Date().toISOString().slice(0, 10);
-                          setFormChangeDate(today);
-                          const [y, m] = today.split('-');
-                          const yNum = parseInt(y, 10);
-                          const mIdx = parseInt(m, 10) - 1;
-                          if (yNum) setFormFiscalYear(yNum);
-                          if (mIdx >= 0 && mIdx < 12) setFormMonthRef(`${MONTH_NAMES[mIdx]} / ${y}`);
-                        }}
-                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-bold cursor-pointer"
-                      >
-                        Hoje
-                      </button>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold block">
+                        Ingresso no balancete ({formatFullDate(formDataLancamentoEfetivo)})
+                      </span>
                     </div>
                   </div>
+                </div>
 
+                {/* Linha 3: Exercício, Base Legal MCASP e Valores */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">Valor Envolvido (R$)</label>
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">
+                      Exercício Financeiro
+                    </label>
+                    <input 
+                      type="number" 
+                      value={formFiscalYear}
+                      onChange={(e) => setFormFiscalYear(parseInt(e.target.value) || new Date().getFullYear())}
+                      className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 font-mono shadow-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">
+                      Valor Original (R$)
+                    </label>
+                    <input 
+                      type="text" 
+                      value={formValorOriginal}
+                      onChange={(e) => setFormValorOriginal(e.target.value)}
+                      placeholder="0,00"
+                      className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 font-mono shadow-sm"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">
+                      Valor do Ajuste (R$) *
+                    </label>
                     <input 
                       type="text" 
                       value={formAmount}
@@ -1410,48 +1741,218 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                       className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 font-mono shadow-sm"
                     />
                   </div>
-                </div>
 
-                {/* Situação Atual vs Proposta (De / Para) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                  <div className="p-4 bg-amber-50/50 dark:bg-amber-950/20 rounded-2xl border border-amber-200/70 dark:border-amber-800/40 space-y-2">
-                    <label className="text-[11px] font-black text-amber-800 dark:text-amber-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
-                      <AlertCircle size={14} /> Situação Anterior (Como está registrado no sistema - DE)
+                  <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">
+                      Base Legal MCASP / Lei *
                     </label>
-                    <textarea 
-                      rows={3}
-                      value={formCurrentState}
-                      onChange={(e) => setFormCurrentState(e.target.value)}
-                      placeholder="Ex: Empenho emitido no elemento 3.3.90.30 (Material de Consumo) para o Credor ABC Ltda..."
-                      className="w-full px-4 py-2.5 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-medium focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div className="p-4 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200/70 dark:border-emerald-800/40 space-y-2">
-                    <label className="text-[11px] font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-wider pl-1 flex items-center gap-1.5">
-                      <CheckCircle2 size={14} /> Situação Proposta (Como deve ficar após a alteração - PARA)
-                    </label>
-                    <textarea 
-                      rows={3}
-                      value={formProposedState}
-                      onChange={(e) => setFormProposedState(e.target.value)}
-                      placeholder="Ex: Retificar elemento para 3.3.90.39 (Outros Serviços de Terceiros - PJ) mantendo o valor..."
-                      className="w-full px-4 py-2.5 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-medium focus:outline-none focus:border-emerald-500"
-                    />
+                    <select
+                      value={formBaseLegalMcasp}
+                      onChange={(e) => setFormBaseLegalMcasp(e.target.value)}
+                      className="w-full px-3 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-[11px] font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-sm truncate"
+                    >
+                      {BASES_LEGAIS_MCASP.map(b => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                {/* Justificativa Detalhada */}
+                {/* Linha 4: Partidas Contábeis (PCASP) - Primitiva vs Proposta */}
+                <div className="p-4 bg-white dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-4 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-2">
+                    <span className="text-xs font-black text-neutral-800 dark:text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers size={15} className="text-indigo-600" />
+                      Partidas Dobradas no PCASP (Lançamento Primitivo vs Retificador Proposto)
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      Contas Contábeis de Débito e Crédito
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Partida Primitiva (Como Está - DE) */}
+                    <div className="p-3.5 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200/80 dark:border-amber-800/50 space-y-2.5">
+                      <div className="flex items-center justify-between text-amber-800 dark:text-amber-400 font-black text-xs uppercase">
+                        <span className="flex items-center gap-1">
+                          <AlertCircle size={13} /> Partida Primitiva (DE - Como Está)
+                        </span>
+                        <span className="text-[10px]">Lançamento a Ajustar</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Conta Débito (PCASP)</label>
+                          <input 
+                            type="text" 
+                            value={formOrigDebitoCod}
+                            onChange={(e) => setFormOrigDebitoCod(e.target.value)}
+                            placeholder="3.3.9.0.30.00"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg font-mono text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Título Conta Débito</label>
+                          <input 
+                            type="text" 
+                            value={formOrigDebitoNome}
+                            onChange={(e) => setFormOrigDebitoNome(e.target.value)}
+                            placeholder="Material de Consumo"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Conta Crédito (PCASP)</label>
+                          <input 
+                            type="text" 
+                            value={formOrigCreditoCod}
+                            onChange={(e) => setFormOrigCreditoCod(e.target.value)}
+                            placeholder="1.1.1.1.1.00"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg font-mono text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Título Conta Crédito</label>
+                          <input 
+                            type="text" 
+                            value={formOrigCreditoNome}
+                            onChange={(e) => setFormOrigCreditoNome(e.target.value)}
+                            placeholder="Caixa / Bancos"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Fonte de Recursos</label>
+                          <input 
+                            type="text" 
+                            value={formOrigFonte}
+                            onChange={(e) => setFormOrigFonte(e.target.value)}
+                            placeholder="1.500.0000"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Elemento de Despesa</label>
+                          <input 
+                            type="text" 
+                            value={formOrigElemento}
+                            onChange={(e) => setFormOrigElemento(e.target.value)}
+                            placeholder="3.3.90.30"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Partida Proposta (Como Fica - PARA) */}
+                    <div className="p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 space-y-2.5">
+                      <div className="flex items-center justify-between text-emerald-800 dark:text-emerald-400 font-black text-xs uppercase">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle2 size={13} /> Partida Retificadora (PARA - Como Fica)
+                        </span>
+                        <span className="text-[10px]">Lançamento Corretivo</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Nova Conta Débito</label>
+                          <input 
+                            type="text" 
+                            value={formPropDebitoCod}
+                            onChange={(e) => setFormPropDebitoCod(e.target.value)}
+                            placeholder="3.3.9.0.39.00"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg font-mono text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Título Nova Conta</label>
+                          <input 
+                            type="text" 
+                            value={formPropDebitoNome}
+                            onChange={(e) => setFormPropDebitoNome(e.target.value)}
+                            placeholder="Serviços Terceiros PJ"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Nova Conta Crédito</label>
+                          <input 
+                            type="text" 
+                            value={formPropCreditoCod}
+                            onChange={(e) => setFormPropCreditoCod(e.target.value)}
+                            placeholder="1.1.1.1.1.00"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg font-mono text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Título Nova Conta</label>
+                          <input 
+                            type="text" 
+                            value={formPropCreditoNome}
+                            onChange={(e) => setFormPropCreditoNome(e.target.value)}
+                            placeholder="Caixa / Bancos"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Nova Fonte</label>
+                          <input 
+                            type="text" 
+                            value={formPropFonte}
+                            onChange={(e) => setFormPropFonte(e.target.value)}
+                            placeholder="1.500.0000"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-neutral-600 dark:text-neutral-400">Novo Elemento</label>
+                          <input 
+                            type="text" 
+                            value={formPropElemento}
+                            onChange={(e) => setFormPropElemento(e.target.value)}
+                            placeholder="3.3.90.39"
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg text-[11px]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Justificativa Circunstanciada */}
                 <div className="space-y-1.5 pt-1">
-                  <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">Justificativa Circunstanciada do Pedido *</label>
+                  <label className="text-[11px] font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider pl-1">
+                    Justificativa Circunstanciada do Fato Contábil *
+                  </label>
                   <textarea 
                     rows={3}
                     required
                     value={formReason}
                     onChange={(e) => setFormReason(e.target.value)}
-                    placeholder="Explique detalhadamente a motivação e a base legal desta alteração para fins de prestação de contas ao Tribunal de Contas..."
-                    className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-medium focus:outline-none focus:border-indigo-500"
+                    placeholder="Explique detalhadamente a motivação e a base legal desta retificação para fins de prestação de contas ao Tribunal de Contas..."
+                    className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-medium focus:outline-none focus:border-indigo-500 shadow-sm"
                   />
+                </div>
+
+                {/* Live Preview do Histórico Padrão para o Razão/Diário */}
+                <div className="p-4 bg-slate-900 text-slate-100 rounded-2xl border border-slate-800 space-y-2 shadow-inner">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-mono font-black text-emerald-400 flex items-center gap-1.5">
+                      <FileText size={13} />
+                      HISTÓRICO PADRÃO PARA O DIÁRIO / RAZÃO DA PREFEITURA
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      Sintaxe Normativa TCE-MT
+                    </span>
+                  </div>
+                  <p className="font-mono text-xs text-slate-300 leading-relaxed bg-slate-950/70 p-3 rounded-xl border border-slate-800/80">
+                    {generateHistoricoRazao(
+                      formTipoDocumentoSRC,
+                      formReferenceDoc || 'N/I',
+                      formFiscalYear,
+                      editingChange?.protocolNumber || 'SRC-2026-XXXXX',
+                      formDataLancamentoEfetivo,
+                      formReason || 'Ajuste conforme processo de retificação contábil.'
+                    )}
+                  </p>
                 </div>
               </div>
 
@@ -1622,24 +2123,55 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
               </button>
             </div>
 
+            {/* Alerta de Segregação de Funções */}
+            {currentUser?.name && reviewModalChange.requesterName.trim().toLowerCase() === currentUser.name.trim().toLowerCase() && (
+              <div className="mb-4 p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl flex items-start gap-2.5 text-rose-800 dark:text-rose-200">
+                <ShieldAlert size={18} className="shrink-0 text-rose-600 mt-0.5" />
+                <div className="text-xs">
+                  <strong className="block font-black uppercase text-[10px] tracking-wider">Atenção: Segregação de Funções (NBC TSP / MCASP)</strong>
+                  Você é o servidor solicitante desta SRC. Conforme as normas de auditoria e controle interno, o solicitante está vedado de homologar ou deferir o próprio pedido.
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleSaveReview} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">Decisão / Status Contábil *</label>
-                <select
-                  value={reviewStatus}
-                  onChange={(e) => setReviewStatus(e.target.value as any)}
-                  className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="in_review">Em Análise Técnica</option>
-                  <option value="approved">Aprovada pela Contabilidade</option>
-                  <option value="completed">Efetivada / Lançada nos Sistemas Contábeis</option>
-                  <option value="rejected">Indeferida / Recusada</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">
+                    Decisão / Status Contábil *
+                  </label>
+                  <select
+                    value={reviewStatus}
+                    onChange={(e) => setReviewStatus(e.target.value as any)}
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-bold focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                    <option value="in_review">Em Análise Técnica (AGUARDANDO_PARECER)</option>
+                    <option value="approved">Homologado pelo Contador-Geral (AGUARDANDO_HOMOLOGACAO)</option>
+                    <option value="completed">Efetivado e Lançado no Razão (APROVADO_EXECUTADO)</option>
+                    <option value="rejected">Indeferido / Recusado (INDEFERIDO)</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[11px] font-black text-purple-700 dark:text-purple-300 uppercase tracking-wider pl-1 flex items-center gap-1.5">
+                    <Calendar size={13} className="text-purple-600" />
+                    Data Contábil Efetiva no Razão *
+                  </label>
+                  <input 
+                    type="date" 
+                    required
+                    value={reviewDataLancamentoEfetivo}
+                    onChange={(e) => setReviewDataLancamentoEfetivo(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-purple-200 dark:border-purple-800 rounded-xl text-xs font-bold text-neutral-800 dark:text-neutral-100 focus:outline-none focus:border-purple-500 cursor-pointer"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">Contador(a) / Técnico Responsável *</label>
+                  <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">
+                    Contador(a) / Técnico Responsável *
+                  </label>
                   <input 
                     type="text" 
                     required
@@ -1651,7 +2183,9 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">Registro CRC</label>
+                  <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">
+                    Registro CRC
+                  </label>
                   <input 
                     type="text" 
                     value={reviewAccountantCrc}
@@ -1663,12 +2197,15 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">Parecer Técnico / Despacho da Contabilidade</label>
+                <label className="text-[11px] font-black text-neutral-600 dark:text-neutral-400 uppercase tracking-wider pl-1">
+                  Parecer Técnico / Despacho da Contabilidade *
+                </label>
                 <textarea 
                   rows={4}
+                  required
                   value={reviewAccountantNotes}
                   onChange={(e) => setReviewAccountantNotes(e.target.value)}
-                  placeholder="Registre as observações técnicas, embasamento na Lei 4.320/64, LRF ou motivo do indeferimento..."
+                  placeholder="Registre as observações técnicas, embasamento na Lei 4.320/64, MCASP ou motivação expressa para deferimento/indeferimento..."
                   className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-medium focus:outline-none focus:border-indigo-500"
                 />
               </div>
@@ -1686,7 +2223,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                   className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 cursor-pointer flex items-center gap-1.5"
                 >
                   <CheckCircle2 size={16} />
-                  <span>Gravar Parecer</span>
+                  <span>Gravar Parecer e Tramitar</span>
                 </button>
               </div>
             </form>
@@ -1694,30 +2231,48 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
         </div>
       )}
 
-      {/* MODAL: Visualizar Ficha Completa / Termo de Auditoria */}
+      {/* MODAL: Visualizar Ficha Completa / Dossiê de Auditoria da Retificação Contábil */}
       {viewingChange && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-neutral-900/75 backdrop-blur-sm" />
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-3 md:p-6">
+          <div className="absolute inset-0 bg-neutral-900/80 backdrop-blur-sm" />
           
-          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 w-full max-w-3xl relative shadow-2xl border border-neutral-100 dark:border-neutral-800 animate-in zoom-in-95 duration-200 max-h-[92vh] overflow-y-auto">
+          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 w-full max-w-5xl relative shadow-2xl border border-neutral-100 dark:border-neutral-800 animate-in zoom-in-95 duration-200 max-h-[94vh] overflow-y-auto flex flex-col">
             {/* Header da Ficha */}
-            <div className="flex justify-between items-start border-b border-neutral-100 dark:border-neutral-800 pb-4 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-neutral-100 dark:border-neutral-800 pb-5 mb-5 gap-3">
               <div>
-                <span className="font-mono text-xs font-black text-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 px-2.5 py-1 rounded-lg">
-                  {viewingChange.protocolNumber}
-                </span>
-                <h3 className="text-xl font-black text-neutral-900 dark:text-white mt-2">
-                  Ficha de Controle de Alteração Contábil
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs font-black text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 border border-indigo-200 dark:border-indigo-800 px-3 py-1 rounded-xl">
+                    {viewingChange.protocolNumber}
+                  </span>
+                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    {viewingChange.tipoDocumentoSRC || 'EMPENHO'} • {viewingChange.tipoAjusteSRC || 'ESTORNO_PARCIAL'}
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border ${ACCOUNTING_STATUS_CONFIG[viewingChange.status].bg} ${ACCOUNTING_STATUS_CONFIG[viewingChange.status].text} ${ACCOUNTING_STATUS_CONFIG[viewingChange.status].border}`}>
+                    {ACCOUNTING_STATUS_CONFIG[viewingChange.status].label}
+                  </span>
+                </div>
+                <h3 className="text-xl md:text-2xl font-black text-neutral-900 dark:text-white mt-2">
+                  Dossiê de Retificação Contábil (SRC)
                 </h3>
-                <p className="text-xs text-neutral-500">
-                  Registrado no sistema em {formatDate(viewingChange.createdAt)}
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Autuado em {formatDate(viewingChange.createdAt)} • Exercício {viewingChange.fiscalYear} • Ref: <strong>{viewingChange.referenceDoc}</strong>
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex items-center gap-2 self-end md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => handlePrintDossier(viewingChange)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-md shadow-indigo-500/20 cursor-pointer flex items-center gap-1.5 transition-all hover:scale-105"
+                  title="Imprimir Dossiê Completo para Tribunal de Contas (PDF)"
+                >
+                  <FileText size={15} />
+                  <span>Dossiê Oficial (PDF / TCE)</span>
+                </button>
                 <button
                   onClick={handlePrintAudit}
                   className="p-2 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
-                  title="Imprimir Ficha para Auditoria"
+                  title="Imprimir visualização de tela"
                 >
                   <Printer size={18} />
                 </button>
@@ -1730,214 +2285,397 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
               </div>
             </div>
 
-            <div className="space-y-6 text-xs">
-              {/* Solicitante */}
-              <div className="bg-neutral-50 dark:bg-neutral-950/60 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
-                <h4 className="font-black text-neutral-400 uppercase tracking-widest text-[10px]">Quem Solicitou a Alteração</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-neutral-800 dark:text-neutral-200">
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Nome:</span>
-                    <strong className="text-sm">{viewingChange.requesterName}</strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Cargo / Função:</span>
-                    <span className="font-bold text-neutral-700 dark:text-neutral-300">{viewingChange.requesterRole}</span>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Secretaria / Órgão:</span>
-                    <span className="font-bold text-indigo-600">{viewingChange.requesterDepartment}</span>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Contato:</span>
-                    <span>{viewingChange.requesterPhone || viewingChange.requesterEmail || 'Não informado'}</span>
-                  </div>
-                </div>
-              </div>
+            {/* Abas de Navegação do Dossiê */}
+            <div className="flex border-b border-neutral-200 dark:border-neutral-800 mb-6 gap-2 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setViewingTab('identificacao')}
+                className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 cursor-pointer transition-colors ${
+                  viewingTab === 'identificacao'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-600'
+                }`}
+              >
+                <FileSignature size={15} />
+                <span>1. Identificação & Prazos</span>
+              </button>
 
-              {/* Data Específica da Alteração Contábil */}
-              <div className="bg-gradient-to-r from-indigo-50/80 to-blue-50/80 dark:from-indigo-950/40 dark:to-blue-950/30 p-4 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-indigo-600 text-white rounded-xl shadow-md flex items-center justify-center shrink-0">
-                    <Calendar size={22} />
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400 block">
-                      Data Específica da Alteração (Dia, Mês e Ano)
-                    </span>
-                    <div className="text-sm font-black text-neutral-900 dark:text-white flex items-center gap-2 mt-0.5">
-                      <span>{formatFullDateExtenso(viewingChange.changeDate || viewingChange.createdAt)}</span>
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 bg-indigo-100 dark:bg-indigo-900/70 text-indigo-800 dark:text-indigo-200 rounded-md">
-                        {formatFullDate(viewingChange.changeDate || viewingChange.createdAt)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right text-[11px] text-neutral-600 dark:text-neutral-400 font-medium">
-                  <div>Exercício Orçamentário: <strong className="text-neutral-900 dark:text-white font-bold">{viewingChange.fiscalYear}</strong></div>
-                  <div>Mês de Competência: <strong className="text-neutral-900 dark:text-white font-bold">{viewingChange.monthRef || '-'}</strong></div>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setViewingTab('partidas')}
+                className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 cursor-pointer transition-colors ${
+                  viewingTab === 'partidas'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-600'
+                }`}
+              >
+                <Layers size={15} />
+                <span>2. Partidas Dobradas (PCASP)</span>
+              </button>
 
-              {/* Detalhes Técnicos */}
-              <div className="bg-neutral-50 dark:bg-neutral-950/60 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
-                <h4 className="font-black text-neutral-400 uppercase tracking-widest text-[10px]">Objeto da Alteração</h4>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-neutral-800 dark:text-neutral-200">
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Data Específica:</span>
-                    <strong className="text-xs text-indigo-600 dark:text-indigo-400 font-mono">
-                      {formatFullDate(viewingChange.changeDate || viewingChange.createdAt)}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Tipo:</span>
-                    <strong className="text-xs">
-                      {ACCOUNTING_CHANGE_TYPES.find(t => t.value === viewingChange.changeType)?.label || viewingChange.changeType}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Doc de Referência:</span>
-                    <span className="font-mono font-bold">{viewingChange.referenceDoc}</span>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Exercício / Competência:</span>
-                    <span>{viewingChange.fiscalYear} • {viewingChange.monthRef}</span>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 block text-[10px]">Valor da Operação:</span>
-                    <strong className="text-emerald-600 font-mono text-sm">{formatCurrency(viewingChange.amount)}</strong>
-                  </div>
-                </div>
-              </div>
-
-              {/* De / Para (Situação Anterior vs Nova) */}
-              {(viewingChange.currentState || viewingChange.proposedState) && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="p-3.5 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200/80 dark:border-amber-800/40">
-                    <span className="text-amber-700 dark:text-amber-400 font-black text-[10px] uppercase block mb-1 flex items-center gap-1">
-                      <AlertCircle size={12} /> Situação Anterior (Como estava - DE)
-                    </span>
-                    <p className="text-neutral-700 dark:text-neutral-300 text-xs leading-relaxed">
-                      {viewingChange.currentState || 'Não especificado'}
-                    </p>
-                  </div>
-                  <div className="p-3.5 bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200/80 dark:border-emerald-800/40">
-                    <span className="text-emerald-700 dark:text-emerald-400 font-black text-[10px] uppercase block mb-1 flex items-center gap-1">
-                      <CheckCircle2 size={12} /> Situação Proposta (Como ficou - PARA)
-                    </span>
-                    <p className="text-neutral-700 dark:text-neutral-300 text-xs leading-relaxed">
-                      {viewingChange.proposedState || 'Não especificado'}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {/* Justificativa */}
-              <div className="space-y-1">
-                <span className="text-neutral-400 font-black text-[10px] uppercase tracking-wider block">Justificativa Circunstanciada</span>
-                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-100 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 leading-relaxed text-xs">
-                  {viewingChange.reason}
-                </div>
-              </div>
-
-              {/* Documentos Anexos (Antes e Depois) */}
-              <div className="p-4 bg-purple-50/40 dark:bg-purple-950/20 rounded-2xl border border-purple-100 dark:border-purple-900/40 space-y-3">
-                <h4 className="font-black text-purple-700 dark:text-purple-300 uppercase tracking-widest text-[10px] flex items-center gap-1.5">
-                  <Paperclip size={14} /> Documentos Comprobatórios Anexados (Antes e Depois)
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {/* Doc Antes */}
-                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-2">
-                    <div className="truncate">
-                      <span className="text-[10px] font-black text-amber-600 block uppercase">Documento Antes (Original):</span>
-                      <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate block">
-                        {viewingChange.attachmentBeforeName || 'Nenhum anexo anterior'}
-                      </span>
-                    </div>
-                    {viewingChange.attachmentBeforeUrl && (
-                      <a
-                        href={viewingChange.attachmentBeforeUrl}
-                        download={viewingChange.attachmentBeforeName || 'documento_anterior'}
-                        className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg flex items-center gap-1 shrink-0"
-                      >
-                        <Download size={13} />
-                        <span>Baixar</span>
-                      </a>
-                    )}
-                  </div>
-
-                  {/* Doc Depois */}
-                  <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-2">
-                    <div className="truncate">
-                      <span className="text-[10px] font-black text-emerald-600 block uppercase">Documento Depois (Retificado):</span>
-                      <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate block">
-                        {viewingChange.attachmentAfterName || 'Nenhum anexo retificado'}
-                      </span>
-                    </div>
-                    {viewingChange.attachmentAfterUrl && (
-                      <a
-                        href={viewingChange.attachmentAfterUrl}
-                        download={viewingChange.attachmentAfterName || 'documento_retificado'}
-                        className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg flex items-center gap-1 shrink-0"
-                      >
-                        <Download size={13} />
-                        <span>Baixar</span>
-                      </a>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Parecer do Contador */}
-              <div className="p-4 bg-neutral-50 dark:bg-neutral-950/60 rounded-2xl border border-neutral-200 dark:border-neutral-800 space-y-2">
-                <div className="flex justify-between items-center">
-                  <h4 className="font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-widest text-[10px]">
-                    Despacho / Parecer do Setor Contábil
-                  </h4>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase border ${ACCOUNTING_STATUS_CONFIG[viewingChange.status].bg} ${ACCOUNTING_STATUS_CONFIG[viewingChange.status].text} ${ACCOUNTING_STATUS_CONFIG[viewingChange.status].border}`}>
-                    {ACCOUNTING_STATUS_CONFIG[viewingChange.status].label}
+              <button
+                type="button"
+                onClick={() => setViewingTab('timeline')}
+                className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 cursor-pointer transition-colors ${
+                  viewingTab === 'timeline'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-600'
+                }`}
+              >
+                <Clock size={15} />
+                <span>3. Trilha de Auditoria (Timeline)</span>
+                {viewingChange.trilhaAuditoria && viewingChange.trilhaAuditoria.length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
+                    {viewingChange.trilhaAuditoria.length}
                   </span>
-                </div>
-
-                {viewingChange.accountantName ? (
-                  <div className="space-y-2 pt-1">
-                    <p className="text-neutral-600 dark:text-neutral-400 text-xs">
-                      Responsável Técnico: <strong>{viewingChange.accountantName}</strong> {viewingChange.accountantCrc && `(${viewingChange.accountantCrc})`}
-                    </p>
-                    {viewingChange.accountantNotes ? (
-                      <p className="p-2.5 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 text-xs italic">
-                        "{viewingChange.accountantNotes}"
-                      </p>
-                    ) : (
-                      <p className="text-neutral-400 italic text-[11px]">Nenhuma observação adicional anotada.</p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-neutral-400 text-xs italic pt-1">
-                    Ainda pendente de análise pelo setor contábil municipal.
-                  </p>
                 )}
-              </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setViewingTab('historico')}
+                className={`pb-3 px-3 text-xs font-black uppercase tracking-wider flex items-center gap-2 border-b-2 cursor-pointer transition-colors ${
+                  viewingTab === 'historico'
+                    ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-600'
+                }`}
+              >
+                <ShieldCheck size={15} />
+                <span>4. Razão & Base Legal MCASP</span>
+              </button>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-end gap-2">
-              {canEdit && (
-                <button
-                  onClick={() => {
-                    setViewingChange(null);
-                    openReviewModal(viewingChange);
-                  }}
-                  className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  Emitir / Editar Parecer
-                </button>
-              )}
+            {/* Conteúdo da Aba 1: IDENTIFICAÇÃO & RIGOR TEMPORAL */}
+            {viewingTab === 'identificacao' && (
+              <div className="space-y-6 text-xs animate-in fade-in-50 duration-150">
+                {/* Quadro de Datas Exatas do Processo (Rigor Temporal Lei 4.320/64) */}
+                <div className="bg-gradient-to-br from-indigo-50/70 to-blue-50/50 dark:from-indigo-950/40 dark:to-blue-950/20 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/60 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-indigo-900 dark:text-indigo-300 flex items-center gap-2">
+                      <Calendar size={16} className="text-indigo-600" />
+                      Rigor Temporal: Datas Exatas Obrigatórias para Auditoria
+                    </span>
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                      Conforme MCASP & Resoluções TCE
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="text-neutral-400 block text-[10px] font-black uppercase">1. Fato Gerador Original:</span>
+                      <strong className="text-sm text-neutral-800 dark:text-neutral-100 block mt-0.5">
+                        {formatFullDate(viewingChange.dataFatoGerador || viewingChange.changeDate || viewingChange.createdAt)}
+                      </strong>
+                      <span className="text-[10px] text-neutral-400">Ocorrência econômica</span>
+                    </div>
+
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="text-neutral-400 block text-[10px] font-black uppercase">2. Documento de Origem:</span>
+                      <strong className="text-sm text-neutral-800 dark:text-neutral-100 block mt-0.5">
+                        {formatFullDate(viewingChange.dataDocumentoOrigem || viewingChange.changeDate || viewingChange.createdAt)}
+                      </strong>
+                      <span className="text-[10px] text-neutral-400">Emissão da NE/NL/OP</span>
+                    </div>
+
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="text-neutral-400 block text-[10px] font-black uppercase">3. Abertura do Pedido:</span>
+                      <strong className="text-sm text-neutral-800 dark:text-neutral-100 block mt-0.5">
+                        {formatDate(viewingChange.createdAt)}
+                      </strong>
+                      <span className="text-[10px] text-neutral-400">Data e hora exatas</span>
+                    </div>
+
+                    <div className="p-3 bg-indigo-50/80 dark:bg-indigo-900/40 rounded-xl border border-indigo-200 dark:border-indigo-700">
+                      <span className="text-indigo-700 dark:text-indigo-300 block text-[10px] font-black uppercase">4. Lançamento no Razão:</span>
+                      <strong className="text-sm text-indigo-700 dark:text-indigo-300 block mt-0.5">
+                        {formatFullDate(viewingChange.dataLancamentoEfetivo || viewingChange.changeDate || viewingChange.createdAt)}
+                      </strong>
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">Data Efetiva Balancete</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Solicitante */}
+                <div className="bg-neutral-50 dark:bg-neutral-950/60 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
+                  <h4 className="font-black text-neutral-400 uppercase tracking-widest text-[10px]">Servidor Solicitante & Órgão</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-neutral-800 dark:text-neutral-200">
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Nome Completo:</span>
+                      <strong className="text-sm">{viewingChange.requesterName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Cargo / Função:</span>
+                      <span className="font-bold text-neutral-700 dark:text-neutral-300">{viewingChange.requesterRole}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Secretaria / Órgão:</span>
+                      <span className="font-bold text-indigo-600">{viewingChange.requesterDepartment}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Contato:</span>
+                      <span>{viewingChange.requesterPhone || viewingChange.requesterEmail || 'Não informado'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detalhes Técnicos e Valores */}
+                <div className="bg-neutral-50 dark:bg-neutral-950/60 p-4 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
+                  <h4 className="font-black text-neutral-400 uppercase tracking-widest text-[10px]">Especificações Financeiras e Legais</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-neutral-800 dark:text-neutral-200">
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Documento Origem:</span>
+                      <strong className="text-xs font-mono">{viewingChange.referenceDoc}</strong>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Valor Original:</span>
+                      <span className="font-mono text-xs">{formatCurrency(viewingChange.valorOriginal || viewingChange.amount)}</span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Valor do Ajuste:</span>
+                      <strong className="text-emerald-600 font-mono text-sm">{formatCurrency(viewingChange.amount)}</strong>
+                    </div>
+                    <div>
+                      <span className="text-neutral-400 block text-[10px]">Base Legal MCASP:</span>
+                      <span className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 block truncate" title={viewingChange.baseLegalMcasp}>
+                        {viewingChange.baseLegalMcasp || 'MCASP Parte II'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Justificativa */}
+                <div className="space-y-1">
+                  <span className="text-neutral-400 font-black text-[10px] uppercase tracking-wider block">Justificativa Circunstanciada do Pedido</span>
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-950 rounded-2xl border border-neutral-100 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 leading-relaxed text-xs">
+                    {viewingChange.reason}
+                  </div>
+                </div>
+
+                {/* Documentos Anexos com Hashes SHA-256 */}
+                <div className="p-4 bg-purple-50/40 dark:bg-purple-950/20 rounded-2xl border border-purple-100 dark:border-purple-900/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-black text-purple-700 dark:text-purple-300 uppercase tracking-widest text-[10px] flex items-center gap-1.5">
+                      <Paperclip size={14} /> Documentos Comprobatórios Anexados (Antes e Depois com Integridade SHA-256)
+                    </h4>
+                    <span className="text-[10px] text-purple-600 font-mono">
+                      Criptografia de Auditoria
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {/* Doc Antes */}
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate">
+                          <span className="text-[10px] font-black text-amber-600 block uppercase">Documento Primitivo (Antes):</span>
+                          <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate block">
+                            {viewingChange.attachmentBeforeName || 'Nenhum anexo primitivo'}
+                          </span>
+                        </div>
+                        {viewingChange.attachmentBeforeUrl && (
+                          <a
+                            href={viewingChange.attachmentBeforeUrl}
+                            download={viewingChange.attachmentBeforeName || 'doc_primitivo'}
+                            className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg flex items-center gap-1 shrink-0 cursor-pointer"
+                          >
+                            <Download size={13} />
+                            <span>Baixar</span>
+                          </a>
+                        )}
+                      </div>
+                      {viewingChange.attachmentBeforeHash && (
+                        <div className="pt-1 border-t border-neutral-100 dark:border-neutral-800">
+                          <span className="text-[9px] text-neutral-400 block uppercase font-mono">Hash SHA-256:</span>
+                          <code className="text-[9px] font-mono text-neutral-600 dark:text-neutral-400 break-all select-all block bg-neutral-50 dark:bg-neutral-950 p-1 rounded">
+                            {viewingChange.attachmentBeforeHash}
+                          </code>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Doc Depois */}
+                    <div className="p-3 bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate">
+                          <span className="text-[10px] font-black text-emerald-600 block uppercase">Documento Retificado (Depois):</span>
+                          <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate block">
+                            {viewingChange.attachmentAfterName || 'Nenhum anexo retificado'}
+                          </span>
+                        </div>
+                        {viewingChange.attachmentAfterUrl && (
+                          <a
+                            href={viewingChange.attachmentAfterUrl}
+                            download={viewingChange.attachmentAfterName || 'doc_retificado'}
+                            className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg flex items-center gap-1 shrink-0 cursor-pointer"
+                          >
+                            <Download size={13} />
+                            <span>Baixar</span>
+                          </a>
+                        )}
+                      </div>
+                      {viewingChange.attachmentAfterHash && (
+                        <div className="pt-1 border-t border-neutral-100 dark:border-neutral-800">
+                          <span className="text-[9px] text-neutral-400 block uppercase font-mono">Hash SHA-256:</span>
+                          <code className="text-[9px] font-mono text-neutral-600 dark:text-neutral-400 break-all select-all block bg-neutral-50 dark:bg-neutral-950 p-1 rounded">
+                            {viewingChange.attachmentAfterHash}
+                          </code>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Conteúdo da Aba 2: PARTIDAS DOBRADAS (PCASP) */}
+            {viewingTab === 'partidas' && (
+              <div className="space-y-4 animate-in fade-in-50 duration-150">
+                <SRCPartidasComparativo 
+                  partidaOriginal={viewingChange.partidaOriginal}
+                  partidaProposta={viewingChange.partidaProposta}
+                  valorOriginal={viewingChange.valorOriginal || viewingChange.amount}
+                  valorAjuste={viewingChange.amount}
+                />
+              </div>
+            )}
+
+            {/* Conteúdo da Aba 3: TRILHA DE AUDITORIA & TIMELINE */}
+            {viewingTab === 'timeline' && (
+              <div className="space-y-4 animate-in fade-in-50 duration-150">
+                <SRCTimelineAuditoria 
+                  solicitacaoId={viewingChange.id}
+                  trilha={viewingChange.trilhaAuditoria}
+                  dataAbertura={viewingChange.createdAt}
+                  solicitanteNome={viewingChange.requesterName}
+                  solicitanteCargo={viewingChange.requesterRole}
+                />
+              </div>
+            )}
+
+            {/* Conteúdo da Aba 4: RAZÃO & BASE LEGAL MCASP */}
+            {viewingTab === 'historico' && (
+              <div className="space-y-5 animate-in fade-in-50 duration-150 text-xs">
+                {/* Histórico Sintaxe Oficial */}
+                <div className="p-5 bg-slate-900 text-slate-100 rounded-2xl border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-black text-emerald-400 flex items-center gap-1.5 uppercase tracking-wider text-xs">
+                      <FileText size={15} />
+                      Histórico Obrigatório para o Diário / Razão (TCE-MT)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const hist = generateHistoricoRazao(
+                          viewingChange.tipoDocumentoSRC,
+                          viewingChange.referenceDoc,
+                          viewingChange.fiscalYear,
+                          viewingChange.protocolNumber,
+                          viewingChange.dataLancamentoEfetivo || viewingChange.changeDate || viewingChange.createdAt,
+                          viewingChange.reason
+                        );
+                        navigator.clipboard.writeText(hist);
+                        showToast('Histórico contábil copiado para a área de transferência!');
+                      }}
+                      className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Copy size={12} />
+                      Copiar Histórico
+                    </button>
+                  </div>
+
+                  <p className="font-mono text-xs text-slate-200 leading-relaxed bg-slate-950/80 p-4 rounded-xl border border-slate-800">
+                    {generateHistoricoRazao(
+                      viewingChange.tipoDocumentoSRC,
+                      viewingChange.referenceDoc,
+                      viewingChange.fiscalYear,
+                      viewingChange.protocolNumber,
+                      viewingChange.dataLancamentoEfetivo || viewingChange.changeDate || viewingChange.createdAt,
+                      viewingChange.reason
+                    )}
+                  </p>
+                </div>
+
+                {/* Base Legal e Conformidade */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-950/60 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
+                    <h5 className="font-black text-neutral-800 dark:text-neutral-200 uppercase tracking-widest text-[11px] flex items-center gap-1.5">
+                      <Scale size={15} className="text-indigo-600" />
+                      Fundamento Legal Aplicado
+                    </h5>
+                    <p className="text-neutral-600 dark:text-neutral-400 text-xs">
+                      {viewingChange.baseLegalMcasp || 'Manual de Contabilidade Aplicada ao Setor Público (MCASP) - 10ª Edição e Lei Federal nº 4.320/1964.'}
+                    </p>
+                    <p className="text-[11px] text-neutral-500 italic pt-1">
+                      Em obediência ao princípio da competência e tempestividade contábil na administração pública municipal.
+                    </p>
+                  </div>
+
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-950/60 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
+                    <h5 className="font-black text-neutral-800 dark:text-neutral-200 uppercase tracking-widest text-[11px] flex items-center gap-1.5">
+                      <Lock size={15} className="text-emerald-600" />
+                      Regra de Imutabilidade do TCE
+                    </h5>
+                    <p className="text-neutral-600 dark:text-neutral-400 text-xs">
+                      Este processo contábil não sobrescreve registros anteriores. Os ajustes são consolidados por meio de lançamentos autônomos de estorno e retificação com estrita segregação de funções.
+                    </p>
+                    <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold pt-1">
+                      Integridade e trilha de auditoria ativadas.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Despacho do Contador Registrado */}
+                {viewingChange.accountantName && (
+                  <div className="p-4 bg-purple-50/50 dark:bg-purple-950/30 rounded-2xl border border-purple-200/80 dark:border-purple-800/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-purple-900 dark:text-purple-300 uppercase tracking-widest text-[11px]">
+                        Parecer Técnico Homologado
+                      </span>
+                      <span className="text-[10px] font-mono text-purple-700 dark:text-purple-400">
+                        {viewingChange.accountantCrc || 'CRC Registrado'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-800 dark:text-neutral-200">
+                      Responsável: <strong>{viewingChange.accountantName}</strong>
+                    </p>
+                    <p className="text-xs text-neutral-700 dark:text-neutral-300 italic bg-white dark:bg-neutral-900 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      "{viewingChange.accountantNotes || 'Sem anotações complementares.'}"
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Rodapé do Modal */}
+            <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap justify-between items-center gap-3">
               <button
-                onClick={() => setViewingChange(null)}
-                className="px-5 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold cursor-pointer"
+                type="button"
+                onClick={() => handlePrintDossier(viewingChange)}
+                className="px-5 py-2.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all"
               >
-                Fechar
+                <Printer size={15} />
+                <span>Gerar Dossiê Oficial para Auditoria</span>
               </button>
+
+              <div className="flex items-center gap-2">
+                {canEdit && (
+                  <button
+                    onClick={() => {
+                      setViewingChange(null);
+                      openReviewModal(viewingChange);
+                    }}
+                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-all"
+                  >
+                    Emitir / Editar Parecer
+                  </button>
+                )}
+                <button
+                  onClick={() => setViewingChange(null)}
+                  className="px-5 py-2.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2326,6 +3064,8 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
