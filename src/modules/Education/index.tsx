@@ -1,18 +1,24 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  GraduationCap, Baby, Vote, Users 
+  GraduationCap, Baby, Vote, Users, FileText, HeartHandshake, Bell 
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
+import { EducationEnrollmentManager } from './components/EducationEnrollmentManager';
+import { FamilyPortalView } from './components/FamilyPortalView';
+import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsManager';
 
 export const EducationModule: React.FC = () => {
-  const [educationView, setEducationView] = useState<'staff' | 'creche' | 'votacao'>('staff');
+  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'familia' | 'avisos' | 'votacao'>('staff');
 
   const navigationTabs = [
-    { id: 'staff', label: 'Professores & Coordenadores', icon: Users },
-    { id: 'creche', label: 'Vagas CMEI', icon: Baby },
+    { id: 'staff', label: 'Professores & Equipe', icon: Users },
+    { id: 'matriculas', label: 'Secretaria & Matrículas', icon: FileText },
+    { id: 'creche', label: 'Fila CMEI', icon: Baby },
+    { id: 'familia', label: 'Portal da Família', icon: HeartHandshake },
+    { id: 'avisos', label: 'Mural de Avisos', icon: Bell },
     { id: 'votacao', label: 'Eleição de Diretores', icon: Vote },
   ] as const;
 
@@ -68,6 +74,18 @@ export const EducationModule: React.FC = () => {
           </motion.div>
         )}
 
+        {educationView === 'matriculas' && (
+          <motion.div 
+            key="matriculas"
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }} 
+            transition={{ duration: 0.2 }}
+          >
+            <EducationEnrollmentManager />
+          </motion.div>
+        )}
+
         {educationView === 'creche' && (
           <motion.div 
             key="creche"
@@ -77,6 +95,30 @@ export const EducationModule: React.FC = () => {
             transition={{ duration: 0.2 }}
           >
             <EducationCrecheAdmin />
+          </motion.div>
+        )}
+
+        {educationView === 'familia' && (
+          <motion.div 
+            key="familia"
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }} 
+            transition={{ duration: 0.2 }}
+          >
+            <FamilyPortalView />
+          </motion.div>
+        )}
+
+        {educationView === 'avisos' && (
+          <motion.div 
+            key="avisos"
+            initial={{ opacity: 0, y: 15 }} 
+            animate={{ opacity: 1, y: 0 }} 
+            exit={{ opacity: 0, y: -15 }} 
+            transition={{ duration: 0.2 }}
+          >
+            <SchoolAnnouncementsManager />
           </motion.div>
         )}
 

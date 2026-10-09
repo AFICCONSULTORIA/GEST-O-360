@@ -43,6 +43,7 @@ import { StudentSettings } from './components/StudentSettings';
 import { StudentStore } from './components/StudentStore';
 import { StreakAnimationOverlay } from './components/StreakAnimationOverlay';
 import { EducationAvatar } from './components/EducationAvatar';
+import { FamilyPortalView } from './components/FamilyPortalView';
 
 // --- TYPES ---
 export interface QuizQuestion {
@@ -83,7 +84,7 @@ export interface Course {
 }
 
 export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void, previewCourseId?: string }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support' | 'trail-map' | 'lesson-player' | 'quiz-player'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'courses' | 'assessments' | 'achievements' | 'settings' | 'support' | 'trail-map' | 'lesson-player' | 'quiz-player' | 'store' | 'family'>('dashboard');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   
@@ -722,6 +723,12 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             studentData={studentData}
             setStudentData={setStudentData}
           />
+        )}
+
+        {activeView === 'family' && (
+          <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
+            <FamilyPortalView initialStudentId={studentData.id || studentId} />
+          </div>
         )}
 
         {/* Modal de Animação de Streak (Sempre visível após uma atividade) */}

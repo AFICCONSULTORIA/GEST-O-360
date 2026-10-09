@@ -64,6 +64,7 @@ import { TeacherInterventionPlan } from './TeacherInterventionPlan';
 import { TeacherTrainingCenter } from './TeacherTrainingCenter';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
+import { getTeacherDashboardMetrics, TeacherDashboardMetrics } from '../../lib/api/education';
 
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
@@ -171,6 +172,30 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
   const [chatStudents, setChatStudents] = useState<any[]>([]);
 
   const LOGGED_IN_TEACHER_ID = 1; // Simulando Prof. Carlos
+  const teacherId = localStorage.getItem('gestao360_teacher_id') || '00000000-0000-0000-0000-000000000001';
+
+  const [metrics, setMetrics] = useState<TeacherDashboardMetrics>({
+    total_students: 15,
+    active_interventions: 2,
+    average_completion_rate: 84.5,
+    pending_quizzes: 3
+  });
+  const [isLoadingMetrics, setIsLoadingMetrics] = useState(true);
+
+  useEffect(() => {
+    async function fetchMetrics() {
+      setIsLoadingMetrics(true);
+      try {
+        const data = await getTeacherDashboardMetrics(teacherId);
+        setMetrics(data);
+      } catch (err) {
+        console.error('Erro ao carregar métricas do dashboard do professor:', err);
+      } finally {
+        setIsLoadingMetrics(false);
+      }
+    }
+    fetchMetrics();
+  }, [teacherId]);
 
   const totalUnreadCount = chatStudents.reduce((acc, student) => {
     const unread = (student.messages || []).filter((m: any) => m.sender === 'student' && !m.read && m.teacherId === LOGGED_IN_TEACHER_ID).length;
@@ -265,18 +290,38 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
       setTeacherSchool(localStorage.getItem('gestao360_teacher_school') || 'Rede Municipal');
     };
 
+    const handleOpenNewIntervention = (e: any) => {
+      setActiveView('intervention');
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('trigger-create-plan', { detail: e.detail }));
+      }, 150);
+    };
+
+    const handleInterventionPlansUpdated = async () => {
+      try {
+        const data = await getTeacherDashboardMetrics(teacherId);
+        setMetrics(data);
+      } catch (err) {
+        console.error('Erro ao atualizar métricas após alteração de planos:', err);
+      }
+    };
+
     window.addEventListener('open-teacher-chat', handleOpenChat);
     window.addEventListener('students-updated', handleStudentsUpdated);
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener('teacher-updated', handleTeacherUpdated);
+    window.addEventListener('open-new-intervention', handleOpenNewIntervention);
+    window.addEventListener('intervention-plans-updated', handleInterventionPlansUpdated);
 
     return () => {
       window.removeEventListener('open-teacher-chat', handleOpenChat);
       window.removeEventListener('students-updated', handleStudentsUpdated);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('teacher-updated', handleTeacherUpdated);
+      window.removeEventListener('open-new-intervention', handleOpenNewIntervention);
+      window.removeEventListener('intervention-plans-updated', handleInterventionPlansUpdated);
     };
-  }, []);
+  }, [teacherId]);
 
   const handleSendChatMessage = () => {
     if (!newMessageText.trim() || !selectedChatStudent) return;
@@ -585,22 +630,95 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
           <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8">
 
             {/* Greeting and Summary */}
-            <section className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              <div className="md:col-span-3 lg:col-span-3 flex flex-col justify-center">
+            <section className="space-y-6">
+              <div>
                 <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 tracking-tight">Bem-vindo de volta, {teacherName}!</h2>
-                <p className="text-neutral-500 dark:text-neutral-400 text-lg max-w-2xl">
-                  Aqui está um resumo do desempenho dos seus alunos esta semana. Você tem <span className="font-bold text-rose-500">{atRiskStudents.length} {atRiskStudents.length === 1 ? 'aluno em atenção ou risco' : 'alunos em atenção ou risco'}</span> para acompanhar.
+                <p className="text-neutral-500 dark:text-neutral-400 text-lg max-w-3xl">
+                  Aqui está um resumo consolidado do desempenho escolar. Você tem <span className="font-bold text-rose-500">{metrics.active_interventions} {metrics.active_interventions === 1 ? 'plano de intervenção ativo' : 'planos de intervenção ativos'}</span> e <span className="font-bold text-amber-500">{atRiskStudents.length} alunos em atenção</span>.
                 </p>
               </div>
-              <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col justify-between hover:shadow-xl hover:border-indigo-200 dark:hover:border-indigo-800 transition-all group">
-                <div className="flex justify-between items-start">
-                  <span className="font-bold text-xs uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Média Geral da Rede</span>
-                  <span className="flex items-center text-emerald-500 font-bold text-sm bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded-full">
-                    <TrendingUp size={14} className="mr-1" /> +4.2%
-                  </span>
+
+              {/* KPI Cards Conectados ao Supabase */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                {/* Card 1: Alunos Monitorados */}
+                <div 
+                  onClick={() => setActiveView('student-mgmt')}
+                  className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col justify-between hover:shadow-xl hover:border-indigo-200 dark:hover:border-indigo-800 transition-all cursor-pointer group"
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-xs uppercase tracking-widest text-indigo-600 dark:text-indigo-400">Alunos Monitorados</span>
+                    <span className="flex items-center text-indigo-600 dark:text-indigo-400 font-bold text-xs bg-indigo-50 dark:bg-indigo-500/10 px-2.5 py-1 rounded-full">
+                      <Users size={13} className="mr-1" /> Ativos
+                    </span>
+                  </div>
+                  <div className="text-4xl font-black text-neutral-900 dark:text-white mt-4 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                    {isLoadingMetrics ? (
+                      <span className="text-2xl text-neutral-400 animate-pulse">Carregando...</span>
+                    ) : (
+                      metrics.total_students
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-2 font-medium">Turmas da rede municipal</p>
                 </div>
-                <div className="text-5xl font-black text-neutral-900 dark:text-white mt-4 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                  {avgPercentage}<span className="text-2xl text-neutral-400">%</span>
+
+                {/* Card 2: Intervenções Pedagógicas */}
+                <div 
+                  onClick={() => setActiveView('intervention')}
+                  className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col justify-between hover:shadow-xl hover:border-rose-200 dark:hover:border-rose-800 transition-all cursor-pointer group"
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-xs uppercase tracking-widest text-rose-600 dark:text-rose-400">Intervenções (PIP)</span>
+                    <span className="flex items-center text-rose-600 dark:text-rose-400 font-bold text-xs bg-rose-50 dark:bg-rose-500/10 px-2.5 py-1 rounded-full">
+                      <AlertTriangle size={13} className="mr-1" /> Em Andamento
+                    </span>
+                  </div>
+                  <div className="text-4xl font-black text-neutral-900 dark:text-white mt-4 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">
+                    {isLoadingMetrics ? (
+                      <span className="text-2xl text-neutral-400 animate-pulse">Carregando...</span>
+                    ) : (
+                      metrics.active_interventions
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-2 font-medium">Acompanhamentos abertos</p>
+                </div>
+
+                {/* Card 3: Taxa de Conclusão / Desempenho */}
+                <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col justify-between hover:shadow-xl hover:border-emerald-200 dark:hover:border-emerald-800 transition-all group">
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-xs uppercase tracking-widest text-emerald-600 dark:text-emerald-400">Conclusão Média</span>
+                    <span className="flex items-center text-emerald-500 font-bold text-xs bg-emerald-50 dark:bg-emerald-500/10 px-2.5 py-1 rounded-full">
+                      <TrendingUp size={13} className="mr-1" /> +4.2%
+                    </span>
+                  </div>
+                  <div className="text-4xl font-black text-neutral-900 dark:text-white mt-4 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                    {isLoadingMetrics ? (
+                      <span className="text-2xl text-neutral-400 animate-pulse">Carregando...</span>
+                    ) : (
+                      <>{metrics.average_completion_rate}<span className="text-2xl text-neutral-400">%</span></>
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-2 font-medium">Taxa média de lições concluídas</p>
+                </div>
+
+                {/* Card 4: Avaliações Realizadas */}
+                <div 
+                  onClick={() => setActiveView('student-portal-mgmt')}
+                  className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col justify-between hover:shadow-xl hover:border-sky-200 dark:hover:border-sky-800 transition-all cursor-pointer group"
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-bold text-xs uppercase tracking-widest text-sky-600 dark:text-sky-400">Avaliações</span>
+                    <span className="flex items-center text-sky-600 dark:text-sky-400 font-bold text-xs bg-sky-50 dark:bg-sky-500/10 px-2.5 py-1 rounded-full">
+                      <Target size={13} className="mr-1" /> Recentes
+                    </span>
+                  </div>
+                  <div className="text-4xl font-black text-neutral-900 dark:text-white mt-4 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                    {isLoadingMetrics ? (
+                      <span className="text-2xl text-neutral-400 animate-pulse">Carregando...</span>
+                    ) : (
+                      metrics.pending_quizzes
+                    )}
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-2 font-medium">Quizzes e testes enviados</p>
                 </div>
               </div>
             </section>

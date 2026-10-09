@@ -5,7 +5,7 @@ import {
   X, CheckCircle2, Clock, BarChart3, Star, Edit2, Trash2, Printer, Send, MessageSquare, ArrowLeft,
   Key, Copy, Check, Camera, RotateCcw, Plus
 } from 'lucide-react';
-import { generateEnrollmentCode } from '../../lib/api/education';
+import { generateEnrollmentCode, getTeacherStudents, TeacherStudent } from '../../lib/api/education';
 import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
 
 const MOCK_SUBJECTS = [
@@ -56,6 +56,41 @@ export const TeacherStudentManager = () => {
     }
     return MOCK_STUDENTS;
   });
+
+  const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+
+  useEffect(() => {
+    async function fetchStudentsFromApi() {
+      setIsLoadingStudents(true);
+      try {
+        const teacherId = localStorage.getItem('gestao360_teacher_id') || '00000000-0000-0000-0000-000000000001';
+        const data = await getTeacherStudents(teacherId);
+        if (data && data.length > 0) {
+          setStudents((prev: any[]) => {
+            return data.map((st, idx) => {
+              const existing = prev.find(p => String(p.id) === String(st.id) || p.enrollmentId === st.enrollmentId);
+              return {
+                ...st,
+                classId: existing?.classId || (idx % 2 === 0 ? 1 : 2),
+                className: existing?.className || (idx % 2 === 0 ? 'Turma 4A' : 'Turma 5B'),
+                password: existing?.password || '123',
+                nextLevelXp: (st.level || 1) * 300,
+                subjectGrades: existing?.subjectGrades || [{ subject: 'Matemática', grade: st.grade, xp: st.xp, streak: st.streak }],
+                evaluations: existing?.evaluations || [{ subject: 'Matemática', bimonthly: ['A', 'A', 'A', null], absences: 1 }],
+                feedback: existing?.feedback || 'Estudante com bom aproveitamento nas atividades.',
+                messages: existing?.messages || []
+              };
+            });
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao buscar alunos do professor:', err);
+      } finally {
+        setIsLoadingStudents(false);
+      }
+    }
+    fetchStudentsFromApi();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('gestao360_classes', JSON.stringify(classes));
@@ -539,9 +574,26 @@ export const TeacherStudentManager = () => {
                     </div>
                   </td>
                   <td className="p-4 pr-6 text-right">
-                    <button className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 transition-colors ml-auto">
-                      <ChevronRight size={18} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.dispatchEvent(new CustomEvent('open-new-intervention', { detail: student.id }));
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-500/20 font-bold text-xs flex items-center gap-1.5 transition-colors border border-rose-200/50 dark:border-rose-800/50 cursor-pointer shadow-sm"
+                        title="Criar Plano de Intervenção Pedagógica (PIP)"
+                      >
+                        <Plus size={13} />
+                        <span>Plano PIP</span>
+                      </button>
+                      <button 
+                        type="button"
+                        className="w-8 h-8 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 flex items-center justify-center hover:bg-indigo-50 dark:hover:bg-indigo-500/10 hover:text-indigo-600 transition-colors cursor-pointer"
+                      >
+                        <ChevronRight size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

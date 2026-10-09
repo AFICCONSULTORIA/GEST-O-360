@@ -3,8 +3,12 @@ import {
   Play, PlayCircle, Award, Clock, Video, BookOpen, FileText, Download, 
   Search, CheckCircle2, Check, ChevronRight, X, Sparkles, Filter, 
   Printer, ArrowLeft, Trophy, Zap, Flame, Eye, RotateCcw, Share2, 
-  Volume2, Maximize2, Pause, SkipForward, BookCheck, ShieldCheck, Star
+  Volume2, Maximize2, Pause, SkipForward, BookCheck, ShieldCheck, Star, Loader2
 } from 'lucide-react';
+import { 
+  getTeacherTrainings, 
+  saveTeacherTraining 
+} from '../../lib/api/education';
 
 export interface Lesson {
   id: string;
@@ -302,6 +306,9 @@ const DEFAULT_MANUALS: ManualDoc[] = [
 ];
 
 export const TeacherTrainingCenter: React.FC = () => {
+  const teacherId = localStorage.getItem('gestao360_teacher_id') || '00000000-0000-0000-0000-000000000001';
+  const [isLoadingTrainings, setIsLoadingTrainings] = useState(false);
+
   // Courses state
   const [courses, setCourses] = useState<Course[]>(() => {
     const saved = localStorage.getItem('gestao360_teacher_courses');
@@ -334,6 +341,59 @@ export const TeacherTrainingCenter: React.FC = () => {
     }
     return [];
   });
+
+  // Load teacher trainings from Supabase
+  useEffect(() => {
+    async function loadTrainings() {
+      setIsLoadingTrainings(true);
+      try {
+        const records = await getTeacherTrainings(teacherId);
+        if (records && records.length > 0) {
+          setCourses(prevCourses => {
+            return prevCourses.map(course => {
+              const record = records.find(r => r.course_id === course.id);
+              if (record && record.status === 'completed') {
+                return {
+                  ...course,
+                  modules: course.modules.map(mod => ({
+                    ...mod,
+                    lessons: mod.lessons.map(les => ({ ...les, completed: true }))
+                  }))
+                };
+              }
+              return course;
+            });
+          });
+
+          const completedFromDB = records.filter(r => r.status === 'completed');
+          if (completedFromDB.length > 0) {
+            setCertificates(prevCerts => {
+              const existingCourseIds = new Set(prevCerts.map(c => c.courseId));
+              const newCerts: TeacherCertificate[] = [];
+              for (const r of completedFromDB) {
+                if (!existingCourseIds.has(r.course_id)) {
+                  newCerts.push({
+                    id: `cert-${r.id}`,
+                    courseId: r.course_id,
+                    courseTitle: r.course_name,
+                    workloadHours: r.workload_hours || 40,
+                    issueDate: r.completed_at ? new Date(r.completed_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
+                    validationCode: `G360-${r.id.substring(0, 6).toUpperCase()}-EDU`
+                  });
+                }
+              }
+              return [...newCerts, ...prevCerts];
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao buscar treinamentos do professor no Supabase:', err);
+      } finally {
+        setIsLoadingTrainings(false);
+      }
+    }
+    loadTrainings();
+  }, [teacherId]);
 
   // Navigation / Search / Filter State
   const [activeTab, setActiveTab] = useState<'all' | 'in_progress' | 'completed' | 'manuals' | 'certificates'>('all');
@@ -484,6 +544,25 @@ export const TeacherTrainingCenter: React.FC = () => {
         }
       }
     }
+
+    // Persist progress to Supabase
+    const totalLessons = updatedCourse.modules.reduce((acc, m) => acc + m.lessons.length, 0);
+    const doneLessons = updatedCourse.modules.reduce((acc, m) => acc + m.lessons.filter(l => l.completed).length, 0);
+    const progressPct = totalLessons > 0 ? Math.round((doneLessons / totalLessons) * 100) : 0;
+    const isCompleted = doneLessons === totalLessons && totalLessons > 0;
+    const trainStatus: 'not_started' | 'in_progress' | 'completed' = isCompleted ? 'completed' : doneLessons > 0 ? 'in_progress' : 'not_started';
+
+    saveTeacherTraining({
+      teacher_id: teacherId,
+      course_id: updatedCourse.id,
+      course_name: updatedCourse.title,
+      category: updatedCourse.category,
+      progress_percentage: progressPct,
+      status: trainStatus,
+      workload_hours: updatedCourse.workloadHours,
+      certificate_url: isCompleted ? `https://gestao360.gov.br/certificados/${updatedCourse.id}` : undefined,
+      completed_at: isCompleted ? new Date().toISOString() : undefined
+    });
   };
 
   // Save personal pedagogical note
@@ -575,6 +654,11 @@ export const TeacherTrainingCenter: React.FC = () => {
               <span className="bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
                 <Flame size={12} className="text-amber-400" /> 5 dias seguidos
               </span>
+              {isLoadingTrainings && (
+                <span className="bg-white/20 border border-white/30 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 animate-pulse">
+                  <Loader2 size={12} className="animate-spin" /> Conectando Supabase...
+                </span>
+              )}
             </div>
 
             <h2 className="text-2xl md:text-4xl font-black mb-3 leading-tight tracking-tight">

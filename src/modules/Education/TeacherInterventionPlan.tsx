@@ -2,9 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { 
   CalendarDays, AlertTriangle, CheckCircle2, Clock, Plus, Search, Filter, 
   ChevronRight, Target, MessageSquare, Trash2, Edit2, X, BookOpen, 
-  Sparkles, TrendingUp, Printer, FileText, Brain, Phone, Award, Check
+  Sparkles, TrendingUp, Printer, FileText, Brain, Phone, Award, Check, Loader2
 } from 'lucide-react';
 import { EducationAvatar } from './components/EducationAvatar';
+import { 
+  getInterventionPlans, 
+  createInterventionPlan, 
+  updateInterventionPlanStatus, 
+  deleteInterventionPlan,
+  getTeacherStudents,
+  InterventionPlanRecord
+} from '../../lib/api/education';
 
 export type InterventionPriority = 'Alta' | 'Média' | 'Baixa';
 export type InterventionStatus = 'Pendente' | 'Em Andamento' | 'Concluído';
@@ -125,6 +133,11 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
   onOpenStudent,
   onOpenChat
 }) => {
+  const teacherId = localStorage.getItem('gestao360_teacher_id') || '00000000-0000-0000-0000-000000000001';
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [internalStudents, setInternalStudents] = useState<any[]>(students);
+
   const [plans, setPlans] = useState<InterventionPlan[]>(() => {
     const saved = localStorage.getItem('gestao360_interventions');
     if (saved) {
@@ -137,6 +150,82 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
     return DEFAULT_INTERVENTIONS;
   });
 
+  // Keep internalStudents synced
+  useEffect(() => {
+    if (students && students.length > 0) {
+      setInternalStudents(students);
+    } else {
+      getTeacherStudents(teacherId).then(data => {
+        if (data && data.length > 0) {
+          setInternalStudents(data);
+        }
+      });
+    }
+  }, [students, teacherId]);
+
+  // Load plans from Supabase
+  const loadPlansFromSupabase = async () => {
+    setIsLoadingPlans(true);
+    try {
+      const dbPlans = await getInterventionPlans(teacherId);
+      if (dbPlans && dbPlans.length > 0) {
+        const mapped: InterventionPlan[] = dbPlans.map(p => {
+          let uiStatus: InterventionStatus = 'Em Andamento';
+          if (p.status === 'completed') uiStatus = 'Concluído';
+          else if (p.status === 'pending') uiStatus = 'Pendente';
+
+          const mappedGoals = (p.goals || []).map((gText, idx) => ({
+            id: `g-${p.id}-${idx}`,
+            text: gText,
+            completed: uiStatus === 'Concluído'
+          }));
+
+          const matchedStudent = internalStudents.find(s => String(s.id) === String(p.student_id));
+
+          return {
+            id: p.id,
+            studentId: p.student_id,
+            studentName: p.student_name,
+            studentAvatar: matchedStudent?.avatar || '',
+            studentClass: matchedStudent?.classId ? `Turma ${matchedStudent.classId}` : (matchedStudent?.grade ? `${matchedStudent.grade}º Ano` : 'Ensino Fundamental'),
+            title: p.intervention_plan && p.intervention_plan.length > 40 ? p.intervention_plan.slice(0, 40) + '...' : (p.intervention_plan || `Plano de Intervenção`),
+            type: (['Reforço Contraturno', 'Adaptação Curricular', 'Apoio Psicopedagógico', 'Reunião com Família', 'Tutoria de Pares'].includes(p.difficulty_type)
+              ? p.difficulty_type as InterventionType
+              : 'Reforço Contraturno'),
+            priority: 'Alta',
+            status: uiStatus,
+            diagnostic: p.intervention_plan || '',
+            goals: mappedGoals.length > 0 ? mappedGoals : [
+              { id: `g1-${p.id}`, text: 'Acompanhamento pedagógico individualizado', completed: uiStatus === 'Concluído' }
+            ],
+            startDate: p.created_at ? p.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            targetDate: p.deadline || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            responsibleTeacher: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos Andrade',
+            logs: [
+              {
+                id: `l-${p.id}`,
+                date: p.created_at ? new Date(p.created_at).toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR'),
+                author: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos Andrade',
+                note: `Plano de intervenção (${p.difficulty_type}) registrado no banco Supabase.`
+              }
+            ]
+          };
+        });
+
+        setPlans(mapped);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar planos de intervenção no Supabase:', err);
+    } finally {
+      setIsLoadingPlans(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPlansFromSupabase();
+  }, [teacherId]);
+
+  // Persist local backup
   useEffect(() => {
     localStorage.setItem('gestao360_interventions', JSON.stringify(plans));
   }, [plans]);
@@ -171,8 +260,18 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
     setTimeout(() => setToastMessage(null), 3000);
   };
 
+  // Listen for trigger-create-plan event dispatched from student list or dashboard
+  useEffect(() => {
+    const handleTriggerCreate = (e: any) => {
+      const studentId = e.detail;
+      handleOpenCreateModal(studentId);
+    };
+    window.addEventListener('trigger-create-plan', handleTriggerCreate);
+    return () => window.removeEventListener('trigger-create-plan', handleTriggerCreate);
+  }, [internalStudents]);
+
   // Identify students in need of intervention who do NOT have an active plan
-  const atRiskStudents = students.filter(
+  const atRiskStudents = internalStudents.filter(
     s => s.status === 'Em Risco' || s.status === 'Atenção' || (s.grade && s.grade < 6.0)
   );
 
@@ -206,7 +305,7 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
   const handleOpenCreateModal = (preselectedStudentId?: string | number) => {
     setModalMode('create');
     setSelectedPlan(null);
-    setFormStudentId(preselectedStudentId || (students[0]?.id || ''));
+    setFormStudentId(preselectedStudentId || (internalStudents[0]?.id || ''));
     setFormTitle('');
     setFormType('Reforço Contraturno');
     setFormPriority('Alta');
@@ -231,9 +330,9 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
     setIsModalOpen(true);
   };
 
-  const handleSavePlan = (e: React.FormEvent) => {
+  const handleSavePlan = async (e: React.FormEvent) => {
     e.preventDefault();
-    const chosenStudent = students.find(s => String(s.id) === String(formStudentId)) || {
+    const chosenStudent = internalStudents.find(s => String(s.id) === String(formStudentId)) || {
       id: formStudentId,
       name: 'Aluno Selecionado',
       avatar: ''
@@ -244,78 +343,109 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
       return;
     }
 
-    if (modalMode === 'create') {
-      const newPlan: InterventionPlan = {
-        id: `plan-${Date.now()}`,
-        studentId: chosenStudent.id,
-        studentName: chosenStudent.name,
-        studentAvatar: chosenStudent.avatar || '',
-        studentClass: chosenStudent.classId ? `Turma ${chosenStudent.classId}` : 'Ensino Fundamental',
-        title: formTitle.trim(),
-        type: formType,
-        priority: formPriority,
-        status: formStatus,
-        diagnostic: formDiagnostic.trim(),
-        goals: formGoals.filter(g => g.trim().length > 0).map((g, idx) => ({
-          id: `g-${Date.now()}-${idx}`,
-          text: g.trim(),
-          completed: false
-        })),
-        startDate: new Date().toISOString().split('T')[0],
-        targetDate: formTargetDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        responsibleTeacher: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos',
-        logs: [
-          {
-            id: `l-${Date.now()}`,
-            date: new Date().toLocaleDateString('pt-BR'),
-            author: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos',
-            note: 'Plano de intervenção pedagógica cadastrado no sistema.'
+    setIsSaving(true);
+    try {
+      const dbStatus: 'pending' | 'in_progress' | 'completed' = 
+        formStatus === 'Pendente' ? 'pending' : 
+        formStatus === 'Concluído' ? 'completed' : 'in_progress';
+
+      const validGoals = formGoals.filter(g => g.trim().length > 0);
+
+      if (modalMode === 'create') {
+        const newRecord = await createInterventionPlan({
+          student_id: chosenStudent.id,
+          teacher_id: teacherId,
+          student_name: chosenStudent.name,
+          difficulty_type: formType,
+          intervention_plan: formDiagnostic.trim() || formTitle.trim(),
+          goals: validGoals,
+          deadline: formTargetDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          status: dbStatus
+        });
+
+        const newPlan: InterventionPlan = {
+          id: newRecord ? newRecord.id : `plan-${Date.now()}`,
+          studentId: chosenStudent.id,
+          studentName: chosenStudent.name,
+          studentAvatar: chosenStudent.avatar || '',
+          studentClass: chosenStudent.classId ? `Turma ${chosenStudent.classId}` : 'Ensino Fundamental',
+          title: formTitle.trim(),
+          type: formType,
+          priority: formPriority,
+          status: formStatus,
+          diagnostic: formDiagnostic.trim(),
+          goals: validGoals.map((g, idx) => ({
+            id: `g-${Date.now()}-${idx}`,
+            text: g.trim(),
+            completed: false
+          })),
+          startDate: new Date().toISOString().split('T')[0],
+          targetDate: formTargetDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          responsibleTeacher: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos',
+          logs: [
+            {
+              id: `l-${Date.now()}`,
+              date: new Date().toLocaleDateString('pt-BR'),
+              author: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos',
+              note: 'Plano de intervenção pedagógica cadastrado no sistema e sincronizado com o Supabase.'
+            }
+          ]
+        };
+
+        setPlans(prev => [newPlan, ...prev.filter(p => p.id !== newPlan.id)]);
+        window.dispatchEvent(new CustomEvent('intervention-plans-updated'));
+        showToast('Plano de intervenção criado e salvo com sucesso no banco de dados!');
+      } else if (selectedPlan) {
+        await updateInterventionPlanStatus(selectedPlan.id, dbStatus, formDiagnostic.trim());
+
+        const updatedPlans = plans.map(p => {
+          if (p.id === selectedPlan.id) {
+            return {
+              ...p,
+              title: formTitle.trim(),
+              type: formType,
+              priority: formPriority,
+              status: formStatus,
+              diagnostic: formDiagnostic.trim(),
+              targetDate: formTargetDate,
+              goals: formGoals.filter(g => g.trim().length > 0).map((g, idx) => {
+                const existingGoal = p.goals[idx];
+                return {
+                  id: existingGoal?.id || `g-${Date.now()}-${idx}`,
+                  text: g.trim(),
+                  completed: existingGoal?.completed || false
+                };
+              })
+            };
           }
-        ]
-      };
+          return p;
+        });
 
-      setPlans([newPlan, ...plans]);
-      showToast('Plano de intervenção criado com sucesso!');
-    } else if (selectedPlan) {
-      const updatedPlans = plans.map(p => {
-        if (p.id === selectedPlan.id) {
-          return {
-            ...p,
-            title: formTitle.trim(),
-            type: formType,
-            priority: formPriority,
-            status: formStatus,
-            diagnostic: formDiagnostic.trim(),
-            targetDate: formTargetDate,
-            goals: formGoals.filter(g => g.trim().length > 0).map((g, idx) => {
-              const existingGoal = p.goals[idx];
-              return {
-                id: existingGoal?.id || `g-${Date.now()}-${idx}`,
-                text: g.trim(),
-                completed: existingGoal?.completed || false
-              };
-            })
-          };
-        }
-        return p;
-      });
-
-      setPlans(updatedPlans);
-      showToast('Plano atualizado com sucesso!');
+        setPlans(updatedPlans);
+        window.dispatchEvent(new CustomEvent('intervention-plans-updated'));
+        showToast('Plano de intervenção atualizado no banco de dados!');
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Erro ao salvar plano de intervenção:', err);
+      showToast('Erro ao salvar plano de intervenção.');
+    } finally {
+      setIsSaving(false);
     }
-
-    setIsModalOpen(false);
   };
 
-  const handleToggleGoal = (planId: string, goalId: string) => {
+  const handleToggleGoal = async (planId: string, goalId: string) => {
+    let nextStatus: InterventionStatus | null = null;
     const updated = plans.map(plan => {
       if (plan.id === planId) {
         const newGoals = plan.goals.map(g => g.id === goalId ? { ...g, completed: !g.completed } : g);
         const allCompleted = newGoals.length > 0 && newGoals.every(g => g.completed);
+        const updatedStatus = allCompleted ? ('Concluído' as InterventionStatus) : plan.status;
+        nextStatus = updatedStatus;
         return {
           ...plan,
           goals: newGoals,
-          status: allCompleted ? ('Concluído' as InterventionStatus) : plan.status
+          status: updatedStatus
         };
       }
       return plan;
@@ -326,16 +456,23 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
       const targetPlan = updated.find(p => p.id === planId);
       if (targetPlan) setSelectedPlan(targetPlan);
     }
+
+    if (nextStatus) {
+      const dbStatus = nextStatus === 'Concluído' ? 'completed' : 'in_progress';
+      await updateInterventionPlanStatus(planId, dbStatus);
+      window.dispatchEvent(new CustomEvent('intervention-plans-updated'));
+    }
   };
 
-  const handleAddLogNote = (planId: string) => {
+  const handleAddLogNote = async (planId: string) => {
     if (!newLogNote.trim()) return;
 
+    const noteText = newLogNote.trim();
     const newLog: InterventionLog = {
       id: `l-${Date.now()}`,
       date: new Date().toLocaleDateString('pt-BR'),
       author: localStorage.getItem('gestao360_teacher_name') || 'Prof. Carlos',
-      note: newLogNote.trim()
+      note: noteText
     };
 
     const updated = plans.map(p => {
@@ -354,14 +491,17 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
       if (targetPlan) setSelectedPlan(targetPlan);
     }
     setNewLogNote('');
-    showToast('Anotação de evolução adicionada!');
+    await updateInterventionPlanStatus(planId, undefined, noteText);
+    showToast('Anotação de evolução adicionada e salva no banco de dados!');
   };
 
-  const handleDeletePlan = (planId: string) => {
+  const handleDeletePlan = async (planId: string) => {
     if (!window.confirm('Tem certeza de que deseja excluir este plano de intervenção?')) return;
     setPlans(plans.filter(p => p.id !== planId));
     if (selectedPlan?.id === planId) setSelectedPlan(null);
-    showToast('Plano excluído.');
+    await deleteInterventionPlan(planId);
+    window.dispatchEvent(new CustomEvent('intervention-plans-updated'));
+    showToast('Plano excluído com sucesso.');
   };
 
   const handlePrintPlan = (plan: InterventionPlan) => {
@@ -417,6 +557,11 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
               <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400">
                 <Sparkles size={12} /> Acompanhamento Individual
               </span>
+              {isLoadingPlans && (
+                <span className="inline-flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold animate-pulse">
+                  <Loader2 size={14} className="animate-spin" /> Conectando Supabase...
+                </span>
+              )}
             </div>
             <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1 max-w-2xl">
               Estratégias estruturadas de recuperação, reforço no contraturno e adaptação curricular para alunos com defasagem ou infrequência.
@@ -1071,15 +1216,18 @@ export const TeacherInterventionPlan: React.FC<TeacherInterventionPlanProps> = (
                 <button 
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-5 py-3 rounded-2xl text-xs font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+                  disabled={isSaving}
+                  className="px-5 py-3 rounded-2xl text-xs font-bold text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="px-7 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
+                  disabled={isSaving}
+                  className="px-7 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-400 text-white rounded-2xl text-xs font-bold shadow-lg shadow-indigo-500/20 transition-all cursor-pointer flex items-center gap-2"
                 >
-                  {modalMode === 'create' ? 'Salvar Plano' : 'Atualizar Plano'}
+                  {isSaving && <Loader2 size={14} className="animate-spin" />}
+                  {isSaving ? 'Salvando...' : (modalMode === 'create' ? 'Salvar Plano' : 'Atualizar Plano')}
                 </button>
               </div>
 

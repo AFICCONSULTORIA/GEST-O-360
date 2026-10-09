@@ -9,7 +9,8 @@ import {
   Store,
   X, 
   Sparkles,
-  Flame
+  Flame,
+  HeartHandshake
 } from 'lucide-react';
 import { EducationAvatar } from './EducationAvatar';
 
@@ -129,6 +130,7 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
           { view: 'courses', icon: <BookOpen size={18} />, label: 'Meus Cursos', emoji: '📚', color: 'sky' },
           { view: 'assessments', icon: <Target size={18} />, label: 'Avaliações', emoji: '🎯', color: 'orange' },
           { view: 'achievements', icon: <Award size={18} />, label: 'Conquistas', emoji: '🏆', color: 'amber' },
+          { view: 'family', icon: <HeartHandshake size={18} />, label: 'Boletim & Família', emoji: '📋', color: 'indigo' },
         ].map(({ view, icon, label, emoji, color }) => (
           <button
             key={view}
