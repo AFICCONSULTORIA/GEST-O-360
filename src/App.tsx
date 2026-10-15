@@ -571,10 +571,13 @@ export default function App() {
     currentPath === '/ouvidoria' || 
     currentPath.startsWith('/ouvidoria/') || 
     (currentSubdomain && currentSubdomain.toLowerCase() === 'ouvidoria');
+  const cleanPath = decodedPath.replace(/\/+$/, '');
   const isNotaFiscalPortal = 
-    currentPath === '/notafiscal' || 
-    currentPath.startsWith('/notafiscal/') || 
-    (currentSubdomain && currentSubdomain.toLowerCase() === 'notafiscal');
+    cleanPath === '/notafiscal' || 
+    cleanPath === '/nota-fiscal' || 
+    cleanPath.startsWith('/notafiscal/') || 
+    cleanPath.startsWith('/nota-fiscal/') || 
+    (currentSubdomain && (currentSubdomain.toLowerCase() === 'notafiscal' || currentSubdomain.toLowerCase() === 'notafiscal-auditor'));
   const isPublicFormRoute = 
     currentPath.startsWith('/formulario') || 
     currentPath.startsWith('/form') || 

@@ -313,10 +313,16 @@ export const SalesLandingPage = ({
       icon: BookOpen, color: 'amber', title: 'Portal da Educação',
       desc: 'Acompanhe boletins escolares, frequências, rotas do transporte e informes oficiais.',
       link: '/educacao', cta: 'Acessar Educação'
+    },
+    {
+      icon: Scale, color: 'teal', title: 'Auditor Fiscal Reforma 2026',
+      desc: 'Pré-validação e auditoria de DANFE (NF-e 55) e NFS-e Nacional com conferência de IBS, CBS e Bloco W.',
+      link: '/notafiscal', cta: 'Auditar Nota Fiscal'
     }
   ];
 
   const colorMap: Record<string, string> = {
+    teal: 'text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-500/10 hover:bg-teal-100 dark:hover:bg-teal-500/20 border-teal-200 dark:border-teal-500/20',
     emerald: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 border-emerald-200 dark:border-emerald-500/20',
     sky: 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 hover:bg-sky-100 dark:hover:bg-sky-500/20 border-sky-200 dark:border-sky-500/20',
     indigo: 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 border-indigo-200 dark:border-indigo-500/20',
