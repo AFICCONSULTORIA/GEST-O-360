@@ -15,6 +15,7 @@ import {
   validateChaveNFe, 
   validateChaveNFSeNacional 
 } from '../utils/fiscalValidatorEngine';
+import { readFiscalPdf, ExtractedFiscalPdf } from '../utils/pdfFiscalReader';
 import { Institution } from '../types';
 
 interface PublicNotaFiscalAuditorProps {
@@ -39,6 +40,9 @@ export const PublicNotaFiscalAuditor: React.FC<PublicNotaFiscalAuditorProps> = (
   const [resultSubTab, setResultSubTab] = useState<'issues' | 'items' | 'danfe' | 'xml'>('issues');
   const [copied, setCopied] = useState(false);
   const [filterType, setFilterType] = useState<'all' | 'erro' | 'aviso' | 'sucesso'>('all');
+  const [isReadingPdf, setIsReadingPdf] = useState(false);
+  const [pdfMetadata, setPdfMetadata] = useState<ExtractedFiscalPdf | null>(null);
+  const [pdfReadError, setPdfReadError] = useState<string | null>(null);
 
   // Estados do Simulador / Calculadora
   const [simDocType, setSimDocType] = useState<'NFE_55' | 'NFSE_NACIONAL'>('NFE_55');
@@ -65,18 +69,48 @@ export const PublicNotaFiscalAuditor: React.FC<PublicNotaFiscalAuditorProps> = (
     }, 280);
   };
 
-  // Leitura de Arquivo
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Processamento de Arquivos (XML, JSON, TXT ou PDF)
+  const handleProcessFile = async (file: File) => {
     setFileName(file.name);
+    setPdfReadError(null);
+
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+
+    if (isPdf) {
+      setIsReadingPdf(true);
+      setIsAuditing(true);
+      try {
+        const extracted = await readFiscalPdf(file);
+        setPdfMetadata(extracted);
+        setXmlInput(extracted.xmlGenerated);
+        const res = auditFiscalDocument(extracted.xmlGenerated);
+        setDiagnostic(res);
+        setResultSubTab('issues');
+      } catch (err: any) {
+        console.error('Erro na leitura do PDF:', err);
+        setPdfReadError(err.message || 'Não foi possível extrair os dados da nota fiscal a partir deste PDF.');
+      } finally {
+        setIsReadingPdf(false);
+        setIsAuditing(false);
+      }
+      return;
+    }
+
+    // Se for XML, JSON ou TXT
+    setPdfMetadata(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
       handleRunAudit(content, file.name);
     };
     reader.readAsText(file);
+  };
+
+  // Leitura de Arquivo via Input
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleProcessFile(file);
   };
 
   // Drag and Drop
@@ -91,14 +125,7 @@ export const PublicNotaFiscalAuditor: React.FC<PublicNotaFiscalAuditorProps> = (
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (!file) return;
-
-    setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      handleRunAudit(content, file.name);
-    };
-    reader.readAsText(file);
+    handleProcessFile(file);
   };
 
   // Carregar exemplos pré-definidos
@@ -425,21 +452,33 @@ export const PublicNotaFiscalAuditor: React.FC<PublicNotaFiscalAuditorProps> = (
               <Upload size={36} className="text-emerald-600 dark:text-emerald-400" />
             </div>
             <h3 className="text-xl font-black text-neutral-900 dark:text-neutral-100 mb-2">
-              Arraste e solte seu arquivo XML ou JSON aqui
+              Arraste e solte seu arquivo XML, JSON ou PDF (DANFE) aqui
             </h3>
-            <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mx-auto mb-6">
-              Suporta arquivos de NF-e (Modelo 55), NFS-e Nacional, DPS ou lotes em formato XML/JSON.
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-lg mx-auto mb-6">
+              Suporta arquivos <strong>XML</strong>, <strong>JSON</strong> e <strong className="text-emerald-600 dark:text-emerald-400">PDF da Nota Fiscal (DANFE Modelo 55 ou NFS-e Nacional)</strong> com extração automática via OCR e Inteligência Artificial.
             </p>
-            
-            <label className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black text-xs uppercase tracking-wider shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer">
-              <FileCode size={16} /> Selecionar Arquivo do Computador
-              <input 
-                type="file" 
-                accept=".xml,.json,.txt" 
-                className="hidden" 
-                onChange={handleFileUpload} 
-              />
-            </label>
+
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <label className="inline-flex items-center gap-2 px-6 py-3.5 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black text-xs uppercase tracking-wider shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer">
+                <FileCode size={16} /> Selecionar Arquivo (XML ou PDF)
+                <input 
+                  type="file" 
+                  accept=".xml,.json,.txt,.pdf,application/pdf" 
+                  className="hidden" 
+                  onChange={handleFileUpload} 
+                />
+              </label>
+            </div>
+
+            {pdfReadError && (
+              <div className="mt-4 p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs text-left max-w-md mx-auto flex items-start gap-2">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold block">Falha ao processar PDF:</span>
+                  {pdfReadError}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -686,8 +725,15 @@ export const PublicNotaFiscalAuditor: React.FC<PublicNotaFiscalAuditorProps> = (
           <div className="p-12 text-center space-y-4 bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm animate-pulse">
             <div className="w-12 h-12 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mx-auto" />
             <p className="text-xs font-black uppercase tracking-widest text-neutral-500">
-              Auditando Documento sob a NT 2026.010 & NT 008...
+              {isReadingPdf 
+                ? 'Lendo PDF e Extraindo Dados da Nota Fiscal com IA...' 
+                : 'Auditando Documento sob a NT 2026.010 & NT 008...'}
             </p>
+            {isReadingPdf && (
+              <p className="text-[11px] text-neutral-400 max-w-md mx-auto">
+                Reconhecendo chaves de acesso, itens, alíquotas do IBS/CBS e amarrações fiscais.
+              </p>
+            )}
           </div>
         )}
 
@@ -756,6 +802,24 @@ export const PublicNotaFiscalAuditor: React.FC<PublicNotaFiscalAuditorProps> = (
 
               {/* Ações do Relatório */}
               <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {pdfMetadata && (
+                  <button
+                    onClick={() => {
+                      if (!xmlInput) return;
+                      const blob = new Blob([xmlInput], { type: 'application/xml;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = fileName ? `${fileName.replace(/\.[^/.]+$/, '')}_auditado.xml` : 'nota_fiscal_auditada.xml';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shadow-md"
+                    title="Baixar o arquivo XML gerado a partir da leitura do PDF"
+                  >
+                    <Download size={14} /> Baixar XML do PDF
+                  </button>
+                )}
                 <button
                   onClick={handleCopyDiagnostic}
                   className="px-4 py-2.5 rounded-xl bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700 text-xs font-bold hover:bg-neutral-50 transition-all flex items-center gap-2 cursor-pointer shadow-xs"
