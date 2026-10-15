@@ -4,7 +4,7 @@ import {
   GraduationCap, BookOpen, Brain, Star, Award, 
   ArrowRight, ChevronLeft, ChevronRight, PlayCircle, 
   FileText, CheckCircle2, User, Users, BookMarked, MonitorPlay,
-  School, Lock, Loader2, Sparkles, Baby, Key, Eye, EyeOff, AlertCircle, Vote
+  School, Lock, Loader2, Sparkles, Baby, Key, Eye, EyeOff, AlertCircle, Vote, Shield
 } from 'lucide-react';
 import { StudentPortal } from './StudentPortal';
 import { TeacherDashboard } from './TeacherDashboard';
@@ -60,21 +60,11 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
   const [showStudentPassword, setShowStudentPassword] = useState(false);
   const [studentLoginError, setStudentLoginError] = useState<string | null>(null);
 
-  // Teacher Login & Register State
+  // Teacher Login State (Acesso restrito cadastrado pela coordenação)
   const [isTeacherLoggingIn, setIsTeacherLoggingIn] = useState(false);
   const [teacherEmail, setTeacherEmail] = useState('');
   const [teacherPassword, setTeacherPassword] = useState('');
   const [teacherLoginError, setTeacherLoginError] = useState<string | null>(null);
-  const [teacherAuthMode, setTeacherAuthMode] = useState<'login' | 'register'>('login');
-
-  // Educator Self-Registration State
-  const [regName, setRegName] = useState('');
-  const [regRole, setRegRole] = useState<'teacher' | 'coordinator'>('teacher');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPassword, setRegPassword] = useState('123');
-  const [regSchool, setRegSchool] = useState('');
-  const [regSubject, setRegSubject] = useState('');
-  const [regPhone, setRegPhone] = useState('');
 
   // Student Dashboard State
   const [studentGrade, setStudentGrade] = useState<number | null>(null);
@@ -159,55 +149,6 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
     }));
 
     setActiveTab('teacher');
-  };
-
-  const handleTeacherRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!regName.trim() || !regEmail.trim()) {
-      setTeacherLoginError('Preencha seu nome e e-mail institucional!');
-      return;
-    }
-
-    setTeacherLoginError(null);
-    setIsTeacherLoggingIn(true);
-
-    try {
-      const created = await staffService.createStaff({
-        name: regName.trim(),
-        role: regRole,
-        email: regEmail.trim().toLowerCase(),
-        password: regPassword.trim() || '123',
-        registration: '',
-        phone: regPhone.trim(),
-        subject: regSubject.trim() || (regRole === 'coordinator' ? 'Coordenação Pedagógica' : 'Polivalente'),
-        school: regSchool.trim() || 'Rede Municipal',
-        status: 'active'
-      });
-
-      localStorage.setItem('gestao360_teacher_id', created.id);
-      localStorage.setItem('gestao360_teacher_name', created.name);
-      localStorage.setItem('gestao360_teacher_email', created.email);
-      localStorage.setItem('gestao360_teacher_role', created.role);
-      localStorage.setItem('gestao360_teacher_subject', created.subject);
-      localStorage.setItem('gestao360_teacher_school', created.school);
-
-      window.dispatchEvent(new CustomEvent('teacher-updated', {
-        detail: {
-          name: created.name,
-          email: created.email,
-          subject: created.subject,
-          role: created.role,
-          school: created.school,
-          photo: ''
-        }
-      }));
-
-      setIsTeacherLoggingIn(false);
-      setActiveTab('teacher');
-    } catch (err) {
-      setIsTeacherLoggingIn(false);
-      setTeacherLoginError('Erro ao realizar cadastro. Tente novamente.');
-    }
   };
 
   const resetQuiz = () => {
@@ -622,39 +563,11 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
               <Brain size={32} className="text-white" />
             </div>
             <h2 className="text-2xl md:text-3xl font-black text-neutral-900 dark:text-white">
-              {teacherAuthMode === 'login' ? 'Acesso do Educador' : 'Cadastro de Educador'}
+              Acesso do Educador
             </h2>
             <p className="text-neutral-500 dark:text-neutral-400 mt-1 text-sm font-medium">
-              {teacherAuthMode === 'login' 
-                ? 'Professores e Coordenadores da Rede Municipal' 
-                : 'Cadastre seu perfil para acessar o ambiente pedagógico'}
+              Professores e Coordenadores da Rede Municipal
             </p>
-          </div>
-
-          {/* Abas: Entrar vs Cadastrar */}
-          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1 rounded-2xl mb-6">
-            <button
-              type="button"
-              onClick={() => { setTeacherAuthMode('login'); setTeacherLoginError(null); }}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                teacherAuthMode === 'login'
-                  ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              Acessar Painel
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTeacherAuthMode('register'); setTeacherLoginError(null); }}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                teacherAuthMode === 'register'
-                  ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
-                  : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              + Novo Cadastro
-            </button>
           </div>
 
           {/* Mensagem de Erro */}
@@ -665,177 +578,81 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
             </div>
           )}
 
-          {teacherAuthMode === 'login' ? (
-            <form onSubmit={handleTeacherLogin} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">E-mail Profissional</label>
-                <div className="relative">
-                  <FileText size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input 
-                    type="email" 
-                    required
-                    value={teacherEmail}
-                    onChange={(e) => setTeacherEmail(e.target.value)}
-                    placeholder="seu.email@escola.gov.br"
-                    className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal text-sm shadow-inner"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">Senha</label>
-                <div className="relative">
-                  <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input 
-                    type="password" 
-                    required
-                    value={teacherPassword}
-                    onChange={(e) => setTeacherPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal text-sm shadow-inner"
-                  />
-                </div>
-              </div>
-
-              {/* Informação Institucional */}
-              <div className="p-3.5 bg-neutral-50 dark:bg-neutral-950/60 border border-neutral-100 dark:border-neutral-800/80 rounded-2xl text-xs text-neutral-500 dark:text-neutral-400">
-                <p className="font-bold text-neutral-700 dark:text-neutral-300">Acesso Restrito ao Corpo Pedagógico</p>
-                <p className="mt-0.5 text-[11px] leading-relaxed">Utilize seu e-mail funcional e senha cadastrados pela Secretaria de Educação ou registre-se na aba <strong>"+ Novo Cadastro"</strong> acima.</p>
-              </div>
-
-              <button 
-                type="submit"
-                disabled={isTeacherLoggingIn}
-                className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-2xl font-black text-base shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:scale-95 transition-all flex justify-center items-center gap-2 cursor-pointer"
-              >
-                {isTeacherLoggingIn ? (
-                  <>
-                    <Loader2 size={20} className="animate-spin" />
-                    <span>Autenticando...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Entrar no Painel</span>
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          ) : (
-            /* Formulário de Auto-Cadastro de Educador */
-            <form onSubmit={handleTeacherRegister} className="space-y-3.5 animate-in fade-in duration-200">
-              {/* Escolha do Cargo */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-1">Cargo</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setRegRole('teacher')}
-                    className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border-2 transition-all cursor-pointer ${
-                      regRole === 'teacher'
-                        ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300'
-                        : 'border-neutral-200 dark:border-neutral-800 text-neutral-500'
-                    }`}
-                  >
-                    <GraduationCap size={16} />
-                    Professor(a)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRegRole('coordinator')}
-                    className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 border-2 transition-all cursor-pointer ${
-                      regRole === 'coordinator'
-                        ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300'
-                        : 'border-neutral-200 dark:border-neutral-800 text-neutral-500'
-                    }`}
-                  >
-                    <Award size={16} />
-                    Coordenador(a)
-                  </button>
-                </div>
-              </div>
-
-              {/* Nome Completo */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-1">Nome Completo *</label>
+          {/* Formulário de Login Direto */}
+          <form onSubmit={handleTeacherLogin} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">E-mail Profissional</label>
+              <div className="relative">
+                <FileText size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
                 <input 
-                  type="text"
+                  type="email" 
                   required
-                  value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
-                  placeholder="Ex: Prof. Marcos Silva"
-                  className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:border-indigo-500"
+                  value={teacherEmail}
+                  onChange={(e) => setTeacherEmail(e.target.value)}
+                  placeholder="seu.email@escola.gov.br"
+                  className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal text-sm shadow-inner"
                 />
               </div>
+            </div>
 
-              {/* E-mail e Senha */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-1">E-mail Institucional *</label>
-                  <input 
-                    type="email"
-                    required
-                    value={regEmail}
-                    onChange={(e) => setRegEmail(e.target.value)}
-                    placeholder="marcos@escola.gov.br"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-1">Senha</label>
-                  <input 
-                    type="text"
-                    value={regPassword}
-                    onChange={(e) => setRegPassword(e.target.value)}
-                    placeholder="123"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:border-indigo-500 font-mono"
-                  />
-                </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-4">Senha</label>
+              <div className="relative">
+                <Lock size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input 
+                  type="password" 
+                  required
+                  value={teacherPassword}
+                  onChange={(e) => setTeacherPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-12 pr-4 py-3.5 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-indigo-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-semibold text-neutral-900 dark:text-white placeholder:text-neutral-400 placeholder:font-normal text-sm shadow-inner"
+                />
               </div>
+            </div>
 
-              {/* Escola e Disciplina */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-1">Escola de Lotação</label>
-                  <input 
-                    type="text"
-                    value={regSchool}
-                    onChange={(e) => setRegSchool(e.target.value)}
-                    placeholder="Ex: Escola Municipal..."
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-neutral-500 dark:text-neutral-400 uppercase tracking-widest pl-1">Disciplina / Área</label>
-                  <input 
-                    type="text"
-                    value={regSubject}
-                    onChange={(e) => setRegSubject(e.target.value)}
-                    placeholder={regRole === 'coordinator' ? 'Coordenação' : 'Matemática'}
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
+            {/* Aviso Informativo Obrigatório para o Corpo Docente */}
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-xs text-amber-900 dark:text-amber-200 space-y-1 flex items-start gap-3">
+              <Shield size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-black text-amber-800 dark:text-amber-300">Acesso Restrito ao Corpo Docente</p>
+                <p className="text-[11px] leading-relaxed mt-0.5 opacity-90">
+                  Acesso exclusivo para professores cadastrados pela Coordenação Pedagógica. Em caso de dúvidas, contate a Secretaria da sua escola.
+                </p>
               </div>
+            </div>
 
-              <button 
-                type="submit"
-                disabled={isTeacherLoggingIn}
-                className="w-full mt-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3.5 rounded-xl font-black text-sm shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:scale-95 transition-all flex justify-center items-center gap-2 cursor-pointer"
-              >
-                {isTeacherLoggingIn ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    <span>Cadastrando...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Concluir Cadastro & Entrar</span>
-                    <CheckCircle2 size={18} />
-                  </>
-                )}
-              </button>
-            </form>
-          )}
+            {/* Atalho Demo Professor */}
+            <button
+              type="button"
+              onClick={() => {
+                setTeacherEmail('carlos.eduardo@escola.gov.br');
+                setTeacherPassword('123');
+                setTeacherLoginError(null);
+              }}
+              className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.01]"
+            >
+              <Sparkles size={14} className="text-indigo-500 animate-spin" style={{ animationDuration: '6s' }} />
+              <span>Preencher Professor Atribuído (Prof. Carlos Eduardo - 123)</span>
+            </button>
+
+            <button 
+              type="submit"
+              disabled={isTeacherLoggingIn}
+              className="w-full mt-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-2xl font-black text-base shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:scale-95 transition-all flex justify-center items-center gap-2 cursor-pointer"
+            >
+              {isTeacherLoggingIn ? (
+                <>
+                  <Loader2 size={20} className="animate-spin" />
+                  <span>Autenticando...</span>
+                </>
+              ) : (
+                <>
+                  <span>Entrar no Painel</span>
+                  <ArrowRight size={18} />
+                </>
+              )}
+            </button>
+          </form>
 
         </div>
       </div>

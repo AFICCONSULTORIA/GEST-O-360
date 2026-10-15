@@ -26,6 +26,10 @@ import {
 import { staffService, StaffMember, StaffRole, StaffStatus, generateStaffRegistration } from '../services/staffService';
 import { EducationAvatar } from './EducationAvatar';
 import { VotingService } from '../services/votingService';
+import { registerTeacherByCoordinator } from '../../../lib/api/education';
+
+export const AVAILABLE_CLASSES = ['1º Ano A', '2º Ano A', '3º Ano A', '4º Ano A', '5º Ano B', 'Berçário II', 'Maternal I', 'Maternal II'];
+export const AVAILABLE_SUBJECTS = ['Língua Portuguesa', 'Matemática', 'Ciências da Natureza', 'História', 'Geografia', 'Arte', 'Educação Física'];
 
 interface EducationStaffAdminProps {
   schoolFilter?: string;
@@ -63,6 +67,11 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
   const [formWorkload, setFormWorkload] = useState(40);
   const [formClasses, setFormClasses] = useState('');
   const [formStatus, setFormStatus] = useState<StaffStatus>('active');
+
+  // Seleções Múltiplas de Governança Docente (ETAPA 3)
+  const [selectedAssignedClasses, setSelectedAssignedClasses] = useState<string[]>([]);
+  const [selectedAssignedSubjects, setSelectedAssignedSubjects] = useState<string[]>([]);
+  const [customClassInput, setCustomClassInput] = useState('');
 
   // Escolas reais cadastradas no sistema
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
@@ -121,6 +130,8 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
     setFormSchool(schoolFilter || (availableSchools[0] || 'EMEF Prof. Darcy Ribeiro'));
     setFormWorkload(40);
     setFormClasses('');
+    setSelectedAssignedClasses(defaultRole === 'teacher' ? ['4º Ano A'] : []);
+    setSelectedAssignedSubjects(defaultRole === 'teacher' ? ['Língua Portuguesa', 'Matemática'] : ['Coordenação Pedagógica']);
     setFormStatus('active');
     setIsModalOpen(true);
   };
@@ -138,6 +149,9 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
     setFormSchool(staff.school);
     setFormWorkload(staff.workloadHours || 40);
     setFormClasses((staff.classes || []).join(', '));
+    setSelectedAssignedClasses(staff.classes || []);
+    const subs = staff.subject ? staff.subject.split(',').map(s => s.trim()).filter(Boolean) : [];
+    setSelectedAssignedSubjects(subs.length > 0 ? subs : ['Polivalente']);
     setFormStatus(staff.status);
     setIsModalOpen(true);
   };
@@ -149,10 +163,29 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
       return;
     }
 
-    const classesArray = formClasses
-      ? formClasses.split(',').map(c => c.trim()).filter(Boolean)
-      : [];
+    const classesArray = selectedAssignedClasses.length > 0
+      ? selectedAssignedClasses
+      : (formClasses ? formClasses.split(',').map(c => c.trim()).filter(Boolean) : []);
 
+    const subjectsArray = selectedAssignedSubjects.length > 0
+      ? selectedAssignedSubjects
+      : (formSubject ? [formSubject.trim()] : ['Geral']);
+
+    const finalSubjectStr = subjectsArray.join(', ');
+
+    // 1. Cadastra/Atualiza via camada de API segura (Supabase RPC admin_register_teacher)
+    await registerTeacherByCoordinator({
+      name: formName.trim(),
+      email: formEmail.trim().toLowerCase(),
+      cpf: formCpf.trim() || undefined,
+      registration_number: formRegistration.trim() || undefined,
+      assigned_classes: classesArray,
+      assigned_subjects: subjectsArray,
+      status: formStatus === 'active' ? 'ativo' : 'inativo',
+      password: formPassword.trim() || '123'
+    });
+
+    // 2. Sincroniza retrocompativelmente com staffService
     if (editingStaff) {
       await staffService.updateStaff(editingStaff.id, {
         name: formName.trim(),
@@ -162,7 +195,7 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
         registration: formRegistration.trim(),
         cpf: formCpf.trim(),
         phone: formPhone.trim(),
-        subject: formSubject.trim() || (formRole === 'coordinator' ? 'Coordenação Pedagógica' : 'Geral'),
+        subject: finalSubjectStr,
         school: formSchool.trim(),
         workloadHours: Number(formWorkload) || 40,
         classes: classesArray,
@@ -180,13 +213,13 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
         registration: formRegistration.trim() || generateStaffRegistration(formRole, formName, staffList.length + 1),
         cpf: formCpf.trim(),
         phone: formPhone.trim(),
-        subject: formSubject.trim() || (formRole === 'coordinator' ? 'Coordenação Pedagógica' : 'Geral'),
+        subject: finalSubjectStr,
         school: formSchool.trim(),
         workloadHours: Number(formWorkload) || 40,
         classes: classesArray,
         status: formStatus
       });
-      showToast('Educador cadastrado com sucesso!');
+      showToast('Educador cadastrado com sucesso pela Coordenação!');
       setIsModalOpen(false);
       setCredentialsModal(created);
       loadData();
@@ -488,14 +521,15 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
                       <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 truncate mt-0.5">
                         {staff.subject}
                       </p>
-                      <p className="text-[11px] text-neutral-400 font-mono">
-                        Matrícula: {staff.registration}
-                      </p>
+                      <div className="flex items-center gap-2 text-[11px] text-neutral-400 font-mono mt-0.5">
+                        <span>Matrícula: {staff.registration}</span>
+                        {staff.cpf && <span>• CPF: {staff.cpf}</span>}
+                      </div>
                     </div>
                   </div>
 
                   {/* Detalhes de Lotação */}
-                  <div className="space-y-2 py-3 border-y border-neutral-100 dark:border-neutral-800/60 text-xs">
+                  <div className="space-y-2.5 py-3 border-y border-neutral-100 dark:border-neutral-800/60 text-xs">
                     <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
                       <School size={14} className="text-neutral-400 shrink-0" />
                       <span className="truncate font-medium">{staff.school}</span>
@@ -507,12 +541,15 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
                     </div>
 
                     {staff.classes && staff.classes.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                        {staff.classes.map((cls, idx) => (
-                          <span key={idx} className="bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 px-2 py-0.5 rounded-lg text-[10px] font-bold">
-                            {cls}
-                          </span>
-                        ))}
+                      <div className="space-y-1 pt-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 block">Turmas Vinculadas (assigned_classes)</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {staff.classes.map((cls, idx) => (
+                            <span key={idx} className="bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800/60 px-2 py-0.5 rounded-lg text-[10px] font-bold">
+                              {cls}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -643,42 +680,44 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
                 </div>
               </div>
 
-              {/* Matrícula e Telefone */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* CPF e Matrícula Funcional */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">Matrícula Funcional</label>
                   <input 
                     type="text" 
                     value={formRegistration}
                     onChange={(e) => setFormRegistration(e.target.value)}
-                    placeholder="Ex: PROF015 ou COORD005"
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm font-semibold focus:outline-none focus:border-indigo-500 font-mono"
+                    placeholder="Ex: PROF001"
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-bold focus:outline-none focus:border-indigo-500 font-mono"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">WhatsApp / Telefone</label>
+                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">CPF</label>
                   <input 
                     type="text" 
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="(66) 99999-0000"
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm font-semibold focus:outline-none focus:border-indigo-500"
+                    value={formCpf}
+                    onChange={(e) => setFormCpf(e.target.value)}
+                    placeholder="000.000.000-00"
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-bold focus:outline-none focus:border-indigo-500 font-mono"
                   />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">Status</label>
+                  <select 
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value as any)}
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-bold focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="active">● Ativo</option>
+                    <option value="inactive">● Inativo</option>
+                    <option value="leave">● Em Licença</option>
+                  </select>
                 </div>
               </div>
 
-              {/* Disciplina e Escola */}
+              {/* Escola de Lotação e Telefone */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">Disciplina / Especialidade</label>
-                  <input 
-                    type="text" 
-                    value={formSubject}
-                    onChange={(e) => setFormSubject(e.target.value)}
-                    placeholder={formRole === 'coordinator' ? 'Ex: Coordenação Fundamental' : 'Ex: Matemática, Ciências...'}
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm font-semibold focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
                 <div className="space-y-1">
                   <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">Escola de Lotação</label>
                   <input 
@@ -687,7 +726,7 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
                     value={formSchool}
                     onChange={(e) => setFormSchool(e.target.value)}
                     placeholder="Selecione ou digite a escola..."
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm font-semibold focus:outline-none focus:border-indigo-500"
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500"
                   />
                   <datalist id="school-options">
                     {availableSchools.map(s => (
@@ -695,31 +734,108 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
                     ))}
                   </datalist>
                 </div>
-              </div>
-
-              {/* Turmas e Status */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">Turmas Atendidas (separar por vírgula)</label>
+                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">WhatsApp / Contato</label>
                   <input 
                     type="text" 
-                    value={formClasses}
-                    onChange={(e) => setFormClasses(e.target.value)}
-                    placeholder="Ex: Turma 4A, Turma 5B"
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm font-semibold focus:outline-none focus:border-indigo-500"
+                    value={formPhone}
+                    onChange={(e) => setFormPhone(e.target.value)}
+                    placeholder="(66) 99999-0000"
+                    className="w-full px-4 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-black text-neutral-500 uppercase tracking-wider pl-1">Status</label>
-                  <select 
-                    value={formStatus}
-                    onChange={(e) => setFormStatus(e.target.value as any)}
-                    className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-sm font-semibold focus:outline-none focus:border-indigo-500"
+              </div>
+
+              {/* SELEÇÃO MÚLTIPLA: Componentes Curriculares Atribuídos (assigned_subjects) */}
+              <div className="space-y-2 p-3 bg-neutral-50 dark:bg-neutral-950/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Disciplinas Atribuídas (assigned_subjects) *
+                  </label>
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                    {selectedAssignedSubjects.length} selecionada(s)
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {AVAILABLE_SUBJECTS.map((subj) => {
+                    const isSelected = selectedAssignedSubjects.includes(subj);
+                    return (
+                      <button
+                        key={subj}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssignedSubjects(prev =>
+                            prev.includes(subj) ? prev.filter(s => s !== subj) : [...prev, subj]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-500/20'
+                            : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}{subj}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SELEÇÃO MÚLTIPLA: Turmas Atribuídas (assigned_classes) */}
+              <div className="space-y-2 p-3 bg-neutral-50 dark:bg-neutral-950/60 rounded-2xl border border-neutral-200/80 dark:border-neutral-800/80">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider">
+                    Turmas Atribuídas (assigned_classes) *
+                  </label>
+                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold">
+                    {selectedAssignedClasses.length} turma(s) vinculada(s)
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {AVAILABLE_CLASSES.map((cls) => {
+                    const isSelected = selectedAssignedClasses.includes(cls);
+                    return (
+                      <button
+                        key={cls}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAssignedClasses(prev =>
+                            prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls]
+                          );
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-sky-600 text-white border-sky-600 shadow-sm shadow-sky-500/20'
+                            : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300'
+                        }`}
+                      >
+                        {isSelected ? '✓ ' : '+ '}{cls}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Campo para turma personalizada */}
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={customClassInput}
+                    onChange={(e) => setCustomClassInput(e.target.value)}
+                    placeholder="Outra turma (ex: 3º Ano B)..."
+                    className="flex-1 px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold focus:outline-none focus:border-sky-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (customClassInput.trim() && !selectedAssignedClasses.includes(customClassInput.trim())) {
+                        setSelectedAssignedClasses(prev => [...prev, customClassInput.trim()]);
+                        setCustomClassInput('');
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-neutral-200 dark:bg-neutral-800 hover:bg-sky-600 hover:text-white rounded-xl text-xs font-bold transition-colors cursor-pointer"
                   >
-                    <option value="active">Ativo(a)</option>
-                    <option value="leave">Em Licença</option>
-                    <option value="inactive">Inativo(a)</option>
-                  </select>
+                    Adicionar
+                  </button>
                 </div>
               </div>
 

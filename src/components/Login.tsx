@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Home, Users, Lock, EyeOff, Eye, ChevronRight, Sparkles, Shield, Sun, Moon } from 'lucide-react';
+import { Home, Users, Lock, EyeOff, Eye, ChevronRight, Sparkles, Shield, Sun, Moon, GraduationCap } from 'lucide-react';
 
 import { supabase } from '../lib/supabase';
 import { getSubdomain } from '../lib/subdomain';
@@ -224,6 +224,19 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
                 <p className="text-[11px] sm:text-xs font-black text-emerald-700 dark:text-emerald-300">Estamos de cara nova!</p>
                 <p className="text-[10px] sm:text-[11px] text-neutral-600 dark:text-white/60 font-medium leading-relaxed mt-0.5">
                   Buscando cada vez mais melhorar a sua experiência e eficiência no sistema.
+                </p>
+              </div>
+            </div>
+
+            {/* ── Aviso Informativo para o Corpo Docente ── */}
+            <div className="flex items-start gap-3 p-3.5 sm:p-4 bg-neutral-900/5 dark:bg-white/5 border border-neutral-900/10 dark:border-white/10 rounded-xl sm:rounded-2xl backdrop-blur-sm">
+              <div className="shrink-0 mt-0.5 p-1.5 bg-neutral-900/10 dark:bg-white/10 text-neutral-700 dark:text-white/80 rounded-lg">
+                <GraduationCap size={15} />
+              </div>
+              <div>
+                <p className="text-[11px] sm:text-xs font-black text-neutral-800 dark:text-white/90">Acesso do Corpo Docente</p>
+                <p className="text-[10px] sm:text-[11px] text-neutral-500 dark:text-white/50 font-medium leading-relaxed mt-0.5">
+                  Acesso exclusivo para professores cadastrados pela Coordenação Pedagógica. Em caso de dúvidas, contate a Secretaria da sua escola.
                 </p>
               </div>
             </div>

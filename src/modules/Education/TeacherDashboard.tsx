@@ -64,11 +64,12 @@ import { TeacherInterventionPlan } from './TeacherInterventionPlan';
 import { TeacherTrainingCenter } from './TeacherTrainingCenter';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
+import { TeacherProficiencyEntry } from './components/TeacherProficiencyEntry';
 import { getTeacherDashboardMetrics, TeacherDashboardMetrics } from '../../lib/api/education';
 
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
-  const [activeView, setActiveView] = useState<'dashboard' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt' | 'profile' | 'staff-mgmt'>('dashboard');
+  const [activeView, setActiveView] = useState<'dashboard' | 'proficiency-entry' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt' | 'profile' | 'staff-mgmt'>('dashboard');
   const [activeSupportTab, setActiveSupportTab] = useState<'home' | 'articles' | 'tutorials' | 'community' | 'tickets'>('home');
   const [selectedArticleCategory, setSelectedArticleCategory] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -497,6 +498,13 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
             <span>Gestão de Alunos</span>
           </button>
           <button
+            onClick={() => setActiveView('proficiency-entry')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'proficiency-entry' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <Award size={20} className={activeView === 'proficiency-entry' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500 group-hover:scale-110 transition-transform"} />
+            <span>Lançamento SAEB</span>
+          </button>
+          <button
             onClick={() => setActiveView('dashboard')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'dashboard' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
@@ -545,6 +553,10 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
       <main className="flex-1 flex flex-col min-h-[100dvh] relative overflow-x-hidden">
 
         {/* Dashboard Content */}
+        {activeView === 'proficiency-entry' && (
+          <TeacherProficiencyEntry onBack={() => setActiveView('dashboard')} />
+        )}
+
         {activeView === 'student-portal-mgmt' && (
           <TeacherEducationManager />
         )}

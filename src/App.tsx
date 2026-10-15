@@ -44,6 +44,7 @@ import { NoticiasModule } from './modules/Noticias';
 import { PublicNewsPortal } from './modules/Noticias/PublicNewsPortal';
 import { OuvidoriaModule } from './modules/Ouvidoria';
 import { PublicOuvidoriaPortal } from './modules/Ouvidoria/PublicPortal';
+import { PublicNotaFiscalAuditor } from './pages/PublicNotaFiscalAuditor';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -570,6 +571,10 @@ export default function App() {
     currentPath === '/ouvidoria' || 
     currentPath.startsWith('/ouvidoria/') || 
     (currentSubdomain && currentSubdomain.toLowerCase() === 'ouvidoria');
+  const isNotaFiscalPortal = 
+    currentPath === '/notafiscal' || 
+    currentPath.startsWith('/notafiscal/') || 
+    (currentSubdomain && currentSubdomain.toLowerCase() === 'notafiscal');
   const isPublicFormRoute = 
     currentPath.startsWith('/formulario') || 
     currentPath.startsWith('/form') || 
@@ -754,6 +759,21 @@ export default function App() {
     return (
       <div className={darkMode ? 'dark' : ''}>
         <PublicOuvidoriaPortal 
+          darkMode={darkMode} 
+          setDarkMode={setDarkMode} 
+          currentInstitution={currentInstitution} 
+          onNavigateHome={() => {
+            window.location.href = '/';
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (isNotaFiscalPortal) {
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <PublicNotaFiscalAuditor 
           darkMode={darkMode} 
           setDarkMode={setDarkMode} 
           currentInstitution={currentInstitution} 
