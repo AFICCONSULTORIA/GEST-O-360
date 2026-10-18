@@ -94,99 +94,33 @@ export async function extractDataFromPdfWithGemini(
   presetId: string,
   customColumns?: string[],
   userInstructions?: string,
-  apiKeyOverride?: string
+  _apiKeyOverride?: string
 ): Promise<ExtractionResult> {
-  const apiKey = apiKeyOverride || (process.env.GEMINI_API_KEY as string) || '';
-
-  if (!apiKey) {
-    throw new Error('Chave de API do Gemini não configurada. Verifique as variáveis de ambiente ou informe uma chave válida.');
-  }
-
   const base64Data = await fileToBase64(file);
   const preset = EXTRACTION_PRESETS.find(p => p.id === presetId) || EXTRACTION_PRESETS[0];
 
-  const columnsToExtract = (customColumns && customColumns.length > 0) 
-    ? customColumns 
-    : (preset.defaultColumns.length > 0 ? preset.defaultColumns : []);
-
-  const columnsPrompt = columnsToExtract.length > 0
-    ? `Extraia EXCLUSIVAMENTE os seguintes campos para cada registro encontrado:\n${columnsToExtract.map(col => `- "${col}"`).join('\n')}`
-    : `Analise todo o documento e identifique as colunas ideais para tabular os dados nele presentes de forma clara e padronizada.`;
-
-  const systemPrompt = `
-Você é um sistema de alta precisão especializado em OCR e extração estruturada de dados de documentos e relatórios oficiais em PDF para o software governamental GESTÃO 360.
-
-${preset.systemInstruction || ''}
-${userInstructions ? `Instruções adicionais do usuário: ${userInstructions}` : ''}
-
-REGRAS DE FORMATAÇÃO CRÍTICAS:
-1. Retorne APENAS um objeto JSON válido (sem blocos markdown adicionais, sem texto antes ou depois).
-2. O formato do JSON retornado DEVE ter a seguinte estrutura:
-{
-  "columns": ["Coluna 1", "Coluna 2", ...],
-  "data": [
-    { "Coluna 1": "Valor 1", "Coluna 2": "Valor 2" },
-    ...
-  ],
-  "summary": "Breve resumo em 1 linha sobre o tipo de documento e quantidade de registros extraídos"
-}
-3. Certifique-se de que TODAS as linhas encontradas no documento sejam extraídas sem omitir dados ou tabelas.
-4. Para valores monetários, mantenha no formato numérico ou "R$ 1.234,56".
-5. Se uma informação não for encontrada em uma linha específica, use "" (string vazia).
-6. Garanta que os nomes das propriedades no array "data" coincidam EXATAMENTE com os nomes presentes no array "columns".
-
-CAMPOS SOLICITADOS:
-${columnsPrompt}
-`;
-
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch('/api/extract-pdf', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: 'application/pdf',
-                  data: base64Data
-                }
-              },
-              {
-                text: systemPrompt
-              }
-            ]
-          }
-        ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1
-        }
+        mode: 'table_extractor',
+        base64Data,
+        presetId,
+        customColumns,
+        userInstructions,
+        systemInstruction: preset.systemInstruction
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => null);
-      console.error('Gemini API Error:', errorData);
-      throw new Error(`Erro na API do Gemini (${response.status}): ${errorData?.error?.message || response.statusText}`);
+      throw new Error(errorData?.error || `Erro no servidor de extração (${response.status}): ${response.statusText}`);
     }
 
-    const data = await response.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    let cleanJson = rawText.trim();
-
-    // Se vier envelopado em ```json ```, limpa
-    if (cleanJson.startsWith('```json')) {
-      cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-    } else if (cleanJson.startsWith('```')) {
-      cleanJson = cleanJson.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-    }
-
-    const parsed = JSON.parse(cleanJson);
+    const parsed = await response.json();
 
     let finalColumns: string[] = Array.isArray(parsed.columns) ? parsed.columns : [];
     const finalData: Record<string, any>[] = Array.isArray(parsed.data) ? parsed.data : [];
@@ -208,7 +142,8 @@ ${columnsPrompt}
       fileName: file.name
     };
   } catch (err: any) {
-    console.error('Erro na extração de PDF via Gemini:', err);
-    throw new Error(err.message || 'Falha ao processar e extrair dados do PDF com a IA Gemini.');
+    console.error('Erro na extração de PDF via servidor:', err);
+    throw new Error(err.message || 'Falha ao processar e extrair dados do PDF com o serviço de IA.');
   }
 }
+

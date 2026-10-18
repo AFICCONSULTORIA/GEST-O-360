@@ -309,152 +309,50 @@ export async function extractTextFromPdfClientSide(file: File): Promise<string> 
  */
 export async function readFiscalPdf(
   file: File, 
-  apiKeyOverride?: string
+  _apiKeyOverride?: string
 ): Promise<ExtractedFiscalPdf> {
-  const apiKey = apiKeyOverride || 
-    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
-    (import.meta as any).env?.VITE_GEMINI_API_KEY || 
-    '';
+  // 1. Tenta OCR e Análise Estruturada via Serverless Function segura (/api/extract-pdf)
+  try {
+    const base64Pdf = await fileToBase64(file);
 
-  // Se tiver chave de API do Gemini configurada, executa OCR de Alta Precisão
-  if (apiKey) {
-    try {
-      const base64Pdf = await fileToBase64(file);
+    const response = await fetch('/api/extract-pdf', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        mode: 'fiscal_reader',
+        base64Data: base64Pdf
+      })
+    });
 
-      const prompt = `
-Você é um Auditor Fiscal Sênior e Perito Contábil especializado em leitura e conferência de DANFE de NF-e (Modelo 55 com Reforma Tributária NT 2026.010 - IBS/CBS/IS) e DANFSe de NFS-e (Padrão Nacional NT 008).
+    if (response.ok) {
+      const parsed = await response.json();
+      const xmlGenerated = buildXmlFromExtractedData(parsed);
 
-Analise o PDF da nota fiscal fornecido com máxima atenção aos detalhes e extraia com precisão cirúrgica todas as informações da nota.
-
-REGRAS OBRIGATÓRIAS:
-1. Retorne ESTRITAMENTE um objeto JSON válido (sem markdown adicional, sem texto antes ou depois).
-2. Se a nota for tradicional (NF-e modelo 55 com ICMS/IPI/PIS/COFINS), extraia todos os itens reais, a chave de 44 dígitos, emitente, destinatário e valores totais reais da nota.
-3. Se a nota já possuir os campos do IBS Estadual, IBS Municipal, CBS ou Imposto Seletivo impressos (Reforma Tributária), extraia as alíquotas e valores declarados. Se não possuir esses campos impressos por ser modelo tradicional, informe 0.05 para pIBSUF, 0.05 para pIBSMun e 0.90 para pCBS para efeito de simulação contábil da Reforma 2026.
-4. Estrutura exata do JSON:
-{
-  "docType": "NFE_55" ou "NFSE_NACIONAL",
-  "chNFe": "44 dígitos numéricos da chave de acesso",
-  "chNFSe": "50 dígitos numéricos se for NFS-e Nacional",
-  "nNF": "número da nota",
-  "serie": "série da nota",
-  "dhEmi": "data de emissão YYYY-MM-DD ou ISO",
-  "natOp": "natureza da operação",
-  "emitter": {
-    "nome": "Razão Social do emitente",
-    "cnpj": "CNPJ com 14 dígitos numéricos",
-    "ie": "Inscrição Estadual se houver",
-    "municipio": "Município do emitente",
-    "uf": "UF (ex: SP, RJ, MT)"
-  },
-  "recipient": {
-    "nome": "Razão Social ou Nome do destinatário/tomador",
-    "cnpj": "CNPJ com 14 dígitos",
-    "cpf": "CPF com 11 dígitos se pessoa física",
-    "municipio": "Município",
-    "uf": "UF"
-  },
-  "items": [
-    {
-      "nItem": 1,
-      "xProd": "Descrição detalhada do produto ou serviço",
-      "ncm": "código NCM com 8 dígitos",
-      "cClassTrib": "classificação da reforma se houver ou 010101",
-      "vProd": 100.00,
-      "vBC": 100.00,
-      "pIBSUF": 0.05,
-      "vIBSUF": 0.05,
-      "pIBSMun": 0.05,
-      "vIBSMun": 0.05,
-      "pCBS": 0.90,
-      "vCBS": 0.90,
-      "pIS": 0.0,
-      "vIS": 0.0
+      return {
+        docType: parsed.docType === 'NFSE_NACIONAL' ? 'NFSE_NACIONAL' : 'NFE_55',
+        chNFe: parsed.chNFe,
+        chNFSe: parsed.chNFSe,
+        nNF: parsed.nNF,
+        serie: parsed.serie,
+        dhEmi: parsed.dhEmi,
+        natOp: parsed.natOp,
+        emitter: parsed.emitter || { nome: 'Emitente Extraído do DANFE' },
+        recipient: parsed.recipient || { nome: 'Destinatário Extraído do DANFE' },
+        items: Array.isArray(parsed.items) && parsed.items.length > 0 ? parsed.items : [],
+        totals: parsed.totals || { vProd: 0, vNF: 0 },
+        xmlGenerated,
+        source: 'ai_vision'
+      };
+    } else {
+      const errorText = await response.text();
+      console.warn('API interna /api/extract-pdf retornou erro, acionando fallback vetorial:', response.status, errorText);
     }
-  ],
-  "totals": {
-    "vProd": 100.00,
-    "vNF": 100.00,
-    "vIBSUF": 0.05,
-    "vIBSMun": 0.05,
-    "vCBS": 0.90,
-    "vIS": 0.0,
-    "vISSQN": 0.0,
-    "vServ": 100.00,
-    "vDescIncond": 0.0,
-    "vDed": 0.0,
-    "vBCISS": 100.00,
-    "pAliqISS": 3.0,
-    "vLiq": 100.00
+  } catch (err) {
+    console.warn('Falha na comunicação com a API de extração de PDF, tentando fallback vetorial local:', err);
   }
-}
-`;
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: 'application/pdf',
-                    data: base64Pdf
-                  }
-                },
-                {
-                  text: prompt
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            temperature: 0.1
-          }
-        })
-      });
-
-      if (response.ok) {
-        const resData = await response.json();
-        const aiResponseText = resData.candidates?.[0]?.content?.parts?.[0]?.text || '';
-        const jsonMatch = aiResponseText.match(/\{[\s\S]*\}/);
-        let cleanJson = jsonMatch ? jsonMatch[0] : aiResponseText.trim();
-        if (cleanJson.startsWith('```json')) {
-          cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-        } else if (cleanJson.startsWith('```')) {
-          cleanJson = cleanJson.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-        }
-
-        const parsed = JSON.parse(cleanJson);
-        const xmlGenerated = buildXmlFromExtractedData(parsed);
-
-        return {
-          docType: parsed.docType === 'NFSE_NACIONAL' ? 'NFSE_NACIONAL' : 'NFE_55',
-          chNFe: parsed.chNFe,
-          chNFSe: parsed.chNFSe,
-          nNF: parsed.nNF,
-          serie: parsed.serie,
-          dhEmi: parsed.dhEmi,
-          natOp: parsed.natOp,
-          emitter: parsed.emitter || { nome: 'Emitente Extraído do DANFE' },
-          recipient: parsed.recipient || { nome: 'Destinatário Extraído do DANFE' },
-          items: Array.isArray(parsed.items) && parsed.items.length > 0 ? parsed.items : [],
-          totals: parsed.totals || { vProd: 0, vNF: 0 },
-          xmlGenerated,
-          source: 'ai_vision'
-        };
-      } else {
-        const errorText = await response.text();
-        console.warn('API Gemini retornou erro no OCR:', response.status, errorText);
-      }
-    } catch (err) {
-      console.warn('Falha no OCR do Gemini para PDF fiscal, tentando fallback vetorial:', err);
-    }
-  }
 
   // Fallback: Análise vetorial de texto local
   const rawText = await extractTextFromPdfClientSide(file);

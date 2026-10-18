@@ -1,10 +1,48 @@
+# Dependências
 node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
+.pnp
+.pnp.js
 
+# Build & Produção
+dist/
+build/
+coverage/
+
+# Variáveis de Ambiente & Credenciais
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+
+# Vercel & Supabase Local
 .vercel
+.supabase/
+
+# Scripts locais de teste e dados temporários
+scripts/temp_*
+scripts/*.log
+scripts/test_*
+scripts/check_*
+scripts/query_*
+
+# Sistema Operacional e Logs
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Caches de IDE e ferramentas
+.idea/
+.vscode/
+*.swp
+*.swo
