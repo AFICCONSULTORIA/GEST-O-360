@@ -119,18 +119,40 @@ export function buildXmlFromExtractedData(data: Partial<ExtractedFiscalPdf>): st
     ];
 
     let itemsXml = '';
+    let sumIBSUF = 0;
+    let sumIBSMun = 0;
+    let sumCBS = 0;
+    let sumIS = 0;
+
     items.forEach((it, idx) => {
       const nItem = it.nItem || (idx + 1);
       const vProd = parseFiscalNumber(it.vProd);
       const vBC = parseFiscalNumber(it.vBC || vProd);
-      const pIBSUF = parseFiscalNumber(it.pIBSUF);
-      const vIBSUF = parseFiscalNumber(it.vIBSUF);
-      const pIBSMun = parseFiscalNumber(it.pIBSMun);
-      const vIBSMun = parseFiscalNumber(it.vIBSMun);
-      const pCBS = parseFiscalNumber(it.pCBS);
-      const vCBS = parseFiscalNumber(it.vCBS);
+
+      let pIBSUF = parseFiscalNumber(it.pIBSUF);
+      let vIBSUF = parseFiscalNumber(it.vIBSUF);
+      let pIBSMun = parseFiscalNumber(it.pIBSMun);
+      let vIBSMun = parseFiscalNumber(it.vIBSMun);
+      let pCBS = parseFiscalNumber(it.pCBS);
+      let vCBS = parseFiscalNumber(it.vCBS);
       const pIS = parseFiscalNumber(it.pIS);
       const vIS = parseFiscalNumber(it.vIS);
+
+      // Se a nota lida for do regime tradicional (sem campos explícitos de IBS/CBS impressos no papel),
+      // aplica a parametrização de teste da Reforma 2026 para pré-validação do contador:
+      if (pIBSUF === 0 && pIBSMun === 0 && pCBS === 0 && vBC > 0) {
+        pIBSUF = 0.05;
+        pIBSMun = 0.05;
+        pCBS = 0.90;
+        vIBSUF = roundCurrency(vBC * 0.0005);
+        vIBSMun = roundCurrency(vBC * 0.0005);
+        vCBS = roundCurrency(vBC * 0.009);
+      }
+
+      sumIBSUF += vIBSUF;
+      sumIBSMun += vIBSMun;
+      sumCBS += vCBS;
+      sumIS += vIS;
 
       itemsXml += `
     <det nItem="${nItem}">
@@ -163,10 +185,10 @@ export function buildXmlFromExtractedData(data: Partial<ExtractedFiscalPdf>): st
 
     const vProdTotal = parseFiscalNumber(data.totals?.vProd || data.totals?.vNF || 1000);
     const vNFTotal = parseFiscalNumber(data.totals?.vNF || vProdTotal);
-    const vIBSUFTotal = parseFiscalNumber(data.totals?.vIBSUF);
-    const vIBSMunTotal = parseFiscalNumber(data.totals?.vIBSMun);
-    const vCBSTotal = parseFiscalNumber(data.totals?.vCBS);
-    const vISTotal = parseFiscalNumber(data.totals?.vIS);
+    const vIBSUFTotal = parseFiscalNumber(data.totals?.vIBSUF) || roundCurrency(sumIBSUF);
+    const vIBSMunTotal = parseFiscalNumber(data.totals?.vIBSMun) || roundCurrency(sumIBSMun);
+    const vCBSTotal = parseFiscalNumber(data.totals?.vCBS) || roundCurrency(sumCBS);
+    const vISTotal = parseFiscalNumber(data.totals?.vIS) || roundCurrency(sumIS);
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
@@ -289,7 +311,10 @@ export async function readFiscalPdf(
   file: File, 
   apiKeyOverride?: string
 ): Promise<ExtractedFiscalPdf> {
-  const apiKey = apiKeyOverride || (process.env.GEMINI_API_KEY as string) || '';
+  const apiKey = apiKeyOverride || 
+    (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+    (import.meta as any).env?.VITE_GEMINI_API_KEY || 
+    '';
 
   // Se tiver chave de API do Gemini configurada, executa OCR de Alta Precisão
   if (apiKey) {
@@ -297,72 +322,71 @@ export async function readFiscalPdf(
       const base64Pdf = await fileToBase64(file);
 
       const prompt = `
-Você é um Auditor Fiscal Sênior especializado em leitura de DANFE de NF-e (Modelo 55 com Reforma Tributária NT 2026.010 - IBS/CBS/IS) e DANFSe de NFS-e (Padrão Nacional NT 008).
+Você é um Auditor Fiscal Sênior e Perito Contábil especializado em leitura e conferência de DANFE de NF-e (Modelo 55 com Reforma Tributária NT 2026.010 - IBS/CBS/IS) e DANFSe de NFS-e (Padrão Nacional NT 008).
 
-Analise o PDF da nota fiscal fornecido com máxima atenção aos detalhes e extraia com precisão cirúrgica todas as informações.
+Analise o PDF da nota fiscal fornecido com máxima atenção aos detalhes e extraia com precisão cirúrgica todas as informações da nota.
 
 REGRAS OBRIGATÓRIAS:
-1. Retorne ESTRITAMENTE um objeto JSON válido (sem blocos de código com crases triplas adicionais, sem texto antes ou depois).
-2. O formato retornado DEVE ter a seguinte estrutura exata:
+1. Retorne ESTRITAMENTE um objeto JSON válido (sem markdown adicional, sem texto antes ou depois).
+2. Se a nota for tradicional (NF-e modelo 55 com ICMS/IPI/PIS/COFINS), extraia todos os itens reais, a chave de 44 dígitos, emitente, destinatário e valores totais reais da nota.
+3. Se a nota já possuir os campos do IBS Estadual, IBS Municipal, CBS ou Imposto Seletivo impressos (Reforma Tributária), extraia as alíquotas e valores declarados. Se não possuir esses campos impressos por ser modelo tradicional, informe 0.05 para pIBSUF, 0.05 para pIBSMun e 0.90 para pCBS para efeito de simulação contábil da Reforma 2026.
+4. Estrutura exata do JSON:
 {
   "docType": "NFE_55" ou "NFSE_NACIONAL",
-  "chNFe": "44 dígitos numéricos da chave de acesso (se for NF-e)",
-  "chNFSe": "50 dígitos numéricos da chave de acesso (se for NFS-e)",
-  "nNF": "número da nota ou documento",
+  "chNFe": "44 dígitos numéricos da chave de acesso",
+  "chNFSe": "50 dígitos numéricos se for NFS-e Nacional",
+  "nNF": "número da nota",
   "serie": "série da nota",
-  "dhEmi": "data/hora de emissão em formato ISO ou YYYY-MM-DD",
+  "dhEmi": "data de emissão YYYY-MM-DD ou ISO",
   "natOp": "natureza da operação",
   "emitter": {
-    "nome": "Razão social ou nome fantasia do emitente / prestador",
-    "cnpj": "CNPJ com ou sem pontuação",
-    "ie": "Inscrição estadual se houver",
-    "municipio": "Município",
-    "uf": "UF (ex: SP, MT, etc)"
+    "nome": "Razão Social do emitente",
+    "cnpj": "CNPJ com 14 dígitos numéricos",
+    "ie": "Inscrição Estadual se houver",
+    "municipio": "Município do emitente",
+    "uf": "UF (ex: SP, RJ, MT)"
   },
   "recipient": {
-    "nome": "Razão social ou nome do destinatário / tomador",
-    "cnpj": "CNPJ",
-    "cpf": "CPF se pessoa física",
+    "nome": "Razão Social ou Nome do destinatário/tomador",
+    "cnpj": "CNPJ com 14 dígitos",
+    "cpf": "CPF com 11 dígitos se pessoa física",
     "municipio": "Município",
     "uf": "UF"
   },
   "items": [
     {
       "nItem": 1,
-      "xProd": "Descrição completa do produto ou serviço",
-      "ncm": "NCM (8 dígitos se houver)",
-      "cClassTrib": "Classificação tributária da Reforma (se presente)",
-      "vProd": 1000.00,
-      "vBC": 1000.00,
+      "xProd": "Descrição detalhada do produto ou serviço",
+      "ncm": "código NCM com 8 dígitos",
+      "cClassTrib": "classificação da reforma se houver ou 010101",
+      "vProd": 100.00,
+      "vBC": 100.00,
       "pIBSUF": 0.05,
-      "vIBSUF": 0.50,
+      "vIBSUF": 0.05,
       "pIBSMun": 0.05,
-      "vIBSMun": 0.50,
+      "vIBSMun": 0.05,
       "pCBS": 0.90,
-      "vCBS": 9.00,
+      "vCBS": 0.90,
       "pIS": 0.0,
       "vIS": 0.0
     }
   ],
   "totals": {
-    "vProd": 1000.00,
-    "vNF": 1000.00,
-    "vIBSUF": 0.50,
-    "vIBSMun": 0.50,
-    "vCBS": 9.00,
+    "vProd": 100.00,
+    "vNF": 100.00,
+    "vIBSUF": 0.05,
+    "vIBSMun": 0.05,
+    "vCBS": 0.90,
     "vIS": 0.0,
     "vISSQN": 0.0,
-    "vServ": 1000.00,
+    "vServ": 100.00,
     "vDescIncond": 0.0,
     "vDed": 0.0,
-    "vBCISS": 1000.00,
+    "vBCISS": 100.00,
     "pAliqISS": 3.0,
-    "vLiq": 1000.00
+    "vLiq": 100.00
   }
 }
-
-3. Se o documento contiver informações da Reforma Tributária (IBS Estadual, IBS Municipal, CBS ou Imposto Seletivo), extraia os valores declarados exatamente como impressos no DANFE ou no quadro de informações complementares.
-4. Mantenha os valores numéricos como números decimais (ex: 1250.50).
 `;
 
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
@@ -396,8 +420,9 @@ REGRAS OBRIGATÓRIAS:
 
       if (response.ok) {
         const resData = await response.json();
-        const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-        let cleanJson = rawText.trim();
+        const aiResponseText = resData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const jsonMatch = aiResponseText.match(/\{[\s\S]*\}/);
+        let cleanJson = jsonMatch ? jsonMatch[0] : aiResponseText.trim();
         if (cleanJson.startsWith('```json')) {
           cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
         } else if (cleanJson.startsWith('```')) {
@@ -415,13 +440,16 @@ REGRAS OBRIGATÓRIAS:
           serie: parsed.serie,
           dhEmi: parsed.dhEmi,
           natOp: parsed.natOp,
-          emitter: parsed.emitter || { nome: 'Emitente Extraído' },
-          recipient: parsed.recipient || { nome: 'Destinatário Extraído' },
-          items: Array.isArray(parsed.items) ? parsed.items : [],
+          emitter: parsed.emitter || { nome: 'Emitente Extraído do DANFE' },
+          recipient: parsed.recipient || { nome: 'Destinatário Extraído do DANFE' },
+          items: Array.isArray(parsed.items) && parsed.items.length > 0 ? parsed.items : [],
           totals: parsed.totals || { vProd: 0, vNF: 0 },
           xmlGenerated,
           source: 'ai_vision'
         };
+      } else {
+        const errorText = await response.text();
+        console.warn('API Gemini retornou erro no OCR:', response.status, errorText);
       }
     } catch (err) {
       console.warn('Falha no OCR do Gemini para PDF fiscal, tentando fallback vetorial:', err);

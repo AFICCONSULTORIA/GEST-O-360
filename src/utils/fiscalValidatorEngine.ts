@@ -89,6 +89,355 @@ export interface FiscalDiagnostic {
   };
 }
 
+export interface AccountantChecklistItem {
+  id: string;
+  category: 'validade' | 'classificacao' | 'calculos_reforma' | 'issqn_retencoes' | 'contabil_administrativo';
+  categoryTitle: string;
+  title: string;
+  description: string;
+  normaRef: string;
+  status: 'conforme' | 'inconsistente' | 'aviso' | 'pendente_manual';
+  autoChecked: boolean;
+  manualChecked?: boolean;
+  divergenceDetails?: string;
+  userNotes?: string;
+}
+
+/**
+ * Gerador de Checklist de Auditoria Contábil e Fiscal
+ * Organiza a conferência da nota em 5 dimensões oficiais para contadores e órgãos públicos
+ */
+export function generateAccountantChecklist(diag: FiscalDiagnostic): AccountantChecklistItem[] {
+  const items: AccountantChecklistItem[] = [];
+
+  const findIssue = (tagOrKeywords: string[]) => {
+    return diag.issues.find(i => 
+      tagOrKeywords.some(k => 
+        i.tagOrField.toLowerCase().includes(k.toLowerCase()) || 
+        i.title.toLowerCase().includes(k.toLowerCase())
+      )
+    );
+  };
+
+  // 1. Validade Jurídica & Cadastral
+  const keyIssue = findIssue(['chnfe', 'chnfse', 'chave']);
+  const keyVal = diag.extra?.keyValidation;
+  const isKeyValid = keyVal?.valid ?? (!keyIssue || keyIssue.type === 'sucesso');
+  const isConsumo = diag.docType === 'NFE_55';
+  const expectedDigits = isConsumo ? '44 dígitos' : '50 dígitos';
+
+  items.push({
+    id: 'chk_chave',
+    category: 'validade',
+    categoryTitle: '1. Validade Jurídica & Cadastral',
+    title: isConsumo 
+      ? 'Chave de Acesso da Nota de Consumo (44 dígitos & Módulo 11)' 
+      : 'Chave de Acesso da Nota de Serviço (50 dígitos - Padrão Nacional)',
+    description: isConsumo
+      ? 'Chave numérica de 44 dígitos (NF-e/NFC-e) com autenticidade do DV e estrutura do Ajuste SINIEF 07/05.'
+      : 'Chave de 50 dígitos no Padrão Nacional NFS-e (Município IBGE + Inscrição + Série + Número + Código de Verificação).',
+    normaRef: isConsumo ? 'NT 2026.010 / Ajuste SINIEF 07/05' : 'Resolução CGSN 169/2022 / NT 008',
+    status: isKeyValid ? 'conforme' : (keyIssue?.type === 'aviso' ? 'aviso' : 'inconsistente'),
+    autoChecked: isKeyValid,
+    divergenceDetails: diag.extra?.rawKey 
+      ? `Chave (${expectedDigits}): ${diag.extra.rawKey.replace(/(\d{4})/g, '$1 ').trim()} (${isKeyValid ? 'Estrutura e Dígitos Válidos' : keyVal?.reason || 'Chave Inconsistente'})`
+      : `Chave de acesso de ${expectedDigits} não informada formalmente.`
+  });
+
+  const isDocTypeOk = diag.docType === 'NFE_55' || diag.docType === 'NFSE_NACIONAL';
+  items.push({
+    id: 'chk_modelo',
+    category: 'validade',
+    categoryTitle: '1. Validade Jurídica & Cadastral',
+    title: isConsumo ? 'Enquadramento: Nota de Consumo (NF-e 55 / NFC-e 65)' : 'Enquadramento: Nota de Serviço (NFS-e Padrão Nacional)',
+    description: isConsumo
+      ? 'Identificação formal do leiaute de mercadorias/consumo (Modelo 55 ou 65) sob a Reforma Tributária.'
+      : 'Identificação formal do leiaute de prestação de serviços no padrão nacional do Comitê Gestor (NT 008).',
+    normaRef: isConsumo ? 'NT 2026.010 (Bloco W & UB)' : 'NT 008 Padrão Nacional (tribReforma)',
+    status: isDocTypeOk ? 'conforme' : 'inconsistente',
+    autoChecked: isDocTypeOk,
+    divergenceDetails: diag.docType === 'NFE_55' 
+      ? 'Nota de Consumo / Mercadorias (Chave 44 dígitos)' 
+      : diag.docType === 'NFSE_NACIONAL' 
+      ? 'Nota de Serviço Padrão Nacional (Chave 50 dígitos)' 
+      : 'Leiaute do documento não reconhecido.'
+  });
+
+  const hasEmitter = Boolean(diag.summary.emitter && diag.summary.emitter !== 'Não identificado' && diag.summary.emitter !== 'Emitente não localizado');
+  items.push({
+    id: 'chk_emitente',
+    category: 'validade',
+    categoryTitle: '1. Validade Jurídica & Cadastral',
+    title: 'Identificação & Regularidade do Emitente',
+    description: 'Razão social e CNPJ/CPF do fornecedor ou prestador devidamente discriminados.',
+    normaRef: 'Art. 167 da Lei 5.172/66 (CTN)',
+    status: hasEmitter ? 'conforme' : 'inconsistente',
+    autoChecked: hasEmitter,
+    divergenceDetails: hasEmitter ? `Emitente: ${diag.summary.emitter}` : 'Dados cadastrais do emitente ausentes.'
+  });
+
+  const hasDest = Boolean(diag.summary.recipient && diag.summary.recipient !== 'Não identificado');
+  items.push({
+    id: 'chk_destinatario',
+    category: 'validade',
+    categoryTitle: '1. Validade Jurídica & Cadastral',
+    title: 'Identificação do Destinatário / Tomador do Serviço',
+    description: 'Conferência do CNPJ/CPF do comprador para evitar lançamento em órgão ou empresa divergente.',
+    normaRef: 'Lei 4.320/64 Art. 63 (Liquidação)',
+    status: hasDest ? 'conforme' : 'aviso',
+    autoChecked: hasDest,
+    divergenceDetails: hasDest ? `Destinatário: ${diag.summary.recipient}` : 'Destinatário não especificado ou consumidor final genérico.'
+  });
+
+  const hasDate = Boolean(diag.extra?.emissionDate);
+  items.push({
+    id: 'chk_data',
+    category: 'validade',
+    categoryTitle: '1. Validade Jurídica & Cadastral',
+    title: 'Data de Emissão & Tempestividade Contábil',
+    description: 'Conferência de que a data de emissão pertence ao exercício/competência fiscal de apuração.',
+    normaRef: 'Princípio da Competência (NBC TSP)',
+    status: hasDate ? 'conforme' : 'aviso',
+    autoChecked: hasDate,
+    divergenceDetails: hasDate 
+      ? `Data de Emissão: ${new Date(diag.extra!.emissionDate!).toLocaleDateString('pt-BR')}`
+      : 'Data de emissão não localizada no arquivo.'
+  });
+
+  // 2. Classificação & Itens da Reforma
+  const itemsList = diag.extra?.items || [];
+  const itemsWithoutNcm = itemsList.filter(i => !i.ncm && diag.docType === 'NFE_55');
+  const hasNcmOk = itemsList.length > 0 && itemsWithoutNcm.length === 0;
+  items.push({
+    id: 'chk_ncm',
+    category: 'classificacao',
+    categoryTitle: '2. Enquadramento de Itens & Classificação Tributária',
+    title: 'Códigos NCM / NBS dos Produtos ou Serviços',
+    description: 'Classificação fiscal por NCM (8 dígitos para mercadorias) obrigatória para parametrização do IBS/CBS.',
+    normaRef: 'Tabela TIPI / Resolução GECEX',
+    status: diag.docType === 'NFSE_NACIONAL' ? 'conforme' : (hasNcmOk ? 'conforme' : 'aviso'),
+    autoChecked: hasNcmOk || diag.docType === 'NFSE_NACIONAL',
+    divergenceDetails: diag.docType === 'NFSE_NACIONAL'
+      ? 'Operação de Serviços (Regulada por Código de Serviço da LC 116)'
+      : hasNcmOk
+      ? `Todos os ${itemsList.length} itens possuem NCM preenchido.`
+      : `${itemsWithoutNcm.length} itens sem código NCM informado.`
+  });
+
+  const ubIssue = findIssue(['grupo ub', 'classtrib', 'ausência do grupo']);
+  const hasUbError = Boolean(ubIssue && ubIssue.type === 'erro');
+  items.push({
+    id: 'chk_classtrib',
+    category: 'classificacao',
+    categoryTitle: '2. Enquadramento de Itens & Classificação Tributária',
+    title: 'Grupo UB & Classificação Tributária da Reforma (cClassTrib)',
+    description: 'Presença do Grupo UB na NF-e conforme NT 2026.010 para apuração de CBS e IBS.',
+    normaRef: 'NT 2026.010 Grupo UB',
+    status: hasUbError ? 'inconsistente' : 'conforme',
+    autoChecked: !hasUbError,
+    divergenceDetails: hasUbError 
+      ? 'Grupo UB não preenchido nos itens (Documento em formato anterior à Reforma).'
+      : 'Grupo de tributação e classificação da Reforma identificado nos itens.'
+  });
+
+  const hasGenericItems = itemsList.some(i => i.description.length < 3 || i.description.toLowerCase().includes('diversos'));
+  items.push({
+    id: 'chk_discriminacao',
+    category: 'classificacao',
+    categoryTitle: '2. Enquadramento de Itens & Classificação Tributária',
+    title: 'Discriminação Individualizada dos Itens',
+    description: 'Proibição de descrições genéricas que inviabilizem a identificação do bem ou serviço.',
+    normaRef: 'Art. 87 da Lei 4.320/64',
+    status: hasGenericItems ? 'aviso' : 'conforme',
+    autoChecked: !hasGenericItems,
+    divergenceDetails: hasGenericItems 
+      ? 'Há itens com descrição excessivamente resumida ou genérica.'
+      : 'Itens descritos com clareza para auditoria.'
+  });
+
+  // 3. Cálculos Matemáticos e Regras da Reforma 2026
+  const baseError = findIssue(['base de cálculo', 'vbc']);
+  const isBaseOk = !baseError || baseError.type !== 'erro';
+  items.push({
+    id: 'chk_base_calc',
+    category: 'calculos_reforma',
+    categoryTitle: '3. Auditoria Matemática & Alíquotas da Reforma (IBS/CBS/IS)',
+    title: 'Base de Cálculo do IBS e CBS',
+    description: 'A base deve refletir o valor das mercadorias/serviços somado a frete/outros encargos e deduzido de descontos incondicionados.',
+    normaRef: 'Art. 12 da EC 132/2023',
+    status: isBaseOk ? 'conforme' : 'inconsistente',
+    autoChecked: isBaseOk,
+    divergenceDetails: isBaseOk 
+      ? `Base de Cálculo apurada: R$ ${diag.summary.vTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+      : baseError?.description || 'Divergência na apuração da base de cálculo.'
+  });
+
+  const is2026Alert = Boolean(diag.extra?.year2026TestAlert);
+  items.push({
+    id: 'chk_regra_2026',
+    category: 'calculos_reforma',
+    categoryTitle: '3. Auditoria Matemática & Alíquotas da Reforma (IBS/CBS/IS)',
+    title: 'Alíquotas de Teste da Transição (Ano 2026)',
+    description: 'Na fase de testes da Reforma Tributária (2026), as alíquotas oficiais de teste são 0,10% para o IBS e 0,90% para a CBS.',
+    normaRef: 'EC 132/2023 Art. 125 & NT 2026.010',
+    status: is2026Alert ? 'aviso' : 'conforme',
+    autoChecked: !is2026Alert,
+    divergenceDetails: is2026Alert 
+      ? 'Alíquotas informadas nos itens diferem do padrão de teste de 2026 (0,1% IBS e 0,9% CBS).'
+      : 'Alíquotas 100% aderentes à fase de testes do ano de 2026.'
+  });
+
+  const ibsUfIssue = findIssue(['ibs estadual', 'vibsuf']);
+  const isIbsUfOk = !ibsUfIssue || ibsUfIssue.type !== 'erro';
+  items.push({
+    id: 'chk_ibs_uf',
+    category: 'calculos_reforma',
+    categoryTitle: '3. Auditoria Matemática & Alíquotas da Reforma (IBS/CBS/IS)',
+    title: 'Cálculo Matemático do IBS Estadual (vIBSUF)',
+    description: 'Conferência de que vIBSUF = vBC * pAliqEfetUF em cada item da nota com tolerância de até R$ 0,01.',
+    normaRef: 'NT 2026.010 Regra UB07',
+    status: isIbsUfOk ? 'conforme' : 'inconsistente',
+    autoChecked: isIbsUfOk,
+    divergenceDetails: isIbsUfOk 
+      ? `IBS Estadual apurado: R$ ${(diag.extra?.totals.declared.vIBSUF || (diag.summary.vIBS / 2)).toFixed(2)}`
+      : ibsUfIssue?.description || 'Divergência matemática no IBS Estadual.'
+  });
+
+  const ibsMunIssue = findIssue(['ibs municipal', 'vibsmun']);
+  const isIbsMunOk = !ibsMunIssue || ibsMunIssue.type !== 'erro';
+  items.push({
+    id: 'chk_ibs_mun',
+    category: 'calculos_reforma',
+    categoryTitle: '3. Auditoria Matemática & Alíquotas da Reforma (IBS/CBS/IS)',
+    title: 'Cálculo Matemático do IBS Municipal (vIBSMun)',
+    description: 'Conferência de que vIBSMun = vBC * pAliqEfetMun em cada item da nota com tolerância de até R$ 0,01.',
+    normaRef: 'NT 2026.010 Regra UB08',
+    status: isIbsMunOk ? 'conforme' : 'inconsistente',
+    autoChecked: isIbsMunOk,
+    divergenceDetails: isIbsMunOk 
+      ? `IBS Municipal apurado: R$ ${(diag.extra?.totals.declared.vIBSMun || (diag.summary.vIBS / 2)).toFixed(2)}`
+      : ibsMunIssue?.description || 'Divergência matemática no IBS Municipal.'
+  });
+
+  const cbsIssue = findIssue(['cbs', 'vcbs']);
+  const isCbsOk = !cbsIssue || cbsIssue.type !== 'erro';
+  items.push({
+    id: 'chk_cbs',
+    category: 'calculos_reforma',
+    categoryTitle: '3. Auditoria Matemática & Alíquotas da Reforma (IBS/CBS/IS)',
+    title: 'Cálculo Matemático da CBS Federal (vCBS)',
+    description: 'Conferência de que vCBS = vBC * pAliqEfetCBS em cada item da nota fiscal.',
+    normaRef: 'NT 2026.010 Regra UB09',
+    status: isCbsOk ? 'conforme' : 'inconsistente',
+    autoChecked: isCbsOk,
+    divergenceDetails: isCbsOk 
+      ? `CBS Total apurada: R$ ${diag.summary.vCBS.toFixed(2)}`
+      : cbsIssue?.description || 'Divergência matemática no cálculo da CBS.'
+  });
+
+  const blocoWIssue = findIssue(['bloco w', 'w56', 'w41', 'w46', 'totalizador']);
+  const isBlocoWOk = !blocoWIssue || blocoWIssue.type !== 'erro';
+  items.push({
+    id: 'chk_bloco_w',
+    category: 'calculos_reforma',
+    categoryTitle: '3. Auditoria Matemática & Alíquotas da Reforma (IBS/CBS/IS)',
+    title: 'Amarração dos Totalizadores do Bloco W',
+    description: 'Soma dos itens de CBS (W56), IBS Estadual (W41) e IBS Municipal (W46) deve bater exatamente com os totalizadores gerais.',
+    normaRef: 'NT 2026.010 Bloco W',
+    status: isBlocoWOk ? 'conforme' : 'inconsistente',
+    autoChecked: isBlocoWOk,
+    divergenceDetails: isBlocoWOk 
+      ? 'Totalizadores do Bloco W batem 100% com o somatório dos itens.'
+      : blocoWIssue?.description || 'Divergência entre o somatório dos itens e o Bloco W.'
+  });
+
+  // 4. Serviços, ISSQN Municipal & Retenções
+  const issIssue = findIssue(['issqn', 'vissqn', 'paliqiss', 'lc 116']);
+  const isIssOk = !issIssue || issIssue.type !== 'erro';
+  items.push({
+    id: 'chk_issqn',
+    category: 'issqn_retencoes',
+    categoryTitle: '4. Tributação Municipal & Retenções na Fonte (NFS-e)',
+    title: 'Alíquota Constitucional do ISSQN (2% a 5%)',
+    description: 'Conferência dos limites constitucionais da Lei Complementar 116/2003 para serviços municipais.',
+    normaRef: 'LC 116/2003 / NT 008 Padrão Nacional',
+    status: diag.docType === 'NFE_55' ? 'conforme' : (isIssOk ? 'conforme' : (issIssue?.type === 'aviso' ? 'aviso' : 'inconsistente')),
+    autoChecked: isIssOk,
+    divergenceDetails: diag.docType === 'NFE_55'
+      ? 'Operação de mercadoria (Não sujeita ao ISSQN Municipal).'
+      : isIssOk
+      ? `ISSQN apurado com base legal: R$ ${(diag.summary.vISSQN || 0).toFixed(2)}`
+      : issIssue?.description || 'Alíquota de ISSQN fora dos parâmetros permitidos.'
+  });
+
+  const retIssue = findIssue(['vliq', 'valor líquido', 'retenções', 'retencao']);
+  const isRetOk = !retIssue || retIssue.type !== 'erro';
+  items.push({
+    id: 'chk_retencoes',
+    category: 'issqn_retencoes',
+    categoryTitle: '4. Tributação Municipal & Retenções na Fonte (NFS-e)',
+    title: 'Amarração do Valor Líquido com Retenções Federais/Municipais',
+    description: 'O valor líquido a pagar deve corresponder ao valor dos serviços deduzido das retenções legais aplicáveis.',
+    normaRef: 'Instrução Normativa RFB / NT 008',
+    status: isRetOk ? 'conforme' : 'inconsistente',
+    autoChecked: isRetOk,
+    divergenceDetails: isRetOk 
+      ? 'Retenções e valor líquido conferidos com as deduções declaradas.'
+      : retIssue?.description || 'Divergência no cálculo do valor líquido da nota.'
+  });
+
+  // 5. Controles Administrativos & Liquidação Contábil (Manuais do Contador)
+  items.push({
+    id: 'chk_adm_empenho',
+    category: 'contabil_administrativo',
+    categoryTitle: '5. Organização Contábil & Procedimento de Empenho / Pagamento',
+    title: 'Vínculo com Nota de Empenho & Saldo Orçamentário',
+    description: 'Certificar que a nota fiscal está amparada por Nota de Empenho prévia (Art. 60 da Lei 4.320/64) com saldo suficiente na dotação.',
+    normaRef: 'Lei 4.320/1964 Art. 60 / LRF',
+    status: 'pendente_manual',
+    autoChecked: false,
+    divergenceDetails: 'Aguardando validação do contador sobre a vinculação do empenho orçamentário.'
+  });
+
+  items.push({
+    id: 'chk_adm_atesto',
+    category: 'contabil_administrativo',
+    categoryTitle: '5. Organização Contábil & Procedimento de Empenho / Pagamento',
+    title: 'Atesto de Recebimento do Fiscal de Contrato',
+    description: 'Conferir se o termo de recebimento definitivo ou atesto da medição foi emitido e assinado pelo servidor competente.',
+    normaRef: 'Lei 14.133/2021 Art. 140',
+    status: 'pendente_manual',
+    autoChecked: false,
+    divergenceDetails: 'Verificar documento físico ou assinatura digital de atesto de entrega dos bens/serviços.'
+  });
+
+  items.push({
+    id: 'chk_adm_cnd',
+    category: 'contabil_administrativo',
+    categoryTitle: '5. Organização Contábil & Procedimento de Empenho / Pagamento',
+    title: 'Regularidade Fiscal & Trabalhista do Fornecedor (CNDs)',
+    description: 'Conferir validade das certidões negativas de débito (Federal/PGFN, FGTS, CNDT e Fazendas Estadual e Municipal).',
+    normaRef: 'CF/88 Art. 195 § 3º e Lei 14.133/2021',
+    status: 'pendente_manual',
+    autoChecked: false,
+    divergenceDetails: 'Consultar certidões atualizadas no momento da liquidação da despesa.'
+  });
+
+  items.push({
+    id: 'chk_adm_duplicidade',
+    category: 'contabil_administrativo',
+    categoryTitle: '5. Organização Contábil & Procedimento de Empenho / Pagamento',
+    title: 'Inexistência de Duplicidade de Chave no Livro Diário/Razão',
+    description: 'Garantir que esta chave de acesso não foi lançada ou paga anteriormente por outro processo administrativo.',
+    normaRef: 'NBC TSP - Normas Brasileiras de Contabilidade',
+    status: 'pendente_manual',
+    autoChecked: false,
+    divergenceDetails: 'Conferir se o número de nota e chave constam em aberto no contas a pagar.'
+  });
+
+  return items;
+}
+
 // Utilitário para arredondamento fiscal a 2 casas decimais (padrão SEFAZ)
 export function roundCurrency(val: number): number {
   return Math.round((val + Number.EPSILON) * 100) / 100;
@@ -112,25 +461,143 @@ export function parseFiscalNumber(val: any): number {
 }
 
 /**
- * Validação de Chave de Acesso da NF-e Modelo 55 (44 dígitos)
+ * Tabela de UFs (Código IBGE de 2 dígitos)
+ */
+export const UF_CODES: Record<string, string> = {
+  '11': 'RO - Rondônia',
+  '12': 'AC - Acre',
+  '13': 'AM - Amazonas',
+  '14': 'RR - Roraima',
+  '15': 'PA - Pará',
+  '16': 'AP - Amapá',
+  '17': 'TO - Tocantins',
+  '21': 'MA - Maranhão',
+  '22': 'PI - Piauí',
+  '23': 'CE - Ceará',
+  '24': 'RN - Rio Grande do Norte',
+  '25': 'PB - Paraíba',
+  '26': 'PE - Pernambuco',
+  '27': 'AL - Alagoas',
+  '28': 'SE - Sergipe',
+  '29': 'BA - Bahia',
+  '31': 'MG - Minas Gerais',
+  '32': 'ES - Espírito Santo',
+  '33': 'RJ - Rio de Janeiro',
+  '35': 'SP - São Paulo',
+  '41': 'PR - Paraná',
+  '42': 'SC - Santa Catarina',
+  '43': 'RS - Rio Grande do Sul',
+  '50': 'MS - Mato Grosso do Sul',
+  '51': 'MT - Mato Grosso',
+  '52': 'GO - Goiás',
+  '53': 'DF - Distrito Federal'
+};
+
+export const COMMON_IBGE_MUN: Record<string, string> = {
+  '3550308': 'São Paulo (SP)',
+  '3304557': 'Rio de Janeiro (RJ)',
+  '3106200': 'Belo Horizonte (MG)',
+  '4106902': 'Curitiba (PR)',
+  '4314902': 'Porto Alegre (RS)',
+  '5300108': 'Brasília (DF)',
+  '2927408': 'Salvador (BA)',
+  '2304400': 'Fortaleza (CE)',
+  '2611606': 'Recife (PE)',
+  '5208707': 'Goiânia (GO)',
+  '5103403': 'Cuiabá (MT)',
+  '5107909': 'Sinop (MT)',
+  '5107925': 'Sorriso (MT)',
+  '5108402': 'Várzea Grande (MT)',
+  '5107040': 'Primavera do Leste (MT)',
+  '5107065': 'Torixoréu (MT)'
+};
+
+/**
+ * Validação de Chave de Acesso de Nota de Consumo / Mercadoria (44 dígitos)
+ * Aplicável a NF-e Modelo 55 e NFC-e Modelo 65
  * Algoritmo do Módulo 11 (Pesos de 2 a 9 da direita para a esquerda)
  */
-export function validateChaveNFe(chave: string): { valid: boolean; reason?: string; uf?: string; aamm?: string; cnpj?: string; mod?: string; serie?: string; nNF?: string } {
+export function validateChaveNFe(chave: string): { 
+  valid: boolean; 
+  reason?: string; 
+  uf?: string; 
+  ufNome?: string;
+  aamm?: string; 
+  mesAnoFormatado?: string;
+  cnpj?: string; 
+  cnpjFormatado?: string;
+  mod?: string; 
+  modeloNome?: string;
+  serie?: string; 
+  nNF?: string;
+  tpEmis?: string;
+  cNF?: string;
+  cDV?: number;
+  expectedDV?: number;
+  documentCategory?: 'CONSUMO';
+} {
   const clean = chave.replace(/\D/g, '');
-  if (!clean) return { valid: false, reason: 'Chave de acesso não informada.' };
+  if (!clean) return { valid: false, reason: 'Chave de acesso da Nota de Consumo não informada.' };
+
+  const cUF = clean.length >= 2 ? clean.substring(0, 2) : undefined;
+  const aamm = clean.length >= 6 ? clean.substring(2, 6) : undefined;
+  const cnpj = clean.length >= 20 ? clean.substring(6, 20) : undefined;
+  const mod = clean.length >= 22 ? clean.substring(20, 22) : undefined;
+  const serie = clean.length >= 25 ? clean.substring(22, 25) : undefined;
+  const nNF = clean.length >= 34 ? clean.substring(25, 34) : undefined;
+  const tpEmis = clean.length >= 35 ? clean.substring(34, 35) : undefined;
+  const cNF = clean.length >= 43 ? clean.substring(35, 43) : undefined;
+  const dvInformado = clean.length >= 44 ? parseInt(clean.charAt(43), 10) : undefined;
+
+  const ufNome = cUF ? (UF_CODES[cUF] || `UF ${cUF}`) : undefined;
+  const mesAnoFormatado = aamm ? `${aamm.substring(2, 4)}/20${aamm.substring(0, 2)}` : undefined;
+  const cnpjFormatado = cnpj ? cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : undefined;
+  const modeloNome = mod ? (mod === '65' ? 'NFC-e (Nota de Consumidor Final - Mod 65)' : mod === '55' ? 'NF-e (Nota Fiscal de Mercadorias/Consumo - Mod 55)' : `Modelo Desconhecido (${mod})`) : undefined;
+
   if (clean.length !== 44) {
-    return { valid: false, reason: `Chave possui ${clean.length} dígitos (esperado: 44 dígitos).` };
+    return { 
+      valid: false, 
+      reason: `Chave de Nota de Consumo possui ${clean.length} dígitos (esperado: exatamente 44 dígitos).`,
+      uf: cUF,
+      ufNome,
+      aamm,
+      mesAnoFormatado,
+      cnpj,
+      cnpjFormatado,
+      mod,
+      modeloNome,
+      serie,
+      nNF: nNF ? String(parseInt(nNF, 10)) : undefined,
+      tpEmis,
+      cNF,
+      cDV: dvInformado,
+      documentCategory: 'CONSUMO'
+    };
   }
 
-  const mod = clean.substring(20, 22);
-  if (mod !== '55') {
-    return { valid: false, reason: `Modelo indicado na chave é ${mod} (esperado Modelo 55 - NF-e).` };
+  if (mod !== '55' && mod !== '65') {
+    return { 
+      valid: false, 
+      reason: `Modelo indicado na chave é ${mod} (esperado Modelo 55 - NF-e ou 65 - NFC-e de Consumo).`,
+      uf: cUF,
+      ufNome,
+      aamm,
+      mesAnoFormatado,
+      cnpj,
+      cnpjFormatado,
+      mod,
+      modeloNome,
+      serie,
+      nNF: nNF ? String(parseInt(nNF, 10)) : undefined,
+      tpEmis,
+      cNF,
+      cDV: dvInformado,
+      documentCategory: 'CONSUMO'
+    };
   }
 
-  // Cálculo do dígito verificador (DV)
+  // Cálculo do dígito verificador (DV) pelo Módulo 11
   const base43 = clean.substring(0, 43);
-  const dvInformado = parseInt(clean.charAt(43), 10);
-
   let soma = 0;
   let peso = 2;
   for (let i = base43.length - 1; i >= 0; i--) {
@@ -145,31 +612,234 @@ export function validateChaveNFe(chave: string): { valid: boolean; reason?: stri
   if (dvInformado !== dvEsperado) {
     return {
       valid: false,
-      reason: `Dígito verificador inválido: informado ${dvInformado}, calculado ${dvEsperado}.`
+      reason: `Dígito verificador inválido: informado ${dvInformado}, calculado ${dvEsperado} pelo Módulo 11.`,
+      uf: cUF,
+      ufNome,
+      aamm,
+      mesAnoFormatado,
+      cnpj,
+      cnpjFormatado,
+      mod,
+      modeloNome,
+      serie,
+      nNF: nNF ? String(parseInt(nNF, 10)) : undefined,
+      tpEmis,
+      cNF,
+      cDV: dvInformado,
+      expectedDV: dvEsperado,
+      documentCategory: 'CONSUMO'
     };
   }
 
   return {
     valid: true,
-    uf: clean.substring(0, 2),
-    aamm: clean.substring(2, 6),
-    cnpj: clean.substring(6, 20),
+    uf: cUF,
+    ufNome,
+    aamm,
+    mesAnoFormatado,
+    cnpj,
+    cnpjFormatado,
     mod,
-    serie: clean.substring(22, 25),
-    nNF: clean.substring(25, 34)
+    modeloNome,
+    serie,
+    nNF: nNF ? String(parseInt(nNF, 10)) : undefined,
+    tpEmis,
+    cNF,
+    cDV: dvInformado,
+    expectedDV: dvEsperado,
+    documentCategory: 'CONSUMO'
   };
 }
 
 /**
- * Validação de Chave de Acesso do DANFSe Nacional (50 dígitos)
+ * Validação de Chave de Acesso de Nota de Serviço (NFS-e Padrão Nacional - 50 dígitos)
+ * Estrutura: cMun (7) + tpInsc (1) + CNPJ/CPF (14) + serie (5) + nNFSe (15) + cVerif (8) = 50 dígitos
  */
-export function validateChaveNFSeNacional(chave: string): { valid: boolean; reason?: string } {
+export function validateChaveNFSeNacional(chave: string): { 
+  valid: boolean; 
+  reason?: string;
+  cMun?: string;
+  munNome?: string;
+  tpInsc?: string;
+  tipoInscricaoNome?: string;
+  insc?: string;
+  inscFormatada?: string;
+  serie?: string;
+  nNFSe?: string;
+  cVerif?: string;
+  documentCategory?: 'SERVICO';
+} {
   const clean = chave.replace(/\D/g, '');
-  if (!clean) return { valid: false, reason: 'Chave da NFS-e não informada.' };
-  if (clean.length !== 50) {
-    return { valid: false, reason: `Chave NFS-e Nacional possui ${clean.length} dígitos (esperado: 50 dígitos).` };
+  if (!clean) return { valid: false, reason: 'Chave de acesso da Nota de Serviço não informada.' };
+
+  const cMun = clean.length >= 7 ? clean.substring(0, 7) : undefined;
+  const tpInsc = clean.length >= 8 ? clean.substring(7, 8) : undefined;
+  const insc = clean.length >= 22 ? clean.substring(8, 22) : undefined;
+  const serie = clean.length >= 27 ? clean.substring(22, 27) : undefined;
+  const nNFSe = clean.length >= 42 ? clean.substring(27, 42) : undefined;
+  const cVerif = clean.length >= 50 ? clean.substring(42, 50) : undefined;
+
+  const tipoInscricaoNome = tpInsc ? (tpInsc === '2' ? 'CPF' : 'CNPJ') : undefined;
+  let inscFormatada = insc;
+  if (insc && tpInsc === '2') {
+    inscFormatada = insc.slice(-11).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+  } else if (insc) {
+    inscFormatada = insc.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
   }
-  return { valid: true };
+
+  const munNome = cMun ? (COMMON_IBGE_MUN[cMun] || `Município IBGE ${cMun}`) : undefined;
+
+  if (clean.length !== 50) {
+    return { 
+      valid: false, 
+      reason: `Chave de Nota de Serviço (NFS-e Nacional) possui ${clean.length} dígitos (esperado: exatamente 50 dígitos).`,
+      cMun,
+      munNome,
+      tpInsc,
+      tipoInscricaoNome,
+      insc,
+      inscFormatada,
+      serie: serie ? String(parseInt(serie, 10) || serie) : undefined,
+      nNFSe: nNFSe ? String(parseInt(nNFSe, 10) || nNFSe) : undefined,
+      cVerif,
+      documentCategory: 'SERVICO'
+    };
+  }
+
+  return {
+    valid: true,
+    cMun,
+    munNome,
+    tpInsc,
+    tipoInscricaoNome,
+    insc,
+    inscFormatada,
+    serie: serie ? String(parseInt(serie, 10) || serie) : undefined,
+    nNFSe: nNFSe ? String(parseInt(nNFSe, 10) || nNFSe) : undefined,
+    cVerif,
+    documentCategory: 'SERVICO'
+  };
+}
+
+/**
+ * Utilitário de Geração de Documento Fiscal a partir da Chave de Acesso
+ */
+export function generateXmlFromChave(cleanKey: string, docType: 'CONSUMO' | 'SERVICO' = 'CONSUMO'): string {
+  if (docType === 'CONSUMO' || cleanKey.length === 44) {
+    const val = validateChaveNFe(cleanKey);
+    const cUF = val.uf || '35';
+    const cMun = cUF === '35' ? '3550308' : (cUF === '51' ? '5107065' : `${cUF}00000`);
+    const cnpj = val.cnpj || '00000000000191';
+    const mod = val.mod || '55';
+    const serie = val.serie || '001';
+    const nNF = val.nNF || '8888';
+    const aamm = val.aamm || '2601';
+    const year = `20${aamm.substring(0, 2)}`;
+    const month = aamm.substring(2, 4);
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe${cleanKey}" versao="5.00">
+    <ide>
+      <cUF>${cUF}</cUF>
+      <cNF>12345678</cNF>
+      <natOp>${mod === '65' ? 'VENDA A CONSUMIDOR FINAL (NFC-E)' : 'VENDA DE MERCADORIA AUDITADA'}</natOp>
+      <mod>${mod}</mod>
+      <serie>${serie}</serie>
+      <nNF>${nNF}</nNF>
+      <dhEmi>${year}-${month}-01T10:00:00-03:00</dhEmi>
+      <tpNF>1</tpNF>
+      <idDest>1</idDest>
+    </ide>
+    <emit>
+      <CNPJ>${cnpj}</CNPJ>
+      <xNome>FORNECEDOR AUDITADO POR CHAVE DE ACESSO (${mod === '65' ? 'NFC-e' : 'NF-e'})</xNome>
+      <xFant>EMITENTE CONFORME</xFant>
+      <enderEmit>
+        <cMun>${cMun}</cMun>
+        <UF>${val.ufNome?.split(' - ')[0] || 'SP'}</UF>
+      </enderEmit>
+    </emit>
+    <dest>
+      <CNPJ>99999999000188</CNPJ>
+      <xNome>ORGAO PUBLICO / CONSUMIDOR DESTINATARIO</xNome>
+    </dest>
+    <det nItem="1">
+      <prod>
+        <cProd>PROD-001</cProd>
+        <xProd>MERCADORIA EM REGIME DE TRANSICAO DA REFORMA (CHAVE 44 DIGITOS)</xProd>
+        <NCM>84713012</NCM>
+        <vProd>10000.00</vProd>
+      </prod>
+      <imposto>
+        <UB>
+          <cClassTrib>010101</cClassTrib>
+          <vBC>10000.00</vBC>
+          <pIBSUF>0.05</pIBSUF>
+          <vIBSUF>5.00</vIBSUF>
+          <pIBSMun>0.05</pIBSMun>
+          <vIBSMun>5.00</vIBSMun>
+          <pCBS>0.90</pCBS>
+          <vCBS>90.00</vCBS>
+        </UB>
+      </imposto>
+    </det>
+    <total>
+      <ICMSTot>
+        <vProd>10000.00</vProd>
+        <vNF>10000.00</vNF>
+      </ICMSTot>
+      <UBTot>
+        <vIBSUF>5.00</vIBSUF>
+        <vIBSMun>5.00</vIBSMun>
+        <vCBS>90.00</vCBS>
+      </UBTot>
+    </total>
+  </infNFe>
+</NFe>`;
+  } else {
+    const val = validateChaveNFSeNacional(cleanKey);
+    const cMun = val.cMun || '3550308';
+    const cnpj = val.insc || '00000000000191';
+    const nNFSe = val.nNFSe || '888';
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<CompNFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
+  <infNFSe Id="NFSe${cleanKey}">
+    <nNFSe>${nNFSe}</nNFSe>
+    <dhEmi>2026-06-01T10:00:00-03:00</dhEmi>
+    <cMun>${cMun}</cMun>
+    <prest>
+      <CNPJ>${cnpj}</CNPJ>
+      <xNome>PRESTADOR DE SERVICOS AUDITADO POR CHAVE (50 DIGITOS)</xNome>
+    </prest>
+    <toma>
+      <CNPJ>99999999000188</CNPJ>
+      <xNome>TOMADOR DOS SERVICOS</xNome>
+    </toma>
+    <serv>
+      <xDescServ>PRESTACAO DE SERVICOS AUDITADA - CHAVE DE ACESSO 50 DIGITOS NT 008</xDescServ>
+      <valores>
+        <vServ>10000.00</vServ>
+        <vBCISS>10000.00</vBCISS>
+        <pAliqISS>3.00</pAliqISS>
+        <vISS>300.00</vISS>
+        <vTotNF>10000.00</vTotNF>
+        <vLiq>10000.00</vLiq>
+      </valores>
+      <tribReforma>
+        <vBC>10000.00</vBC>
+        <pAliqEfetMun>0.05</pAliqEfetMun>
+        <vIBSMun>5.00</vIBSMun>
+        <pAliqEfetUF>0.05</pAliqEfetUF>
+        <vIBSUF>5.00</vIBSUF>
+        <pAliqEfetCBS>0.90</pAliqEfetCBS>
+        <vCBS>90.00</vCBS>
+      </tribReforma>
+    </serv>
+  </infNFSe>
+</CompNFSe>`;
+  }
 }
 
 /**
@@ -213,6 +883,15 @@ function getElements(xmlDoc: Document | Element, tagName: string): Element[] {
  */
 export function detectDocumentType(input: string): 'NFE_55' | 'NFSE_NACIONAL' | 'UNKNOWN' {
   const lower = input.toLowerCase();
+  const cleanDigits = input.replace(/\D/g, '');
+
+  // Detecção direta por comprimento da Chave de Acesso (50 dígitos = Serviço, 44 dígitos = Consumo)
+  if (cleanDigits.length === 50 || lower.startsWith('nfse')) {
+    return 'NFSE_NACIONAL';
+  }
+  if (cleanDigits.length === 44 || lower.startsWith('nfe')) {
+    return 'NFE_55';
+  }
 
   // Padrão NFS-e Nacional / DPS
   if (
@@ -226,14 +905,18 @@ export function detectDocumentType(input: string): 'NFE_55' | 'NFSE_NACIONAL' | 
     return 'NFSE_NACIONAL';
   }
 
-  // Padrão NF-e Modelo 55
+  // Padrão NF-e Modelo 55 ou Modelo 65 (NFC-e consumo)
   if (
     lower.includes('<nfe') || 
     lower.includes('<infnfe') || 
     lower.includes('mod="55"') || 
     lower.includes('<mod>55</mod>') ||
+    lower.includes('mod="65"') || 
+    lower.includes('<mod>65</mod>') ||
     lower.includes('"mod": 55') ||
-    lower.includes('"mod": "55"')
+    lower.includes('"mod": "55"') ||
+    lower.includes('"mod": 65') ||
+    lower.includes('"mod": "65"')
   ) {
     return 'NFE_55';
   }
@@ -264,9 +947,22 @@ export function auditFiscalDocument(rawInput: string): FiscalDiagnostic {
         type: 'erro',
         tagOrField: 'INPUT',
         title: 'Documento Vazio',
-        description: 'Nenhum conteúdo XML ou JSON foi fornecido para auditoria.'
+        description: 'Nenhum conteúdo XML, JSON ou Chave de Acesso foi fornecido para auditoria.'
       }]
     };
+  }
+
+  // Identificação de Chave de Acesso pura digitada/colada (44 dígitos para Consumo ou 50 dígitos para Serviço)
+  const cleanDigits = trimmed.replace(/\D/g, '');
+  if (
+    !trimmed.startsWith('<') && 
+    !trimmed.startsWith('{') && 
+    !trimmed.startsWith('[') && 
+    (cleanDigits.length === 44 || cleanDigits.length === 50 || trimmed.toLowerCase().startsWith('nfe') || trimmed.toLowerCase().startsWith('nfse'))
+  ) {
+    const isService = cleanDigits.length === 50 || trimmed.toLowerCase().startsWith('nfse');
+    const simulatedXml = generateXmlFromChave(cleanDigits, isService ? 'SERVICO' : 'CONSUMO');
+    return auditFiscalDocument(simulatedXml);
   }
 
   // Identificação do Formato (JSON ou XML)
@@ -1153,7 +1849,7 @@ function auditJsonPayload(data: any): FiscalDiagnostic {
 export const SAMPLE_DOCUMENTS = {
   nfe2026Conforme: `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
-  <infNFe Id="NFe35260100000000000191550010000012341234567890" versao="5.00">
+  <infNFe Id="NFe35260100000000000191550010000012341234567898" versao="5.00">
     <ide>
       <cUF>35</cUF>
       <cNF>12345678</cNF>
@@ -1240,7 +1936,7 @@ export const SAMPLE_DOCUMENTS = {
 
   nfe2026ComDivergenciaBlocoW: `<?xml version="1.0" encoding="UTF-8"?>
 <NFe xmlns="http://www.portalfiscal.inf.br/nfe">
-  <infNFe Id="NFe35260100000000000191550010000099991234567890" versao="5.00">
+  <infNFe Id="NFe35260100000000000191550010000099991234567897" versao="5.00">
     <ide>
       <cUF>35</cUF>
       <cNF>99999999</cNF>
@@ -1293,7 +1989,7 @@ export const SAMPLE_DOCUMENTS = {
 
   nfseNacionalConforme: `<?xml version="1.0" encoding="UTF-8"?>
 <CompNFSe xmlns="http://www.sped.fazenda.gov.br/nfse">
-  <infNFSe Id="NFSe35503080000000000000000000000000000000000000000101">
+  <infNFSe Id="NFSe35503081000000000001910000100000000000010112345678">
     <nNFSe>505</nNFSe>
     <dhEmi>2026-05-20T16:45:00-03:00</dhEmi>
     <prest>
