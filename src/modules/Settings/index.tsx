@@ -6,7 +6,7 @@ import {
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
   BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
   HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale, Activity,
-  ClipboardList, Headphones
+  ClipboardList, Headphones, Fuel
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -18,6 +18,7 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'mayor', label: 'Visão do Prefeito' },
   { id: 'controls', label: 'Controles Internos' },
   { id: 'accounting_changes', label: 'Alterações na Contabilidade' },
+  { id: 'fleet_fuel', label: 'Frotas & Abastecimento' },
   { id: 'calendar', label: 'Calendário Oficial' },
   { id: 'norms', label: 'Atos Normativos' },
   { id: 'risk', label: 'Gestão de Riscos' },
@@ -67,6 +68,7 @@ const PERMISSION_GROUPS: {
     items: [
       { id: 'controls', label: 'Controles Internos', desc: 'Monitoramento de procedimentos e prazos', icon: ClipboardCheck },
       { id: 'accounting_changes', label: 'Alterações na Contabilidade', desc: 'Controle de solicitações, trilha de auditoria contábil e pareceres', icon: Scale },
+      { id: 'fleet_fuel', label: 'Frotas & Abastecimento', desc: 'Ordens digitais de combustível, conferência de canhotos e auditoria TCE', icon: Fuel },
       { id: 'risk', label: 'Gestão de Riscos', desc: 'Identificação e tratamento de riscos', icon: ShieldAlert },
       { id: 'pntp', label: 'PNTP', desc: 'Evidências do PNTP e portal de transparência', icon: Compass },
       { id: 'camara', label: 'Câmara Municipal', desc: 'Atividades legislativas, projetos de lei e indicações', icon: Landmark },

@@ -30,7 +30,8 @@ import {
   Activity,
   ClipboardList,
   Newspaper,
-  Headphones
+  Headphones,
+  Fuel
 } from 'lucide-react';
 
 
@@ -95,6 +96,7 @@ export const NAVBAR_CATEGORIES = [
     items: [
       { id: 'controls', label: 'Controles Internos', icon: ClipboardCheck },
       { id: 'accounting_changes', label: 'Alterações na Contabilidade', icon: Scale },
+      { id: 'fleet_fuel', label: 'Frotas & Abastecimento', icon: Fuel },
       { id: 'calendar', label: 'Calendário TCE', icon: Calendar },
       { id: 'norms', label: 'Normativas', icon: BookText },
       { id: 'risk', label: 'Análise de Risco', icon: ShieldAlert },
@@ -163,6 +165,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'mayor', label: 'Visão do Prefeito' },
   { id: 'controls', label: 'Controles Internos' },
   { id: 'accounting_changes', label: 'Alterações na Contabilidade' },
+  { id: 'fleet_fuel', label: 'Frotas & Abastecimento' },
   { id: 'calendar', label: 'Calendário Oficial' },
   { id: 'norms', label: 'Atos Normativos' },
   { id: 'risk', label: 'Gestão de Riscos' },

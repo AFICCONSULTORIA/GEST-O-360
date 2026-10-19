@@ -10,6 +10,7 @@ import {
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { AccountingChangesControl } from './components/AccountingChangesControl';
+import { FleetFuelManager } from './components/FleetFuelManager';
 import { hasPermission } from '../../lib/permissions';
 
 // Destructure common icons to avoid changing code
@@ -37,14 +38,16 @@ const ControlsModule = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'urgent' | 'completed'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
-  const [controlsTab, setControlsTab] = useState<'compliance' | 'accounting'>('compliance');
+  const [controlsTab, setControlsTab] = useState<'compliance' | 'accounting' | 'fuel'>('compliance');
 
   const canViewAccounting = !currentUser || hasPermission(currentUser, 'accounting_changes', 'view');
+  const canViewFuel = !currentUser || hasPermission(currentUser, 'controls', 'view');
 
   const navigationTabs = useMemo(() => [
     { id: 'compliance' as const, label: 'Controles Internos & Compliance', icon: ClipboardCheck },
-    ...(canViewAccounting ? [{ id: 'accounting' as const, label: 'Alterações na Contabilidade', icon: Scale }] : [])
-  ], [canViewAccounting]);
+    ...(canViewAccounting ? [{ id: 'accounting' as const, label: 'Alterações na Contabilidade', icon: Scale }] : []),
+    ...(canViewFuel ? [{ id: 'fuel' as const, label: 'Controle de Frotas & Combustível', icon: Truck }] : [])
+  ], [canViewAccounting, canViewFuel]);
 
   // Metrics (KPIs)
   const totalControls = controls.length;
@@ -88,16 +91,28 @@ const ControlsModule = ({
       <div className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
-            {controlsTab === 'compliance' ? <ClipboardCheck size={28} /> : <Scale size={28} />}
+            {controlsTab === 'compliance' ? (
+              <ClipboardCheck size={28} />
+            ) : controlsTab === 'accounting' ? (
+              <Scale size={28} />
+            ) : (
+              <Truck size={28} />
+            )}
           </div>
           <div>
             <h2 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
-              {controlsTab === 'compliance' ? 'Painel de Controles Internos' : 'Controle de Alterações na Contabilidade'}
+              {controlsTab === 'compliance' 
+                ? 'Painel de Controles Internos' 
+                : controlsTab === 'accounting' 
+                ? 'Controle de Alterações na Contabilidade' 
+                : 'Controle & Auditoria de Frotas'}
             </h2>
             <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">
               {controlsTab === 'compliance' 
                 ? 'Monitore prazos preventivos, exigências do TCE e conformidade das rotinas municipais.' 
-                : 'Auditoria de solicitações de alterações contábeis, retificações de empenho e pareceres técnicos.'}
+                : controlsTab === 'accounting' 
+                ? 'Auditoria de solicitações de alterações contábeis, retificações de empenho e pareceres técnicos.'
+                : 'Ordens digitais de abastecimento, canhotos com QR Code validador e conciliação em três vias.'}
             </p>
           </div>
         </div>
@@ -120,9 +135,12 @@ const ControlsModule = ({
         </div>
       </div>
 
-      {controlsTab === 'accounting' ? (
+      {controlsTab === 'fuel' ? (
+        <FleetFuelManager currentUser={currentUser} />
+      ) : controlsTab === 'accounting' ? (
         <AccountingChangesControl searchQuery={searchTerm} currentUser={currentUser} />
       ) : (
+
         <>
           <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
             <div>

@@ -41,6 +41,19 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
     }
   }
 
+  // Auto-grant 'fleet_fuel' for users who already have 'controls' or 'patrimonio'
+  if (
+    effectivePermissions.some(p => p === 'controls' || p.startsWith('controls:') || p === 'patrimonio') &&
+    !effectivePermissions.some(p => p === 'fleet_fuel' || p.startsWith('fleet_fuel:'))
+  ) {
+    const controlsLevelGrant = effectivePermissions.find(p => p.startsWith('controls:'));
+    if (controlsLevelGrant) {
+      effectivePermissions.push(controlsLevelGrant.replace('controls:', 'fleet_fuel:'));
+    } else if (effectivePermissions.includes('controls') || effectivePermissions.includes('patrimonio')) {
+      effectivePermissions.push('fleet_fuel');
+    }
+  }
+
   // 1. Procurar por permissão granular específica no formato "modulo:nivel"
   const adminPattern = `${moduleId}:admin`;
   const editPattern = `${moduleId}:edit`;

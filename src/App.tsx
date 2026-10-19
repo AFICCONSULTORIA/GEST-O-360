@@ -12,6 +12,7 @@ import { SaaSControlCenter } from './modules/SaaSControlCenter';
 import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
 import { ControlsModule } from './modules/Controls';
 import { AccountingChangesControl } from './modules/Controls/components/AccountingChangesControl';
+import { FleetFuelManager } from './modules/Controls/components/FleetFuelManager';
 import { RiskModule } from './modules/Risk';
 import { PNTPModule } from './modules/PNTP';
 import { DocumentNumbersModule } from './modules/DocumentNumbers';
@@ -1537,6 +1538,9 @@ export default function App() {
             )}
             {activeView === 'accounting_changes' && (
               <AccountingChangesControl searchQuery={searchQuery} currentUser={currentUser} />
+            )}
+            {activeView === 'fleet_fuel' && (
+              <FleetFuelManager currentUser={currentUser} />
             )}
             {activeView === 'risk' && <RiskModule />}
             {activeView === 'pntp' && <PNTPModule selectedYear={selectedYear} />}
