@@ -17,7 +17,7 @@ export function gerarOrdemAbastecimentoHtml(
   vehicle?: FleetVehicle,
   options: OrdemAbastecimentoOptions = {}
 ): string {
-  const municipio = options.municipioNome || 'PREFEITURA MUNICIPAL';
+  const municipio = options.municipioNome || 'PREFEITURA MUNICIPAL DE TORIXORÉU';
   const estado = options.estadoNome || 'ESTADO DE MATO GROSSO';
   const secretaria = vehicle?.department ? `SECRETARIA MUNICIPAL DE ${vehicle.department.toUpperCase()}` : (options.secretariaNome || 'DEPARTAMENTO DE GESTÃO DE FROTAS');
   

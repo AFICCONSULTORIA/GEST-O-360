@@ -32,20 +32,44 @@ import {
   TrendingUp,
   FileSpreadsheet,
   CheckSquare,
-  Car
+  Car,
+  Edit2,
+  Trash2,
+  Users,
+  UserCheck,
+  MapPin,
+  Store,
+  Calendar,
+  CreditCard
 } from 'lucide-react';
 import {
   FleetVehicle,
   FuelSupplyOrder,
   FuelType,
   MetricType,
+  FleetDriver,
+  FleetFuelStation,
   getFleetVehicles,
   getFuelSupplyOrders,
   createFuelOrder,
   registerFuelExecution,
   uploadReceiptAttachment,
   auditFuelOrder,
-  createFleetVehicle
+  createFleetVehicle,
+  updateFleetVehicle,
+  deleteFleetVehicle,
+  clearAllFleetVehicles,
+  deleteFuelSupplyOrder,
+  clearAllFuelOrders,
+  syncVehiclesFromPatrimonio,
+  getFleetDrivers,
+  createFleetDriver,
+  updateFleetDriver,
+  deleteFleetDriver,
+  getFleetFuelStations,
+  createFleetFuelStation,
+  updateFleetFuelStation,
+  deleteFleetFuelStation
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
 import { exportToExcel } from '../../../lib/excelExport';
@@ -58,17 +82,21 @@ interface FleetFuelManagerProps {
 
 export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser }) => {
   // Estado das Abas
-  const [activeTab, setActiveTab] = useState<'orders' | 'execution' | 'audit' | 'vehicles'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'execution' | 'audit' | 'vehicles' | 'drivers' | 'stations'>('orders');
 
   // Dados
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [orders, setOrders] = useState<FuelSupplyOrder[]>([]);
+  const [drivers, setDrivers] = useState<FleetDriver[]>([]);
+  const [stations, setStations] = useState<FleetFuelStation[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [driverSearchTerm, setDriverSearchTerm] = useState('');
+  const [stationSearchTerm, setStationSearchTerm] = useState('');
 
   // Modais
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
@@ -119,21 +147,307 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     current_odometer: 0
   });
 
-  // Carregar dados
+  // Estado para Edição de Veículo
+  const [isEditVehicleModalOpen, setIsEditVehicleModalOpen] = useState(false);
+  const [editingVehicle, setEditingVehicle] = useState<FleetVehicle | null>(null);
+  const [editVehicleForm, setEditVehicleForm] = useState({
+    plate: '',
+    prefix_code: '',
+    model: '',
+    department: '',
+    fuel_type: 'diesel_s10' as FuelType,
+    tank_capacity: 70,
+    metric_type: 'km' as MetricType,
+    expected_consumption: 9.0,
+    current_odometer: 0,
+    status: 'ativo' as 'ativo' | 'manutencao' | 'baixado' | 'inativo'
+  });
+
+  // Estado para Gestão de Motoristas
+  const [isNewDriverModalOpen, setIsNewDriverModalOpen] = useState(false);
+  const [isEditDriverModalOpen, setIsEditDriverModalOpen] = useState(false);
+  const [editingDriver, setEditingDriver] = useState<FleetDriver | null>(null);
+  const [driverForm, setDriverForm] = useState({
+    full_name: '',
+    cpf: '',
+    birth_date: '',
+    department: 'Saúde',
+    cnh_number: '',
+    cnh_category: 'B',
+    status: 'ativo' as 'ativo' | 'inativo' | 'afastado'
+  });
+
+  // Estado para Gestão de Postos Credenciados
+  const [isNewStationModalOpen, setIsNewStationModalOpen] = useState(false);
+  const [isEditStationModalOpen, setIsEditStationModalOpen] = useState(false);
+  const [editingStation, setEditingStation] = useState<FleetFuelStation | null>(null);
+  const [stationForm, setStationForm] = useState({
+    name: '',
+    cnpj: '',
+    address: '',
+    city: 'Torixoréu - MT',
+    phone: '',
+    status: 'ativo' as 'ativo' | 'inativo'
+  });
+
+  const [syncingPatrimonio, setSyncingPatrimonio] = useState(false);
+
+  // Carregar dados reais (Veículos, Ordens, Motoristas e Postos)
   const loadData = async () => {
     setLoading(true);
     try {
-      const [vehList, ordList] = await Promise.all([
-        getFleetVehicles(),
-        getFuelSupplyOrders()
+      const instId = currentUser?.institution_id || 'inst_1';
+      const [vehList, ordList, drvList, staList] = await Promise.all([
+        getFleetVehicles(undefined, instId),
+        getFuelSupplyOrders({ institutionId: instId }),
+        getFleetDrivers({ institutionId: instId }),
+        getFleetFuelStations({ institutionId: instId })
       ]);
       setVehicles(vehList);
       setOrders(ordList);
+      setDrivers(drvList);
+      setStations(staList);
     } catch (err) {
       console.error('Erro ao carregar dados de frotas:', err);
       showToast('Erro ao carregar dados do módulo de frotas.', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncPatrimonio = async () => {
+    setSyncingPatrimonio(true);
+    try {
+      const instId = currentUser?.institution_id || 'inst_1';
+      showToast('Sincronizando veículos reais com o cadastro patrimonial...', 'info');
+      const synced = await syncVehiclesFromPatrimonio(instId);
+      setVehicles(synced);
+      showToast(`${synced.length} veículos reais sincronizados com sucesso do patrimônio municipal!`, 'success');
+      loadData();
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao sincronizar frota com patrimônio.', 'error');
+    } finally {
+      setSyncingPatrimonio(false);
+    }
+  };
+
+  const handleOpenEditVehicle = (vehicle: FleetVehicle) => {
+    setEditingVehicle(vehicle);
+    setEditVehicleForm({
+      plate: vehicle.plate,
+      prefix_code: vehicle.prefix_code || '',
+      model: vehicle.model,
+      department: vehicle.department,
+      fuel_type: vehicle.fuel_type,
+      tank_capacity: vehicle.tank_capacity,
+      metric_type: vehicle.metric_type,
+      expected_consumption: vehicle.expected_consumption,
+      current_odometer: vehicle.current_odometer,
+      status: vehicle.status
+    });
+    setIsEditVehicleModalOpen(true);
+  };
+
+  const handleSaveEditVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingVehicle) return;
+
+    try {
+      await updateFleetVehicle(editingVehicle.id, {
+        plate: editVehicleForm.plate.toUpperCase().trim(),
+        prefix_code: editVehicleForm.prefix_code.toUpperCase().trim() || undefined,
+        model: editVehicleForm.model.trim(),
+        department: editVehicleForm.department.trim(),
+        fuel_type: editVehicleForm.fuel_type,
+        tank_capacity: Number(editVehicleForm.tank_capacity),
+        metric_type: editVehicleForm.metric_type,
+        expected_consumption: Number(editVehicleForm.expected_consumption),
+        current_odometer: Number(editVehicleForm.current_odometer),
+        status: editVehicleForm.status
+      });
+
+      showToast(`Veículo ${editVehicleForm.plate} atualizado com sucesso!`, 'success');
+      setIsEditVehicleModalOpen(false);
+      setEditingVehicle(null);
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao atualizar veículo.', 'error');
+    }
+  };
+
+  const handleDeleteVehicle = async (vehicle: FleetVehicle) => {
+    const confirmMsg = `Deseja realmente remover o veículo ${vehicle.plate} (${vehicle.model}) da frota?`;
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await deleteFleetVehicle(vehicle.id);
+      showToast(res.message, res.baixado ? 'warning' : 'success');
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao remover veículo.', 'error');
+    }
+  };
+
+  // Excluir toda a frota municipal (limpeza total para recadastro)
+  const handleClearAllFleet = async () => {
+    if (!confirm(`ATENÇÃO: Deseja realmente excluir toda a frota municipal atual (${vehicles.length} veículos)?\nTodos os veículos serão removidos para permitir que você cadastre os novos veículos do zero.`)) {
+      return;
+    }
+    try {
+      const res = await clearAllFleetVehicles(currentUser?.institution_id || 'inst_1');
+      showToast(res.message, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao excluir frota municipal.', 'error');
+    }
+  };
+
+  // Excluir ordem de abastecimento / auditoria
+  const handleDeleteOrder = async (order: FuelSupplyOrder) => {
+    if (!confirm(`Deseja realmente excluir a ordem de abastecimento ${order.order_number}? Esta operação é definitiva para controle interno.`)) {
+      return;
+    }
+    try {
+      await deleteFuelSupplyOrder(order.id);
+      showToast(`Ordem ${order.order_number} excluída com sucesso!`, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao excluir ordem.', 'error');
+    }
+  };
+
+  // Handlers para Motoristas
+  const handleOpenNewDriver = () => {
+    setDriverForm({
+      full_name: '',
+      cpf: '',
+      birth_date: '',
+      department: 'Saúde',
+      cnh_number: '',
+      cnh_category: 'B',
+      status: 'ativo'
+    });
+    setEditingDriver(null);
+    setIsNewDriverModalOpen(true);
+  };
+
+  const handleOpenEditDriver = (driver: FleetDriver) => {
+    setEditingDriver(driver);
+    setDriverForm({
+      full_name: driver.full_name,
+      cpf: driver.cpf,
+      birth_date: driver.birth_date || '',
+      department: driver.department,
+      cnh_number: driver.cnh_number || '',
+      cnh_category: driver.cnh_category || 'B',
+      status: driver.status
+    });
+    setIsEditDriverModalOpen(true);
+  };
+
+  const handleSaveDriver = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!driverForm.full_name.trim() || !driverForm.cpf.trim()) {
+      showToast('Preencha os campos obrigatórios (Nome Completo e CPF).', 'warning');
+      return;
+    }
+
+    try {
+      if (editingDriver) {
+        await updateFleetDriver(editingDriver.id, driverForm);
+        showToast(`Motorista ${driverForm.full_name} atualizado com sucesso!`, 'success');
+        setIsEditDriverModalOpen(false);
+      } else {
+        await createFleetDriver({
+          ...driverForm,
+          institution_id: currentUser?.institution_id || 'inst_1'
+        });
+        showToast(`Motorista ${driverForm.full_name} cadastrado com sucesso!`, 'success');
+        setIsNewDriverModalOpen(false);
+      }
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao salvar motorista.', 'error');
+    }
+  };
+
+  const handleDeleteDriver = async (driver: FleetDriver) => {
+    if (!confirm(`Deseja realmente remover o condutor ${driver.full_name} (CPF: ${driver.cpf})?`)) {
+      return;
+    }
+    try {
+      await deleteFleetDriver(driver.id);
+      showToast(`Motorista ${driver.full_name} removido com sucesso!`, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao remover motorista.', 'error');
+    }
+  };
+
+  // Handlers para Postos Credenciados
+  const handleOpenNewStation = () => {
+    setStationForm({
+      name: '',
+      cnpj: '',
+      address: '',
+      city: 'Torixoréu - MT',
+      phone: '',
+      status: 'ativo'
+    });
+    setEditingStation(null);
+    setIsNewStationModalOpen(true);
+  };
+
+  const handleOpenEditStation = (station: FleetFuelStation) => {
+    setEditingStation(station);
+    setStationForm({
+      name: station.name,
+      cnpj: station.cnpj || '',
+      address: station.address || '',
+      city: station.city || 'Torixoréu - MT',
+      phone: station.phone || '',
+      status: station.status
+    });
+    setIsEditStationModalOpen(true);
+  };
+
+  const handleSaveStation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stationForm.name.trim()) {
+      showToast('Preencha o Nome / Razão Social do posto credenciado.', 'warning');
+      return;
+    }
+
+    try {
+      if (editingStation) {
+        await updateFleetFuelStation(editingStation.id, stationForm);
+        showToast(`Posto ${stationForm.name} atualizado com sucesso!`, 'success');
+        setIsEditStationModalOpen(false);
+      } else {
+        await createFleetFuelStation({
+          ...stationForm,
+          institution_id: currentUser?.institution_id || 'inst_1'
+        });
+        showToast(`Posto ${stationForm.name} cadastrado com sucesso!`, 'success');
+        setIsNewStationModalOpen(false);
+      }
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao salvar posto credenciado.', 'error');
+    }
+  };
+
+  const handleDeleteStation = async (station: FleetFuelStation) => {
+    if (!confirm(`Deseja realmente remover o posto conveniado ${station.name}?`)) {
+      return;
+    }
+    try {
+      await deleteFleetFuelStation(station.id);
+      showToast(`Posto ${station.name} removido com sucesso!`, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao remover posto credenciado.', 'error');
     }
   };
 
@@ -154,9 +468,34 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Lista de Secretarias
   const departments = useMemo(() => {
-    const list = Array.from(new Set(vehicles.map(v => v.department).filter(Boolean)));
+    const fromVehicles = vehicles.map(v => v.department).filter(Boolean);
+    const fromDrivers = drivers.map(d => d.department).filter(Boolean);
+    const defaults = ['Gabinete do Prefeito', 'Administração', 'Educação', 'Saúde', 'Obras e Serviços Urbanos', 'Agricultura', 'Transportes'];
+    const list = Array.from(new Set([...fromVehicles, ...fromDrivers, ...defaults]));
     return list.sort();
-  }, [vehicles]);
+  }, [vehicles, drivers]);
+
+  const filteredDrivers = useMemo(() => {
+    return drivers.filter(d => {
+      const q = driverSearchTerm.toLowerCase().trim();
+      const matchesSearch = !q || 
+        d.full_name.toLowerCase().includes(q) || 
+        d.cpf.includes(q) ||
+        (d.cnh_number && d.cnh_number.includes(q));
+      const matchesDept = departmentFilter === 'all' || d.department === departmentFilter;
+      return matchesSearch && matchesDept;
+    });
+  }, [drivers, driverSearchTerm, departmentFilter]);
+
+  const filteredStations = useMemo(() => {
+    return stations.filter(s => {
+      const q = stationSearchTerm.toLowerCase().trim();
+      return !q || 
+        s.name.toLowerCase().includes(q) || 
+        (s.cnpj && s.cnpj.includes(q)) ||
+        (s.city && s.city.toLowerCase().includes(q));
+    });
+  }, [stations, stationSearchTerm]);
 
   // Métricas do Painel de Auditoria (KPIs)
   const auditMetrics = useMemo(() => {
@@ -531,6 +870,30 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             <Truck size={15} />
             <span>Frota ({vehicles.length})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('drivers')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+              activeTab === 'drivers'
+                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Users size={15} />
+            <span>Motoristas ({drivers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('stations')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+              activeTab === 'stations'
+                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Store size={15} />
+            <span>Postos ({stations.length})</span>
+          </button>
         </div>
       </div>
 
@@ -663,6 +1026,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         {/* Botões Principais */}
         <div className="flex items-center gap-2">
           <button
+            onClick={handleSyncPatrimonio}
+            disabled={syncingPatrimonio}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
+            title="Importar/Atualizar veículos cadastrados no patrimônio municipal de Torixoréu"
+          >
+            <RefreshCw size={14} className={syncingPatrimonio ? 'animate-spin' : ''} />
+            <span>Sincronizar Patrimônio</span>
+          </button>
+
+          <button
             onClick={handleExportExcel}
             className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded-xl transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800"
           >
@@ -722,8 +1095,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
                 {filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-neutral-400">
-                      Nenhuma ordem de abastecimento encontrada com os filtros selecionados.
+                    <td colSpan={8} className="text-center py-12 text-neutral-400">
+                      <Fuel size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
+                      <p className="font-bold text-neutral-800 dark:text-white">Nenhuma ordem de abastecimento emitida ainda</p>
+                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
+                        A frota real de {vehicles.length} veículos municipais está pronta. Clique no botão <strong>"Emitir Ordem Digital"</strong> acima para gerar a primeira autorização oficial com trava de tanque e QR Code.
+                      </p>
                     </td>
                   </tr>
                 ) : (
@@ -847,6 +1224,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 <Eye size={15} />
                               </button>
                             )}
+
+                            <button
+                              onClick={() => handleDeleteOrder(order)}
+                              title="Excluir Ordem / Auditoria"
+                              className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={15} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1161,6 +1546,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                   </button>
                                 </>
                               )}
+
+                              <button
+                                onClick={() => handleDeleteOrder(order)}
+                                title="Excluir Registro de Auditoria / Ordem"
+                                className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer ml-1"
+                              >
+                                <Trash2 size={13} />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1184,12 +1577,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </h4>
               <p className="text-neutral-400 text-xs">Capacidades de tanque, parâmetros de consumo e controle de odômetro</p>
             </div>
-            <button
-              onClick={() => setIsNewVehicleModalOpen(true)}
-              className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer"
-            >
-              <Plus size={14} /> Cadastrar Veículo
-            </button>
+            <div className="flex items-center gap-2">
+              {vehicles.length > 0 && (
+                <button
+                  onClick={handleClearAllFleet}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-600 border border-rose-200 dark:border-rose-800 rounded-xl transition-all cursor-pointer"
+                  title="Excluir todos os veículos da frota municipal atual"
+                >
+                  <Trash2 size={13} /> Excluir Toda a Frota
+                </button>
+              )}
+              <button
+                onClick={() => setIsNewVehicleModalOpen(true)}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer"
+              >
+                <Plus size={14} /> Cadastrar Veículo
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1205,46 +1609,350 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   <th className="px-4 py-3.5">Consumo Esperado</th>
                   <th className="px-4 py-3.5">Odômetro Atual</th>
                   <th className="px-4 py-3.5">Status</th>
+                  <th className="px-4 py-3.5 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
-                {vehicles.map(vehicle => (
-                  <tr key={vehicle.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
-                    <td className="px-4 py-3.5">
-                      <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
-                        {vehicle.plate}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-neutral-700 dark:text-neutral-300">
-                      {vehicle.prefix_code || '-'}
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
-                      {vehicle.model}
-                    </td>
-                    <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
-                      {vehicle.department}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                        {vehicle.fuel_type.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
-                      {vehicle.tank_capacity.toFixed(2)} L
-                    </td>
-                    <td className="px-4 py-3.5 font-semibold text-emerald-600">
-                      {vehicle.expected_consumption.toFixed(2)} {vehicle.metric_type === 'horimetro' ? 'l/h' : 'km/l'}
-                    </td>
-                    <td className="px-4 py-3.5 font-mono text-neutral-800 dark:text-neutral-200">
-                      {vehicle.current_odometer.toLocaleString('pt-BR')} {vehicle.metric_type}
-                    </td>
-                    <td className="px-4 py-3.5">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                        <CheckCircle2 size={10} /> Ativo
-                      </span>
+                {vehicles.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="text-center py-12 text-neutral-400">
+                      <Truck size={36} className="mx-auto text-neutral-400 mb-2 opacity-60" />
+                      <p className="font-bold text-neutral-800 dark:text-white">Nenhum veículo cadastrado na frota</p>
+                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
+                        A frota municipal está limpa. Clique em <strong>"Cadastrar Veículo"</strong> para adicionar os veículos da frota ou sincronize do patrimônio municipal.
+                      </p>
+                      <div className="mt-4 flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => setIsNewVehicleModalOpen(true)}
+                          className="px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus size={14} /> Cadastrar Novo Veículo
+                        </button>
+                        <button
+                          onClick={handleSyncPatrimonio}
+                          className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <RefreshCw size={14} /> Sincronizar do Patrimônio
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  vehicles.map(vehicle => (
+                    <tr key={vehicle.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
+                      <td className="px-4 py-3.5">
+                        <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
+                          {vehicle.plate}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-neutral-700 dark:text-neutral-300">
+                        {vehicle.prefix_code || '-'}
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
+                        {vehicle.model}
+                      </td>
+                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
+                        {vehicle.department}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="uppercase text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                          {vehicle.fuel_type.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
+                        {vehicle.tank_capacity.toFixed(2)} L
+                      </td>
+                      <td className="px-4 py-3.5 font-semibold text-emerald-600">
+                        {vehicle.expected_consumption.toFixed(2)} {vehicle.metric_type === 'horimetro' ? 'l/h' : 'km/l'}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-neutral-800 dark:text-neutral-200">
+                        {vehicle.current_odometer.toLocaleString('pt-BR')} {vehicle.metric_type}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {vehicle.status === 'ativo' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            <CheckCircle2 size={10} /> Ativo
+                          </span>
+                        )}
+                        {vehicle.status === 'manutencao' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                            <AlertCircle size={10} /> Manutenção
+                          </span>
+                        )}
+                        {vehicle.status === 'baixado' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                            <Ban size={10} /> Baixado
+                          </span>
+                        )}
+                        {vehicle.status === 'inativo' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            Inativo
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditVehicle(vehicle)}
+                            title="Editar Dados do Veículo"
+                            className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVehicle(vehicle)}
+                            title="Excluir / Baixar Veículo da Frota"
+                            className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 8. CONTEÚDO PRINCIPAL: ABA 5 (Gestão de Motoristas / Condutores) */}
+      {activeTab === 'drivers' && (
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Users size={16} className="text-amber-500" />
+                Cadastro Oficial de Motoristas e Condutores
+              </h4>
+              <p className="text-neutral-400 text-xs">Identificação de condutores, CPF, data de nascimento e lotação funcional</p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar motorista ou CPF..."
+                  value={driverSearchTerm}
+                  onChange={e => setDriverSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={handleOpenNewDriver}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"
+              >
+                <Plus size={14} /> Novo Motorista
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
+                <tr>
+                  <th className="px-4 py-3.5">Nome Completo</th>
+                  <th className="px-4 py-3.5">CPF</th>
+                  <th className="px-4 py-3.5">Data de Nascimento</th>
+                  <th className="px-4 py-3.5">Secretaria / Lotação</th>
+                  <th className="px-4 py-3.5">CNH / Categoria</th>
+                  <th className="px-4 py-3.5">Status</th>
+                  <th className="px-4 py-3.5 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
+                {filteredDrivers.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-neutral-400">
+                      <Users size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
+                      <p className="font-bold text-neutral-800 dark:text-white">Nenhum motorista cadastrado ainda</p>
+                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
+                        Cadastre os condutores oficiais com Nome Completo, CPF, Data de Nascimento e Secretaria para emissão ágil de ordens.
+                      </p>
+                      <button
+                        onClick={handleOpenNewDriver}
+                        className="mt-4 px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus size={14} /> Cadastrar Primeiro Motorista
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredDrivers.map(driver => (
+                    <tr key={driver.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
+                      <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
+                        {driver.full_name}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-neutral-700 dark:text-neutral-300 font-semibold">
+                        {driver.cpf}
+                      </td>
+                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
+                        {driver.birth_date ? new Date(driver.birth_date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
+                      </td>
+                      <td className="px-4 py-3.5 text-neutral-700 dark:text-neutral-300">
+                        {driver.department}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span className="font-mono text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                          {driver.cnh_number || '-'} {driver.cnh_category ? `(Cat. ${driver.cnh_category})` : ''}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {driver.status === 'ativo' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            <CheckCircle2 size={10} /> Ativo
+                          </span>
+                        )}
+                        {driver.status === 'afastado' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                            <AlertCircle size={10} /> Afastado
+                          </span>
+                        )}
+                        {driver.status === 'inativo' && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            Inativo
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditDriver(driver)}
+                            title="Editar Motorista"
+                            className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteDriver(driver)}
+                            title="Excluir Motorista"
+                            className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 9. CONTEÚDO PRINCIPAL: ABA 6 (Gestão de Postos Credenciados) */}
+      {activeTab === 'stations' && (
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
+          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div>
+              <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
+                <Store size={16} className="text-amber-500" />
+                Rede de Postos Conveniados Credenciados
+              </h4>
+              <p className="text-neutral-400 text-xs">Fornecedores habilitados para fornecimento de combustível à frota</p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="relative flex-1 sm:w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar posto ou CNPJ..."
+                  value={stationSearchTerm}
+                  onChange={e => setStationSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
+                />
+              </div>
+              <button
+                onClick={handleOpenNewStation}
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"
+              >
+                <Plus size={14} /> Novo Posto
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
+                <tr>
+                  <th className="px-4 py-3.5">Razão Social / Nome Fantasia</th>
+                  <th className="px-4 py-3.5">CNPJ</th>
+                  <th className="px-4 py-3.5">Endereço / Localização</th>
+                  <th className="px-4 py-3.5">Município / UF</th>
+                  <th className="px-4 py-3.5">Telefone</th>
+                  <th className="px-4 py-3.5">Status</th>
+                  <th className="px-4 py-3.5 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
+                {filteredStations.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="text-center py-12 text-neutral-400">
+                      <Store size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
+                      <p className="font-bold text-neutral-800 dark:text-white">Nenhum posto credenciado cadastrado ainda</p>
+                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
+                        Cadastre os postos de combustíveis conveniados para facilitar a emissão ágil de ordens.
+                      </p>
+                      <button
+                        onClick={handleOpenNewStation}
+                        className="mt-4 px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus size={14} /> Cadastrar Primeiro Posto
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStations.map(station => (
+                    <tr key={station.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
+                      <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
+                        {station.name}
+                      </td>
+                      <td className="px-4 py-3.5 font-mono text-neutral-700 dark:text-neutral-300 font-semibold">
+                        {station.cnpj || '-'}
+                      </td>
+                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
+                        {station.address || '-'}
+                      </td>
+                      <td className="px-4 py-3.5 text-neutral-700 dark:text-neutral-300 font-medium">
+                        {station.city || 'Torixoréu - MT'}
+                      </td>
+                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
+                        {station.phone || '-'}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {station.status === 'ativo' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            <CheckCircle2 size={10} /> Credenciado
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                            Inativo
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleOpenEditStation(station)}
+                            title="Editar Posto"
+                            className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteStation(station)}
+                            title="Excluir Posto"
+                            className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -1282,11 +1990,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <form onSubmit={handleCreateOrder} className="mt-4 space-y-4">
-                {/* Seleção do Veículo */}
+                {/* Seleção do Veículo pela Placa */}
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Veículo Oficial da Frota *
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Veículo Oficial da Frota (Buscar pela Placa) *
+                    </label>
+                    {vehicles.length === 0 && (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                        Nenhum veículo cadastrado
+                      </span>
+                    )}
+                  </div>
                   <select
                     value={newOrderForm.vehicle_id}
                     onChange={e => {
@@ -1302,10 +2017,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     required
                     className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
                   >
-                    <option value="">Selecione a placa / modelo do veículo...</option>
+                    <option value="">Selecione a placa do veículo...</option>
                     {vehicles.map(v => (
                       <option key={v.id} value={v.id}>
-                        {v.plate} - {v.model} ({v.department}) [Tanque: {v.tank_capacity}L]
+                        {v.plate} — {v.model} ({v.department}) [Tanque: {v.tank_capacity}L]
                       </option>
                     ))}
                   </select>
@@ -1314,6 +2029,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 {/* Exibição Técnica do Veículo Selecionado */}
                 {selectedVehicleForNewOrder && (
                   <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500">Modelo e Secretaria:</span>
+                      <strong className="text-neutral-900 dark:text-white">{selectedVehicleForNewOrder.model} ({selectedVehicleForNewOrder.department})</strong>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-neutral-500">Capacidade Máxima do Tanque:</span>
                       <strong className="text-neutral-900 dark:text-white">{selectedVehicleForNewOrder.tank_capacity.toFixed(2)} Litros</strong>
@@ -1370,33 +2089,65 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   )}
                 </div>
 
-                {/* Condutor e Matrícula */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Nome do Condutor / Motorista *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Carlos Alberto Ferreira"
-                      value={newOrderForm.driver_name}
-                      onChange={e => setNewOrderForm({ ...newOrderForm, driver_name: e.target.value })}
-                      required
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
-                  </div>
+                {/* Condutor e CPF com autopreenchimento de Motorista Cadastrado */}
+                <div className="space-y-2">
+                  {drivers.length > 0 && (
+                    <div>
+                      <label className="block text-xs font-bold text-amber-800 dark:text-amber-300 mb-1">
+                        Puxar Motorista Cadastrado (Nome ou CPF)
+                      </label>
+                      <select
+                        onChange={e => {
+                          const drvId = e.target.value;
+                          const found = drivers.find(d => d.id === drvId);
+                          if (found) {
+                            setNewOrderForm(prev => ({
+                              ...prev,
+                              driver_name: found.full_name,
+                              driver_document: found.cpf
+                            }));
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">Selecione o motorista para preencher Nome e CPF...</option>
+                        {drivers.map(d => (
+                          <option key={d.id} value={d.id}>
+                            {d.full_name} — CPF: {d.cpf} ({d.department})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      CPF ou Matrícula Funcional
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 849.201.554-00"
-                      value={newOrderForm.driver_document}
-                      onChange={e => setNewOrderForm({ ...newOrderForm, driver_document: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Nome do Condutor / Motorista *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Carlos Alberto Ferreira"
+                        value={newOrderForm.driver_name}
+                        onChange={e => setNewOrderForm({ ...newOrderForm, driver_name: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        CPF do Motorista *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: 849.201.554-00"
+                        value={newOrderForm.driver_document}
+                        onChange={e => setNewOrderForm({ ...newOrderForm, driver_document: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -1406,13 +2157,30 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
                       Posto Conveniado Credenciado *
                     </label>
-                    <input
-                      type="text"
-                      value={newOrderForm.station_name}
-                      onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
-                      required
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    />
+                    {stations.length > 0 ? (
+                      <select
+                        value={newOrderForm.station_name}
+                        onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      >
+                        <option value="">Selecione o posto credenciado...</option>
+                        {stations.map(st => (
+                          <option key={st.id} value={st.name}>
+                            {st.name} {st.cnpj ? `(${st.cnpj})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        placeholder="Ex: Auto Posto Central Municipal"
+                        value={newOrderForm.station_name}
+                        onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
+                        required
+                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    )}
                   </div>
 
                   <div>
@@ -2088,6 +2856,528 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           </div>
         )}
       </AnimatePresence>
+
+      {/* MODAL 6: EDITAR VEÍCULO DA FROTA */}
+      <AnimatePresence>
+        {isEditVehicleModalOpen && editingVehicle && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center">
+                    <Edit2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      Editar Veículo Oficial ({editingVehicle.plate})
+                    </h3>
+                    <p className="text-neutral-400 text-xs">Atualização de parâmetros técnicos e lotação</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsEditVehicleModalOpen(false);
+                    setEditingVehicle(null);
+                  }}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditVehicle} className="mt-4 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Placa Oficial *
+                    </label>
+                    <input
+                      type="text"
+                      value={editVehicleForm.plate}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, plate: e.target.value.toUpperCase() })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Prefixo do Veículo
+                    </label>
+                    <input
+                      type="text"
+                      value={editVehicleForm.prefix_code}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, prefix_code: e.target.value.toUpperCase() })}
+                      placeholder="Ex: AMB-04"
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Modelo / Fabricante *
+                  </label>
+                  <input
+                    type="text"
+                    value={editVehicleForm.model}
+                    onChange={e => setEditVehicleForm({ ...editVehicleForm, model: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Secretaria / Lotação *
+                    </label>
+                    <input
+                      type="text"
+                      value={editVehicleForm.department}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, department: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Combustível Homologado
+                    </label>
+                    <select
+                      value={editVehicleForm.fuel_type}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, fuel_type: e.target.value as FuelType })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
+                    >
+                      <option value="diesel_s10">Diesel S-10</option>
+                      <option value="diesel_s500">Diesel S-500</option>
+                      <option value="gasolina">Gasolina Comum</option>
+                      <option value="etanol">Etanol Hidratado</option>
+                      <option value="arla32">Arla 32</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Capacidade Tanque (L) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={editVehicleForm.tank_capacity}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, tank_capacity: parseFloat(e.target.value) || 0 })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Métrica de Medição
+                    </label>
+                    <select
+                      value={editVehicleForm.metric_type}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, metric_type: e.target.value as MetricType })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
+                    >
+                      <option value="km">Odômetro (KM)</option>
+                      <option value="horimetro">Horímetro (Horas)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Consumo Ref. *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={editVehicleForm.expected_consumption}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, expected_consumption: parseFloat(e.target.value) || 0 })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Odômetro / Horímetro Atual
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      value={editVehicleForm.current_odometer}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, current_odometer: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Status Operacional
+                    </label>
+                    <select
+                      value={editVehicleForm.status}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, status: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
+                    >
+                      <option value="ativo">Ativo (Em circulação)</option>
+                      <option value="manutencao">Em Manutenção / Oficina</option>
+                      <option value="baixado">Baixado / Leilão (Desativado)</option>
+                      <option value="inativo">Inativo</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditVehicleModalOpen(false);
+                      setEditingVehicle(null);
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    Salvar Alterações
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 7: CADASTRO / EDIÇÃO DE MOTORISTA */}
+      <AnimatePresence>
+        {(isNewDriverModalOpen || isEditDriverModalOpen) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                    <UserCheck size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      {editingDriver ? 'Editar Motorista Oficial' : 'Cadastrar Novo Motorista'}
+                    </h3>
+                    <p className="text-neutral-400 text-xs">Dados funcionais, CPF e data de nascimento</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsNewDriverModalOpen(false);
+                    setIsEditDriverModalOpen(false);
+                    setEditingDriver(null);
+                  }}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveDriver} className="mt-4 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Nome Completo do Motorista *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: João da Silva Ferreira"
+                      value={driverForm.full_name}
+                      onChange={e => setDriverForm({ ...driverForm, full_name: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      CPF *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="000.000.000-00"
+                      value={driverForm.cpf}
+                      onChange={e => setDriverForm({ ...driverForm, cpf: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Data de Nascimento
+                    </label>
+                    <input
+                      type="date"
+                      value={driverForm.birth_date}
+                      onChange={e => setDriverForm({ ...driverForm, birth_date: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Secretaria de Lotação *
+                    </label>
+                    <select
+                      value={driverForm.department}
+                      onChange={e => setDriverForm({ ...driverForm, department: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      {departments.map(dept => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Status Funcional
+                    </label>
+                    <select
+                      value={driverForm.status}
+                      onChange={e => setDriverForm({ ...driverForm, status: e.target.value as any })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="ativo">Ativo (Em escala regular)</option>
+                      <option value="afastado">Afastado / Licença médica</option>
+                      <option value="inativo">Inativo / Desligado</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Número da CNH
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 04958392019"
+                      value={driverForm.cnh_number}
+                      onChange={e => setDriverForm({ ...driverForm, cnh_number: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Categoria CNH
+                    </label>
+                    <select
+                      value={driverForm.cnh_category}
+                      onChange={e => setDriverForm({ ...driverForm, cnh_category: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
+                    >
+                      <option value="A">A (Moto)</option>
+                      <option value="B">B (Carro)</option>
+                      <option value="C">C (Caminhão leve)</option>
+                      <option value="D">D (Ônibus / Van)</option>
+                      <option value="E">E (Carreta / Articulado)</option>
+                      <option value="AB">AB</option>
+                      <option value="AC">AC</option>
+                      <option value="AD">AD</option>
+                      <option value="AE">AE</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewDriverModalOpen(false);
+                      setIsEditDriverModalOpen(false);
+                      setEditingDriver(null);
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    {editingDriver ? 'Salvar Alterações' : 'Cadastrar Motorista'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 8: CADASTRO / EDIÇÃO DE POSTO CREDENCIADO */}
+      <AnimatePresence>
+        {(isNewStationModalOpen || isEditStationModalOpen) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                    <Store size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      {editingStation ? 'Editar Posto Credenciado' : 'Cadastrar Novo Posto Conveniado'}
+                    </h3>
+                    <p className="text-neutral-400 text-xs">Fornecedor credenciado para abastecimento de combustíveis</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsNewStationModalOpen(false);
+                    setIsEditStationModalOpen(false);
+                    setEditingStation(null);
+                  }}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveStation} className="mt-4 space-y-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Razão Social / Nome Fantasia *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Auto Posto Central Torixoréu Ltda"
+                    value={stationForm.name}
+                    onChange={e => setStationForm({ ...stationForm, name: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      CNPJ do Posto
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="00.000.000/0000-00"
+                      value={stationForm.cnpj}
+                      onChange={e => setStationForm({ ...stationForm, cnpj: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Telefone / Contato
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="(66) 3406-1122"
+                      value={stationForm.phone}
+                      onChange={e => setStationForm({ ...stationForm, phone: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Endereço / Localização
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Av. Principal, nº 450 - Centro"
+                      value={stationForm.address}
+                      onChange={e => setStationForm({ ...stationForm, address: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Cidade / UF
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Torixoréu - MT"
+                      value={stationForm.city}
+                      onChange={e => setStationForm({ ...stationForm, city: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Status de Credenciamento
+                  </label>
+                  <select
+                    value={stationForm.status}
+                    onChange={e => setStationForm({ ...stationForm, status: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  >
+                    <option value="ativo">Credenciado (Ativo para emissão)</option>
+                    <option value="inativo">Inativo / Descredenciado</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsNewStationModalOpen(false);
+                      setIsEditStationModalOpen(false);
+                      setEditingStation(null);
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    {editingStation ? 'Salvar Alterações' : 'Cadastrar Posto'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
