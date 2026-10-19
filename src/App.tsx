@@ -255,11 +255,24 @@ export default function App() {
       };
       window.addEventListener('online', handleOnline);
 
+      // Sincroniza estado da prefeitura com o histórico do navegador (botões Voltar/Avançar)
+      const handlePopState = async () => {
+        const sub = getSubdomain();
+        if (sub) {
+          const inst = await fetchInstitutionBySubdomain(sub);
+          setCurrentInstitution(inst);
+        } else {
+          setCurrentInstitution(null);
+        }
+      };
+      window.addEventListener('popstate', handlePopState);
+
       setLoadingInstitution(false);
 
       return () => {
         subscription.unsubscribe();
         window.removeEventListener('online', handleOnline);
+        window.removeEventListener('popstate', handlePopState);
       };
     };
 
@@ -308,12 +321,19 @@ export default function App() {
   }, [isAuthenticated]);
 
   React.useEffect(() => {
-    // Busca pública das prefeituras para exibir a logo na Landing Page
+    // Busca pública das prefeituras oficiais para exibir na Landing Page
     const fetchPublicInstitutions = async () => {
       try {
         const { data, error } = await supabase.from('institutions').select('*');
         if (!error && data && data.length > 0) {
-          setInstitutions(data as Institution[]);
+          const sanitized = (data as Institution[]).filter(inst => {
+            const sub = (inst.subdomain || '').toLowerCase().trim();
+            const nm = (inst.name || '').toLowerCase().trim();
+            return sub !== 'demo' && !nm.includes('demonstração') && !nm.includes('demonstracao') && !nm.includes('modelo');
+          });
+          if (sanitized.length > 0) {
+            setInstitutions(sanitized);
+          }
         }
       } catch (err) {
         console.error('Erro ao buscar prefeituras públicas:', err);
@@ -613,18 +633,61 @@ export default function App() {
     );
   }
 
+  const handleSelectInstitution = (inst: Institution) => {
+    setCurrentInstitution(inst);
+    const targetParam = inst.subdomain || inst.id;
+    const url = new URL(window.location.href);
+    url.searchParams.set('inst', targetParam);
+    url.searchParams.delete('sales');
+    window.history.pushState({}, '', url.toString());
+    document.title = `GESTÃO 360 · ${inst.name}`;
+  };
+
+  const handleReturnToSales = () => {
+    setCurrentInstitution(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('inst');
+    url.searchParams.delete('subdomain');
+    url.searchParams.delete('municipio');
+    window.history.pushState({}, '', url.pathname);
+    document.title = 'GESTÃO 360 · Plataforma de Gestão Pública e Governança Municipal';
+  };
+
   // Rota de apresentação e vendas
   if (isSalesPage) {
-    return <SalesLandingPage darkMode={darkMode} setDarkMode={setDarkMode} showMunicipalitySelector={true} institutions={institutions} />;
+    return (
+      <SalesLandingPage 
+        darkMode={darkMode} 
+        setDarkMode={setDarkMode} 
+        showMunicipalitySelector={true} 
+        institutions={institutions} 
+        onSelectMunicipality={handleSelectInstitution}
+      />
+    );
   }
 
   // Página inicial — se não houver subdomínio, exibe a página institucional com seletor.
   // Se houver subdomínio, exibe a landing page pública daquela prefeitura.
   if (isLandingPage) {
     if (!currentInstitution) {
-      return <SalesLandingPage darkMode={darkMode} setDarkMode={setDarkMode} showMunicipalitySelector={true} institutions={institutions} />;
+      return (
+        <SalesLandingPage 
+          darkMode={darkMode} 
+          setDarkMode={setDarkMode} 
+          showMunicipalitySelector={true} 
+          institutions={institutions} 
+          onSelectMunicipality={handleSelectInstitution}
+        />
+      );
     }
-    return <LandingPage darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />;
+    return (
+      <LandingPage 
+        darkMode={darkMode} 
+        setDarkMode={setDarkMode} 
+        currentInstitution={currentInstitution} 
+        onReturnToHome={handleReturnToSales}
+      />
+    );
   }
 
   if (isFarmaciaPortal) {

@@ -7,7 +7,14 @@ import {
 import { LogoCompass } from './LogoCompass';
 import { Institution } from '../types';
 
-export const LandingPage = ({ darkMode, setDarkMode, currentInstitution }: { darkMode: boolean, setDarkMode: (v: boolean) => void, currentInstitution?: Institution | null }) => (
+export interface LandingPageProps {
+  darkMode: boolean;
+  setDarkMode: (v: boolean) => void;
+  currentInstitution?: Institution | null;
+  onReturnToHome?: () => void;
+}
+
+export const LandingPage = ({ darkMode, setDarkMode, currentInstitution, onReturnToHome }: LandingPageProps) => (
   <div className={`min-h-[100dvh] ${darkMode ? 'dark' : ''}`}>
     <div className="min-h-[100dvh] bg-[#F4F4F2] dark:bg-neutral-950 flex flex-col overflow-hidden relative transition-colors duration-300">
       {/* Gradients de fundo */}
@@ -18,21 +25,52 @@ export const LandingPage = ({ darkMode, setDarkMode, currentInstitution }: { dar
       </div>
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-8 py-6">
+      <header className="relative z-10 flex items-center justify-between px-6 sm:px-8 py-5 sm:py-6">
         <div className="flex items-center gap-3">
-          <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-2xl shadow-lg border border-neutral-100 dark:border-neutral-800">
-            <LogoCompass size={28} />
+          <div className="bg-white dark:bg-neutral-900 p-2 sm:p-2.5 rounded-2xl shadow-lg border border-neutral-100 dark:border-neutral-800">
+            {currentInstitution?.logo_url ? (
+              <img 
+                src={currentInstitution.logo_url} 
+                alt={`Brasão ${currentInstitution.name}`} 
+                className="w-7 h-7 object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <LogoCompass size={28} />
+            )}
           </div>
-          <span className="text-xl font-black text-neutral-900 dark:text-white tracking-tight italic">
+          <span className="text-lg sm:text-xl font-black text-neutral-900 dark:text-white tracking-tight italic">
             {currentInstitution ? currentInstitution.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : <>Gestão <span className="text-neutral-400 font-normal">360</span></>}
           </span>
         </div>
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className="p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-md border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
-        >
-          {darkMode ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={() => {
+              if (onReturnToHome) {
+                onReturnToHome();
+              } else {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('inst');
+                url.searchParams.delete('subdomain');
+                url.searchParams.delete('municipio');
+                window.location.href = url.pathname === '/' ? '/?sales=true' : '/';
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm transition hover:scale-105"
+            title="Conhecer o ecossistema Gestão 360"
+          >
+            ← Voltar ao Gestão 360
+          </button>
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className="p-2.5 sm:p-3 bg-white dark:bg-neutral-900 rounded-2xl shadow-md border border-neutral-100 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 hover:scale-110 transition-all"
+            aria-label="Alternar tema"
+          >
+            {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+        </div>
       </header>
 
       {/* Hero */}

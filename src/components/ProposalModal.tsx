@@ -13,16 +13,20 @@ import { LogoCompass } from './LogoCompass';
 interface ProposalModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialModule?: string;
 }
 
-export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose }) => {
+export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose, initialModule }) => {
   if (!isOpen) return null;
 
   const handlePrint = () => {
     window.print();
   };
 
-  const WA_SHARE_URL = "https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20uma%20demonstra%C3%A7%C3%A3o%20e%20proposta%20comercial%20do%20sistema%20Gest%C3%A3o%20360.";
+  const WA_SHARE_URL = initialModule 
+    ? `https://wa.me/5566996893617?text=${encodeURIComponent(`Olá! Gostaria de solicitar uma demonstração e proposta comercial do sistema Gestão 360 para o módulo de ${initialModule}.`)}`
+    : "https://wa.me/5566996893617?text=Ol%C3%A1!%20Gostaria%20de%20solicitar%20uma%20demonstra%C3%A7%C3%A3o%20e%20proposta%20comercial%20do%20sistema%20Gest%C3%A3o%20360.";
+
 
   const modalContent = (
     <>
@@ -486,3 +490,5 @@ export const ProposalModal: React.FC<ProposalModalProps> = ({ isOpen, onClose })
     document.body
   );
 };
+
+export default ProposalModal;
