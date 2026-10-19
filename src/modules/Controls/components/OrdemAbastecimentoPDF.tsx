@@ -445,6 +445,28 @@ export function gerarOrdemAbastecimentoHtml(
           Autorização Prévia de Fornecimento de Combustível
         </div>
 
+        ${(order.is_full_tank_order || vehicle?.is_emergency_priority) ? `
+        <!-- BANNER DE PRONTIDÃO OPERACIONAL (TANQUE CHEIO) -->
+        <div style="background: #fef2f2; border: 1.5px solid #dc2626; border-radius: 4px; padding: 6px 10px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;">
+          <div>
+            <span style="background: #dc2626; color: #fff; font-size: 8px; font-weight: 900; padding: 2px 6px; border-radius: 2px; text-transform: uppercase;">
+              REGIME DE PRONTIDÃO 24H (TANQUE CHEIO)
+            </span>
+            <span style="font-size: 9.5px; font-weight: 700; color: #991b1b; margin-left: 6px;">
+              VEÍCULO DE URGÊNCIA / PLANTÃO OPERACIONAL
+            </span>
+            ${order.emergency_call_reason ? `
+              <div style="font-size: 8.5px; color: #7f1d1d; margin-top: 3px;">
+                <strong>Justificativa do Plantão / Chamado:</strong> ${order.emergency_call_reason}
+              </div>
+            ` : ''}
+          </div>
+          <div style="font-size: 7.5px; font-weight: 800; color: #b91c1c; text-align: right; line-height: 1.2;">
+            AUDITORIA POR KM OBRIGATÓRIA<br/>SUJEITO A GLOSA TCE
+          </div>
+        </div>
+        ` : ''}
+
         <!-- 3. DADOS DO ESTABELECIMENTO CREDENCIADO -->
         <div class="section-box">
           <div class="section-head">1. Estabelecimento Fornecedor Credenciado</div>
@@ -609,7 +631,7 @@ export function gerarOrdemAbastecimentoHtml(
           </div>
 
           <div class="legal-notice">
-            Atesto que o combustível acima especificado foi efetivamente fornecido diretamente no tanque do veículo oficial indicado, estando o odômetro e os valores devidamente conferidos. A adulteração ou fornecimento fora do tanque constitui crime contra a administração pública (Lei 8.429/92 e Código Penal).
+            Atesto que o combustível acima especificado foi efetivamente fornecido diretamente no tanque do veículo oficial indicado, estando o odômetro e os valores devidamente conferidos. A adulteração ou fornecimento fora do tanque constitui crime contra a administração pública (Lei 8.429/92 e Código Penal). ${(order.is_full_tank_order || vehicle?.is_emergency_priority) ? '• AUTORIZAÇÃO EM REGIME DE PRONTIDÃO (TANQUE CHEIO): Sujeita à auditoria de consumo por KM no retorno.' : ''}
           </div>
         </div>
       </div>

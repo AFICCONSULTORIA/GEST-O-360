@@ -113,7 +113,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     driver_document: '',
     station_name: 'Auto Posto Central Municipal Ltda',
     fuel_type: 'diesel_s10' as FuelType,
-    liters_authorized: 50
+    liters_authorized: 50,
+    is_full_tank_order: false,
+    emergency_call_reason: ''
   });
 
   // Formulário: Lançamento de Canhoto / Execução
@@ -144,7 +146,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     tank_capacity: 70,
     metric_type: 'km' as MetricType,
     expected_consumption: 9.0,
-    current_odometer: 0
+    current_odometer: 0,
+    is_emergency_priority: false
   });
 
   // Estado para Edição de Veículo
@@ -160,7 +163,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     metric_type: 'km' as MetricType,
     expected_consumption: 9.0,
     current_odometer: 0,
-    status: 'ativo' as 'ativo' | 'manutencao' | 'baixado' | 'inativo'
+    status: 'ativo' as 'ativo' | 'manutencao' | 'baixado' | 'inativo',
+    is_emergency_priority: false
   });
 
   // Estado para Gestão de Motoristas
@@ -244,7 +248,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       metric_type: vehicle.metric_type,
       expected_consumption: vehicle.expected_consumption,
       current_odometer: vehicle.current_odometer,
-      status: vehicle.status
+      status: vehicle.status,
+      is_emergency_priority: !!vehicle.is_emergency_priority
     });
     setIsEditVehicleModalOpen(true);
   };
@@ -264,7 +269,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         metric_type: editVehicleForm.metric_type,
         expected_consumption: Number(editVehicleForm.expected_consumption),
         current_odometer: Number(editVehicleForm.current_odometer),
-        status: editVehicleForm.status
+        status: editVehicleForm.status,
+        is_emergency_priority: Boolean(editVehicleForm.is_emergency_priority)
       });
 
       showToast(`Veículo ${editVehicleForm.plate} atualizado com sucesso!`, 'success');
@@ -578,7 +584,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         driver_document: newOrderForm.driver_document,
         station_name: newOrderForm.station_name,
         fuel_type: newOrderForm.fuel_type,
-        liters_authorized: Number(newOrderForm.liters_authorized)
+        liters_authorized: Number(newOrderForm.liters_authorized),
+        is_full_tank_order: newOrderForm.is_full_tank_order,
+        emergency_call_reason: newOrderForm.emergency_call_reason
       });
 
       showToast(`Ordem ${created.order_number} emitida com sucesso!`, 'success');
@@ -589,7 +597,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         driver_document: '',
         station_name: 'Auto Posto Central Municipal Ltda',
         fuel_type: 'diesel_s10',
-        liters_authorized: 50
+        liters_authorized: 50,
+        is_full_tank_order: false,
+        emergency_call_reason: ''
       });
       loadData();
 
@@ -679,7 +689,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         metric_type: newVehicleForm.metric_type,
         expected_consumption: Number(newVehicleForm.expected_consumption),
         current_odometer: Number(newVehicleForm.current_odometer),
-        status: 'ativo'
+        status: 'ativo',
+        is_emergency_priority: Boolean(newVehicleForm.is_emergency_priority)
       });
 
       showToast('Veículo cadastrado na frota com sucesso!', 'success');
@@ -693,7 +704,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         tank_capacity: 70,
         metric_type: 'km',
         expected_consumption: 9.0,
-        current_odometer: 0
+        current_odometer: 0,
+        is_emergency_priority: false
       });
       loadData();
     } catch (err: any) {
@@ -1113,7 +1125,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div className="font-mono font-bold text-neutral-900 dark:text-white">
                             {order.order_number}
                           </div>
-                          <div className="text-[10px] text-neutral-400">
+                          {order.is_full_tank_order && (
+                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                              🚨 Tanque Cheio (Prontidão)
+                            </span>
+                          )}
+                          <div className="text-[10px] text-neutral-400 mt-0.5">
                             {new Date(order.created_at).toLocaleDateString('pt-BR')}
                           </div>
                         </td>
@@ -1127,6 +1144,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             <span className="font-semibold text-neutral-800 dark:text-neutral-200">
                               {v?.model || 'Veículo Municipal'}
                             </span>
+                            {v?.is_emergency_priority && (
+                              <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                                🚨 24h
+                              </span>
+                            )}
                           </div>
                           {v?.prefix_code && (
                             <span className="text-[10px] text-neutral-400 ml-0.5">
@@ -1401,6 +1423,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             <div className="text-[10px] text-neutral-400">
                               {v?.department} • {order.order_number}
                             </div>
+                            {order.is_full_tank_order && (
+                              <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                🚨 Tanque Cheio (Prontidão)
+                              </span>
+                            )}
                           </td>
 
                           {/* Condutor */}
@@ -1649,7 +1676,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         {vehicle.prefix_code || '-'}
                       </td>
                       <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
-                        {vehicle.model}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{vehicle.model}</span>
+                          {vehicle.is_emergency_priority && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                              🚨 Prontidão 24h
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
                         {vehicle.department}
@@ -2007,11 +2041,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     onChange={e => {
                       const vehId = e.target.value;
                       const found = vehicles.find(v => v.id === vehId);
+                      const isEmergency = !!found?.is_emergency_priority;
                       setNewOrderForm(prev => ({
                         ...prev,
                         vehicle_id: vehId,
                         fuel_type: found ? found.fuel_type : prev.fuel_type,
-                        liters_authorized: found ? Math.min(prev.liters_authorized, found.tank_capacity) : prev.liters_authorized
+                        is_full_tank_order: isEmergency ? true : prev.is_full_tank_order,
+                        liters_authorized: found ? (isEmergency ? found.tank_capacity : Math.min(prev.liters_authorized, found.tank_capacity)) : prev.liters_authorized,
+                        emergency_call_reason: isEmergency && !prev.emergency_call_reason ? `Plantão de Prontidão 24h - ${found?.model}` : prev.emergency_call_reason
                       }));
                     }}
                     required
@@ -2020,7 +2057,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <option value="">Selecione a placa do veículo...</option>
                     {vehicles.map(v => (
                       <option key={v.id} value={v.id}>
-                        {v.plate} — {v.model} ({v.department}) [Tanque: {v.tank_capacity}L]
+                        {v.plate} — {v.model} ({v.department}) [Tanque: {v.tank_capacity}L]{v.is_emergency_priority ? ' 🚨 [Prontidão 24h]' : ''}
                       </option>
                     ))}
                   </select>
@@ -2029,9 +2066,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 {/* Exibição Técnica do Veículo Selecionado */}
                 {selectedVehicleForNewOrder && (
                   <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 text-xs space-y-1">
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span className="text-neutral-500">Modelo e Secretaria:</span>
-                      <strong className="text-neutral-900 dark:text-white">{selectedVehicleForNewOrder.model} ({selectedVehicleForNewOrder.department})</strong>
+                      <div className="flex items-center gap-1.5">
+                        <strong className="text-neutral-900 dark:text-white">{selectedVehicleForNewOrder.model} ({selectedVehicleForNewOrder.department})</strong>
+                        {selectedVehicleForNewOrder.is_emergency_priority && (
+                          <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded uppercase">
+                            🚨 Prontidão 24h
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-neutral-500">Capacidade Máxima do Tanque:</span>
@@ -2047,6 +2091,69 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </div>
                   </div>
                 )}
+
+                {/* REGIME DE PRONTIDÃO (TANQUE CHEIO) E AUDITORIA ANTIFRAUDE */}
+                <div className={`p-3.5 rounded-2xl border transition-all ${
+                  newOrderForm.is_full_tank_order 
+                    ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800' 
+                    : 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700'
+                }`}>
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newOrderForm.is_full_tank_order}
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        setNewOrderForm(prev => ({
+                          ...prev,
+                          is_full_tank_order: checked,
+                          liters_authorized: checked && selectedVehicleForNewOrder 
+                            ? selectedVehicleForNewOrder.tank_capacity 
+                            : prev.liters_authorized,
+                          emergency_call_reason: checked && !prev.emergency_call_reason
+                            ? (selectedVehicleForNewOrder ? `Plantão de Prontidão 24h - ${selectedVehicleForNewOrder.model}` : 'Plantão de Urgência / Emergência')
+                            : prev.emergency_call_reason
+                        }));
+                      }}
+                      className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-wide">
+                          Regime de Prontidão Operacional (Tanque Cheio)
+                        </span>
+                        {selectedVehicleForNewOrder?.is_emergency_priority && (
+                          <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded uppercase">
+                            Recomendado para Ambulâncias e Ônibus
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5 leading-snug">
+                        Autoriza o abastecimento de capacidade total para veículos de socorro e plantão contínuo.
+                        <strong> Auditoria Antifraude:</strong> O sistema checará a quilometragem percorrida no fechamento do canhoto para coibir desvios.
+                      </p>
+                    </div>
+                  </label>
+
+                  {newOrderForm.is_full_tank_order && (
+                    <div className="mt-3 pt-3 border-t border-rose-200 dark:border-rose-900/40 space-y-1.5">
+                      <label className="block text-[11px] font-bold text-rose-900 dark:text-rose-200">
+                        Motivo da Prontidão / Chamado de Urgência *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Plantão Ambulância SAMU 24h - Transferência Regional / Linha Escolar Rural"
+                        value={newOrderForm.emergency_call_reason}
+                        onChange={e => setNewOrderForm({ ...newOrderForm, emergency_call_reason: e.target.value })}
+                        required={newOrderForm.is_full_tank_order}
+                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-semibold text-rose-900 dark:text-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                      <span className="text-[10px] text-rose-600 dark:text-rose-400 block font-medium">
+                        ⚖️ Exigência legal de controle interno (TCE) para justificar autorização em regime de prontidão contínua.
+                      </span>
+                    </div>
+                  )}
+                </div>
 
                 {/* Litros Autorizados & Validação de Tanque */}
                 <div>
@@ -2310,6 +2417,90 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </span>
                   </div>
                 </div>
+
+                {/* PAINEL MATEMÁTICO DE AUDITORIA EM TEMPO REAL (ANTIFRAUDE) */}
+                {(() => {
+                  const v = selectedOrderForAction.vehicle || vehicles.find(item => item.id === selectedOrderForAction.vehicle_id);
+                  const deltaOdo = executionForm.current_odometer > selectedOrderForAction.previous_odometer
+                    ? executionForm.current_odometer - selectedOrderForAction.previous_odometer
+                    : 0;
+                  const expectedLiters = (v && v.expected_consumption > 0 && deltaOdo > 0)
+                    ? (v.metric_type === 'horimetro' ? (deltaOdo * v.expected_consumption) : (deltaOdo / v.expected_consumption))
+                    : 0;
+                  const maxAllowed = expectedLiters * 1.30;
+                  const isEmergencyOrFullTank = selectedOrderForAction.is_full_tank_order || v?.is_emergency_priority;
+                  const excessLiters = executionForm.liters_supplied - maxAllowed;
+                  const isExcess = isEmergencyOrFullTank && deltaOdo > 0 && expectedLiters > 0 && executionForm.liters_supplied > maxAllowed && excessLiters > 8.0;
+                  const isStagnant = deltaOdo < 15 && executionForm.liters_supplied > 10;
+
+                  return (
+                    <div className={`p-3.5 rounded-2xl border text-xs space-y-2 transition-all ${
+                      isExcess || isStagnant
+                        ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+                        : isEmergencyOrFullTank
+                          ? 'bg-blue-50/70 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200'
+                          : 'bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300'
+                    }`}>
+                      <div className="flex justify-between items-center font-bold">
+                        <span className="flex items-center gap-1.5 uppercase text-[10px] tracking-wider">
+                          <Gauge size={13} />
+                          Auditoria Cruzada (Odômetro x Litragem Faturada)
+                        </span>
+                        {isEmergencyOrFullTank && (
+                          <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-rose-600 text-white">
+                            🚨 Prontidão 24h
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-black/5 dark:border-white/5">
+                        <div>
+                          <span className="text-[10px] opacity-70 block">Deslocamento:</span>
+                          <strong className="text-xs font-mono">+{deltaOdo} {v?.metric_type || 'km'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] opacity-70 block">Consumo Teórico:</span>
+                          <strong className="text-xs font-mono">~{expectedLiters.toFixed(1)} L</strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] opacity-70 block">Teto com Margem (30%):</span>
+                          <strong className="text-xs font-mono">{maxAllowed.toFixed(1)} L</strong>
+                        </div>
+                        <div>
+                          <span className="text-[10px] opacity-70 block">Faturado no Canhoto:</span>
+                          <strong className={`text-xs font-mono ${isExcess ? 'text-rose-600 dark:text-rose-400 font-black' : ''}`}>
+                            {executionForm.liters_supplied.toFixed(1)} L
+                          </strong>
+                        </div>
+                      </div>
+
+                      {isExcess && (
+                        <div className="p-2 bg-rose-100 dark:bg-rose-900/50 rounded-xl flex items-start gap-2 text-rose-900 dark:text-rose-100 text-[11px] font-bold">
+                          <AlertTriangle size={15} className="text-rose-600 shrink-0 mt-0.5" />
+                          <span>
+                            ALERTA ANTIFRAUDE: O abastecimento excede em {(executionForm.liters_supplied - expectedLiters).toFixed(1)}L o consumo físico estimado para a quilometragem percorrida. O sistema registrará anomalia automática para auditoria do TCE.
+                          </span>
+                        </div>
+                      )}
+
+                      {isStagnant && !isExcess && (
+                        <div className="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-xl flex items-start gap-2 text-amber-900 dark:text-amber-100 text-[11px] font-bold">
+                          <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                          <span>
+                            ALERTA DE ODÔMETRO ESTAGNADO: Abastecimento de alto volume para apenas {deltaOdo} {v?.metric_type} rodados. Requer comprovação de funcionamento em marcha lenta ou manutenção técnica.
+                          </span>
+                        </div>
+                      )}
+
+                      {!isExcess && !isStagnant && deltaOdo > 0 && (
+                        <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 text-[11px] font-semibold">
+                          <CheckCircle2 size={13} />
+                          <span>Abastecimento matematicamente compatível com a quilometragem percorrida.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Nota Fiscal e Chave de Acesso */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2709,6 +2900,26 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                 </div>
 
+                {/* PRIORIDADE DE PRONTIDÃO 24H (AMBULÂNCIA / ÔNIBUS) */}
+                <div className="p-3 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newVehicleForm.is_emergency_priority}
+                      onChange={e => setNewVehicleForm({ ...newVehicleForm, is_emergency_priority: e.target.checked })}
+                      className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-black text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                        🚨 Veículo de Prontidão 24h / Urgência (Ambulância, Resgate ou Transporte Escolar)
+                      </span>
+                      <p className="text-[11px] text-rose-700 dark:text-rose-400 mt-0.5 leading-tight">
+                        Habilita a emissão automática em regime de Tanque Cheio com rastreamento antifraude por KM rodada.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
                 <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
                   <button
                     type="button"
@@ -3037,6 +3248,26 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <option value="inativo">Inativo</option>
                     </select>
                   </div>
+                </div>
+
+                {/* PRIORIDADE DE PRONTIDÃO 24H (AMBULÂNCIA / ÔNIBUS) */}
+                <div className="p-3 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editVehicleForm.is_emergency_priority}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, is_emergency_priority: e.target.checked })}
+                      className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-black text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                        🚨 Veículo de Prontidão 24h / Urgência (Ambulância, Resgate ou Transporte Escolar)
+                      </span>
+                      <p className="text-[11px] text-rose-700 dark:text-rose-400 mt-0.5 leading-tight">
+                        Habilita a emissão automática em regime de Tanque Cheio com rastreamento antifraude por KM rodada.
+                      </p>
+                    </div>
+                  </label>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">

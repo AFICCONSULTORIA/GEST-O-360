@@ -23,6 +23,7 @@ export interface FleetVehicle {
   expected_consumption: number; // km/l ou l/h de referência
   current_odometer: number;
   status: 'ativo' | 'manutencao' | 'baixado' | 'inativo';
+  is_emergency_priority?: boolean; // Prioridade de Prontidão (Ambulâncias, Ônibus Escolar, Resgate)
   created_at: string;
 }
 
@@ -45,6 +46,11 @@ export interface FuelSupplyOrder {
   total_value?: number;
   invoice_number?: string;
   invoice_key?: string; // 44 dígitos da NF-e / NFC-e
+
+  // Prontidão e Urgência (Tanque Cheio)
+  is_full_tank_order?: boolean; // Regime de Prontidão Operacional
+  emergency_call_reason?: string; // Motivo do Plantão / Chamado de Urgência
+  tank_residual_expected?: number; // Litros estimados gastos com base na KM rodada
 
   // Comprovação documental
   receipt_attachment_url?: string; // Foto/scan do canhoto assinado
@@ -69,6 +75,8 @@ export interface NewFuelOrderPayload {
   fuel_type: FuelType;
   liters_authorized: number;
   institution_id?: string;
+  is_full_tank_order?: boolean;
+  emergency_call_reason?: string;
 }
 
 export interface FuelExecutionPayload {
@@ -317,6 +325,15 @@ export async function syncVehiclesFromPatrimonio(institutionId: string = 'inst_1
         expectedConsumption = 11.5; // 11.5 km/l
       }
 
+      const isEmergencyPriority = 
+        nameAndModel.includes('AMBUL') ||
+        nameAndModel.includes('SAMU') ||
+        nameAndModel.includes('RESGATE') ||
+        nameAndModel.includes('ONIBUS') ||
+        nameAndModel.includes('ÔNIBUS') ||
+        nameAndModel.includes('MICRO') ||
+        (item.department ? (item.department.toLowerCase().includes('saúde') || item.department.toLowerCase().includes('saude')) : false);
+
       const vehicleObj: FleetVehicle = {
         id: item.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `veh-${Date.now()}`),
         institution_id: item.institution_id || institutionId,
@@ -330,6 +347,7 @@ export async function syncVehiclesFromPatrimonio(institutionId: string = 'inst_1
         expected_consumption: expectedConsumption,
         current_odometer: 0,
         status: 'ativo',
+        is_emergency_priority: isEmergencyPriority,
         created_at: item.created_at || new Date().toISOString()
       };
 
@@ -352,7 +370,8 @@ export async function syncVehiclesFromPatrimonio(institutionId: string = 'inst_1
             metric_type: v.metric_type,
             expected_consumption: v.expected_consumption,
             current_odometer: v.current_odometer,
-            status: v.status
+            status: v.status,
+            is_emergency_priority: v.is_emergency_priority
           })),
           { onConflict: 'plate' }
         );
@@ -653,6 +672,8 @@ export async function createFuelOrder(orderData: NewFuelOrderPayload): Promise<F
     liters_authorized: Number(orderData.liters_authorized),
     previous_odometer: Number(vehicle.current_odometer || 0),
     current_odometer: Number(vehicle.current_odometer || 0),
+    is_full_tank_order: !!orderData.is_full_tank_order,
+    emergency_call_reason: orderData.emergency_call_reason?.trim() || undefined,
     is_anomaly: false,
     status: 'autorizado',
     created_at: new Date().toISOString(),
@@ -672,6 +693,8 @@ export async function createFuelOrder(orderData: NewFuelOrderPayload): Promise<F
       liters_authorized: newOrder.liters_authorized,
       previous_odometer: newOrder.previous_odometer,
       current_odometer: newOrder.current_odometer,
+      is_full_tank_order: newOrder.is_full_tank_order,
+      emergency_call_reason: newOrder.emergency_call_reason,
       is_anomaly: false,
       status: 'autorizado'
     }]).select().single();
@@ -724,15 +747,28 @@ export async function registerFuelExecution(
     throw new Error('A litragem real abastecida deve ser maior que zero.');
   }
 
-  // 1. Cálculo de consumo
+  // 1. Cálculo de consumo e expectativa de reposição (para Prontidão / Tanque Cheio)
   const deltaOdometer = currentOdometer - previousOdometer;
   let calculatedConsumption: number = 0;
+  let expectedLitersForRefill: number = 0;
 
   if (deltaOdometer > 0 && litersSupplied > 0) {
     calculatedConsumption = Number((deltaOdometer / litersSupplied).toFixed(2));
   }
 
-  // 2. MOTOR DE VALIDAÇÃO DE ANOMALIAS
+  if (vehicle.expected_consumption > 0 && deltaOdometer > 0) {
+    if (vehicle.metric_type === 'horimetro') {
+      expectedLitersForRefill = Number((deltaOdometer * vehicle.expected_consumption).toFixed(2));
+    } else {
+      expectedLitersForRefill = Number((deltaOdometer / vehicle.expected_consumption).toFixed(2));
+    }
+  }
+
+  const tankResidualExpected = vehicle.tank_capacity > expectedLitersForRefill
+    ? Number((vehicle.tank_capacity - expectedLitersForRefill).toFixed(2))
+    : 0;
+
+  // 2. MOTOR DE VALIDAÇÃO DE ANOMALIAS E ANTIFRAUDE
   const anomalies: string[] = [];
 
   // Regra A: Odômetro/Horímetro regressivo ou sem variação
@@ -768,6 +804,27 @@ export async function registerFuelExecution(
     }
   }
 
+  // Regra E: Antifraude em Regime de Prontidão (Tanque Cheio de Ambulâncias / Ônibus)
+  // Verifica se o volume faturado é desproporcional à KM percorrida desde a última completagem
+  const isEmergencyOrFullTank = order.is_full_tank_order || vehicle.is_emergency_priority;
+  if (isEmergencyOrFullTank && deltaOdometer > 0 && expectedLitersForRefill > 0) {
+    // Margem de tolerância de 30% para marcha lenta, ar-condicionado de UTI/ambulância e trânsito
+    const maxAllowedLiters = expectedLitersForRefill * 1.30;
+    const excessLiters = litersSupplied - maxAllowedLiters;
+    if (litersSupplied > maxAllowedLiters && excessLiters > 8.0) {
+      anomalies.push(
+        `ALERTA DE DESVIO EM COMPLETAGEM (PRONTIDÃO/URGÊNCIA): O veículo percorreu ${deltaOdometer} ${vehicle.metric_type}. Consumo esperado de ~${expectedLitersForRefill.toFixed(1)}L (+ margem de 30% = ${maxAllowedLiters.toFixed(1)}L), mas foram faturados ${litersSupplied.toFixed(1)}L (+${(litersSupplied - expectedLitersForRefill).toFixed(1)}L de excesso físico). Suspeita de desvio para recipiente externo ou outro veículo.`
+      );
+    }
+  }
+
+  // Regra F: Odômetro Estagnado / Baixa Rodagem com Faturamento Alto
+  if (deltaOdometer < 15 && litersSupplied > 10.0) {
+    anomalies.push(
+      `ALERTA DE ODÔMETRO ESTAGNADO: Abastecimento de ${litersSupplied.toFixed(1)}L para deslocamento de apenas ${deltaOdometer} ${vehicle.metric_type}. Requer justificativa de operação com motor estacionário ou manutenção técnica.`
+    );
+  }
+
   const isAnomaly = anomalies.length > 0;
   const anomalyReason = isAnomaly ? anomalies.join(' | ') : undefined;
 
@@ -776,6 +833,7 @@ export async function registerFuelExecution(
     liters_supplied: litersSupplied,
     current_odometer: currentOdometer,
     calculated_consumption: calculatedConsumption,
+    tank_residual_expected: tankResidualExpected,
     unit_price: unitPrice,
     total_value: totalValue,
     invoice_number: executionData.invoice_number?.trim() || order.invoice_number,
@@ -800,6 +858,7 @@ export async function registerFuelExecution(
       liters_supplied: updatedOrder.liters_supplied,
       current_odometer: updatedOrder.current_odometer,
       calculated_consumption: updatedOrder.calculated_consumption,
+      tank_residual_expected: updatedOrder.tank_residual_expected,
       unit_price: updatedOrder.unit_price,
       total_value: updatedOrder.total_value,
       invoice_number: updatedOrder.invoice_number,
