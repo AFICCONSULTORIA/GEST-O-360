@@ -30,7 +30,13 @@ import {
   Sparkles,
   Check,
   ArrowRight,
-  HeartPulse
+  HeartPulse,
+  ShieldCheck,
+  UserX,
+  UserCheck,
+  SlidersHorizontal,
+  Filter,
+  Shield
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
@@ -58,6 +64,56 @@ export interface SaaSControlCenterProps {
   orders?: any[];
 }
 
+interface ModulePermissionItem {
+  id: View;
+  label: string;
+  category: 'governance' | 'finance' | 'social' | 'citizenship';
+}
+
+const ALL_SYSTEM_MODULES: ModulePermissionItem[] = [
+  // Governança, Gabinete & Controle
+  { id: 'home', label: 'Painel Inicial (Dashboard)', category: 'governance' },
+  { id: 'mayor', label: 'Gabinete do Prefeito', category: 'governance' },
+  { id: 'pntp', label: 'Radar Nacional PNTP', category: 'governance' },
+  { id: 'risk', label: 'Gestão de Riscos Governamentais', category: 'governance' },
+  { id: 'controls', label: 'Controles Internos & Checklist', category: 'governance' },
+  { id: 'norms', label: 'Atos Normativos & Decretos', category: 'governance' },
+  { id: 'laws', label: 'Banco de Leis Municipais', category: 'governance' },
+  { id: 'calendar', label: 'Calendário Oficial de Obrigações', category: 'governance' },
+
+  // Fazenda, Finanças & Auditoria Fiscal
+  { id: 'financas', label: 'Finanças & Contabilidade', category: 'finance' },
+  { id: 'tributos', label: 'Tributos & Arrecadação', category: 'finance' },
+  { id: 'notafiscal', label: 'Auditor Fiscal Reforma 2026', category: 'finance' },
+  { id: 'contracts', label: 'Contratos & Licitações (14.133)', category: 'finance' },
+  { id: 'accounting_changes', label: 'Alterações Contábeis', category: 'finance' },
+  { id: 'doc_numbers', label: 'Controle de Numeração Oficial', category: 'finance' },
+  { id: 'reports', label: 'Relatórios & Prestação de Contas', category: 'finance' },
+  { id: 'certificates', label: 'Certidões Negativas (CNDs)', category: 'finance' },
+
+  // Serviços Públicos & Finalísticos
+  { id: 'saude', label: 'Saúde Pública & Regulação (SUS)', category: 'social' },
+  { id: 'education', label: 'Educação Municipal (Diário SAEB)', category: 'social' },
+  { id: 'ouvidoria', label: 'Ouvidoria Municipal & e-SIC', category: 'social' },
+  { id: 'patrimonio', label: 'Patrimônio, Frotas & Veículos', category: 'social' },
+  { id: 'obras', label: 'Obras Públicas & Infraestrutura', category: 'social' },
+  { id: 'meio_ambiente', label: 'Meio Ambiente & Licenciamento', category: 'social' },
+  { id: 'assistencia_social', label: 'Assistência Social (CRAS/CREAS)', category: 'social' },
+  { id: 'agricultura', label: 'Agricultura & Pecuária', category: 'social' },
+  { id: 'esporte', label: 'Esporte, Lazer & Juventude', category: 'social' },
+  { id: 'servicos_publicos', label: 'Serviços Urbanos & Limpeza', category: 'social' },
+  { id: 'planejamento', label: 'Planejamento & Orçamento', category: 'social' },
+  { id: 'administracao', label: 'Administração & Recursos Humanos', category: 'social' },
+  { id: 'camara', label: 'Câmara Municipal Legislativa', category: 'social' },
+
+  // Cidadania & Comunicação
+  { id: 'noticias', label: 'Notícias & Divulgação Institucional', category: 'citizenship' },
+  { id: 'forms', label: 'Formulários & Consultas Populares', category: 'citizenship' },
+  { id: 'communication', label: 'Comunicação Oficial WhatsApp', category: 'citizenship' },
+  { id: 'templates', label: 'Minutas & Modelos de Ofício', category: 'citizenship' },
+  { id: 'settings', label: 'Configurações Institucionais', category: 'citizenship' }
+];
+
 export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
   darkMode,
   setDarkMode,
@@ -74,6 +130,15 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'tenants' | 'support' | 'users' | 'health' | 'saude' | 'import' | 'education' | 'pdf-extractor'>('tenants');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Filtros na Gestão de Usuários
+  const [userFilterMunicipality, setUserFilterMunicipality] = useState<string>('all');
+  const [userFilterStatus, setUserFilterStatus] = useState<string>('all');
+
+  // Gestão Rigorosa de Permissões
+  const [managingPermissionsUser, setManagingPermissionsUser] = useState<AdminUser | null>(null);
+  const [permissionsData, setPermissionsData] = useState<string[]>([]);
+  const [isSavingPermissions, setIsSavingPermissions] = useState(false);
 
   // Seleção de Município para o Módulo de Saúde
   const [selectedHealthInstId, setSelectedHealthInstId] = useState<string>(institutions[0]?.id || '');
@@ -115,7 +180,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     email: '',
     role: 'Admin' as AdminUser['role'],
     institution_id: '',
-    password: ''
+    preset: 'full'
   });
 
   // Diagnóstico e Conectividade
@@ -211,6 +276,172 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     } catch (err) {
       setActionFeedback(`Link provisório enviado com sucesso para: ${email}`);
       setResetEmail('');
+    }
+  };
+
+  // Alternar Status do Servidor (Ativar / Bloquear Cautelarmente)
+  const handleToggleUserStatus = async (user: AdminUser) => {
+    const newStatus: AdminUser['status'] = user.status === 'Ativo' ? 'Bloqueado' : 'Ativo';
+    try {
+      const { error } = await supabase
+        .from('admin_users')
+        .update({ status: newStatus })
+        .eq('id', user.id);
+
+      if (error) {
+        showToast('Erro ao atualizar status: ' + error.message, 'error');
+        return;
+      }
+
+      setAdminUsers(adminUsers.map(u => u.id === user.id ? { ...u, status: newStatus } : u));
+      showToast(`Servidor ${user.name} agora está ${newStatus.toUpperCase()}!`, newStatus === 'Ativo' ? 'success' : 'info');
+    } catch (err) {
+      showToast('Erro de conexão ao alterar status do servidor.', 'error');
+    }
+  };
+
+  // Excluir Acesso de Servidor
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (confirm(`Atenção: Deseja realmente revogar e excluir permanentemente o acesso de "${user.name}"?`)) {
+      try {
+        const { error } = await supabase.from('admin_users').delete().eq('id', user.id);
+        if (error) {
+          showToast('Erro ao excluir: ' + error.message, 'error');
+          return;
+        }
+        setAdminUsers(adminUsers.filter(u => u.id !== user.id));
+        showToast(`Acesso do servidor "${user.name}" excluído com sucesso!`, 'success');
+      } catch (err) {
+        showToast('Erro ao excluir servidor.', 'error');
+      }
+    }
+  };
+
+  // Funções de Gestão Granular de Permissões
+  const openPermissionsModal = (user: AdminUser) => {
+    setManagingPermissionsUser(user);
+    setPermissionsData(user.permissions ? [...user.permissions] : []);
+  };
+
+  const getModuleLevel = (moduleId: View): 'none' | 'view' | 'edit' | 'admin' => {
+    if (!managingPermissionsUser) return 'none';
+    if (permissionsData.includes(`${moduleId}:admin`)) return 'admin';
+    if (permissionsData.includes(`${moduleId}:edit`)) return 'edit';
+    if (permissionsData.includes(`${moduleId}:view`)) return 'view';
+    
+    if (permissionsData.includes(moduleId)) {
+      const role = managingPermissionsUser.role;
+      if (role === 'Super Admin' || role === 'Admin') return 'admin';
+      if (role === 'Gestor') return 'edit';
+      return 'view';
+    }
+    return 'none';
+  };
+
+  const setModuleLevel = (moduleId: View, level: 'none' | 'view' | 'edit' | 'admin') => {
+    const filtered = permissionsData.filter(p => 
+      p !== moduleId && 
+      p !== `${moduleId}:view` && 
+      p !== `${moduleId}:edit` && 
+      p !== `${moduleId}:admin`
+    );
+
+    if (level === 'none') {
+      setPermissionsData(filtered);
+    } else {
+      setPermissionsData([...filtered, `${moduleId}:${level}`]);
+    }
+  };
+
+  // Presets Rápidos de Conformidade
+  const applyPermissionPreset = (preset: 'all_admin' | 'financas' | 'saude' | 'educacao' | 'auditoria' | 'revoke_all') => {
+    if (preset === 'revoke_all') {
+      setPermissionsData([]);
+      showToast('Todas as permissões foram revogadas.', 'info');
+      return;
+    }
+
+    if (preset === 'all_admin') {
+      setPermissionsData(ALL_SYSTEM_MODULES.map(m => `${m.id}:admin`));
+      showToast('Acesso de Administrador Total concedido a todos os módulos.', 'success');
+      return;
+    }
+
+    let targetModules: { id: View; level: 'view' | 'edit' | 'admin' }[] = [];
+
+    if (preset === 'financas') {
+      targetModules = [
+        { id: 'home', level: 'view' },
+        { id: 'financas', level: 'admin' },
+        { id: 'tributos', level: 'admin' },
+        { id: 'notafiscal', level: 'admin' },
+        { id: 'contracts', level: 'edit' },
+        { id: 'accounting_changes', level: 'admin' },
+        { id: 'reports', level: 'admin' },
+        { id: 'certificates', level: 'admin' },
+        { id: 'doc_numbers', level: 'edit' }
+      ];
+    } else if (preset === 'saude') {
+      targetModules = [
+        { id: 'home', level: 'view' },
+        { id: 'saude', level: 'admin' },
+        { id: 'ouvidoria', level: 'edit' },
+        { id: 'reports', level: 'view' },
+        { id: 'communication', level: 'edit' }
+      ];
+    } else if (preset === 'educacao') {
+      targetModules = [
+        { id: 'home', level: 'view' },
+        { id: 'education', level: 'admin' },
+        { id: 'reports', level: 'view' },
+        { id: 'ouvidoria', level: 'view' }
+      ];
+    } else if (preset === 'auditoria') {
+      targetModules = [
+        { id: 'home', level: 'view' },
+        { id: 'pntp', level: 'admin' },
+        { id: 'risk', level: 'admin' },
+        { id: 'controls', level: 'admin' },
+        { id: 'contracts', level: 'admin' },
+        { id: 'notafiscal', level: 'admin' },
+        { id: 'laws', level: 'admin' },
+        { id: 'reports', level: 'admin' }
+      ];
+    }
+
+    const newPerms = targetModules.map(item => `${item.id}:${item.level}`);
+    setPermissionsData(newPerms);
+    showToast(`Preset "${preset.toUpperCase()}" aplicado!`, 'success');
+  };
+
+  // Salvar Permissões no Supabase
+  const handleSaveUserPermissions = async () => {
+    if (!managingPermissionsUser) return;
+    setIsSavingPermissions(true);
+
+    try {
+      const { error } = await supabase
+        .from('admin_users')
+        .update({ permissions: permissionsData })
+        .eq('id', managingPermissionsUser.id);
+
+      if (error) {
+        showToast('Erro ao salvar permissões no banco: ' + error.message, 'error');
+        return;
+      }
+
+      setAdminUsers(adminUsers.map(u => 
+        u.id === managingPermissionsUser.id 
+          ? { ...u, permissions: permissionsData as View[] } 
+          : u
+      ));
+
+      showToast(`Permissões de ${managingPermissionsUser.name} salvas com rigor e sucesso!`, 'success');
+      setManagingPermissionsUser(null);
+    } catch (err) {
+      showToast('Erro de conexão ao salvar permissões.', 'error');
+    } finally {
+      setIsSavingPermissions(false);
     }
   };
 
@@ -328,12 +559,26 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     }
   };
 
-  // Criar Novo Servidor
+  // Criar Novo Servidor com Permissões Iniciais
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserData.email || !newUserData.name || !newUserData.institution_id) {
       showToast('Preencha os campos obrigatórios (Nome, E-mail e Município).', 'error');
       return;
+    }
+
+    // Calcula permissões iniciais com base no perfil escolhido
+    let initialPermissions: string[] = ['home:view'];
+    if (newUserData.preset === 'full' || newUserData.role === 'Super Admin' || newUserData.role === 'Admin') {
+      initialPermissions = ALL_SYSTEM_MODULES.map(m => `${m.id}:admin`);
+    } else if (newUserData.preset === 'financas') {
+      initialPermissions = ['home:view', 'financas:admin', 'tributos:admin', 'notafiscal:admin', 'contracts:edit', 'reports:admin'];
+    } else if (newUserData.preset === 'saude') {
+      initialPermissions = ['home:view', 'saude:admin', 'ouvidoria:edit', 'reports:view'];
+    } else if (newUserData.preset === 'educacao') {
+      initialPermissions = ['home:view', 'education:admin', 'reports:view'];
+    } else if (newUserData.preset === 'auditoria') {
+      initialPermissions = ['home:view', 'pntp:admin', 'risk:admin', 'controls:admin', 'contracts:admin', 'laws:admin', 'reports:admin'];
     }
 
     try {
@@ -345,7 +590,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
         status: 'Ativo',
         lastLogin: 'Nunca',
         institution_id: newUserData.institution_id,
-        permissions: ['home', 'controls', 'reports', 'laws', 'notafiscal'] as any
+        permissions: initialPermissions as any
       };
 
       const { error } = await supabase.from('admin_users').insert({
@@ -364,9 +609,9 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
       }
 
       setAdminUsers([...adminUsers, newUser]);
-      showToast(`Servidor ${newUser.name} cadastrado com sucesso!`, 'success');
+      showToast(`Servidor ${newUser.name} cadastrado com permissões configuradas!`, 'success');
       setIsUserModalOpen(false);
-      setNewUserData({ name: '', email: '', role: 'Admin', institution_id: '', password: '' });
+      setNewUserData({ name: '', email: '', role: 'Admin', institution_id: '', preset: 'full' });
     } catch (err) {
       showToast('Erro de conexão ao criar servidor.', 'error');
     }
@@ -381,14 +626,23 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     );
   }, [institutions, searchQuery]);
 
-  // Filtro de Servidores
+  // Filtro Avançado de Servidores
   const filteredUsers = useMemo(() => {
-    return adminUsers.filter(u => 
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      institutions.find(i => i.id === u.institution_id)?.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [adminUsers, searchQuery, institutions]);
+    return adminUsers.filter(u => {
+      const matchesSearch = 
+        u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        institutions.find(i => i.id === u.institution_id)?.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesMunicipality = 
+        userFilterMunicipality === 'all' || u.institution_id === userFilterMunicipality;
+
+      const matchesStatus = 
+        userFilterStatus === 'all' || u.status === userFilterStatus;
+
+      return matchesSearch && matchesMunicipality && matchesStatus;
+    });
+  }, [adminUsers, searchQuery, institutions, userFilterMunicipality, userFilterStatus]);
 
   // Contadores
   const openTickets = useMemo(() => {
@@ -478,8 +732,8 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
-              <KeyRound className="w-3.5 h-3.5" /> 
-              Acessos & Senhas
+              <ShieldCheck className="w-3.5 h-3.5" /> 
+              Acessos & Permissões ({adminUsers.length})
             </button>
             <button
               onClick={() => setActiveTab('health')}
@@ -900,114 +1154,222 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
         </div>
       )}
 
-      {/* CONTEÚDO 4: ACESSOS E GESTÃO DE SENHAS */}
+      {/* CONTEÚDO 4: CONTROLE RIGOROSO DE ACESSOS & PERMISSÕES */}
       {activeTab === 'users' && (
-        <div className="mt-8 space-y-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* REDEFINIÇÃO RÁPIDA */}
-            <div className="bg-white dark:bg-neutral-900/70 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 sm:p-7 space-y-6 shadow-sm">
-              <div>
-                <h3 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-                  <KeyRound className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Redefinição Rápida de Senha
-                </h3>
-                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-                  Gere um link temporário ou emita a chave de desbloqueio para secretários, contadores e professores.
-                </p>
+        <div className="mt-8 space-y-6">
+          {/* CARDS DE MÉTRICAS RÁPIDAS DE ACESSO */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs mb-2">
+                <span>Total de Servidores</span>
+                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <p className="text-2xl font-black text-neutral-900 dark:text-white">{adminUsers.length}</p>
+              <p className="text-[11px] text-neutral-500 mt-1">Distribuídos em {institutions.length} prefeituras</p>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs mb-2">
+                <span>Acessos Ativos</span>
+                <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                {adminUsers.filter(u => u.status === 'Ativo').length}
+              </p>
+              <p className="text-[11px] text-neutral-500 mt-1">Servidores operando normalmente</p>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs mb-2">
+                <span>Contas Bloqueadas</span>
+                <UserX className="w-4 h-4 text-rose-500" />
+              </div>
+              <p className="text-2xl font-black text-rose-600 dark:text-rose-400">
+                {adminUsers.filter(u => u.status === 'Bloqueado').length}
+              </p>
+              <p className="text-[11px] text-neutral-500 mt-1">Suspensas por cautela ou exoneração</p>
+            </div>
+
+            <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm">
+              <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs mb-2">
+                <span>Super Administradores</span>
+                <ShieldCheck className="w-4 h-4 text-amber-500" />
+              </div>
+              <p className="text-2xl font-black text-neutral-900 dark:text-white">
+                {adminUsers.filter(u => u.role === 'Super Admin').length}
+              </p>
+              <p className="text-[11px] text-neutral-500 mt-1">Permissão irrestrita em nível SaaS</p>
+            </div>
+          </div>
+
+          {/* BARRA DE FILTROS & AÇÕES */}
+          <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="relative w-full sm:w-64">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrar por nome ou e-mail..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl pl-9 pr-3 py-2 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
+                />
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">E-mail Funcional do Servidor</label>
-                  <input
-                    type="email"
-                    placeholder="ex: secretario@municipio.gov.br"
-                    value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    className="w-full mt-1.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl px-4 py-2.5 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
-                  />
-                </div>
-                <button
-                  onClick={() => handlePasswordReset(resetEmail)}
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-neutral-950 font-black text-xs rounded-xl transition shadow-lg shadow-emerald-600/20 dark:shadow-emerald-500/20"
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-neutral-400" />
+                <select
+                  value={userFilterMunicipality}
+                  onChange={(e) => setUserFilterMunicipality(e.target.value)}
+                  className="bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2 text-xs font-bold text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-emerald-500 transition"
                 >
-                  Enviar Link de Desbloqueio e Redefinição
-                </button>
-              </div>
+                  <option value="all">Todas as Prefeituras</option>
+                  {institutions.map(inst => (
+                    <option key={inst.id} value={inst.id}>{inst.name}</option>
+                  ))}
+                </select>
 
-              <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800/80 text-[11px] text-neutral-500 dark:text-neutral-400 space-y-1.5">
-                <p className="font-bold text-neutral-700 dark:text-neutral-300">Orientação de Segurança LGPD:</p>
-                <p>
-                  A chave de acesso é gerada com expiração de 24 horas e exige confirmação de segundo fator ou validação de e-mail institucional.
-                </p>
+                <select
+                  value={userFilterStatus}
+                  onChange={(e) => setUserFilterStatus(e.target.value)}
+                  className="bg-neutral-100 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl px-3 py-2 text-xs font-bold text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-emerald-500 transition"
+                >
+                  <option value="all">Todos os Status</option>
+                  <option value="Ativo">Apenas Ativos</option>
+                  <option value="Bloqueado">Apenas Bloqueados</option>
+                </select>
               </div>
             </div>
 
-            {/* TABELA DE SERVIDORES DO SAAS */}
-            <div className="lg:col-span-2 bg-white dark:bg-neutral-900/70 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-neutral-900 dark:text-white flex items-center gap-2">
-                    <Users className="w-5 h-5 text-emerald-600 dark:text-emerald-400" /> Servidores Cadastrados ({adminUsers.length})
-                  </h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">Gerenciamento global de contas em todas as prefeituras</p>
-                </div>
-                <button
-                  onClick={() => setIsUserModalOpen(true)}
-                  className="px-3.5 py-2 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Novo Servidor
-                </button>
-              </div>
+            <button
+              onClick={() => setIsUserModalOpen(true)}
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-neutral-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 dark:shadow-emerald-500/20 transition-all hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" /> Cadastrar Novo Servidor
+            </button>
+          </div>
 
-              <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-neutral-50 dark:bg-neutral-950 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 uppercase text-[10px] font-bold tracking-wider">
-                      <th className="p-3">Servidor</th>
-                      <th className="p-3">Prefeitura</th>
-                      <th className="p-3">Perfil</th>
-                      <th className="p-3">Status</th>
-                      <th className="p-3 text-right">Ação</th>
+          {/* TABELA DE GESTÃO RIGOROSA DE SERVIDORES E PERMISSÕES */}
+          <div className="bg-white dark:bg-neutral-900/80 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-neutral-100 dark:bg-neutral-950 border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400 uppercase text-[10px] font-bold tracking-wider">
+                    <th className="p-4">Servidor</th>
+                    <th className="p-4">Município Vinculado</th>
+                    <th className="p-4">Perfil Global</th>
+                    <th className="p-4">Módulos Autorizados</th>
+                    <th className="p-4">Status de Acesso</th>
+                    <th className="p-4 text-right">Controle Rigoroso</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-neutral-500 dark:text-neutral-400">
+                        Nenhum servidor encontrado com os filtros selecionados.
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
-                    {filteredUsers.slice(0, 15).map(user => {
+                  ) : (
+                    filteredUsers.map(user => {
                       const userInst = institutions.find(i => i.id === user.institution_id);
+                      const permCount = user.permissions ? user.permissions.length : 0;
+                      const isSuper = user.role === 'Super Admin';
+
                       return (
-                        <tr key={user.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/30 transition">
-                          <td className="p-3">
-                            <p className="font-bold text-neutral-900 dark:text-white">{user.name}</p>
-                            <p className="text-[11px] text-neutral-500">{user.email}</p>
+                        <tr key={user.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition">
+                          <td className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold flex items-center justify-center shrink-0 border border-emerald-200 dark:border-emerald-800">
+                                {user.name.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-bold text-neutral-900 dark:text-white">{user.name}</p>
+                                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">{user.email}</p>
+                              </div>
+                            </div>
                           </td>
-                          <td className="p-3 text-neutral-700 dark:text-neutral-300">
-                            {userInst?.name || 'Administração Central'}
+
+                          <td className="p-4 text-neutral-700 dark:text-neutral-300 font-medium">
+                            {userInst?.name || 'Administração Central Gestão 360'}
                           </td>
-                          <td className="p-3">
-                            <span className="px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-semibold text-[10px]">
+
+                          <td className="p-4">
+                            <span className={`px-2.5 py-0.5 rounded-md font-bold text-[10px] uppercase tracking-wider ${
+                              isSuper 
+                                ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30'
+                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700'
+                            }`}>
                               {user.role}
                             </span>
                           </td>
-                          <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                              user.status === 'Ativo' ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' : 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400'
-                            }`}>
-                              {user.status}
-                            </span>
+
+                          <td className="p-4">
+                            <div className="flex items-center gap-1.5">
+                              {isSuper ? (
+                                <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                  <Shield className="w-3.5 h-3.5" /> Total ({ALL_SYSTEM_MODULES.length} módulos)
+                                </span>
+                              ) : permCount > 0 ? (
+                                <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                  <Check className="w-3.5 h-3.5" /> {permCount} módulos liberados
+                                </span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-rose-500 flex items-center gap-1">
+                                  <X className="w-3.5 h-3.5" /> Nenhum módulo ativo
+                                </span>
+                              )}
+                            </div>
                           </td>
-                          <td className="p-3 text-right">
+
+                          <td className="p-4">
                             <button
-                              onClick={() => handlePasswordReset(user.email)}
-                              className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold transition"
+                              onClick={() => handleToggleUserStatus(user)}
+                              className={`px-3 py-1 rounded-full font-bold text-[10px] uppercase tracking-wider transition flex items-center gap-1.5 ${
+                                user.status === 'Ativo' 
+                                  ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 hover:bg-rose-100 hover:text-rose-700 hover:border-rose-300' 
+                                  : 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-500/30 hover:bg-emerald-100 hover:text-emerald-700 hover:border-emerald-300'
+                              }`}
+                              title="Clique para alternar status (Ativar ou Bloquear)"
                             >
-                              Resetar Senha
+                              <span className={`w-1.5 h-1.5 rounded-full ${user.status === 'Ativo' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                              {user.status}
                             </button>
+                          </td>
+
+                          <td className="p-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => openPermissionsModal(user)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 border border-emerald-200 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-400 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                                title="Gerenciar Permissões Granulares por Módulo"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" /> Permissões
+                              </button>
+
+                              <button
+                                onClick={() => handlePasswordReset(user.email)}
+                                className="p-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition"
+                                title="Emitir link provisório de redefinição de senha"
+                              >
+                                <KeyRound className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteUser(user)}
+                                className="p-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-neutral-500 hover:text-rose-600 transition"
+                                title="Revogar e Excluir Acesso"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
@@ -1130,6 +1492,223 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
         </div>
       )}
 
+      {/* MODAL MASTER DE GESTÃO RIGOROSA DE PERMISSÕES */}
+      {managingPermissionsUser && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-[32px] max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header do Modal */}
+            <div className="p-6 sm:p-8 border-b border-neutral-200 dark:border-neutral-800 flex items-start justify-between bg-neutral-50/50 dark:bg-neutral-950/50">
+              <div className="flex items-center gap-3.5">
+                <div className="p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    Controle Rigoroso de Acessos & Permissões
+                  </h3>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Definindo matriz de autorização para <strong className="text-neutral-800 dark:text-neutral-200">{managingPermissionsUser.name}</strong> ({managingPermissionsUser.email})
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setManagingPermissionsUser(null)}
+                className="text-neutral-400 hover:text-neutral-900 dark:hover:text-white p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Presets Rápidos de Conformidade */}
+            <div className="px-6 sm:px-8 py-4 bg-neutral-100/50 dark:bg-neutral-950 border-b border-neutral-200 dark:border-neutral-800">
+              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-2.5 flex items-center gap-1.5">
+                <SlidersHorizontal className="w-3 h-3 text-emerald-500" /> Presets Rápidos por Perfil de Governo (1 Clique):
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyPermissionPreset('all_admin')}
+                  className="px-3 py-1.5 rounded-xl bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-bold transition shadow-sm"
+                >
+                  ⚡ Acesso Total
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPermissionPreset('financas')}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-xs font-bold transition shadow-sm"
+                >
+                  Fazenda & Finanças
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPermissionPreset('saude')}
+                  className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/40 dark:hover:bg-teal-900/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800/60 text-xs font-bold transition shadow-sm"
+                >
+                  Saúde Pública (SUS)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPermissionPreset('educacao')}
+                  className="px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 text-xs font-bold transition shadow-sm"
+                >
+                  Educação & Escolar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPermissionPreset('auditoria')}
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 text-xs font-bold transition shadow-sm"
+                >
+                  Controladoria & PNTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => applyPermissionPreset('revoke_all')}
+                  className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 text-xs font-bold transition shadow-sm ml-auto"
+                >
+                  Bloquear Todos (Zerar)
+                </button>
+              </div>
+            </div>
+
+            {/* Matriz de Módulos com Seleção de Nível */}
+            <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1">
+              {['governance', 'finance', 'social', 'citizenship'].map((catKey) => {
+                const categoryLabels: Record<string, string> = {
+                  governance: '1. Governança, Gabinete & Controle Interno',
+                  finance: '2. Fazenda, Finanças, Contabilidade & Tributos',
+                  social: '3. Serviços Públicos Finalísticos (Saúde, Educação, Obras)',
+                  citizenship: '4. Cidadania, Comunicação & Atos Oficiais'
+                };
+
+                const catModules = ALL_SYSTEM_MODULES.filter(m => m.category === catKey);
+
+                return (
+                  <div key={catKey} className="space-y-3">
+                    <h4 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 border-b border-neutral-200 dark:border-neutral-800 pb-2">
+                      {categoryLabels[catKey]}
+                    </h4>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {catModules.map((module) => {
+                        const currentLevel = getModuleLevel(module.id);
+
+                        return (
+                          <div 
+                            key={module.id}
+                            className="bg-neutral-50 dark:bg-neutral-950/60 border border-neutral-200 dark:border-neutral-800/80 rounded-2xl p-3.5 flex flex-col justify-between gap-2.5"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-neutral-900 dark:text-white">
+                                {module.label}
+                              </span>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                currentLevel === 'admin' 
+                                  ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' 
+                                  : currentLevel === 'edit'
+                                  ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400'
+                                  : currentLevel === 'view'
+                                  ? 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400'
+                                  : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
+                              }`}>
+                                {currentLevel === 'admin' && 'ADMIN'}
+                                {currentLevel === 'edit' && 'EDITAR'}
+                                {currentLevel === 'view' && 'LEITURA'}
+                                {currentLevel === 'none' && 'SEM ACESSO'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-1.5 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setModuleLevel(module.id, 'none')}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg transition ${
+                                  currentLevel === 'none'
+                                    ? 'bg-neutral-300 dark:bg-neutral-800 text-neutral-800 dark:text-white shadow-inner'
+                                    : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-500 hover:bg-neutral-200'
+                                }`}
+                              >
+                                Bloqueado
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModuleLevel(module.id, 'view')}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg transition ${
+                                  currentLevel === 'view'
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-500 hover:bg-blue-50 dark:hover:bg-blue-950/20'
+                                }`}
+                              >
+                                Visualizar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModuleLevel(module.id, 'edit')}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg transition ${
+                                  currentLevel === 'edit'
+                                    ? 'bg-amber-500 text-white shadow-md'
+                                    : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-500 hover:bg-amber-50 dark:hover:bg-amber-950/20'
+                                }`}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setModuleLevel(module.id, 'admin')}
+                                className={`py-1.5 text-[10px] font-bold rounded-lg transition ${
+                                  currentLevel === 'admin'
+                                    ? 'bg-emerald-600 text-white shadow-md'
+                                    : 'bg-neutral-100 dark:bg-neutral-900 text-neutral-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/20'
+                                }`}
+                              >
+                                Administrar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Rodapé com Botões de Ação */}
+            <div className="p-6 sm:p-7 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/50 dark:bg-neutral-950/50">
+              <span className="text-xs text-neutral-500">
+                Total de módulos ativos: <strong className="text-emerald-600 dark:text-emerald-400">{permissionsData.length}</strong>
+              </span>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setManagingPermissionsUser(null)}
+                  className="px-4 py-2.5 rounded-xl bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-xs font-bold text-neutral-700 dark:text-neutral-300 transition"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPermissions}
+                  onClick={handleSaveUserPermissions}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-neutral-950 font-black text-xs shadow-lg shadow-emerald-600/20 dark:shadow-emerald-500/20 transition flex items-center gap-2"
+                >
+                  {isSavingPermissions ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" /> Salvar Permissões no Supabase
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL DE CADASTRO/EDIÇÃO DE TENANT (MUNICÍPIO) */}
       {isTenantModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -1215,10 +1794,10 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
         </div>
       )}
 
-      {/* MODAL DE CADASTRO DE SERVIDOR */}
+      {/* MODAL DE CADASTRO DE SERVIDOR COM PERMISSÕES INICIAIS */}
       {isUserModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl relative">
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative">
             <button
               onClick={() => setIsUserModalOpen(false)}
               className="absolute top-5 right-5 text-neutral-400 hover:text-neutral-900 dark:hover:text-white p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
@@ -1226,16 +1805,16 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
               <X className="w-5 h-5" />
             </button>
 
-            <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-1">Novo Servidor / Usuário</h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-6">Cadastre o acesso de um servidor a uma prefeitura parceira</p>
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-1">Novo Servidor / Usuário Municipal</h3>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-6">Cadastre o acesso e defina as permissões funcionais</p>
 
             <form onSubmit={handleCreateUser} className="space-y-4 text-xs">
               <div>
-                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Nome Completo</label>
+                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Nome Completo do Servidor</label>
                 <input
                   type="text"
                   required
-                  placeholder="Nome do servidor"
+                  placeholder="Ex: João Carlos da Silva"
                   value={newUserData.name}
                   onChange={(e) => setNewUserData(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
@@ -1247,7 +1826,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                 <input
                   type="email"
                   required
-                  placeholder="email@prefeitura.gov.br"
+                  placeholder="servidor@municipio.gov.br"
                   value={newUserData.email}
                   onChange={(e) => setNewUserData(prev => ({ ...prev, email: e.target.value }))}
                   className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
@@ -1270,7 +1849,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
               </div>
 
               <div>
-                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Nível de Permissão</label>
+                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Cargo / Perfil no Sistema</label>
                 <select
                   value={newUserData.role}
                   onChange={(e) => setNewUserData(prev => ({ ...prev, role: e.target.value as AdminUser['role'] }))}
@@ -1279,8 +1858,23 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                   <option value="Admin">Admin da Prefeitura</option>
                   <option value="Super Admin">Super Admin Global</option>
                   <option value="Auditor">Auditor Fiscal / PNTP</option>
-                  <option value="Secretário">Secretário Municipal</option>
-                  <option value="Professor">Professor / Educação</option>
+                  <option value="Gestor">Gestor / Secretário Municipal</option>
+                  <option value="Visualizador">Visualizador (Somente Consulta)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Preset Inicial de Permissões</label>
+                <select
+                  value={newUserData.preset}
+                  onChange={(e) => setNewUserData(prev => ({ ...prev, preset: e.target.value }))}
+                  className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
+                >
+                  <option value="full">Acesso Total aos Módulos</option>
+                  <option value="financas">Fazenda, Finanças & Tributos</option>
+                  <option value="saude">Saúde Pública & Regulação (SUS)</option>
+                  <option value="educacao">Educação & Diário Escolar</option>
+                  <option value="auditoria">Controladoria, Riscos & PNTP</option>
                 </select>
               </div>
 
@@ -1296,7 +1890,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                   type="submit"
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-neutral-950 text-xs font-black shadow-lg shadow-emerald-600/20 dark:shadow-emerald-500/20 transition"
                 >
-                  Cadastrar Servidor
+                  Cadastrar Servidor com Permissões
                 </button>
               </div>
             </form>

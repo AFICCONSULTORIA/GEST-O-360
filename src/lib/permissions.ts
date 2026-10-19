@@ -14,8 +14,8 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
   // Super Admin tem acesso total a tudo por definição
   if (user.role === 'Super Admin') return 'admin';
 
-  // Se o usuário estiver inativo, ele não tem acesso a nada
-  if (user.status === 'Inativo') return 'none';
+  // Se o usuário estiver inativo ou bloqueado, ele não tem acesso a nada
+  if (user.status === 'Inativo' || user.status === 'Bloqueado') return 'none';
 
   // O módulo de suporte é sempre acessível a todos os usuários ativos
   if (moduleId === 'support') return 'admin';
@@ -74,7 +74,7 @@ export function hasPermission(
 ): boolean {
   if (!user) return false;
   if (user.role === 'Super Admin') return true;
-  if (user.status === 'Inativo') return false;
+  if (user.status === 'Inativo' || user.status === 'Bloqueado') return false;
 
   // O módulo de suporte é sempre acessível a todos os usuários ativos
   if (moduleId === 'support') return true;
