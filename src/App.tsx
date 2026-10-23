@@ -1562,7 +1562,7 @@ export default function App() {
             {activeView === 'admin_financas' && <FinanceModules />}
             {activeView === 'administracao' && <AdministracaoModule />}
             {activeView === 'financas' && <FinanceModules />}
-            {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} />}
+            {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}
             {activeView === 'meio_ambiente' && <MeioAmbienteModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}

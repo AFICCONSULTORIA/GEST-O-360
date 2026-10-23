@@ -5,10 +5,12 @@ import {
   Calendar, User, Stethoscope, AlertCircle, XCircle, ShieldAlert, 
   Printer, ArrowRight, Activity, Filter, FileText, Check, Ban,
   Building2, Sparkles, DollarSign, RefreshCw, ChevronRight, Eye,
-  TrendingUp, ClipboardCheck, Download
+  TrendingUp, ClipboardCheck, Download, Trash2
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { showToast } from '../../../components/ui/Toast';
+import { AdminUser } from '../../../types';
+import { hasPermission } from '../../../lib/permissions';
 import { 
   Patient, HealthUnit, HealthProfessional, ExamType, ExamRequest, ExamStatus, ExamCategory,
   COMMON_EXAM_CATEGORIES, DEFAULT_EXAM_TYPES, DEFAULT_HEALTH_UNITS,
@@ -31,6 +33,7 @@ interface SaudeExamsProps {
   onRefresh: () => void;
   currentInstitution?: { id: string; name?: string } | null;
   onNewRequestPrefilled?: Patient | null;
+  currentUser?: AdminUser | null;
 }
 
 export const SaudeExams: React.FC<SaudeExamsProps> = ({
@@ -42,7 +45,8 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
   isLoading,
   onRefresh,
   currentInstitution,
-  onNewRequestPrefilled
+  onNewRequestPrefilled,
+  currentUser
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('todos');
@@ -54,6 +58,48 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
   const [selectedRequestForComplete, setSelectedRequestForComplete] = useState<ExamRequest | null>(null);
   const [selectedRequestForSchedule, setSelectedRequestForSchedule] = useState<ExamRequest | null>(null);
   const [selectedRequestForResult, setSelectedRequestForResult] = useState<ExamRequest | null>(null);
+
+  // Permissão de administrador para excluir solicitações de exames
+  const canDeleteExam = !currentUser || currentUser.role === 'Super Admin' || currentUser.role === 'Admin' || hasPermission(currentUser, 'saude', 'admin');
+
+  const handleDeleteRequest = async (req: ExamRequest) => {
+    const confirmed = window.confirm(
+      `ATENÇÃO: Deseja realmente EXCLUIR a solicitação do exame "${req.exam_name}" do paciente ${req.patient_name}?\n\nEsta operação é definitiva e removerá o registro do sistema.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('exam_requests')
+        .delete()
+        .eq('id', req.id);
+
+      if (error) {
+        console.warn('Aviso ao excluir no Supabase (aplicando limpeza local):', error);
+      }
+
+      // Sincronizar exclusão com o armazenamento local / demo
+      try {
+        const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
+        if (demoExams) {
+          const parsed: ExamRequest[] = JSON.parse(demoExams);
+          const updated = parsed.filter(item => item.id !== req.id);
+          localStorage.setItem('gestao360_demo_saude_exams', JSON.stringify(updated));
+        }
+      } catch (localErr) {
+        console.error('Erro ao atualizar cache local de exames:', localErr);
+      }
+
+      showToast('Solicitação de exame excluída com sucesso!', 'success');
+      if (selectedRequestForDetails?.id === req.id) {
+        setSelectedRequestForDetails(null);
+      }
+      onRefresh();
+    } catch (err: any) {
+      console.error('Erro ao excluir solicitação de exame:', err);
+      showToast('Erro ao excluir: ' + (err.message || 'Erro inesperado'), 'error');
+    }
+  };
 
   // KPIs
   const totalRequests = requests.length;
@@ -484,6 +530,17 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
                           >
                             <Eye size={16} />
                           </button>
+
+                          {/* Botão de Excluir Solicitação (Admin) */}
+                          {canDeleteExam && (
+                            <button
+                              onClick={() => handleDeleteRequest(req)}
+                              title="Excluir solicitação de exame (Admin)"
+                              className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -528,6 +585,8 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
               setSelectedRequestForDetails(null);
               setSelectedRequestForResult(current);
             }}
+            canDelete={canDeleteExam}
+            onDelete={handleDeleteRequest}
           />
         )}
 
@@ -1028,7 +1087,9 @@ const ExamDetailsModal: React.FC<{
   allRequests: ExamRequest[];
   onClose: () => void;
   onOpenResult?: () => void;
-}> = ({ req, allRequests, onClose, onOpenResult }) => {
+  canDelete?: boolean;
+  onDelete?: (req: ExamRequest) => void;
+}> = ({ req, allRequests, onClose, onOpenResult, canDelete, onDelete }) => {
   const parsedResult = parseExamResult(req.result_notes);
 
   return (
@@ -1177,6 +1238,17 @@ const ExamDetailsModal: React.FC<{
                 className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shadow-md shadow-blue-500/20 flex items-center gap-1.5 transition-all cursor-pointer"
               >
                 <FileText size={14} /> {parsedResult?.pdf_url ? 'Gerenciar Laudo / PDF' : 'Anexar Laudo em PDF'}
+              </button>
+            )}
+
+            {canDelete && onDelete && (
+              <button
+                type="button"
+                onClick={() => onDelete(req)}
+                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Excluir solicitação de exame definitivamente"
+              >
+                <Trash2 size={14} /> Excluir Exame
               </button>
             )}
           </div>

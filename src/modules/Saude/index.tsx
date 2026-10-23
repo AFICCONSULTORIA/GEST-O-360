@@ -15,6 +15,7 @@ import { SaudePatients } from './components/SaudePatients';
 import { SaudeSettings } from './components/SaudeSettings';
 import { SaudeExams } from './components/SaudeExams';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { AdminUser } from '../../types';
 import { 
   Appointment, Patient, HealthUnit, HealthProfessional, ExamRequest, ExamType, MedicationDispensation,
   COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, DEFAULT_EXAM_TYPES,
@@ -24,7 +25,13 @@ import {
 
 export * from './types';
 
-export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id: string; name?: string } | null }) => {
+export const SaudeModule = ({ 
+  currentInstitution,
+  currentUser
+}: { 
+  currentInstitution?: { id: string; name?: string } | null;
+  currentUser?: AdminUser | null;
+}) => {
   const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'exames' | 'pacientes' | 'farmacia' | 'cadastros'>('fila');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -391,6 +398,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
               onRefresh={loadData}
               currentInstitution={currentInstitution}
               onNewRequestPrefilled={prefilledPatientForExam}
+              currentUser={currentUser}
             />
           )}
 
@@ -423,6 +431,7 @@ export const SaudeModule = ({ currentInstitution }: { currentInstitution?: { id:
               patients={patients}
               dispensations={dispensations}
               onRefreshData={loadData}
+              currentUser={currentUser}
             />
           )}
 

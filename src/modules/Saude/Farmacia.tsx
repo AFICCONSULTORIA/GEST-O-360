@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
+import { AdminUser } from '../../types';
+import { hasPermission } from '../../lib/permissions';
 import { 
   Patient, MedicationDispensation, HealthUnit, HealthProfessional,
   formatCPF, formatSUS, formatPhone, checkMedicationEarlyRefill, EarlyRefillCheckResult, DEFAULT_HEALTH_UNITS,
@@ -45,13 +47,15 @@ interface FarmaciaModuleProps {
   patients?: Patient[];
   dispensations?: MedicationDispensation[];
   onRefreshData?: () => void;
+  currentUser?: AdminUser | null;
 }
 
 export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({ 
   currentInstitution,
   patients = [],
   dispensations = [],
-  onRefreshData
+  onRefreshData,
+  currentUser
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'dispensacao' | 'estoque' | 'historico'>('dispensacao');
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -140,14 +144,69 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
     };
   }, [currentInstitution?.id]);
 
+  // Permissão de administrador para excluir registros da farmácia
+  const canDelete = !currentUser || currentUser.role === 'Super Admin' || currentUser.role === 'Admin' || hasPermission(currentUser, 'saude', 'admin');
+
   const deleteMedication = async (id: string) => {
     if (!window.confirm('Tem certeza que deseja excluir este medicamento do sistema?')) return;
-    const { error } = await supabase.from('medications').delete().eq('id', id);
-    if (error) {
-      showToast('Erro ao excluir medicamento', 'error');
-    } else {
-      setMedications(medications.filter(m => m.id !== id));
+    try {
+      const { error } = await supabase.from('medications').delete().eq('id', id);
+      if (error) {
+        console.warn('Aviso ao excluir medicamento no Supabase:', error);
+      }
+      try {
+        const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
+        if (demoMeds) {
+          const parsed: Medication[] = JSON.parse(demoMeds);
+          const updated = parsed.filter(m => m.id !== id);
+          localStorage.setItem('gestao360_demo_saude_medications', JSON.stringify(updated));
+        }
+      } catch (localErr) {
+        console.error('Erro ao atualizar cache local de medicamentos:', localErr);
+      }
+      setMedications(prev => prev.filter(m => m.id !== id));
       showToast('Medicamento excluído com sucesso!', 'success');
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      showToast('Erro ao excluir medicamento: ' + (err.message || 'Erro inesperado'), 'error');
+    }
+  };
+
+  const handleDeleteDispensation = async (d: MedicationDispensation) => {
+    const formattedDate = d.created_at ? new Date(d.created_at).toLocaleDateString('pt-BR') : '';
+    const confirmed = window.confirm(
+      `ATENÇÃO: Deseja realmente EXCLUIR o registro de entrega do medicamento "${d.medication_name}" para o paciente ${d.patient_name}${formattedDate ? ` realizada em ${formattedDate}` : ''}?\n\nEsta operação removerá o registro do histórico e desativará a trava de antecipação vinculada a esta retirada.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('medication_dispensations')
+        .delete()
+        .eq('id', d.id);
+
+      if (error) {
+        console.warn('Aviso ao excluir no Supabase (aplicando limpeza local):', error);
+      }
+
+      // Atualizar cache local/demo
+      try {
+        const demoDisp = localStorage.getItem('gestao360_demo_saude_dispensations');
+        if (demoDisp) {
+          const parsed: MedicationDispensation[] = JSON.parse(demoDisp);
+          const updated = parsed.filter(item => item.id !== d.id);
+          localStorage.setItem('gestao360_demo_saude_dispensations', JSON.stringify(updated));
+        }
+      } catch (localErr) {
+        console.error('Erro ao atualizar cache local de dispensações:', localErr);
+      }
+
+      setLocalDispensations(prev => prev.filter(item => item.id !== d.id));
+      showToast('Registro de dispensação excluído com sucesso!', 'success');
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      console.error('Erro ao excluir dispensação:', err);
+      showToast('Erro ao excluir: ' + (err.message || 'Erro inesperado'), 'error');
     }
   };
 
@@ -478,13 +537,15 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                           >
                             <Edit2 size={16} />
                           </button>
-                          <button 
-                            onClick={() => deleteMedication(med.id)}
-                            className="p-2 text-neutral-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                          {canDelete && (
+                            <button 
+                              onClick={() => deleteMedication(med.id)}
+                              className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                              title="Excluir Medicamento (Admin)"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -515,7 +576,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                   <th className="p-4">Qtd. / Tratamento</th>
                   <th className="p-4">Médico & Receita</th>
                   <th className="p-4">Data Retirada & Próxima Liberada</th>
-                  <th className="p-4 text-right">Comprovante</th>
+                  <th className="p-4 text-right">Comprovante / Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -545,14 +606,23 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
                         Próx: {d.next_allowed_dispensation_date ? d.next_allowed_dispensation_date.split('-').reverse().join('/') : '---'}
                       </div>
                     </td>
-                    <td className="p-4 text-right">
+                    <td className="p-4 text-right space-x-1">
                       <button 
                         onClick={() => setSelectedDispenseToPrint(d)}
-                        className="p-2 text-neutral-500 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-colors"
+                        className="p-2 text-neutral-500 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-500/10 rounded-xl transition-colors cursor-pointer"
                         title="Imprimir Comprovante"
                       >
                         <Printer size={16} />
                       </button>
+                      {canDelete && (
+                        <button 
+                          onClick={() => handleDeleteDispensation(d)}
+                          className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
+                          title="Excluir Registro de Dispensação (Admin)"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

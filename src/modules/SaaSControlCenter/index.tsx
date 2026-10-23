@@ -1006,7 +1006,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
           </div>
 
           <div className="rounded-3xl overflow-hidden border border-neutral-200 dark:border-neutral-800 shadow-sm">
-            <SaudeModule currentInstitution={selectedHealthInst} />
+            <SaudeModule currentInstitution={selectedHealthInst} currentUser={currentUser} />
           </div>
         </div>
       )}
