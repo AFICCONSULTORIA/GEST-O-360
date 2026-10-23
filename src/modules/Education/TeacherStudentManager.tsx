@@ -5,7 +5,7 @@ import {
   X, CheckCircle2, Clock, BarChart3, Star, Edit2, Trash2, Printer, Send, MessageSquare, ArrowLeft,
   Key, Copy, Check, Camera, RotateCcw, Plus
 } from 'lucide-react';
-import { generateEnrollmentCode, getTeacherStudents, TeacherStudent } from '../../lib/api/education';
+import { generateEnrollmentCode, getTeacherStudents, TeacherStudent, assignStudentClass } from '../../lib/api/education';
 import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
 
 const MOCK_SUBJECTS = [
@@ -542,7 +542,12 @@ export const TeacherStudentManager = () => {
                       </div>
                       <div>
                         <p className="font-bold text-neutral-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">{student.name}</p>
-                        <p className="text-xs text-neutral-500">{student.email}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-neutral-500">{student.email}</p>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-200/50 dark:border-sky-500/20">
+                            {classes.find(c => c.id === student.classId)?.name || student.className || 'Turma 4A'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -670,8 +675,70 @@ export const TeacherStudentManager = () => {
             </div>
 
             {/* Profile Body */}
-            <div className="flex-1 p-6 pt-16 space-y-8">
+            <div className="flex-1 p-6 pt-16 space-y-6">
               
+              {/* Lotação de Turma (Alocação Dinâmica) */}
+              <div className="bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-neutral-800/80 dark:to-neutral-800/50 p-5 rounded-3xl border border-sky-200/60 dark:border-neutral-700/60 shadow-sm space-y-3">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-black text-neutral-900 dark:text-white flex items-center gap-2 text-sm">
+                    <Users size={18} className="text-sky-600 dark:text-sky-400" />
+                    Lotação de Turma
+                  </h4>
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-sky-200/60 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 px-2 py-0.5 rounded-md">
+                    {classes.find(c => c.id === selectedStudent.classId)?.name || selectedStudent.className || 'Turma 4A'}
+                  </span>
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="block text-xs font-bold text-neutral-600 dark:text-neutral-400">
+                    Alocar aluno na turma:
+                  </label>
+                  <select
+                    value={selectedStudent.classId || (classes.find(c => c.name === selectedStudent.className)?.id || classes[0]?.id || 1)}
+                    onChange={async (e) => {
+                      const newClassId = Number(e.target.value);
+                      const targetClass = classes.find(c => c.id === newClassId);
+                      if (!targetClass) return;
+
+                      const updatedStudent = {
+                        ...selectedStudent,
+                        classId: newClassId,
+                        className: targetClass.name
+                      };
+
+                      // 1. Atualizar state local
+                      const updatedList = students.map((s: any) => 
+                        s.id === selectedStudent.id ? updatedStudent : s
+                      );
+                      setStudents(updatedList);
+                      setSelectedStudent(updatedStudent);
+                      localStorage.setItem('gestao360_students', JSON.stringify(updatedList));
+
+                      // 2. Persistir no Supabase em education_enrollments e education_students
+                      await assignStudentClass({
+                        studentId: String(selectedStudent.id),
+                        studentName: selectedStudent.name,
+                        className: targetClass.name,
+                        classId: newClassId,
+                        enrollmentCode: selectedStudent.enrollmentId,
+                        avatar: selectedStudent.avatar
+                      });
+
+                      showToast(`Aluno(a) ${selectedStudent.name} lotado(a) na ${targetClass.name}!`, 'success');
+                    }}
+                    className="w-full px-4 py-2.5 bg-white dark:bg-neutral-900 border border-sky-300/80 dark:border-neutral-700 rounded-xl font-bold text-sm text-neutral-900 dark:text-white shadow-inner focus:ring-2 focus:ring-sky-500/20 outline-none transition-all cursor-pointer"
+                  >
+                    {classes.map(cls => (
+                      <option key={cls.id} value={cls.id}>{cls.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium leading-relaxed">
+                  Ao lotar o aluno nesta turma, ele entrará automaticamente para a <strong>lista de amigos online</strong> de todos os alunos da turma selecionada no Portal da Educação.
+                </p>
+              </div>
+
               {/* Level & XP */}
               <div className="bg-neutral-50 dark:bg-neutral-800/50 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800">
                 <div className="flex justify-between items-center mb-3">
@@ -838,10 +905,13 @@ export const TeacherStudentManager = () => {
 
               const finalCode = newStudentData.enrollmentId || generateEnrollmentCode(newStudentData.name, students.length + 1);
               const finalPass = newStudentData.password || '123';
+              const targetClass = classes.find(c => c.id === newStudentData.classId);
+              const targetClassName = targetClass?.name || (newStudentData.classId === 2 ? 'Turma 5B' : 'Turma 4A');
 
               const newStudent = {
                 id: Date.now(),
                 classId: newStudentData.classId,
+                className: targetClassName,
                 enrollmentId: finalCode,
                 password: finalPass,
                 name: newStudentData.name.trim(),
@@ -866,10 +936,20 @@ export const TeacherStudentManager = () => {
               localStorage.setItem('gestao360_students', JSON.stringify(updatedStudents));
               window.dispatchEvent(new CustomEvent('students-updated'));
 
+              // Persiste no Supabase (education_enrollments e education_students)
+              assignStudentClass({
+                studentId: String(newStudent.id),
+                studentName: newStudent.name,
+                className: targetClassName,
+                classId: newStudent.classId,
+                enrollmentCode: finalCode,
+                avatar: newStudent.avatar
+              }).catch(err => console.warn('Erro ao salvar no Supabase:', err));
+
               setIsNewStudentModalOpen(false);
               setNewStudentData({ name: '', enrollmentId: '', classId: 1, password: '123', avatar: '' });
               setCreatedStudentCredentials(newStudent);
-              showToast('Aluno cadastrado com sucesso!', 'success');
+              showToast(`Aluno cadastrado e lotado na ${targetClassName}!`, 'success');
             }}>
               {/* Foto ou Ícone Padrão */}
               <input 

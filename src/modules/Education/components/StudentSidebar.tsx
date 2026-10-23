@@ -9,7 +9,7 @@ import {
   Store,
   X, 
   Sparkles,
-  Flame,
+  Zap,
   HeartHandshake
 } from 'lucide-react';
 import { EducationAvatar } from './EducationAvatar';
@@ -106,17 +106,17 @@ export const StudentSidebar: React.FC<StudentSidebarProps> = ({
             </div>
           </div>
 
-          {/* Ofensiva Status Pill */}
+          {/* Sequência Status Pill (Raio ⚡) */}
           <div className="mt-3 pt-2.5 border-t border-neutral-200/50 dark:border-neutral-700/50 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">Ofensiva diária:</span>
+            <span className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">Sequência diária:</span>
             <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black border transition-all ${
               studentData.hasPracticedToday
-                ? 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/30'
+                ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-yellow-400 border-amber-300 dark:border-amber-500/30'
                 : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 border-neutral-200 dark:border-neutral-700'
             }`}>
-              <Flame size={11} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "text-orange-500 animate-pulse" : "opacity-60"} />
+              <Zap size={11} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "text-amber-500 dark:text-yellow-400 animate-pulse" : "opacity-60"} />
               <span>{studentData.streak || 0} dias</span>
-              {studentData.hasPracticedToday ? <span>🔥</span> : <span className="text-[9px] font-normal">(apagado)</span>}
+              {studentData.hasPracticedToday ? <span>⚡</span> : <span className="text-[9px] font-normal">(pendente)</span>}
             </div>
           </div>
         </div>

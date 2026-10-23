@@ -456,7 +456,7 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">
-                      🎟️ Código de Matrícula
+                      🎟️ Matrícula ou E-mail do Aluno
                     </label>
                     <div className="relative group">
                       <User size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
@@ -465,11 +465,11 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                         required
                         value={enrollmentCode}
                         onChange={(e) => {
-                          setEnrollmentCode(e.target.value.toUpperCase());
+                          setEnrollmentCode(e.target.value);
                           if (studentLoginError) setStudentLoginError(null);
                         }}
-                        placeholder="Ex: ART001"
-                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner uppercase"
+                        placeholder="Ex: AFIC001 ou aficconsultoria@gmail.com"
+                        className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-base md:text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner"
                       />
                     </div>
                   </div>
@@ -501,20 +501,57 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                     </div>
                   </div>
 
-                  {/* Atalho Demo Aluno */}
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEnrollmentCode('ART001');
-                        setStudentPassword('123');
-                        setStudentLoginError(null);
-                      }}
-                      className="w-full py-2.5 px-4 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/50 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl text-amber-700 dark:text-amber-300 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.01]"
-                    >
-                      <Sparkles size={14} className="text-amber-500 animate-spin" style={{ animationDuration: '6s' }} />
-                      <span>Preencher Aluno Demo: <strong>ART001</strong> (Senha: 123)</span>
-                    </button>
+                  {/* Atalhos Rápidos de Acesso */}
+                  <div className="pt-2 space-y-2">
+                    <p className="text-[11px] font-bold text-center text-neutral-400 uppercase tracking-wider">
+                      Acessos Rápidos Disponíveis
+                    </p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEnrollmentCode('aficconsultoria@gmail.com');
+                          setStudentPassword('gestao123@');
+                          if (studentLoginError) setStudentLoginError(null);
+                        }}
+                        className="py-2.5 px-4 bg-gradient-to-r from-amber-500/15 via-yellow-400/20 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border-2 border-amber-400/70 rounded-2xl text-neutral-900 dark:text-white text-xs font-bold transition-all text-left flex items-center justify-between cursor-pointer shadow-sm"
+                      >
+                        <div>
+                          <span className="font-black flex items-center gap-1.5 text-amber-700 dark:text-yellow-400">
+                            ⚡ Carlos (AFIC Consultoria)
+                          </span>
+                          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">aficconsultoria@gmail.com · Senha: gestao123@</span>
+                        </div>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-400 text-neutral-950">Entrar ⚡</span>
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEnrollmentCode('ANA001');
+                          setStudentPassword('123');
+                          if (studentLoginError) setStudentLoginError(null);
+                        }}
+                        className="py-2 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 dark:hover:bg-sky-900/50 border border-sky-200 dark:border-sky-800 rounded-xl text-sky-800 dark:text-sky-300 text-xs font-bold transition-all text-left flex flex-col cursor-pointer"
+                      >
+                        <span className="font-black">Ana Silva (ANA001)</span>
+                        <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">Turma 4A · 123</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEnrollmentCode('DIE004');
+                          setStudentPassword('123');
+                          if (studentLoginError) setStudentLoginError(null);
+                        }}
+                        className="py-2 px-3 bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700 rounded-xl text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all text-left flex flex-col cursor-pointer"
+                      >
+                        <span className="font-black">Diego Ramos (DIE004)</span>
+                        <span className="text-[10px] text-neutral-500 font-semibold">Turma 5B · 123</span>
+                      </button>
+                    </div>
                   </div>
 
                   <button 
@@ -621,19 +658,38 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
               </div>
             </div>
 
-            {/* Atalho Demo Professor */}
-            <button
-              type="button"
-              onClick={() => {
-                setTeacherEmail('carlos.eduardo@escola.gov.br');
-                setTeacherPassword('123');
-                setTeacherLoginError(null);
-              }}
-              className="w-full py-2.5 px-4 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/60 rounded-2xl text-indigo-700 dark:text-indigo-300 text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm hover:scale-[1.01]"
-            >
-              <Sparkles size={14} className="text-indigo-500 animate-spin" style={{ animationDuration: '6s' }} />
-              <span>Preencher Professor Atribuído (Prof. Carlos Eduardo - 123)</span>
-            </button>
+            {/* Atalhos Rápidos Educador */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTeacherEmail('aficconsultoria@gmail.com');
+                  setTeacherPassword('gestao123@');
+                  if (teacherLoginError) setTeacherLoginError(null);
+                }}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-500/15 via-purple-500/15 to-emerald-500/15 hover:from-indigo-500/25 hover:to-emerald-500/25 border-2 border-indigo-400/60 rounded-2xl text-neutral-900 dark:text-white text-xs font-bold transition-all flex items-center justify-between cursor-pointer shadow-sm"
+              >
+                <div className="text-left">
+                  <span className="font-black flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300">
+                    👑 Prof. Carlos (AFIC Consultoria)
+                  </span>
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">aficconsultoria@gmail.com · Senha: gestao123@</span>
+                </div>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-600 text-white">Entrar 🎓</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTeacherEmail('carlos.eduardo@escola.gov.br');
+                  setTeacherPassword('123');
+                  setTeacherLoginError(null);
+                }}
+                className="w-full py-2 px-3 bg-neutral-50 dark:bg-neutral-800/60 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-neutral-600 dark:text-neutral-400 text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <span>Professor Demonstrativo (carlos.eduardo@escola.gov.br · 123)</span>
+              </button>
+            </div>
 
             <button 
               type="submit"

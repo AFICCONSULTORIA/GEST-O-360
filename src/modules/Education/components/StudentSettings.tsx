@@ -10,7 +10,7 @@ import {
   Camera,
   RotateCcw,
   User,
-  Flame,
+  Zap,
   Calendar
 } from 'lucide-react';
 import { EducationAvatar, optimizeAvatarImage } from './EducationAvatar';
@@ -34,6 +34,7 @@ interface StudentSettingsProps {
     inventory: string[];
   };
   setStudentData: React.Dispatch<React.SetStateAction<any>>;
+  onTestStreakAnimation?: (prev: number, current: number) => void;
 }
 
 const PREMIUM_AVATARS: Record<string, string> = {
@@ -46,6 +47,7 @@ const PREMIUM_AVATARS: Record<string, string> = {
 export const StudentSettings: React.FC<StudentSettingsProps> = ({
   studentData,
   setStudentData,
+  onTestStreakAnimation,
 }) => {
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
   const [isProcessingPhoto, setIsProcessingPhoto] = React.useState(false);
@@ -76,7 +78,7 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
       weeklyActivity
     }));
 
-    setToastMessage('Fogo apagado! Dia simulado como novo: complete uma aula para acender a ofensiva.');
+    setToastMessage('Raio descarregado! Dia simulado como novo: complete uma aula para disparar o raio.');
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -96,7 +98,7 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
       weeklyActivity: [false, false, false, false, false, false, false]
     }));
 
-    setToastMessage('Ofensiva reiniciada para 0 dias.');
+    setToastMessage('Sequência reiniciada para 0 dias.');
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -119,7 +121,7 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
       weeklyActivity
     }));
 
-    setToastMessage('Ofensiva configurada para 12 dias (com fogo apagado para hoje).');
+    setToastMessage('Sequência configurada para 12 dias (com raio aguardando carga).');
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -351,26 +353,27 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
             </div>
           </div>
 
-          {/* Gerenciador da Ofensiva Diária (Duolingo) */}
+          {/* Gerenciador da Sequência Diária (Poder do Raio ⚡) */}
           <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                <Flame className={studentData.hasPracticedToday ? "text-orange-500" : "text-neutral-400"} size={24} fill={studentData.hasPracticedToday ? "currentColor" : "none"} />
-                Ofensiva Diária (Estilo Duolingo)
+                <Zap className={studentData.hasPracticedToday ? "text-amber-500 fill-amber-400 animate-pulse drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]" : "text-neutral-400"} size={24} />
+                Poder da Sequência Diária (Raio Elétrico ⚡)
               </h3>
               <div className={`px-3 py-1 rounded-full text-xs font-black border flex items-center gap-1.5 transition-all ${
                 studentData.hasPracticedToday
-                  ? 'bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-500/30'
+                  ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-yellow-400 border-amber-300 dark:border-amber-500/30 shadow-sm'
                   : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700'
               }`}>
-                {studentData.hasPracticedToday ? '🔥 Fogo Aceso Hoje' : '🕯️ Fogo Apagado (Pendente)'}
+                {studentData.hasPracticedToday ? '⚡ Raio Carregado Hoje' : '⚡ Aguardando Carga (Pendente)'}
               </div>
             </div>
 
             <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              O sistema conta a ofensiva estritamente na <strong>primeira atividade</strong> de cada dia. Caso você ainda não tenha feito uma atividade hoje, o fogo permanece apagado. Use os controles abaixo para simular ou ajustar o teste da sequência:
+              O sistema dispara o relâmpago cortando a tela estritamente na <strong>primeira atividade</strong> de cada dia. Caso ainda não tenha praticado hoje, o raio aguarda carregamento. Use os botões abaixo para gerenciar ou testar as animações ao vivo:
             </p>
 
+            {/* Ações de Estado */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
@@ -378,15 +381,15 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs transition-all border border-amber-200/60 dark:border-amber-500/30 cursor-pointer shadow-sm active:scale-95"
               >
                 <Calendar size={14} />
-                Simular Novo Dia (Apagar Fogo)
+                Simular Novo Dia (Descarregar)
               </button>
               
               <button
                 type="button"
                 onClick={handleSetArthur12Streak}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-orange-50 hover:bg-orange-100 dark:bg-orange-500/10 dark:hover:bg-orange-500/20 text-orange-700 dark:text-orange-300 font-bold text-xs transition-all border border-orange-200/60 dark:border-orange-500/30 cursor-pointer shadow-sm active:scale-95"
+                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-500/10 dark:hover:bg-yellow-500/20 text-yellow-800 dark:text-yellow-300 font-bold text-xs transition-all border border-yellow-200/60 dark:border-yellow-500/30 cursor-pointer shadow-sm active:scale-95"
               >
-                <Flame size={14} />
+                <Zap size={14} />
                 Definir 12 Dias (Pendente)
               </button>
 
@@ -396,8 +399,34 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all border border-neutral-200 dark:border-neutral-700 cursor-pointer shadow-sm active:scale-95"
               >
                 <RotateCcw size={14} />
-                Zerar Ofensiva
+                Zerar Sequência
               </button>
+            </div>
+
+            {/* Testes ao Vivo da Animação do Raio */}
+            <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
+              <p className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-yellow-400 mb-2.5 flex items-center gap-1.5">
+                <Sparkles size={14} /> Teste Imediato da Animação na Tela:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => onTestStreakAnimation?.(studentData.streak || 12, (studentData.streak || 12) + 1)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-xs transition-all shadow-md shadow-amber-500/25 hover:scale-[1.02] active:scale-95 cursor-pointer"
+                >
+                  <Zap size={16} fill="currentColor" />
+                  Testar Raio Cortando a Tela (1ª Atividade)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onTestStreakAnimation?.(29, 30)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-amber-500 to-yellow-400 hover:from-purple-700 hover:via-amber-600 hover:to-yellow-500 text-white font-black text-xs transition-all shadow-md shadow-purple-500/25 hover:scale-[1.02] active:scale-95 cursor-pointer"
+                >
+                  <Sparkles size={16} />
+                  Testar Raio Lendário (Marco 30+ Dias 👑)
+                </button>
+              </div>
             </div>
           </div>
         </div>

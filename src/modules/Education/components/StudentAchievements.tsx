@@ -1,17 +1,31 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Award, 
   Trophy, 
   Star, 
-  Flame, 
+  Zap, 
   Compass, 
   Crown, 
   Unlock,
-  Lock
+  Lock,
+  Users,
+  GraduationCap,
+  Sparkles,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
+import { 
+  fetchRealStudentRanking, 
+  fetchRealTeacherRanking, 
+  RealStudentRanking, 
+  RealTeacherRanking 
+} from '../../../lib/api/education';
+import { EducationAvatar } from './EducationAvatar';
 
 interface StudentAchievementsProps {
   studentData: {
+    id?: string;
+    enrollment_code?: string;
     name: string;
     xp: number;
     level: number;
@@ -24,14 +38,6 @@ interface StudentAchievementsProps {
 }
 
 type RankingUser = { id: string; name: string; level: number; xp: number; avatar: string; isCurrentUser?: boolean };
-
-const MOCK_RANKING: RankingUser[] = [
-  { id: '1', name: 'Maria Clara', level: 9, xp: 3450, avatar: 'https://i.pravatar.cc/150?u=a' },
-  { id: '2', name: 'João Pedro', level: 8, xp: 2900, avatar: 'https://i.pravatar.cc/150?u=b' },
-  { id: '3', name: 'Ana Beatriz', level: 7, xp: 1800, avatar: 'https://i.pravatar.cc/150?u=c' },
-  { id: '4', name: 'Lucas Silva', level: 5, xp: 1200, avatar: 'https://i.pravatar.cc/150?u=d' },
-  { id: '5', name: 'Julia Costa', level: 4, xp: 850, avatar: 'https://i.pravatar.cc/150?u=e' },
-];
 
 const ALL_ACHIEVEMENTS: (Omit<RankingUser, 'id' | 'name' | 'level' | 'xp' | 'avatar'> & { id: string, emoji: string, name: string, desc: string, color: string, type: 'streak' | 'xp' | 'coins' | 'level', target: number, xpReward: number })[] = [
   // --- OFENSIVA (STREAK) - 12 Conquistas ---
@@ -119,17 +125,72 @@ export const StudentAchievements: React.FC<StudentAchievementsProps> = ({
     mainBadges.push(null);
   }
 
-  const rankingList = [
-    ...MOCK_RANKING,
-    { 
-      id: 'current-user', 
-      name: `Você (${studentData.name})`, 
-      level: studentData.level, 
-      xp: studentData.xp,
-      isCurrentUser: true,
-      avatar: ''
+  const [rankingTab, setRankingTab] = useState<'students' | 'teachers'>('students');
+  const [realStudents, setRealStudents] = useState<RealStudentRanking[]>([]);
+  const [realTeachers, setRealTeachers] = useState<RealTeacherRanking[]>([]);
+  const [loadingRanking, setLoadingRanking] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadData() {
+      try {
+        setLoadingRanking(true);
+        const [studentsData, teachersData] = await Promise.all([
+          fetchRealStudentRanking(),
+          fetchRealTeacherRanking()
+        ]);
+        if (isMounted) {
+          setRealStudents(studentsData);
+          setRealTeachers(teachersData);
+        }
+      } catch (e) {
+        console.warn('Erro ao carregar dados do ranking:', e);
+      } finally {
+        if (isMounted) setLoadingRanking(false);
+      }
     }
-  ].sort((a, b) => b.xp - a.xp).slice(0, 5);
+    loadData();
+    return () => { isMounted = false; };
+  }, []);
+
+  // Combina lista real de alunos com o aluno logado e ordena por XP
+  const studentRankingList = useMemo(() => {
+    const list = [...realStudents];
+    const myName = (studentData.name || '').trim().toLowerCase();
+    const myCode = (studentData.enrollment_code || '').trim().toUpperCase();
+
+    const existingIndex = list.findIndex(s => 
+      s.name.toLowerCase().trim() === myName ||
+      (myCode && s.enrollment_code?.toUpperCase() === myCode) ||
+      (studentData.id && s.id === studentData.id)
+    );
+
+    if (existingIndex !== -1) {
+      list[existingIndex] = {
+        ...list[existingIndex],
+        name: studentData.name,
+        xp: Math.max(list[existingIndex].xp, studentData.xp),
+        level: Math.max(list[existingIndex].level, studentData.level),
+        streak_count: Math.max(list[existingIndex].streak_count, studentData.streak || 0),
+        isCurrentUser: true,
+      };
+    } else {
+      list.push({
+        id: studentData.id || 'current-student',
+        name: studentData.name,
+        enrollment_code: myCode || 'AFIC001',
+        level: studentData.level,
+        title: 'Explorador Aprendiz',
+        xp: studentData.xp,
+        coins: studentData.coins || 0,
+        streak_count: studentData.streak || 0,
+        avatar: '',
+        isCurrentUser: true,
+      });
+    }
+
+    return list.sort((a, b) => b.xp - a.xp);
+  }, [realStudents, studentData]);
 
   return (
     <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -154,33 +215,33 @@ export const StudentAchievements: React.FC<StudentAchievementsProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           
-          {/* Streak Widget estilo Duolingo */}
+          {/* Streak Widget estilo Duolingo - Poder do Raio ⚡ */}
           <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col sm:flex-row items-center gap-6">
             <div className="flex items-center gap-4">
               <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all duration-300 ${
                 studentData.hasPracticedToday
-                  ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/30 ring-4 ring-orange-500/20'
+                  ? 'bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 text-white shadow-lg shadow-amber-500/30 ring-4 ring-yellow-400/20'
                   : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 ring-4 ring-neutral-200/50 dark:ring-neutral-700/50'
               }`}>
-                <Flame size={28} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "animate-pulse" : "opacity-60"} />
+                <Zap size={28} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "animate-pulse drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" : "opacity-60"} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <p className="text-3xl font-black text-neutral-900 dark:text-white">{studentData.streak || 0} dias</p>
+                  <p className="text-3xl font-black text-neutral-900 dark:text-white">{studentData.streak || 0} {studentData.streak === 1 ? 'dia' : 'dias'}</p>
                   {studentData.hasPracticedToday ? (
-                    <span className="text-xs font-black px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400">
-                      Fogo Aceso 🔥
+                    <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-yellow-400">
+                      Raio Ativo ⚡
                     </span>
                   ) : (
-                    <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
-                      Apagado 🕯️
+                    <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
+                      Aguardando ⚡
                     </span>
                   )}
                 </div>
                 <p className="text-sm font-bold text-neutral-500">
                   {studentData.hasPracticedToday 
-                    ? 'Meta de hoje cumprida com sucesso!' 
-                    : 'Faça uma atividade hoje para acender o fogo!'}
+                    ? 'Energia máxima alcançada hoje!' 
+                    : 'Complete uma atividade hoje para liberar o raio!'}
                 </p>
               </div>
             </div>
@@ -190,11 +251,11 @@ export const StudentAchievements: React.FC<StudentAchievementsProps> = ({
               </div>
               <div className="flex gap-1.5">
                 {(studentData.weeklyActivity || [false, false, false, false, false, false, false]).map((active, i) => (
-                  <div key={i} className={`flex-1 h-8 rounded-lg transition-all ${active ? 'bg-orange-500 shadow-sm shadow-orange-500/30' : 'bg-neutral-100 dark:bg-neutral-800'}`}></div>
+                  <div key={i} className={`flex-1 h-8 rounded-lg transition-all ${active ? 'bg-gradient-to-t from-amber-500 to-yellow-400 shadow-sm shadow-amber-500/30' : 'bg-neutral-100 dark:bg-neutral-800'}`}></div>
                 ))}
               </div>
             </div>
-            <div className="bg-orange-50 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/20 text-orange-600 dark:text-orange-400 text-xs font-black px-4 py-2.5 rounded-xl shrink-0 text-center">
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-yellow-400 text-xs font-black px-4 py-2.5 rounded-xl shrink-0 text-center">
               Recorde: {studentData.highestStreak || 0} dias!
             </div>
           </div>
@@ -302,55 +363,197 @@ export const StudentAchievements: React.FC<StudentAchievementsProps> = ({
 
         </div>
 
-        {/* Ranking */}
-        <div className="bg-gradient-to-b from-sky-500 to-indigo-600 rounded-[32px] p-1 shadow-xl shadow-sky-500/20 relative overflow-hidden h-fit">
-          <div className="absolute top-0 right-0 p-4 opacity-20">
-            <Trophy size={120} />
+        {/* Ranking Real da Rede (Alunos & Professores) */}
+        <div className="bg-gradient-to-b from-sky-600 via-indigo-700 to-indigo-900 rounded-[32px] p-1 shadow-2xl shadow-indigo-500/25 relative overflow-hidden h-fit">
+          <div className="absolute top-0 right-0 p-4 opacity-15 pointer-events-none">
+            <Trophy size={140} />
           </div>
-          <div className="bg-white/10 backdrop-blur-md w-full h-full rounded-[28px] p-6 flex flex-col gap-6 relative z-10 text-white">
-            <div className="text-center pb-4 border-b border-white/20">
-              <h3 className="text-2xl font-black mb-1">Ranking Semanal</h3>
-              <p className="text-sm font-medium text-sky-100">Atualizado a cada hora</p>
+          
+          <div className="bg-white/10 dark:bg-black/20 backdrop-blur-xl w-full h-full rounded-[28px] p-5 md:p-6 flex flex-col gap-5 relative z-10 text-white">
+            
+            {/* Header com Título e Switcher de Abas */}
+            <div className="pb-4 border-b border-white/15 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl md:text-2xl font-black tracking-tight flex items-center gap-2">
+                    <Trophy className="text-yellow-300" size={24} /> Ranking da Rede
+                  </h3>
+                  <p className="text-xs font-semibold text-sky-200 mt-0.5">Dados reais sincronizados via Supabase</p>
+                </div>
+                {loadingRanking && (
+                  <Loader2 size={16} className="text-sky-300 animate-spin" />
+                )}
+              </div>
+
+              {/* Seletor de Categoria: Alunos vs Professores */}
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/25 rounded-2xl border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setRankingTab('students')}
+                  className={`py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    rankingTab === 'students'
+                      ? 'bg-gradient-to-r from-amber-400 to-yellow-400 text-neutral-950 shadow-md shadow-yellow-500/30'
+                      : 'text-white/70 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <GraduationCap size={15} />
+                  <span>Alunos ({studentRankingList.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setRankingTab('teachers')}
+                  className={`py-2 px-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    rankingTab === 'teachers'
+                      ? 'bg-gradient-to-r from-indigo-400 to-sky-400 text-neutral-950 shadow-md shadow-indigo-500/30'
+                      : 'text-white/70 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Users size={15} />
+                  <span>Professores ({realTeachers.length})</span>
+                </button>
+              </div>
             </div>
             
-            <div className="flex-1 space-y-4">
-              {rankingList.map((user, index) => {
-                const position = index + 1;
-                const isFirst = position === 1;
-                const isSecond = position === 2;
-                const isThird = position === 3;
-                
-                if (user.isCurrentUser) {
+            {/* Lista: Ranking de Alunos Reais */}
+            {rankingTab === 'students' && (
+              <div className="flex-1 space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+                {studentRankingList.map((user, index) => {
+                  const position = index + 1;
+                  const isFirst = position === 1;
+                  const isSecond = position === 2;
+                  const isThird = position === 3;
+                  
+                  if (user.isCurrentUser) {
+                    return (
+                      <div 
+                        key={user.id} 
+                        className="bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-neutral-950 rounded-2xl p-3.5 flex items-center gap-3.5 relative overflow-hidden shadow-xl shadow-amber-500/40 transform scale-[1.02] z-10 border-2 border-white/60"
+                      >
+                        <div className="font-black text-lg w-7 text-center text-amber-950 shrink-0">
+                          {isFirst ? '🥇' : isSecond ? '🥈' : isThird ? '🥉' : `#${position}`}
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-black text-amber-600 border-2 border-amber-600/30 shadow-inner shrink-0 text-sm">
+                          {user.name.charAt(0)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="font-black text-xs sm:text-sm truncate">{user.name}</p>
+                            <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-neutral-950 text-yellow-300 shrink-0">
+                              Você ⚡
+                            </span>
+                          </div>
+                          <p className="text-[10px] sm:text-[11px] font-bold text-amber-950/80">
+                            Nível {user.level} · {user.streak_count} {user.streak_count === 1 ? 'dia' : 'dias'} ⚡
+                          </p>
+                        </div>
+                        <div className="font-black text-amber-950 text-sm whitespace-nowrap bg-black/10 px-2.5 py-1 rounded-xl">
+                          {user.xp.toLocaleString('pt-BR')} XP
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
-                    <div key={user.id} className="bg-amber-400 text-neutral-900 rounded-2xl p-3 flex items-center gap-4 relative overflow-hidden shadow-lg shadow-amber-500/50 transform scale-105 z-10 my-4">
-                      <div className="absolute top-0 left-0 w-1 h-full bg-amber-600"></div>
-                      <div className="font-black text-xl w-6 text-center text-amber-900">{position}</div>
-                      <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-black text-amber-500 border-2 border-amber-600 shrink-0">
-                        {studentData.name.charAt(0)}
+                    <div 
+                      key={user.id} 
+                      className={`rounded-2xl p-3 flex items-center gap-3.5 relative overflow-hidden transition-all hover:bg-white/15 ${
+                        isFirst 
+                          ? 'bg-white/20 border-2 border-yellow-400/80 shadow-lg shadow-yellow-500/20' 
+                          : isSecond 
+                          ? 'bg-white/15 border border-slate-300/50' 
+                          : isThird 
+                          ? 'bg-white/10 border border-amber-600/40' 
+                          : 'bg-white/5 border border-white/5'
+                      }`}
+                    >
+                      <div className="font-black text-base w-7 text-center shrink-0">
+                        {isFirst ? '🥇' : isSecond ? '🥈' : isThird ? '🥉' : position}
                       </div>
+                      
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-sm border-2 shrink-0 ${
+                        isFirst ? 'bg-yellow-400 text-neutral-900 border-white' : 'bg-white/20 text-white border-white/30'
+                      }`}>
+                        {user.name.charAt(0)}
+                      </div>
+
                       <div className="flex-1 min-w-0">
-                        <p className="font-black text-sm truncate">{user.name}</p>
-                        <p className="text-[10px] font-bold text-amber-900">Subindo rápido! 🚀</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className={`font-bold text-sm truncate ${isFirst ? 'text-white font-black' : 'text-white/95'}`}>
+                            {user.name}
+                          </p>
+                          {user.enrollment_code && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white/10 text-sky-200">
+                              {user.enrollment_code}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] font-medium text-sky-200/80">
+                          Nível {user.level} · {user.streak_count || 0} dias ⚡
+                        </p>
                       </div>
-                      <div className="font-black text-amber-900 text-sm">{user.xp} XP</div>
+
+                      <div className={`font-black text-sm shrink-0 ${isFirst ? 'text-yellow-300' : 'text-white/90'}`}>
+                        {user.xp.toLocaleString('pt-BR')} XP
+                      </div>
                     </div>
                   );
-                }
+                })}
+              </div>
+            )}
 
-                return (
-                  <div key={user.id} className={`rounded-2xl p-3 flex items-center gap-4 relative overflow-hidden ${isFirst ? 'bg-white/20 ring-2 ring-yellow-400' : isSecond ? 'bg-white/10' : 'bg-white/5'}`}>
-                    {(isFirst || isSecond) && <div className={`absolute top-0 left-0 w-1 h-full ${isFirst ? 'bg-yellow-400' : 'bg-slate-300'}`}></div>}
-                    <div className={`font-black text-xl w-6 text-center ${isFirst ? 'text-yellow-300' : isSecond ? 'text-slate-300' : 'text-white/50'}`}>{position}</div>
-                    <img src={user.avatar} alt="User" className={`w-10 h-10 rounded-full border-2 shrink-0 ${isFirst ? 'border-white' : isSecond ? 'border-white/50' : 'border-white/30'}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className={`font-bold text-sm truncate ${isFirst ? 'text-white font-black' : 'text-white/90'}`}>{user.name}</p>
-                      <p className={`text-[10px] font-bold ${isFirst ? 'text-sky-100' : 'text-sky-200/50'}`}>Nível {user.level}</p>
+            {/* Lista: Quadro de Educadores Reais */}
+            {rankingTab === 'teachers' && (
+              <div className="flex-1 space-y-2.5 max-h-[580px] overflow-y-auto pr-1">
+                {realTeachers.map((teacher, index) => {
+                  const isAfic = teacher.email.toLowerCase() === 'aficconsultoria@gmail.com';
+
+                  return (
+                    <div 
+                      key={teacher.id} 
+                      className={`rounded-2xl p-3.5 flex items-start gap-3.5 transition-all ${
+                        isAfic 
+                          ? 'bg-gradient-to-r from-indigo-500/30 via-purple-500/20 to-sky-500/30 border-2 border-indigo-400 shadow-lg shadow-indigo-500/20' 
+                          : 'bg-white/10 border border-white/10 hover:bg-white/15'
+                      }`}
+                    >
+                      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black text-sm border-2 shrink-0 ${
+                        isAfic 
+                          ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white border-yellow-300 shadow-md' 
+                          : 'bg-white/20 text-white border-white/30'
+                      }`}>
+                        {teacher.name.charAt(0)}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-black text-sm text-white truncate">{teacher.name}</p>
+                          {isAfic && (
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400 text-neutral-950 flex items-center gap-1 shadow-sm">
+                              👑 AFIC
+                            </span>
+                          )}
+                        </div>
+                        
+                        <p className="text-[11px] font-semibold text-sky-200 mt-0.5">
+                          {teacher.subject} · {teacher.school}
+                        </p>
+                        
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                            <CheckCircle2 size={10} /> Ativo na Rede
+                          </span>
+                          <span className="text-[10px] text-white/60 truncate font-mono">
+                            {teacher.email}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className={`font-black text-sm ${isFirst ? 'text-yellow-300' : 'text-white/80'}`}>{user.xp} XP</div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
+
           </div>
         </div>
       </div>

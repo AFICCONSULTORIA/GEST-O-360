@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   ArrowRight, 
@@ -9,10 +9,14 @@ import {
   Play, 
   Award, 
   User,
+  Users,
   Target,
-  Flame
+  Zap,
+  Loader2
 } from 'lucide-react';
 import { Course } from '../StudentPortal';
+import { fetchClassmates, Classmate } from '../../../lib/api/education';
+import { EducationAvatar } from './EducationAvatar';
 
 interface StudentDashboardProps {
   xpPercentage: number;
@@ -21,6 +25,7 @@ interface StudentDashboardProps {
   handleAccessCourse: (course: Course) => void;
   handleStartLesson: (lesson: any) => void;
   studentData?: {
+    id?: string;
     name?: string;
     xp?: number;
     coins?: number;
@@ -28,14 +33,10 @@ interface StudentDashboardProps {
     streak: number;
     hasPracticedToday?: boolean;
     streakFreezes?: number;
+    className?: string;
+    classId?: number;
   };
 }
-
-const ONLINE_FRIENDS = [
-  { id: 1, name: 'Gael', status: 'Estudando Álgebra', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuD67XhB0DJ40aaTrcWE9Iu_CcFYker9wsK8fJp4A7tzRdu9BapL31HGEWE1YNiLn0vGagwV83hToRXj61oJHwqa90jNR9WsRsmG3nfD2pkzQbohLj66VPCTSk5ZgEEIr7s-KDWO0w3dGS9shn0V2SiFXd5iEDWQqlK76AiiDEsS5dkMZO5pxzNAt30M4FdnuuDXFNVVg797dlHMBDUiIpllNfDj8CTg1sGQSelXwDbN03csF-YcHbv5tjK3HL8OvXoSpjanR_rgKewT' },
-  { id: 2, name: 'Lívia', status: 'Fazendo Teste de Inglês', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDllRObvU5JxFTVh5peqsNKPqwOqP1l8lebIwbcOdWvzvHUyxWhDg43f0OcCFOnycftt_-hr-wNyLYuGKNAh6GHqpMby3k04-V7DZlITdVNLGB21dKL50vmm7l20NHjDpfO5mVgsqP9p8WskMxObv699qRM9aApARfS64JeVrxkhH7WIu9ioZMXSFXdgNd0A1K0Yd64IhHTrIQeSneQl-04iEuBW5ABmM_Va3_iVbWnsrdHQ1jMh8T7vzz8r_4inEwnTz4gQyLMte8j' },
-  { id: 3, name: 'Theo', status: 'No Mural de Conquistas', avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDo0IL9p_Y9Mj9wmvRO8KmKUHwshNw8UEloqwmyKnzot8sffi7PYbE1E5zqtuYOkmxtL6IzO4FpE_OhmvAQ4lh2FGNIfGf25TeVpqrdttCCIYPOEDj-cxlMiYj3NsekfPLGjRYkFvL3sBtz541gu01UvLdC0OaGcEYOOdk6tbnoOj06DQQ_Go_41ng-Sr_j8SUedGt0w4ohI9oFlK2dQIwxMcrz5KW1CvGNBnfWNvE1sCInRc8D1EllM0C2GFssg5OEWMPAQXhPVBWj' }
-];
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   xpPercentage,
@@ -46,7 +47,43 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
   studentData,
 }) => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [activeFriendId, setActiveFriendId] = useState<number | null>(null);
+  const [activeFriendId, setActiveFriendId] = useState<string | number | null>(null);
+  const [classmates, setClassmates] = useState<Classmate[]>([]);
+  const [isLoadingClassmates, setIsLoadingClassmates] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadClassmates() {
+      setIsLoadingClassmates(true);
+      try {
+        const studentId = studentData?.id || localStorage.getItem('edu_student_id') || '2';
+        const className = studentData?.className || localStorage.getItem('edu_student_class') || 'Turma 4A';
+        const list = await fetchClassmates(studentId, className);
+        if (isMounted) {
+          setClassmates(list);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar colegas da turma:', err);
+      } finally {
+        if (isMounted) setIsLoadingClassmates(false);
+      }
+    }
+
+    loadClassmates();
+
+    const handleUpdate = () => {
+      loadClassmates();
+    };
+
+    window.addEventListener('students-updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('students-updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, [studentData?.id, studentData?.className]);
 
   const handleInteract = (friendName: string, emoji: string) => {
     setToastMessage(`Você mandou um ${emoji} para ${friendName}!`);
@@ -97,42 +134,42 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
         </div>
       </section>
 
-      {/* Card de Ofensiva Diária Estilo Duolingo (Aceso vs Apagado) */}
+      {/* Card de Sequência Diária - Raio de Alta Voltagem (Carregado ⚡ vs Em Espera) */}
       {studentData && (
         <section className={`rounded-[28px] p-5 md:p-6 border transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm ${
           studentData.hasPracticedToday
-            ? 'bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/5 border-orange-200 dark:border-orange-500/30 dark:bg-orange-950/20'
+            ? 'bg-gradient-to-r from-amber-500/10 via-yellow-400/10 to-cyan-500/10 border-amber-300/80 dark:border-yellow-500/30 dark:bg-amber-950/20 shadow-amber-500/5'
             : 'bg-neutral-100/90 dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800'
         }`}>
           <div className="flex items-center gap-4 w-full sm:w-auto">
             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-all ${
               studentData.hasPracticedToday
-                ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-lg shadow-orange-500/30 ring-4 ring-orange-500/20'
+                ? 'bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 text-white shadow-lg shadow-amber-500/30 ring-4 ring-yellow-400/20'
                 : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500'
             }`}>
-              <Flame size={28} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "animate-pulse" : "opacity-60"} />
+              <Zap size={28} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "animate-pulse drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" : "opacity-60"} />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-black text-lg text-neutral-900 dark:text-white">
                   {studentData.hasPracticedToday 
-                    ? `Ofensiva em Chamas! (${studentData.streak} dias)` 
-                    : `Sua Ofensiva está em Espera (${studentData.streak} dias)`}
+                    ? `Poder do Raio Carregado! (${studentData.streak} ${studentData.streak === 1 ? 'dia' : 'dias'})` 
+                    : `Sua Sequência está em Espera (${studentData.streak} ${studentData.streak === 1 ? 'dia' : 'dias'})`}
                 </h3>
                 {studentData.hasPracticedToday ? (
-                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center gap-1">
-                    Meta Cumprida 🔥
+                  <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-yellow-400 flex items-center gap-1">
+                    Raio Carregado ⚡
                   </span>
                 ) : (
                   <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
-                    Fogo Apagado 🕯️
+                    Aguardando Carga ⚡
                   </span>
                 )}
               </div>
               <p className="text-xs md:text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
                 {studentData.hasPracticedToday 
-                  ? 'Você já completou a primeira atividade de hoje e manteve sua sequência. Volte amanhã para continuar!' 
-                  : 'Complete a primeira atividade do dia para acender a chama e somar mais um dia à sua sequência!'}
+                  ? 'Você já completou a primeira atividade de hoje e liberou a carga do raio. Volte amanhã para continuar sua sequência!' 
+                  : 'Complete a primeira atividade do dia para liberar o trovão e cortar a tela com o poder do raio!'}
               </p>
             </div>
           </div>
@@ -141,11 +178,11 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             onClick={() => setActiveView('courses')}
             className={`px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider shrink-0 transition-all cursor-pointer whitespace-nowrap w-full sm:w-auto text-center ${
               studentData.hasPracticedToday
-                ? 'bg-orange-100 hover:bg-orange-200 dark:bg-orange-500/20 dark:hover:bg-orange-500/30 text-orange-700 dark:text-orange-300'
-                : 'bg-orange-500 hover:bg-orange-600 text-white shadow-md shadow-orange-500/20 hover:scale-105 active:scale-95'
+                ? 'bg-amber-100 hover:bg-amber-200 dark:bg-amber-500/20 dark:hover:bg-amber-500/30 text-amber-800 dark:text-amber-300'
+                : 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white shadow-md shadow-amber-500/25 hover:scale-105 active:scale-95'
             }`}
           >
-            {studentData.hasPracticedToday ? 'Explorar Trilhas' : 'Praticar para Acender 🔥'}
+            {studentData.hasPracticedToday ? 'Explorar Trilhas' : 'Praticar para Carregar Raio ⚡'}
           </button>
         </section>
       )}
@@ -321,46 +358,90 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({
             </div>
           </div>
 
-          {/* Amigos Online */}
-          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm relative">
-            <h3 className="font-black text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
-              <User className="text-sky-500" size={20} />
-              Amigos Online
-            </h3>
-            
-            <div className="flex flex-col gap-4 mb-3">
-              {ONLINE_FRIENDS.map((friend) => (
-                <div key={friend.id} className="relative group">
-                  <div 
-                    onClick={() => setActiveFriendId(activeFriendId === friend.id ? null : friend.id)}
-                    className="flex items-center gap-3 cursor-pointer p-2 rounded-2xl hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
-                  >
-                    <div className="relative">
-                      <img alt={friend.name} className="h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm object-cover" src={friend.avatar} />
-                      <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm border border-emerald-400"></div>
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-neutral-900 dark:text-white leading-tight">{friend.name}</p>
-                      <p className="text-[10px] text-neutral-500 font-bold">{friend.status}</p>
-                    </div>
-                  </div>
-
-                  {/* Interações Popover */}
-                  {activeFriendId === friend.id && (
-                    <div className="absolute top-12 left-10 bg-white dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 shadow-xl rounded-2xl p-2 flex items-center gap-2 z-20 animate-in zoom-in-95 duration-200">
-                      <button onClick={() => handleInteract(friend.name, '🚀')} className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-sky-50 dark:hover:bg-sky-500/20 hover:scale-110 transition-all cursor-pointer">🚀</button>
-                      <button onClick={() => handleInteract(friend.name, '🔥')} className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-500/20 hover:scale-110 transition-all cursor-pointer">🔥</button>
-                      <button onClick={() => handleInteract(friend.name, '👊')} className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-500/20 hover:scale-110 transition-all cursor-pointer">👊</button>
-                    </div>
-                  )}
-                </div>
-              ))}
-              
-              <div className="flex items-center gap-3 p-2">
-                <div className="flex items-center justify-center h-10 w-10 rounded-full ring-2 ring-white dark:ring-neutral-900 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 text-xs font-bold shadow-sm">+5</div>
-                <p className="text-xs text-neutral-500 font-bold">outros alunos estão na plataforma.</p>
-              </div>
+          {/* Amigos Online da Mesma Turma */}
+          <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-6 rounded-[24px] border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm relative overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                <Users className="text-sky-500" size={20} />
+                Amigos Online
+              </h3>
+              <span className="text-[11px] font-black uppercase px-2.5 py-1 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200/50 dark:border-sky-500/20 rounded-full tracking-wider">
+                {studentData?.className || 'Turma 4A'}
+              </span>
             </div>
+            
+            {isLoadingClassmates ? (
+              <div className="py-8 flex flex-col items-center justify-center gap-2 text-neutral-400">
+                <Loader2 size={24} className="animate-spin text-sky-500" />
+                <span className="text-xs font-bold">Conectando colegas da turma...</span>
+              </div>
+            ) : classmates.length === 0 ? (
+              <div className="py-6 px-4 text-center bg-neutral-50/50 dark:bg-neutral-800/30 rounded-2xl border border-neutral-100 dark:border-neutral-800 space-y-2">
+                <div className="w-10 h-10 bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 rounded-full flex items-center justify-center mx-auto">
+                  <User size={20} />
+                </div>
+                <p className="text-xs font-black text-neutral-800 dark:text-neutral-200">
+                  Nenhum colega lotado nesta turma ainda
+                </p>
+                <p className="text-[11px] text-neutral-400">
+                  Assim que novos alunos forem alocados na <strong>{studentData?.className || 'sua turma'}</strong> pelo professor, eles aparecerão aqui instantaneamente.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3 mb-2">
+                {classmates.map((friend) => (
+                  <div key={friend.id} className="relative group">
+                    <div 
+                      onClick={() => setActiveFriendId(activeFriendId === friend.id ? null : friend.id)}
+                      className="flex items-center justify-between cursor-pointer p-2 rounded-2xl hover:bg-neutral-100 dark:hover:bg-neutral-800/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="relative">
+                          <EducationAvatar 
+                            src={friend.avatar} 
+                            name={friend.name} 
+                            role="student" 
+                            size="sm" 
+                          />
+                          <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full ring-2 ring-white dark:ring-neutral-900 shadow-sm border border-emerald-400 animate-pulse" title="Online agora" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-neutral-900 dark:text-white leading-tight">{friend.name}</p>
+                          <p className="text-[10px] text-neutral-500 font-bold flex items-center gap-1.5 mt-0.5">
+                            <span>{friend.statusText}</span>
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+                          Nv. {friend.level}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Interações Popover */}
+                    {activeFriendId === friend.id && (
+                      <div className="absolute top-12 left-10 bg-white dark:bg-neutral-800 border border-neutral-200/50 dark:border-neutral-700 shadow-xl rounded-2xl p-2 flex items-center gap-2 z-20 animate-in zoom-in-95 duration-200">
+                        <button onClick={() => handleInteract(friend.name, '🚀')} title="Mandar Foguete" className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-sky-50 dark:hover:bg-sky-500/20 hover:scale-110 transition-all cursor-pointer">🚀</button>
+                        <button onClick={() => handleInteract(friend.name, '🔥')} title="Mandar Fogo" className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-orange-50 dark:hover:bg-orange-500/20 hover:scale-110 transition-all cursor-pointer">🔥</button>
+                        <button onClick={() => handleInteract(friend.name, '👊')} title="Mandar Toca Aqui" className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-500/20 hover:scale-110 transition-all cursor-pointer">👊</button>
+                        <button onClick={() => handleInteract(friend.name, '⭐')} title="Mandar Estrela" className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-500/20 hover:scale-110 transition-all cursor-pointer">⭐</button>
+                        <button onClick={() => handleInteract(friend.name, '👏')} title="Mandar Palmas" className="w-10 h-10 flex items-center justify-center text-xl bg-neutral-50 dark:bg-neutral-700/50 rounded-xl hover:bg-purple-50 dark:hover:bg-purple-500/20 hover:scale-110 transition-all cursor-pointer">👏</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                
+                <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-[11px] text-neutral-500 font-bold px-1">
+                  <span>{classmates.length} {classmates.length === 1 ? 'colega na turma' : 'colegas na turma'}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 font-black flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    Turma Conectada
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Toast Flutuante de Confirmação */}
             {toastMessage && (

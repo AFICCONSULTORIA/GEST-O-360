@@ -20,7 +20,7 @@ import {
   Paperclip,
   Sparkles,
   MessageSquare,
-  Flame
+  Zap
 } from 'lucide-react';
 
 import { 
@@ -290,7 +290,9 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
     weeklyActivity: [false, false, false, false, false, false, false],
     hasPracticedToday: false,
     avatar: '',
-    inventory: [] as string[]
+    inventory: [] as string[],
+    className: 'Turma 4A',
+    classId: 1
   });
 
   // Animação de Sequência (Streak)
@@ -444,12 +446,22 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
           streakFreezes: streakData.freezesRemaining,
           weeklyActivity,
           avatar: localActivity.avatar || prev.avatar,
-          inventory: localActivity.inventory || prev.inventory
+          inventory: localActivity.inventory || prev.inventory,
+          className: studentClass || profile.className || prev.className,
+          classId: profile.classId || (studentClass?.includes('5') ? 2 : 1)
         }));
       }
       setIsLoading(false);
     }
     loadData();
+
+    const handleUpdate = () => {
+      loadData();
+    };
+    window.addEventListener('students-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('students-updated', handleUpdate);
+    };
   }, [previewCourseId]);
 
   // Salvar avatar e inventário sempre que mudarem
@@ -593,18 +605,18 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Mobile Streak Pill estilo Duolingo (Aceso vs Apagado) */}
+          {/* Mobile Streak Pill - Raio de Alta Voltagem (Carregado ⚡ vs Em Espera) */}
           <div 
             className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border transition-all ${
               studentData.hasPracticedToday
-                ? 'bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/30 text-orange-600 dark:text-orange-400'
+                ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-300 dark:border-amber-500/30 text-amber-600 dark:text-yellow-400 shadow-sm shadow-amber-500/10'
                 : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-400'
             }`}
-            title={studentData.hasPracticedToday ? "Ofensiva ativa hoje! Fogo aceso 🔥" : "Faça uma lição hoje para acender o fogo! 🕯️"}
+            title={studentData.hasPracticedToday ? "Sequência ativa! Raio carregado ⚡" : "Faça uma lição hoje para carregar o raio! ⚡"}
           >
-            <Flame size={13} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "text-orange-500 animate-pulse" : "text-neutral-400 opacity-60"} />
+            <Zap size={13} fill={studentData.hasPracticedToday ? "currentColor" : "none"} className={studentData.hasPracticedToday ? "text-amber-500 dark:text-yellow-400 animate-pulse" : "text-neutral-400 opacity-60"} />
             <span>{studentData.streak}</span>
-            {studentData.hasPracticedToday && <span>🔥</span>}
+            {studentData.hasPracticedToday && <span>⚡</span>}
           </div>
 
           <button className="p-2 rounded-xl text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-emerald-600 transition-all relative">
@@ -702,6 +714,8 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             handleAward={handleAward}
             handleStartLesson={handleStartLesson}
             setActiveView={setActiveView}
+            studentData={studentData}
+            studentId={studentData.id || studentId}
           />
         )}
 
@@ -715,6 +729,10 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
           <StudentSettings
             studentData={studentData}
             setStudentData={setStudentData}
+            onTestStreakAnimation={(prev: number, current: number) => {
+              setStreakAnimationData({ prev, current });
+              setShowStreakModal(true);
+            }}
           />
         )}
 
