@@ -31,7 +31,8 @@ import {
   ClipboardList,
   Newspaper,
   Headphones,
-  Fuel
+  Fuel,
+  Stethoscope
 } from 'lucide-react';
 
 
@@ -181,7 +182,8 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'obras', label: 'Obras e Inf.' },
   { id: 'administracao', label: 'Administração' },
   { id: 'financas', label: 'Finanças' },
-  { id: 'saude', label: 'Saúde' },
+  { id: 'saude', label: 'Saúde: Regulação & Farmácia' },
+  { id: 'consultorio_medico', label: 'Saúde: Consultório Médico & Triagem (PEP)' },
   { id: 'servicos_publicos', label: 'Serviços Públicos' },
   { id: 'meio_ambiente', label: 'Meio Ambiente' },
   { id: 'tributos', label: 'Tributos' },

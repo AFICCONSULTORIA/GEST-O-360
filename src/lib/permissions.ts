@@ -54,6 +54,14 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
     }
   }
 
+  // Auto-grant 'consultorio_medico' for users who have 'saude:admin'
+  if (
+    effectivePermissions.some(p => p === 'saude:admin') &&
+    !effectivePermissions.some(p => p === 'consultorio_medico' || p.startsWith('consultorio_medico:'))
+  ) {
+    effectivePermissions.push('consultorio_medico:admin');
+  }
+
   // 1. Procurar por permissão granular específica no formato "modulo:nivel"
   const adminPattern = `${moduleId}:admin`;
   const editPattern = `${moduleId}:edit`;
@@ -72,7 +80,31 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
     return 'view'; // Fallback seguro
   }
 
-  // 3. Sem permissão declarada para este módulo
+  // 3. Caso especial para Saúde: se o usuário possui acesso específico ao consultório médico,
+  // ele deve receber acesso correspondente ao módulo 'saude' para que o menu de Secretarias funcione
+  if (moduleId === 'saude') {
+    if (
+      effectivePermissions.includes('consultorio_medico:admin' as any) ||
+      effectivePermissions.includes('saude:consultorio:admin' as any)
+    ) {
+      return 'admin';
+    }
+    if (
+      effectivePermissions.includes('consultorio_medico:edit' as any) ||
+      effectivePermissions.includes('saude:consultorio:edit' as any)
+    ) {
+      return 'edit';
+    }
+    if (
+      effectivePermissions.includes('consultorio_medico:view' as any) ||
+      effectivePermissions.includes('saude:consultorio:view' as any) ||
+      effectivePermissions.includes('consultorio_medico' as any)
+    ) {
+      return 'view';
+    }
+  }
+
+  // 4. Sem permissão declarada para este módulo
   return 'none';
 }
 
@@ -114,4 +146,59 @@ export function getPermissionLevelLabel(level: PermissionLevel): string {
     case 'edit': return 'Editar';
     case 'admin': return 'Administrar';
   }
+}
+
+/**
+ * Verifica se o usuário tem permissão para acessar o Consultório Médico & Triagem (PEP).
+ */
+export function hasHealthConsultorioAccess(user: AdminUser | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === 'Super Admin') return true;
+  if (user.status === 'Inativo' || user.status === 'Bloqueado') return false;
+
+  const perms: string[] = (user.permissions as unknown as string[]) || [];
+
+  // Super Admin ou Administrador com permissão de saúde total
+  if (perms.includes('saude:admin')) return true;
+
+  // Checa permissões diretas de consultório
+  const hasConsultorio = perms.some(p => 
+    p === 'consultorio_medico' || 
+    p.startsWith('consultorio_medico:') || 
+    p === 'saude:consultorio' || 
+    p.startsWith('saude:consultorio:')
+  );
+  if (hasConsultorio) return true;
+
+  // Administrador com acesso geral a 'saude' tem acesso ao consultório
+  if (user.role === 'Admin' && perms.includes('saude')) return true;
+
+  return false;
+}
+
+/**
+ * Verifica se o usuário tem permissão para acessar a Regulação & Farmácia.
+ */
+export function hasHealthRegulacaoAccess(user: AdminUser | null | undefined): boolean {
+  if (!user) return false;
+  if (user.role === 'Super Admin') return true;
+  if (user.status === 'Inativo' || user.status === 'Bloqueado') return false;
+
+  const perms: string[] = (user.permissions as unknown as string[]) || [];
+
+  // Super Admin ou permissão saude:admin
+  if (perms.includes('saude:admin')) return true;
+
+  // Se tiver permissões explícitas de regulação ou saude geral (edit, view, admin)
+  const hasSaudeRegulacao = perms.some(p => 
+    p === 'saude' || 
+    p === 'saude:edit' || 
+    p === 'saude:view' || 
+    p === 'saude:admin' || 
+    p === 'saude:regulacao' || 
+    p.startsWith('saude:regulacao:')
+  );
+  if (hasSaudeRegulacao) return true;
+
+  return false;
 }

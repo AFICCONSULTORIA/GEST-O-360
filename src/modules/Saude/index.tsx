@@ -8,22 +8,39 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
-import { FarmaciaModule } from './Farmacia';
+import { FarmaciaModule, Medication } from './Farmacia';
 import { SaudeQueue } from './components/SaudeQueue';
 import { SaudeAgenda } from './components/SaudeAgenda';
 import { SaudePatients } from './components/SaudePatients';
 import { SaudeSettings } from './components/SaudeSettings';
 import { SaudeExams } from './components/SaudeExams';
+import { SaudeConsultorio } from './components/SaudeConsultorio';
 import { DemoFillButton } from '../../components/DemoFillButton';
 import { AdminUser } from '../../types';
 import { 
   Appointment, Patient, HealthUnit, HealthProfessional, ExamRequest, ExamType, MedicationDispensation,
+  MedicalConsultation, MedicalPrescription,
   COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, DEFAULT_EXAM_TYPES,
   formatCPF, formatSUS, formatPhone, calculatePriority, getAge,
   generateUUID, isValidUUID 
 } from './types';
 
 export * from './types';
+export { ConsultorioModule } from './ConsultorioModule';
+export { SaudeHub } from './SaudeHub';
+
+export const DEFAULT_MEDICATIONS: Medication[] = [
+  { id: 'med-1', name: 'Amoxicilina', active_ingredient: 'Amoxicilina', dosage: '500mg', form: 'Comprimido', quantity: 180, expiration_date: '2027-12-31', batch_number: 'AMX2026-01' },
+  { id: 'med-2', name: 'Dipirona Sódica', active_ingredient: 'Dipirona', dosage: '500mg/mL', form: 'Gotas', quantity: 95, expiration_date: '2027-10-15', batch_number: 'DIP2026-04' },
+  { id: 'med-3', name: 'Paracetamol', active_ingredient: 'Paracetamol', dosage: '750mg', form: 'Comprimido', quantity: 240, expiration_date: '2028-01-20', batch_number: 'PCT2026-02' },
+  { id: 'med-4', name: 'Losartana Potássica', active_ingredient: 'Losartana', dosage: '50mg', form: 'Comprimido', quantity: 320, expiration_date: '2027-08-30', batch_number: 'LOS2026-11' },
+  { id: 'med-5', name: 'Hidroclorotiazida', active_ingredient: 'Hidroclorotiazida', dosage: '25mg', form: 'Comprimido', quantity: 150, expiration_date: '2027-06-15', batch_number: 'HCT2026-03' },
+  { id: 'med-6', name: 'Metformina', active_ingredient: 'Cloridrato de Metformina', dosage: '850mg', form: 'Comprimido', quantity: 210, expiration_date: '2027-11-20', batch_number: 'MET2026-09' },
+  { id: 'med-7', name: 'Omeprazol', active_ingredient: 'Omeprazol', dosage: '20mg', form: 'Cápsula', quantity: 130, expiration_date: '2027-09-10', batch_number: 'OMP2026-07' },
+  { id: 'med-8', name: 'Ibuprofeno', active_ingredient: 'Ibuprofeno', dosage: '600mg', form: 'Comprimido', quantity: 85, expiration_date: '2027-05-18', batch_number: 'IBU2026-05' },
+  { id: 'med-9', name: 'Azitromicina', active_ingredient: 'Azitromicina', dosage: '500mg', form: 'Comprimido', quantity: 45, expiration_date: '2027-04-12', batch_number: 'AZI2026-08' },
+  { id: 'med-10', name: 'Sinvastatina', active_ingredient: 'Sinvastatina', dosage: '20mg', form: 'Comprimido', quantity: 160, expiration_date: '2027-12-05', batch_number: 'SIN2026-10' }
+];
 
 export const SaudeModule = ({ 
   currentInstitution,
@@ -40,6 +57,9 @@ export const SaudeModule = ({
   const [examRequests, setExamRequests] = useState<ExamRequest[]>([]);
   const [examTypes, setExamTypes] = useState<ExamType[]>([]);
   const [dispensations, setDispensations] = useState<MedicationDispensation[]>([]);
+  const [consultations, setConsultations] = useState<MedicalConsultation[]>([]);
+  const [prescriptions, setPrescriptions] = useState<MedicalPrescription[]>([]);
+  const [medications, setMedications] = useState<Medication[]>([]);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isNewAppointmentModalOpen, setIsNewAppointmentModalOpen] = useState(false);
@@ -139,6 +159,47 @@ export const SaudeModule = ({
       const { data: dispData } = await dispQuery.order('created_at', { ascending: false });
       if (dispData) setDispensations(dispData as MedicationDispensation[]);
 
+      // 7. Carregar Medicamentos do Estoque da Farmácia
+      let medQuery = supabase.from('medications').select('*');
+      if (currentInstitution?.id) medQuery = medQuery.eq('institution_id', currentInstitution.id);
+      const { data: medData } = await medQuery.order('name');
+      if (medData && medData.length > 0) {
+        setMedications(medData as Medication[]);
+      } else {
+        const localMeds = localStorage.getItem('gestao360_demo_saude_medications');
+        if (localMeds) {
+          try { setMedications(JSON.parse(localMeds)); } catch (e) {}
+        } else {
+          setMedications(DEFAULT_MEDICATIONS);
+          localStorage.setItem('gestao360_demo_saude_medications', JSON.stringify(DEFAULT_MEDICATIONS));
+        }
+      }
+
+      // 8. Carregar Consultas Médicas e Prescrições
+      let consultQuery = supabase.from('medical_consultations').select('*');
+      if (currentInstitution?.id) consultQuery = consultQuery.eq('institution_id', currentInstitution.id);
+      const { data: consultData } = await consultQuery.order('created_at', { ascending: false });
+      if (consultData && consultData.length > 0) {
+        setConsultations(consultData as MedicalConsultation[]);
+      } else {
+        const localConsults = localStorage.getItem('gestao360_demo_saude_consultations');
+        if (localConsults) {
+          try { setConsultations(JSON.parse(localConsults)); } catch (e) {}
+        }
+      }
+
+      let prescQuery = supabase.from('medical_prescriptions').select('*');
+      if (currentInstitution?.id) prescQuery = prescQuery.eq('institution_id', currentInstitution.id);
+      const { data: prescData } = await prescQuery.order('created_at', { ascending: false });
+      if (prescData && prescData.length > 0) {
+        setPrescriptions(prescData as MedicalPrescription[]);
+      } else {
+        const localPresc = localStorage.getItem('gestao360_demo_saude_prescriptions');
+        if (localPresc) {
+          try { setPrescriptions(JSON.parse(localPresc)); } catch (e) {}
+        }
+      }
+
     } catch (err) {
       console.error('Erro ao buscar dados de saúde:', err);
       const demoApts = localStorage.getItem('gestao360_demo_saude_appointments');
@@ -147,8 +208,72 @@ export const SaudeModule = ({
       if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (e) {} }
       const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
       if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (e) {} }
+      const demoConsults = localStorage.getItem('gestao360_demo_saude_consultations');
+      if (demoConsults) { try { setConsultations(JSON.parse(demoConsults)); } catch (e) {} }
+      const demoPresc = localStorage.getItem('gestao360_demo_saude_prescriptions');
+      if (demoPresc) { try { setPrescriptions(JSON.parse(demoPresc)); } catch (e) {} }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveConsultation = async (
+    consultation: MedicalConsultation,
+    newExams: ExamRequest[],
+    prescription?: MedicalPrescription
+  ) => {
+    try {
+      // 1. Atualizar agendamento para 'Atendido'
+      if (consultation.appointment_id) {
+        setAppointments(prev => prev.map(a => a.id === consultation.appointment_id ? { ...a, status: 'Atendido', attended_at: new Date().toISOString() } : a));
+        try {
+          await supabase.from('appointments').update({ 
+            status: 'Atendido', 
+            attended_at: new Date().toISOString() 
+          }).eq('id', consultation.appointment_id);
+        } catch (e) {
+          console.warn('Erro ao atualizar agendamento no banco:', e);
+        }
+      }
+
+      // 2. Salvar consulta no estado e localStorage / Supabase
+      setConsultations(prev => [consultation, ...prev]);
+      const updatedConsultations = [consultation, ...consultations];
+      localStorage.setItem('gestao360_demo_saude_consultations', JSON.stringify(updatedConsultations));
+      try {
+        await supabase.from('medical_consultations').insert(consultation);
+      } catch (e) {
+        console.warn('Tabela medical_consultations:', e);
+      }
+
+      // 3. Salvar prescrição digital conectada
+      if (prescription) {
+        setPrescriptions(prev => [prescription, ...prev]);
+        const updatedPrescriptions = [prescription, ...prescriptions];
+        localStorage.setItem('gestao360_demo_saude_prescriptions', JSON.stringify(updatedPrescriptions));
+        try {
+          await supabase.from('medical_prescriptions').insert(prescription);
+        } catch (e) {
+          console.warn('Tabela medical_prescriptions:', e);
+        }
+      }
+
+      // 4. Salvar novas solicitações de exames
+      if (newExams.length > 0) {
+        setExamRequests(prev => [...newExams, ...prev]);
+        const updatedExams = [...newExams, ...examRequests];
+        localStorage.setItem('gestao360_demo_saude_exams', JSON.stringify(updatedExams));
+        try {
+          await supabase.from('exam_requests').insert(newExams);
+        } catch (e) {
+          console.warn('Erro ao inserir exames:', e);
+        }
+      }
+
+      showToast(`Atendimento de ${consultation.patient_name} concluído com sucesso!`, 'success');
+    } catch (err: any) {
+      console.error('Erro ao salvar atendimento:', err);
+      showToast('Erro ao salvar atendimento: ' + (err?.message || 'Erro'), 'error');
     }
   };
 
@@ -291,6 +416,7 @@ export const SaudeModule = ({
           )}
         </button>
 
+
         {/* Tab 3: Controle de Exames (NOVO) */}
         <button
           onClick={() => setActiveTab('exames')}
@@ -387,6 +513,7 @@ export const SaudeModule = ({
             />
           )}
 
+
           {activeTab === 'exames' && (
             <SaudeExams 
               requests={examRequests}
@@ -430,6 +557,7 @@ export const SaudeModule = ({
               currentInstitution={currentInstitution}
               patients={patients}
               dispensations={dispensations}
+              prescriptions={prescriptions}
               onRefreshData={loadData}
               currentUser={currentUser}
             />

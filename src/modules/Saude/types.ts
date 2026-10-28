@@ -590,3 +590,118 @@ export const isValidUUID = (id?: string | null): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 };
 
+// =========================================================
+// === TIPOS PARA CONSULTÓRIO MÉDICO E PRONTUÁRIO DIGITAL ===
+// =========================================================
+
+export interface VitalSigns {
+  blood_pressure?: string; // Ex: "120/80"
+  heart_rate?: number;     // bpm
+  temperature?: number;    // °C
+  weight?: number;         // kg
+  height?: number;         // cm
+  bmi?: number;            // IMC calculado
+  blood_glucose?: number;  // mg/dL
+  respiratory_rate?: number; // irpm
+  oxygen_saturation?: number; // % SpO2
+}
+
+export interface PrescriptionItem {
+  id?: string;
+  medication_id?: string;
+  medication_name: string;
+  active_ingredient?: string;
+  dosage: string;            // Ex: "500mg"
+  form: string;              // Ex: "Comprimido"
+  quantity: number;          // Ex: 30
+  instructions: string;      // Ex: "Tomar 1 comprimido por via oral a cada 8 horas por 7 dias."
+  duration_days: number;     // Ex: 7
+  available_in_stock?: boolean;
+  current_stock?: number;
+}
+
+export interface MedicalPrescription {
+  id: string;
+  institution_id?: string | null;
+  consultation_id?: string;
+  patient_id?: string;
+  patient_name: string;
+  patient_cpf: string;
+  patient_sus: string;
+  patient_birth_date?: string;
+  doctor_name: string;
+  doctor_crm?: string;
+  unit_name?: string;
+  prescription_number: string; // Ex: "REC-2026-0089"
+  prescription_date: string;
+  items: PrescriptionItem[];
+  notes?: string;
+  status: 'ativa' | 'dispensada' | 'cancelada';
+  created_at?: string;
+}
+
+export interface MedicalCertificate {
+  id: string;
+  consultation_id?: string;
+  patient_name: string;
+  patient_cpf: string;
+  doctor_name: string;
+  doctor_crm?: string;
+  unit_name?: string;
+  days_off: number;
+  cid10?: string;
+  reason?: string;
+  issued_date: string;
+  created_at?: string;
+}
+
+export interface MedicalConsultation {
+  id: string;
+  institution_id?: string | null;
+  appointment_id?: string | null;
+  patient_id?: string | null;
+  patient_name: string;
+  patient_cpf: string;
+  patient_sus: string;
+  patient_birth_date?: string;
+  doctor_name: string;
+  doctor_crm?: string;
+  specialty: string;
+  unit_name: string;
+  consultation_date: string;
+  consultation_time?: string;
+  chief_complaint: string; // Queixa principal
+  history_of_present_illness?: string; // HDA
+  vital_signs?: VitalSigns;
+  diagnosis_hypothesis?: string; // Hipótese Diagnóstica
+  cid10?: string;
+  clinical_evolution: string; // Conduta / Evolução
+  prescription?: MedicalPrescription;
+  exam_requests?: ExamRequest[];
+  certificate?: MedicalCertificate;
+  status: 'Finalizado' | 'Em Andamento' | 'Cancelado';
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Helpers para sinais vitais e códigos
+export const calculateBMI = (weightKg?: number, heightCm?: number): { bmi: number; classification: string } | null => {
+  if (!weightKg || !heightCm || heightCm <= 0 || weightKg <= 0) return null;
+  const heightM = heightCm / 100;
+  const bmi = Number((weightKg / (heightM * heightM)).toFixed(1));
+  let classification = 'Eutrófico (Normal)';
+  if (bmi < 18.5) classification = 'Abaixo do peso';
+  else if (bmi >= 25 && bmi < 30) classification = 'Sobrepeso';
+  else if (bmi >= 30 && bmi < 35) classification = 'Obesidade Grau I';
+  else if (bmi >= 35 && bmi < 40) classification = 'Obesidade Grau II';
+  else if (bmi >= 40) classification = 'Obesidade Grau III (Mórbida)';
+  return { bmi, classification };
+};
+
+export const generatePrescriptionNumber = (): string => {
+  const year = new Date().getFullYear();
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  return `REC-${year}-${randomNum}`;
+};
+
+

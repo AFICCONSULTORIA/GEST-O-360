@@ -36,7 +36,8 @@ import {
   UserCheck,
   SlidersHorizontal,
   Filter,
-  Shield
+  Shield,
+  FileText
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
@@ -48,6 +49,7 @@ import { SaudeModule } from '../Saude';
 import { SaaSControlCenterEducation } from './SaaSControlCenterEducation';
 import { SaaSControlCenterImport } from './SaaSControlCenterImport';
 import { SaaSControlCenterPdfExtractor } from './SaaSControlCenterPdfExtractor';
+import { SaaSControlCenterProposal } from './SaaSControlCenterProposal';
 
 export interface SaaSControlCenterProps {
   darkMode: boolean;
@@ -128,7 +130,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
   patrimonioItems = [],
   orders = []
 }) => {
-  const [activeTab, setActiveTab] = useState<'tenants' | 'support' | 'users' | 'health' | 'saude' | 'import' | 'education' | 'pdf-extractor'>('tenants');
+  const [activeTab, setActiveTab] = useState<'tenants' | 'support' | 'users' | 'health' | 'saude' | 'import' | 'education' | 'pdf-extractor' | 'proposal'>('tenants');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filtros na Gestão de Usuários
@@ -776,6 +778,15 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
               title="Extrator Inteligente de PDF para Excel"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" /> Extrator PDF
+            </button>
+            <button
+              onClick={() => setActiveTab('proposal')}
+              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                activeTab === 'proposal' ? 'bg-white dark:bg-neutral-800 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+              title="Gerador e Editor de Propostas Comerciais e Minutas TR"
+            >
+              <FileText className="w-3.5 h-3.5" /> Proposta & TR
             </button>
           </div>
 
@@ -1489,6 +1500,13 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
       {activeTab === 'pdf-extractor' && (
         <div className="mt-8">
           <SaaSControlCenterPdfExtractor darkMode={darkMode} />
+        </div>
+      )}
+
+      {/* CONTEÚDO 9: PROPOSTA COMERCIAL EDITÁVEL & TR */}
+      {activeTab === 'proposal' && (
+        <div className="mt-8">
+          <SaaSControlCenterProposal institutions={institutions} />
         </div>
       )}
 

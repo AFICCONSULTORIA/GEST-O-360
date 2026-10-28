@@ -11,7 +11,7 @@ import { showToast } from '../../components/ui/Toast';
 import { AdminUser } from '../../types';
 import { hasPermission } from '../../lib/permissions';
 import { 
-  Patient, MedicationDispensation, HealthUnit, HealthProfessional,
+  Patient, MedicationDispensation, HealthUnit, HealthProfessional, MedicalPrescription,
   formatCPF, formatSUS, formatPhone, checkMedicationEarlyRefill, EarlyRefillCheckResult, DEFAULT_HEALTH_UNITS,
   generateUUID, isValidUUID
 } from './types';
@@ -46,6 +46,7 @@ interface FarmaciaModuleProps {
   currentInstitution?: { id: string; name?: string } | null;
   patients?: Patient[];
   dispensations?: MedicationDispensation[];
+  prescriptions?: MedicalPrescription[];
   onRefreshData?: () => void;
   currentUser?: AdminUser | null;
 }
@@ -54,6 +55,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
   currentInstitution,
   patients = [],
   dispensations = [],
+  prescriptions = [],
   onRefreshData,
   currentUser
 }) => {
@@ -641,6 +643,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
             medications={medications}
             patients={patients}
             dispensations={localDispensations}
+            prescriptions={prescriptions}
             onClose={() => setIsDispenseModalOpen(false)}
             onSuccess={() => {
               setIsDispenseModalOpen(false);
@@ -699,6 +702,7 @@ interface DispenseMedicationModalProps {
   medications: Medication[];
   patients: Patient[];
   dispensations: MedicationDispensation[];
+  prescriptions?: MedicalPrescription[];
   onClose: () => void;
   onSuccess: () => void;
   currentInstitution?: { id: string; name?: string } | null;
@@ -708,6 +712,7 @@ const DispenseMedicationModal: React.FC<DispenseMedicationModalProps> = ({
   medications,
   patients,
   dispensations,
+  prescriptions = [],
   onClose,
   onSuccess,
   currentInstitution
@@ -754,6 +759,33 @@ const DispenseMedicationModal: React.FC<DispenseMedicationModalProps> = ({
     }));
     setPatientSearch(p.name);
     setShowPatientResults(false);
+  };
+
+  const handleSelectDigitalPrescription = (p: MedicalPrescription, itemIndex = 0) => {
+    const item = p.items[itemIndex] || p.items[0];
+    const matchedMed = medications.find(m => 
+      (item?.medication_id && m.id === item.medication_id) ||
+      (item && m.name.toLowerCase() === item.medication_name.toLowerCase()) ||
+      (item?.active_ingredient && m.active_ingredient.toLowerCase() === item.active_ingredient.toLowerCase())
+    );
+
+    setFormData(prev => ({
+      ...prev,
+      patient_id: p.patient_id || prev.patient_id,
+      patient_name: p.patient_name,
+      patient_cpf: p.patient_cpf,
+      patient_sus: p.patient_sus,
+      doctor_name: p.doctor_name,
+      doctor_crm: p.doctor_crm || '',
+      prescription_number: p.prescription_number,
+      prescription_date: p.prescription_date,
+      medication_id: matchedMed ? matchedMed.id : (medications[0]?.id || prev.medication_id),
+      quantity_dispensed: item ? item.quantity : prev.quantity_dispensed,
+      days_of_treatment: item ? item.duration_days : prev.days_of_treatment,
+      notes: item ? item.instructions : prev.notes
+    }));
+    setPatientSearch(p.patient_name);
+    showToast(`Receita ${p.prescription_number} do(a) paciente ${p.patient_name} carregada com sucesso!`, 'success');
   };
 
   const selectedMed = medications.find(m => m.id === formData.medication_id);
@@ -866,6 +898,44 @@ const DispenseMedicationModal: React.FC<DispenseMedicationModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Banner de Receitas Médicas Digitais Conectadas */}
+          {prescriptions.length > 0 && (
+            <div className="p-4 bg-indigo-50/80 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Stethoscope size={16} className="text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                    Receitas Médicas Digitais Disponíveis ({prescriptions.length})
+                  </span>
+                </div>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold bg-white dark:bg-neutral-800 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-700">
+                  Integração Consultório Médico
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
+                Clique na receita do paciente para carregar automaticamente medicamentos, posologia e dados do médico:
+              </p>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                {prescriptions.slice(0, 6).map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectDigitalPrescription(p, 0)}
+                    className="flex-shrink-0 text-left p-2.5 bg-white dark:bg-neutral-800 hover:border-indigo-500 rounded-xl border border-neutral-200 dark:border-neutral-700 shadow-sm transition-all"
+                  >
+                    <div className="font-bold text-xs text-neutral-900 dark:text-white flex items-center justify-between gap-2">
+                      <span className="truncate max-w-[130px]">{p.patient_name}</span>
+                      <span className="text-[10px] font-mono text-indigo-600 dark:text-indigo-400">{p.prescription_number}</span>
+                    </div>
+                    <div className="text-[10px] text-neutral-500 mt-0.5">
+                      {p.items.length} item(ns) · Dr(a). {p.doctor_name}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Autocomplete de Paciente */}
           <div className="relative space-y-1 bg-neutral-50 dark:bg-neutral-800/50 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-700">
             <label className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">

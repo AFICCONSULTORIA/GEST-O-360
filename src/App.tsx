@@ -19,7 +19,7 @@ import { DocumentNumbersModule } from './modules/DocumentNumbers';
 import { OrdersModule } from './modules/Orders';
 import { PatrimonioModule } from './modules/Patrimonio';
 import { TemplatesModule } from './modules/Templates';
-import { SaudeModule } from './modules/Saude';
+import { SaudeModule, ConsultorioModule, SaudeHub } from './modules/Saude';
 import { PublicSaudePortal } from './modules/Saude/PublicPortal';
 import { PublicFarmaciaPortal } from './modules/Saude/PublicFarmacia';
 import { ServicosPublicosModule } from './modules/ServicosPublicos';
@@ -57,6 +57,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // Extracted subcomponents
+import { Gestao360Copilot } from './components/AI/Gestao360Copilot';
 import { LogoCompass } from './components/LogoCompass';
 import { SidebarItem } from './components/SidebarItem';
 import { Dashboard } from './components/Dashboard';
@@ -64,6 +65,7 @@ import { MayorDashboard } from './components/MayorDashboard';
 import { SalesLandingPage } from './components/SalesLandingPage';
 import { LandingPage } from './components/LandingPage';
 import { Login } from './components/Login';
+import { ProposalModal } from './components/ProposalModal';
 import { DemoModuleBanner } from './components/DemoModuleBanner';
 import { isDemoEnvironment, setDemoEnvironment } from './lib/demoManager';
 import { DEMO_USER, DEMO_INSTITUTION } from './lib/demoData';
@@ -607,6 +609,13 @@ export default function App() {
   const isAdminRoute = currentPath === '/servidores' || currentPath.startsWith('/servidores/');
   const isLandingPage = currentPath === '/';
   const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
+  const isProposalRoute = 
+    cleanPath === '/proposta' || 
+    cleanPath === '/proposta-comercial' || 
+    cleanPath === '/apresentacao-comercial' || 
+    cleanPath === '/proposta-prefeitura' ||
+    cleanPath.startsWith('/proposta/') ||
+    cleanPath.startsWith('/proposta-comercial/');
 
   // Rota Especial: Central de Controle SaaS (Subdomínio 'admin')
   if (isSuperAdminPortal) {
@@ -653,6 +662,18 @@ export default function App() {
     window.history.pushState({}, '', url.pathname);
     document.title = 'GESTÃO 360 · Plataforma de Gestão Pública e Governança Municipal';
   };
+
+  // Rota de Proposta Comercial Institucional (Standalone / Envio Direto)
+  if (isProposalRoute) {
+    return (
+      <ProposalModal 
+        isOpen={true} 
+        onClose={() => { window.location.href = '/'; }} 
+        isStandalonePage={true} 
+        initialMunicipality={currentInstitution?.name}
+      />
+    );
+  }
 
   // Rota de apresentação e vendas
   if (isSalesPage) {
@@ -1562,7 +1583,8 @@ export default function App() {
             {activeView === 'admin_financas' && <FinanceModules />}
             {activeView === 'administracao' && <AdministracaoModule />}
             {activeView === 'financas' && <FinanceModules />}
-            {activeView === 'saude' && <SaudeModule currentInstitution={currentInstitution} currentUser={currentUser} />}
+            {activeView === 'saude' && <SaudeHub currentInstitution={currentInstitution} currentUser={currentUser} />}
+            {activeView === 'consultorio_medico' && <SaudeHub currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}
             {activeView === 'meio_ambiente' && <MeioAmbienteModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'tributos' && <PlaceholderModule title="Secretaria de Tributos" />}
@@ -1586,6 +1608,9 @@ export default function App() {
 
       {/* Toasts */}
       <ToastContainer />
+
+      {/* Copiloto Nativo com IA - Agente Gestão 360 */}
+      <Gestao360Copilot activeView={activeView} institutionName={currentInstitution?.name} />
       
         </div>
       </div>
