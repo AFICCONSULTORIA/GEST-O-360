@@ -18,6 +18,7 @@ import { PNTPModule } from './modules/PNTP';
 import { DocumentNumbersModule } from './modules/DocumentNumbers';
 import { OrdersModule } from './modules/Orders';
 import { PatrimonioModule } from './modules/Patrimonio';
+import { mapDbRowToPatrimonioItem, packPatrimonioDescription } from './lib/patrimonioMeta';
 import { TemplatesModule } from './modules/Templates';
 import { SaudeModule, ConsultorioModule, SaudeHub } from './modules/Saude';
 import { PublicSaudePortal } from './modules/Saude/PublicPortal';
@@ -425,16 +426,10 @@ export default function App() {
 
         // Patrimonio
         const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
-        if (demoPat && (!pats || pats.length === 0)) {
+        if (demoPat && (!pats || pats.length === 0) && isDemoEnvironment(currentInstitution)) {
           try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) {}
         } else if (pats) {
-          setPatrimonioItems(pats.map(p => ({
-            ...p,
-            itemType: p.item_type,
-            objectName: p.object_name,
-            imageUrls: p.image_urls,
-            createdByName: p.created_by_name
-          } as PatrimonioItem)));
+          setPatrimonioItems(pats.map(p => mapDbRowToPatrimonioItem(p)));
         }
       } catch (err) {
         console.error('Erro ao buscar dados do Supabase:', err);
@@ -1338,6 +1333,7 @@ export default function App() {
                 userDepartment={hasPermission(currentUser, 'patrimonio', 'admin') ? '' : (departments.find(d => d.id === currentUser?.department_id)?.name || 'Sem Lotação Vinculada')}
                 availableDepartments={departments.map(d => d.name)}
                 currentUserName={currentUser?.name || currentUser?.email}
+                currentInstitution={currentInstitution}
 
                 onDelete={async (id) => {
                   try {
@@ -1375,7 +1371,7 @@ export default function App() {
                     plate: item.plate,
                     chassis: item.chassis,
                     model: item.model,
-                    description: item.description,
+                    description: packPatrimonioDescription(item),
                     created_by_name: currentUser?.name || currentUser?.email || 'Usuário Desconhecido',
                     institution_id: currentInstitution?.id || null,
                     ...(item.createdAt ? { created_at: item.createdAt } : {})
@@ -1384,14 +1380,7 @@ export default function App() {
                     const { data, error } = await supabase.from('patrimonio').insert([dbItem]).select().single();
                     if (error) throw error;
                     if (data) {
-                      setPatrimonioItems(prev => [{
-                        ...data,
-                        itemType: data.item_type,
-                        objectName: data.object_name,
-                        imageUrls: data.image_urls,
-                        description: data.description,
-                        createdByName: data.created_by_name
-                      } as PatrimonioItem, ...prev]);
+                      setPatrimonioItems(prev => [mapDbRowToPatrimonioItem(data), ...prev]);
                       showToast('Item de patrimônio salvo com sucesso', 'success');
                     }
                   } catch (error) {
@@ -1413,20 +1402,13 @@ export default function App() {
                     plate: item.plate,
                     chassis: item.chassis,
                     model: item.model,
-                    description: item.description
+                    description: packPatrimonioDescription(item)
                   };
                   try {
                     const { data, error } = await supabase.from('patrimonio').update(dbItem).eq('id', item.id).select().single();
                     if (error) throw error;
                     if (data) {
-                      setPatrimonioItems(patrimonioItems.map(p => p.id === item.id ? {
-                        ...data,
-                        itemType: data.item_type,
-                        objectName: data.object_name,
-                        imageUrls: data.image_urls,
-                        description: data.description,
-                        createdByName: data.created_by_name
-                      } as PatrimonioItem : p));
+                      setPatrimonioItems(patrimonioItems.map(p => p.id === item.id ? mapDbRowToPatrimonioItem(data) : p));
                       showToast('Item atualizado com sucesso', 'success');
                     }
                   } catch (error) {

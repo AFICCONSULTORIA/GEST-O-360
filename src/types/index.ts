@@ -145,6 +145,19 @@ export interface DocumentRecord {
   attachment?: string;
 }
 
+export interface PatrimonioTransferEntry {
+  id: string;
+  date: string;
+  fromDepartment: string;
+  toDepartment: string;
+  fromLocation?: string;
+  toLocation?: string;
+  fromResponsible?: string;
+  toResponsible?: string;
+  reason?: string;
+  user: string;
+}
+
 export interface PatrimonioItem {
   id: string;
   itemType: 'Geral' | 'Veículo';
@@ -166,6 +179,11 @@ export interface PatrimonioItem {
   description?: string;
   createdByName?: string;
   createdAt?: string;
+  acquisitionValue?: number;
+  acquisitionDate?: string;
+  invoiceNumber?: string;
+  responsiblePerson?: string;
+  transferHistory?: PatrimonioTransferEntry[];
 }
 
 export interface Evidence {
@@ -188,16 +206,36 @@ export interface PNTPCategory {
   items: PNTPItem[];
 }
 
+export type CertificateTypeKey =
+  | 'Trabalhista'
+  | 'Federal'
+  | 'Estadual'
+  | 'Municipal'
+  | 'FGTS'
+  | 'Falência e Concordata'
+  | 'CEIS/CNEP'
+  | 'TCU/TCE';
+
+export interface CertificateRecord {
+  issueDate: string;
+  expiryDate: string;
+  fileUrl?: string;
+}
+
 export interface CompanyCertificates {
   id: string;
   companyName: string;
   cnpj: string;
   certificates: {
-    [key in 'Trabalhista' | 'Federal' | 'Estadual' | 'Municipal' | 'FGTS']: {
-      issueDate: string;
-      expiryDate: string;
-      fileUrl?: string;
-    } | null;
+    Trabalhista: CertificateRecord | null;
+    Federal: CertificateRecord | null;
+    Estadual: CertificateRecord | null;
+    Municipal: CertificateRecord | null;
+    FGTS: CertificateRecord | null;
+    'Falência e Concordata'?: CertificateRecord | null;
+    'CEIS/CNEP'?: CertificateRecord | null;
+    'TCU/TCE'?: CertificateRecord | null;
+    [key: string]: CertificateRecord | null | undefined;
   };
 }
 
