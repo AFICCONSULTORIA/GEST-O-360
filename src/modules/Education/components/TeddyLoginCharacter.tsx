@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useRive, useStateMachineInput, Layout, Fit, Alignment } from '@rive-app/react-canvas';
-import { Zap } from 'lucide-react';
 
 export interface TeddyLoginCharacterProps {
   isUsernameFocused: boolean;
@@ -102,8 +101,8 @@ export const TeddyLoginCharacter: React.FC<TeddyLoginCharacterProps> = ({
     // Fallback decorativo amigável caso WebGL/Canvas falhe
     return (
       <div className={`relative flex items-center justify-center ${className}`}>
-        <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/30 border-4 border-white dark:border-neutral-800">
-          <span className="text-5xl select-none">🐻</span>
+        <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr from-amber-400 via-yellow-300 to-amber-500 flex items-center justify-center shadow-lg shadow-amber-500/20 border-4 border-white dark:border-neutral-800">
+          <span className="text-4xl sm:text-5xl select-none">🐻</span>
         </div>
       </div>
     );
@@ -111,19 +110,12 @@ export const TeddyLoginCharacter: React.FC<TeddyLoginCharacterProps> = ({
 
   return (
     <div className={`relative flex flex-col items-center justify-center ${className}`}>
-      {/* Halo de energia sutil atrás do Teddy */}
-      <div className="absolute inset-0 max-w-[300px] max-h-[300px] m-auto bg-gradient-to-tr from-amber-300/30 via-yellow-400/20 to-orange-400/20 rounded-full blur-2xl pointer-events-none" />
+      {/* Halo de iluminação suave atrás do Teddy */}
+      <div className="absolute inset-0 max-w-[260px] max-h-[260px] m-auto bg-gradient-to-tr from-amber-300/25 via-yellow-400/15 to-orange-400/15 rounded-full blur-2xl pointer-events-none" />
 
-      {/* Canvas Rive do Teddy Bear Ampliado */}
-      <div className="relative w-64 h-64 sm:w-80 sm:h-80 md:w-[340px] md:h-[340px] -mb-6 pointer-events-none drop-shadow-2xl">
+      {/* Canvas Rive do Teddy Bear (Escala responsiva perfeita para mobile e desktop) */}
+      <div className="relative w-52 h-52 xs:w-60 xs:h-60 sm:w-72 sm:h-72 md:w-80 md:h-80 -mb-4 sm:-mb-6 pointer-events-none drop-shadow-xl transition-all">
         <RiveComponent className="w-full h-full" />
-      </div>
-
-      {/* Selo interativo "Mascote dos Estudos" com o raio */}
-      <div className="relative z-10 -mt-2 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 dark:bg-neutral-800/95 backdrop-blur-md border border-amber-300/80 dark:border-amber-500/40 text-xs font-black text-amber-700 dark:text-yellow-300 shadow-md">
-        <Zap size={13} className="text-amber-500 dark:text-yellow-400 fill-current animate-pulse" />
-        <span>Teddy · Mascote do Aluno</span>
-        <span className="text-xs">⚡</span>
       </div>
     </div>
   );

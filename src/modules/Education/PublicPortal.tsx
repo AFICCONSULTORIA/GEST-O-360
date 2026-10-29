@@ -382,41 +382,36 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
 
   const renderStudentLogin = () => (
     <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="min-h-[calc(100vh-100px)] flex items-center justify-center p-4 relative overflow-hidden"
+      exit={{ opacity: 0, scale: 0.98 }}
+      className="min-h-[100dvh] md:min-h-[calc(100vh-100px)] flex items-center justify-center p-3 sm:p-6 relative overflow-hidden"
     >
-      {/* Super Magical Decorative Background */}
+      {/* Background sutil e limpo */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-amber-300/30 via-transparent to-transparent" />
-        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(ellipse_at_bottom_right,_var(--tw-gradient-stops))] from-rose-300/30 via-transparent to-transparent" />
-        {/* Floating magical orbs */}
-        <motion.div animate={{ y: [0, -20, 0], x: [0, 10, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} className="absolute top-20 left-20 w-32 h-32 bg-amber-400/20 rounded-full blur-3xl mix-blend-multiply" />
-        <motion.div animate={{ y: [0, 30, 0], x: [0, -20, 0] }} transition={{ duration: 5, repeat: Infinity, ease: "easeInOut", delay: 1 }} className="absolute bottom-20 right-20 w-40 h-40 bg-purple-400/20 rounded-full blur-3xl mix-blend-multiply" />
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-100/40 via-transparent to-transparent dark:from-amber-950/20" />
       </div>
 
-      <div className="w-full max-w-lg relative z-10">
-        <div className="bg-white/90 dark:bg-neutral-900/90 backdrop-blur-3xl p-6 sm:p-8 rounded-[3rem] shadow-2xl shadow-amber-500/20 border-4 border-amber-200/50 dark:border-amber-500/20 relative">
+      <div className="w-full max-w-md sm:max-w-lg relative z-10">
+        <div className="bg-white/95 dark:bg-neutral-900/95 backdrop-blur-2xl p-5 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] shadow-xl shadow-amber-900/5 dark:shadow-black/50 border border-neutral-200/80 dark:border-neutral-800 relative">
           
-          {/* Magic floating lightning icon */}
-          <motion.div 
-            animate={{ rotate: [0, 10, -10, 0] }} 
-            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute -top-6 -right-6 w-16 h-16 bg-gradient-to-br from-amber-400 via-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg shadow-amber-500/40 border-4 border-white dark:border-neutral-900 z-20"
-          >
-            <Zap size={28} className="text-white fill-amber-100 animate-pulse" />
-          </motion.div>
+          {/* Barra Superior Limpa */}
+          <div className="flex items-center justify-between mb-1">
+            <button 
+              type="button"
+              onClick={() => setActiveTab('home')}
+              className="inline-flex items-center gap-1 text-xs font-bold text-neutral-500 hover:text-amber-600 dark:text-neutral-400 dark:hover:text-amber-400 p-1.5 -ml-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-all cursor-pointer"
+            >
+              <ChevronLeft size={18} />
+              <span>Voltar</span>
+            </button>
+            <span className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-0.5 rounded-full border border-amber-200/60 dark:border-amber-800/60">
+              Área do Aluno ⚡
+            </span>
+          </div>
 
-          <button 
-            onClick={() => setActiveTab('home')}
-            className="w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50 hover:scale-110 shadow-sm border border-amber-200 dark:border-amber-800 transition-all mb-4 group cursor-pointer"
-          >
-            <ChevronLeft size={24} className="group-hover:-translate-x-1 transition-transform" />
-          </button>
-
-          {/* Teddy Bear Interativo Ampliado (Segue o cursor e tampa os olhos na senha) */}
-          <div className="text-center mb-6">
+          {/* Destaque Principal do Teddy Bear */}
+          <div className="text-center mb-4 sm:mb-5">
             <TeddyLoginCharacter
               isUsernameFocused={isUsernameFocused}
               usernameLength={enrollmentCode.length}
@@ -424,30 +419,30 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
               isPasswordVisible={showStudentPassword}
               isSuccess={isLoginSuccess}
               isFail={isLoginFail}
-              className="mb-2"
+              className="mb-1"
             />
-            <h2 className="text-3xl sm:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600">
-              Portal do Aluno ⚡
+            <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
+              Portal do Aluno
             </h2>
-            <p className="text-amber-600/90 dark:text-amber-400/90 mt-1.5 font-bold text-sm sm:text-base">
-              Digite sua matrícula e prepare sua sequência de estudos! 🚀
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 font-medium mt-1">
+              Digite seus dados para acessar suas trilhas e atividades
             </p>
           </div>
 
-          <form onSubmit={handleStudentLogin} className="space-y-5">
+          <form onSubmit={handleStudentLogin} className="space-y-4">
             {studentLoginError && (
-              <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl flex items-start gap-3 text-rose-700 dark:text-rose-300 text-xs font-bold animate-in fade-in slide-in-from-top-2">
-                <AlertCircle size={18} className="shrink-0 text-rose-500 mt-0.5" />
+              <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl flex items-start gap-2.5 text-rose-700 dark:text-rose-300 text-xs font-bold animate-in fade-in slide-in-from-top-2">
+                <AlertCircle size={16} className="shrink-0 text-rose-500 mt-0.5" />
                 <span>{studentLoginError}</span>
               </div>
             )}
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">
-                🎟️ Matrícula ou E-mail do Aluno
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-neutral-600 dark:text-neutral-300 ml-1">
+                Matrícula ou E-mail
               </label>
               <div className="relative group">
-                <User size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-amber-500 transition-colors" />
                 <input 
                   type="text" 
                   required
@@ -461,18 +456,18 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                     setEnrollmentCode(e.target.value);
                     if (studentLoginError) setStudentLoginError(null);
                   }}
-                  placeholder="Ex: AFIC001 ou aficconsultoria@gmail.com"
-                  className="w-full pl-14 pr-4 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-base md:text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner"
+                  placeholder="Ex: ART001 ou aficconsultoria@gmail.com"
+                  className="w-full pl-11 pr-4 py-3 sm:py-3.5 bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 focus:ring-4 focus:ring-amber-400/10 outline-none transition-all font-semibold text-neutral-900 dark:text-white text-sm sm:text-base placeholder:text-neutral-400 shadow-sm"
                 />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest pl-4">
-                🔑 Senha de Acesso
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-neutral-600 dark:text-neutral-300 ml-1">
+                Senha de Acesso
               </label>
               <div className="relative group">
-                <Key size={22} className="absolute left-5 top-1/2 -translate-y-1/2 text-amber-400 group-focus-within:text-amber-500 transition-colors" />
+                <Key size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-amber-500 transition-colors" />
                 <input 
                   type={showStudentPassword ? "text" : "password"} 
                   required
@@ -487,24 +482,24 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                     if (studentLoginError) setStudentLoginError(null);
                   }}
                   placeholder="••••••"
-                  className="w-full pl-14 pr-14 py-4 bg-amber-50/50 dark:bg-neutral-950/50 border-4 border-amber-100 dark:border-neutral-800 rounded-3xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-all font-black text-neutral-900 dark:text-white text-lg placeholder:text-neutral-400/70 placeholder:font-bold shadow-inner"
+                  className="w-full pl-11 pr-12 py-3 sm:py-3.5 bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200 dark:border-neutral-700 rounded-2xl focus:border-amber-400 focus:bg-white dark:focus:bg-neutral-900 focus:ring-4 focus:ring-amber-400/10 outline-none transition-all font-semibold text-neutral-900 dark:text-white text-sm sm:text-base placeholder:text-neutral-400 shadow-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowStudentPassword(!showStudentPassword)}
-                  className="absolute right-5 top-1/2 -translate-y-1/2 text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 p-1"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 p-1 cursor-pointer transition-colors"
                 >
-                  {showStudentPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                  {showStudentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
 
-            {/* Atalhos Rápidos de Acesso */}
-            <div className="pt-2 space-y-2">
-              <p className="text-[11px] font-bold text-center text-neutral-400 uppercase tracking-wider">
-                Acessos Rápidos Disponíveis
-              </p>
-              <div className="grid grid-cols-1 gap-2">
+            {/* Acessos Rápidos Compactos (Pills de 1 clique, sem poluir a tela) */}
+            <div className="pt-1">
+              <span className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider block mb-1.5 text-center sm:text-left">
+                Testar com 1 clique
+              </span>
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -512,18 +507,12 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                     setStudentPassword('gestao123@');
                     if (studentLoginError) setStudentLoginError(null);
                   }}
-                  className="py-2.5 px-4 bg-gradient-to-r from-amber-500/15 via-yellow-400/20 to-emerald-500/15 hover:from-amber-500/25 hover:to-emerald-500/25 border-2 border-amber-400/70 rounded-2xl text-neutral-900 dark:text-white text-xs font-bold transition-all text-left flex items-center justify-between cursor-pointer shadow-sm"
+                  className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 text-xs font-bold border border-amber-200 dark:border-amber-800 transition-all cursor-pointer flex items-center gap-1"
                 >
-                  <div>
-                    <span className="font-black flex items-center gap-1.5 text-amber-700 dark:text-yellow-400">
-                      ⚡ Carlos (AFIC Consultoria)
-                    </span>
-                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">aficconsultoria@gmail.com · Senha: gestao123@</span>
-                  </div>
-                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-400 text-neutral-950">Entrar ⚡</span>
+                  <Zap size={11} className="fill-current text-amber-500" />
+                  <span>Carlos (AFIC)</span>
                 </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+
                 <button
                   type="button"
                   onClick={() => {
@@ -531,10 +520,9 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                     setStudentPassword('123');
                     if (studentLoginError) setStudentLoginError(null);
                   }}
-                  className="py-2 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 dark:hover:bg-sky-900/50 border border-sky-200 dark:border-sky-800 rounded-xl text-sky-800 dark:text-sky-300 text-xs font-bold transition-all text-left flex flex-col cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 dark:hover:bg-sky-900/60 text-sky-900 dark:text-sky-200 text-xs font-bold border border-sky-200 dark:border-sky-800 transition-all cursor-pointer"
                 >
-                  <span className="font-black">Ana Silva (ANA001)</span>
-                  <span className="text-[10px] text-sky-600 dark:text-sky-400 font-semibold">Turma 4A · 123</span>
+                  Ana (4A)
                 </button>
 
                 <button
@@ -544,10 +532,9 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
                     setStudentPassword('123');
                     if (studentLoginError) setStudentLoginError(null);
                   }}
-                  className="py-2 px-3 bg-neutral-50 hover:bg-neutral-100 dark:bg-neutral-800 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700 rounded-xl text-neutral-800 dark:text-neutral-200 text-xs font-bold transition-all text-left flex flex-col cursor-pointer"
+                  className="px-2.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-xs font-bold border border-neutral-200 dark:border-neutral-700 transition-all cursor-pointer"
                 >
-                  <span className="font-black">Diego Ramos (DIE004)</span>
-                  <span className="text-[10px] text-neutral-500 font-semibold">Turma 5B · 123</span>
+                  Diego (5B)
                 </button>
               </div>
             </div>
@@ -555,12 +542,11 @@ export const PublicEducacaoPortal = ({ darkMode, currentInstitution }: PublicEdu
             <button 
               type="submit"
               disabled={isStudentLoggingIn}
-              className="w-full mt-4 bg-gradient-to-r from-amber-400 via-orange-500 to-amber-500 text-white py-5 rounded-3xl font-black text-xl shadow-xl shadow-amber-500/30 hover:shadow-amber-500/50 hover:-translate-y-1 hover:scale-[1.02] active:scale-95 transition-all flex justify-center items-center gap-3 overflow-hidden relative group cursor-pointer border border-amber-300/40 disabled:opacity-80 disabled:pointer-events-none"
+              className="w-full mt-2 py-3.5 sm:py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white rounded-2xl font-black text-base shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] transition-all flex justify-center items-center gap-2 cursor-pointer disabled:opacity-80 disabled:pointer-events-none"
             >
-              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjUpIi8+PC9zdmc+')] opacity-0 group-hover:opacity-30 transition-opacity animate-[spin_10s_linear_infinite]" />
-              <Zap size={24} className="relative z-10 text-yellow-200 fill-yellow-300 animate-pulse" />
-              <span className="relative z-10">{isStudentLoggingIn ? 'Entrando no Portal... 🚀' : 'Entrar no Portal ⚡'}</span>
-              <ArrowRight size={24} className="relative z-10 group-hover:translate-x-2 transition-transform" />
+              <Zap size={20} className="text-yellow-200 fill-yellow-300 animate-pulse" />
+              <span>{isStudentLoggingIn ? 'Entrando no Portal... 🚀' : 'Entrar no Portal'}</span>
+              <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
             </button>
           </form>
         </div>
