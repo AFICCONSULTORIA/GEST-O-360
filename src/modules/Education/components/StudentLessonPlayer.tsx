@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { 
-  ArrowLeft, 
-  Zap, 
-  Video, 
+import {
+  ArrowLeft,
+  Zap,
+  Video,
   CheckCircle2,
   Sparkles,
-  Loader2
+  Loader2,
+  BookOpen,
 } from 'lucide-react';
 import { Course, Lesson } from '../StudentPortal';
 import { completeLesson } from '../../../lib/api/education';
@@ -17,7 +18,11 @@ interface StudentLessonPlayerProps {
   setActiveLesson: (lesson: Lesson | null) => void;
   finishLesson: () => void;
   studentId?: string;
-  onLessonCompleted?: (lessonId: string, earnedXp: number, earnedCoins: number) => void;
+  onLessonCompleted?: (
+    lessonId: string,
+    earnedXp: number,
+    earnedCoins: number
+  ) => void;
 }
 
 export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
@@ -30,40 +35,55 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
   onLessonCompleted,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCompletedLocal, setIsCompletedLocal] = useState(Boolean(activeLesson.isCompleted));
-  const [toast, setToast] = useState<{ message: string; xp: number; coins: number } | null>(null);
+  const [isCompletedLocal, setIsCompletedLocal] = useState(
+    Boolean(activeLesson.isCompleted)
+  );
+  const [toast, setToast] = useState<{
+    message: string;
+    xp: number;
+    coins: number;
+  } | null>(null);
+
+  // Para aulas de leitura, a ilustração pode estar em imageUrl ou contentUrl
+  const lessonIllustration =
+    activeLesson.type !== 'video'
+      ? activeLesson.imageUrl || activeLesson.contentUrl
+      : undefined;
 
   const handleFinish = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
 
-    const effStudentId = studentId || localStorage.getItem('edu_student_id') || '2';
-    const courseId = activeCourse?.id || '00000000-0000-0000-0000-000000000000';
+    const effStudentId =
+      studentId || localStorage.getItem('edu_student_id') || '2';
+    const courseId =
+      activeCourse?.id || '00000000-0000-0000-0000-000000000000';
 
     try {
-      // Dispara a persistência real no Supabase
-      const result = await completeLesson(effStudentId, courseId, activeLesson.id);
-      
-      // Atualiza estado local instantaneamente
+      const result = await completeLesson(
+        effStudentId,
+        courseId,
+        activeLesson.id
+      );
+
       setIsCompletedLocal(true);
       activeLesson.isCompleted = true;
 
       const earnedXp = result.earnedXp ?? activeLesson.xp ?? 15;
       const earnedCoins = result.earnedCoins ?? activeLesson.coins ?? 5;
 
-      // Emite feedback visual com Toast
       setToast({
-        message: result.alreadyCompleted ? 'Aula revisada com sucesso!' : 'Parabéns! Aula concluída!',
+        message: result.alreadyCompleted
+          ? 'Aula revisada com sucesso!'
+          : 'Parabéns! Aula concluída!',
         xp: earnedXp,
-        coins: earnedCoins
+        coins: earnedCoins,
       });
 
-      // Notifica o componente pai
       if (onLessonCompleted) {
         onLessonCompleted(activeLesson.id, earnedXp, earnedCoins);
       }
 
-      // Pequeno intervalo para o aluno desfrutar da animação e feedback do Toast antes de retornar
       setTimeout(() => {
         setIsSubmitting(false);
         finishLesson();
@@ -95,14 +115,19 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
         {/* Header */}
         <div className="px-6 py-4 flex items-center justify-between border-b border-white/10 bg-black/20 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => { setActiveView(activeCourse ? 'trail-map' : 'assessments'); setActiveLesson(null); }} 
+            <button
+              onClick={() => {
+                setActiveView(activeCourse ? 'trail-map' : 'assessments');
+                setActiveLesson(null);
+              }}
               className="p-2 hover:bg-white/10 rounded-xl transition-colors cursor-pointer"
             >
               <ArrowLeft size={24} />
             </button>
             <div>
-              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{activeCourse?.title}</p>
+              <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">
+                {activeCourse?.title || 'Leitura Ilustrada'}
+              </p>
               <h2 className="text-lg font-black flex items-center gap-2">
                 {activeLesson.title}
                 {isCompletedLocal && (
@@ -132,25 +157,35 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
                 return (
                   <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative flex items-center justify-center group text-center px-4">
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10"></div>
-                    <img src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1200&auto=format&fit=crop" className="w-full h-full object-cover opacity-30" alt="Video cover" />
+                    <img
+                      src="/edu-bank/cover-ciencias.jpg"
+                      className="w-full h-full object-cover opacity-30"
+                      alt="Video cover"
+                    />
                     <div className="z-20 flex flex-col items-center">
                       <div className="w-20 h-20 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center text-white mb-4">
                         <Video size={32} />
                       </div>
-                      <h3 className="text-white font-bold text-xl">Nenhum vídeo disponível</h3>
-                      <p className="text-white/60 text-sm mt-2 max-w-md">O professor ainda não configurou o link para o vídeo desta aula.</p>
+                      <h3 className="text-white font-bold text-xl">
+                        Nenhum vídeo disponível
+                      </h3>
+                      <p className="text-white/60 text-sm mt-2 max-w-md">
+                        O professor ainda não configurou o link para o vídeo desta aula.
+                      </p>
                     </div>
                   </div>
                 );
               }
-              const ytMatch = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+              const ytMatch = url.match(
+                /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/
+              );
               if (ytMatch) {
                 return (
                   <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative">
-                    <iframe 
-                      src={`https://www.youtube.com/embed/${ytMatch[1]}?autoplay=0&rel=0`} 
-                      title="YouTube video player" 
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    <iframe
+                      src={`https://www.youtube.com/embed/${ytMatch[1]}?autoplay=0&rel=0`}
+                      title="YouTube video player"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
                       className="w-full h-full border-0"
                     ></iframe>
@@ -159,9 +194,9 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
               }
               return (
                 <div className="w-full max-w-5xl aspect-video bg-black rounded-3xl overflow-hidden border border-white/10 shadow-2xl relative">
-                  <video 
-                    src={url} 
-                    controls 
+                  <video
+                    src={url}
+                    controls
                     className="w-full h-full outline-none"
                     controlsList="nodownload"
                   >
@@ -171,12 +206,39 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
               );
             })()
           ) : (
-            <div className="w-full max-w-3xl bg-neutral-900 border border-white/10 rounded-3xl p-10 md:p-16 shadow-2xl">
-              <h1 className="text-3xl font-black mb-6">{activeLesson.title}</h1>
-              <div className="prose prose-invert prose-emerald max-w-none">
-                <p className="text-lg leading-relaxed text-neutral-300">
-                  {activeLesson.contentBody || 'O conteúdo textual da aula será exibido aqui. Pode conter parágrafos ricos, imagens, destaques e fórmulas.'}
-                </p>
+            <div className="w-full max-w-3xl bg-neutral-900 border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+              {lessonIllustration && (
+                <div className="w-full max-h-80 overflow-hidden bg-neutral-950 border-b border-white/10 flex items-center justify-center">
+                  <img
+                    src={lessonIllustration}
+                    alt={activeLesson.title}
+                    className="w-full max-h-80 object-contain bg-neutral-900/80"
+                  />
+                </div>
+              )}
+              <div className="p-8 md:p-12">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 text-xs font-bold mb-4">
+                  <BookOpen size={14} /> Material de Estudo
+                </div>
+                <h1 className="text-2xl md:text-3xl font-black mb-6">
+                  {activeLesson.title}
+                </h1>
+                <div className="prose prose-invert prose-emerald max-w-none space-y-4">
+                  {(
+                    activeLesson.contentBody ||
+                    'Leia com atenção o conteúdo preparado pelo seu professor.'
+                  )
+                    .split('\n')
+                    .filter((p) => p.trim().length > 0)
+                    .map((paragraph, idx) => (
+                      <p
+                        key={idx}
+                        className="text-lg leading-relaxed text-neutral-200"
+                      >
+                        {paragraph}
+                      </p>
+                    ))}
+                </div>
               </div>
             </div>
           )}
@@ -184,7 +246,7 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
 
         {/* Bottom Action Bar */}
         <div className="px-6 py-6 border-t border-white/10 bg-black/40 backdrop-blur-md flex justify-end sticky bottom-0 z-10">
-          <button 
+          <button
             disabled={isSubmitting}
             onClick={handleFinish}
             className="px-8 py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-70 text-white rounded-2xl font-black uppercase tracking-widest flex items-center gap-3 transition-transform hover:scale-105 active:scale-95 shadow-xl shadow-emerald-500/20 cursor-pointer"
@@ -196,7 +258,9 @@ export const StudentLessonPlayer: React.FC<StudentLessonPlayerProps> = ({
               </>
             ) : (
               <>
-                {isCompletedLocal ? 'Revisão Concluída' : 'Concluir e Ganhar Recompensas'}
+                {isCompletedLocal
+                  ? 'Revisão Concluída'
+                  : 'Concluir e Ganhar Recompensas'}
                 <CheckCircle2 size={20} />
               </>
             )}

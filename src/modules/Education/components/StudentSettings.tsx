@@ -1,25 +1,19 @@
-import React, { useRef } from 'react';
-import { 
-  Settings, 
-  Image as ImageIcon, 
-  Sparkles, 
-  Bell, 
-  ToggleRight, 
+import React, { useRef, useState } from 'react';
+import {
+  Settings,
+  Image as ImageIcon,
+  Sparkles,
+  Bell,
+  ToggleRight,
   ToggleLeft,
   CheckCircle2,
   Camera,
   RotateCcw,
   User,
   Zap,
-  Calendar
+  ShieldCheck
 } from 'lucide-react';
 import { EducationAvatar, optimizeAvatarImage } from './EducationAvatar';
-import { 
-  getLocalDateString, 
-  calculateDuolingoStreak, 
-  calculateWeeklyActivity, 
-  seedInitialStreakDates 
-} from '../utils/streakUtils';
 
 interface StudentSettingsProps {
   studentData: {
@@ -28,8 +22,11 @@ interface StudentSettingsProps {
     coins: number;
     xp: number;
     streak?: number;
+    highestStreak?: number;
     hasPracticedToday?: boolean;
     streakFreezes?: number;
+    weeklyActivity?: boolean[];
+    className?: string;
     avatar: string;
     inventory: string[];
   };
@@ -37,92 +34,40 @@ interface StudentSettingsProps {
   onTestStreakAnimation?: (prev: number, current: number) => void;
 }
 
-const PREMIUM_AVATARS: Record<string, string> = {
-  'avatar_ninja': 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23334155"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🥷</text></svg>',
-  'avatar_fox': 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f97316"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🦊</text></svg>',
-  'avatar_robot': 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%230ea5e9"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🤖</text></svg>',
-  'avatar_dragon': 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23e11d48"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🐲</text></svg>'
+const PREMIUM_AVATARS: Record<string, { label: string; url: string }> = {
+  avatar_ninja: {
+    label: 'Ninja',
+    url: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23334155"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🥷</text></svg>'
+  },
+  avatar_fox: {
+    label: 'Raposa',
+    url: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23f97316"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🦊</text></svg>'
+  },
+  avatar_robot: {
+    label: 'Robô',
+    url: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%230ea5e9"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🤖</text></svg>'
+  },
+  avatar_dragon: {
+    label: 'Dragão',
+    url: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="%23e11d48"/><text y="50%" x="50%" dominant-baseline="central" text-anchor="middle" font-size="60">🐲</text></svg>'
+  }
 };
 
 export const StudentSettings: React.FC<StudentSettingsProps> = ({
   studentData,
   setStudentData,
-  onTestStreakAnimation,
 }) => {
-  const [toastMessage, setToastMessage] = React.useState<string | null>(null);
-  const [isProcessingPhoto, setIsProcessingPhoto] = React.useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
+  const [notifyChallenges, setNotifyChallenges] = useState(true);
+  const [notifyTeacherMsgs, setNotifyTeacherMsgs] = useState(true);
+  const [notifyStudyReminder, setNotifyStudyReminder] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
-    setToastMessage('Suas alterações foram salvas com sucesso!');
+    setToastMessage('Suas preferências foram salvas com sucesso!');
     setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  const handleSimulateNewDay = () => {
-    if (!studentData.id) return;
-    const todayStr = getLocalDateString();
-    const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
-    let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
-    
-    // Remove hoje do histórico de datas para simular que o dia começou agora (fogo apagado)
-    localActivity.dates = (localActivity.dates || []).filter((d: string) => d !== todayStr);
-    localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
-    
-    const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
-    const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
-
-    setStudentData((prev: any) => ({
-      ...prev,
-      streak: streakData.currentStreak,
-      hasPracticedToday: false,
-      weeklyActivity
-    }));
-
-    setToastMessage('Raio descarregado! Dia simulado como novo: complete uma aula para disparar o raio.');
-    setTimeout(() => setToastMessage(null), 3500);
-  };
-
-  const handleResetStreak = () => {
-    if (!studentData.id) return;
-    const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
-    let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
-    localActivity.dates = [];
-    localActivity.highestStreak = 0;
-    localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
-
-    setStudentData((prev: any) => ({
-      ...prev,
-      streak: 0,
-      highestStreak: 0,
-      hasPracticedToday: false,
-      weeklyActivity: [false, false, false, false, false, false, false]
-    }));
-
-    setToastMessage('Sequência reiniciada para 0 dias.');
-    setTimeout(() => setToastMessage(null), 3000);
-  };
-
-  const handleSetArthur12Streak = () => {
-    if (!studentData.id) return;
-    const storedAct = localStorage.getItem(`edu_activity_${studentData.id}`);
-    let localActivity = storedAct ? JSON.parse(storedAct) : { dates: [] as string[], freezes: 0, highestStreak: 0 };
-    localActivity.dates = seedInitialStreakDates(12);
-    localActivity.highestStreak = 12;
-    localStorage.setItem(`edu_activity_${studentData.id}`, JSON.stringify(localActivity));
-
-    const streakData = calculateDuolingoStreak(localActivity.dates, localActivity.freezes);
-    const weeklyActivity = calculateWeeklyActivity(localActivity.dates);
-
-    setStudentData((prev: any) => ({
-      ...prev,
-      streak: 12,
-      highestStreak: 12,
-      hasPracticedToday: false,
-      weeklyActivity
-    }));
-
-    setToastMessage('Sequência configurada para 12 dias (com raio aguardando carga).');
-    setTimeout(() => setToastMessage(null), 3500);
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,7 +84,7 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
       setIsProcessingPhoto(true);
       const optimizedBase64 = await optimizeAvatarImage(file, 360, 0.85);
       setStudentData((prev: any) => ({ ...prev, avatar: optimizedBase64 }));
-      setToastMessage('Foto atualizada com sucesso!');
+      setToastMessage('Foto de perfil atualizada com sucesso!');
       setTimeout(() => setToastMessage(null), 3000);
     } catch (err) {
       console.error('Erro ao processar imagem:', err);
@@ -153,47 +98,53 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
 
   const handleResetToDefault = () => {
     setStudentData((prev: any) => ({ ...prev, avatar: '' }));
-    setToastMessage('Ícone padrão escolar restaurado!');
+    setToastMessage('Ícone padrão restaurado!');
     setTimeout(() => setToastMessage(null), 3000);
   };
-  
-  // Avatares desbloqueados do inventário
+
   const unlockedAvatars = (studentData.inventory || [])
-    .filter(item => item.startsWith('avatar_'))
-    .map(item => ({ id: item, url: PREMIUM_AVATARS[item] }));
+    .filter((item) => item in PREMIUM_AVATARS)
+    .map((item) => ({
+      id: item,
+      label: PREMIUM_AVATARS[item].label,
+      url: PREMIUM_AVATARS[item].url
+    }));
+
+  const weekDays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   return (
-    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col gap-2 mb-8">
+    <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-28 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="flex flex-col gap-1.5">
         <h2 className="text-3xl font-black text-neutral-900 dark:text-white flex items-center gap-3">
           <Settings className="text-emerald-500" size={32} />
-          Meu Perfil e Opções
+          Meu Perfil Escolar
         </h2>
-        <p className="text-neutral-500 dark:text-neutral-400">Personalize sua foto, ícone e nome no Gestão 360 Educação!</p>
+        <p className="text-neutral-500 dark:text-neutral-400">
+          Personalize sua foto ou avatar e acompanhe sua rotina semanal de estudos!
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Meu Perfil Mágico */}
-        <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
+        {/* Foto e Identificação Escolar */}
+        <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col gap-6">
           <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
             <ImageIcon className="text-emerald-500" size={24} />
-            Foto do Aluno e Dados
+            Minha Identificação
           </h3>
 
           <div className="flex flex-col items-center gap-5">
             <div className="relative group">
               <div className="p-1 rounded-full bg-gradient-to-tr from-emerald-500 via-teal-500 to-cyan-500 shadow-xl shadow-emerald-500/20">
                 <div className="rounded-full overflow-hidden border-4 border-white dark:border-neutral-900 bg-white dark:bg-neutral-800">
-                  <EducationAvatar 
-                    src={studentData.avatar} 
-                    name={studentData.name} 
-                    role="student" 
-                    size="xl" 
+                  <EducationAvatar
+                    src={studentData.avatar}
+                    name={studentData.name}
+                    role="student"
+                    size="xl"
                   />
                 </div>
               </div>
 
-              {/* Botão de upload sobreposto */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -205,12 +156,12 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
               </button>
             </div>
 
-            <input 
+            <input
               ref={fileInputRef}
-              type="file" 
-              accept="image/*" 
+              type="file"
+              accept="image/*"
               onChange={handleFileChange}
-              className="hidden" 
+              className="hidden"
             />
 
             <div className="flex flex-wrap items-center justify-center gap-3">
@@ -221,7 +172,7 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 className="px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs rounded-2xl transition-all flex items-center gap-2 cursor-pointer"
               >
                 <Camera size={16} />
-                {isProcessingPhoto ? 'Processando...' : 'Carregar Minha Foto'}
+                {isProcessingPhoto ? 'Processando...' : 'Escolher Foto'}
               </button>
 
               {studentData.avatar && (
@@ -235,36 +186,81 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 </button>
               )}
             </div>
-            
+
             <div className="w-full space-y-4 mt-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider pl-2">Seu Nome Mágico</label>
-                <input 
-                  type="text" 
-                  value={studentData.name} 
-                  onChange={e => setStudentData((prev: any) => ({ ...prev, name: e.target.value }))}
-                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-emerald-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-bold text-neutral-900 dark:text-white" 
+                <label className="text-xs font-bold text-neutral-500 uppercase tracking-wider pl-2">
+                  Nome de Exibição
+                </label>
+                <input
+                  type="text"
+                  value={studentData.name}
+                  onChange={(e) => setStudentData((prev: any) => ({ ...prev, name: e.target.value }))}
+                  className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-950 border-2 border-neutral-100 dark:border-neutral-800 rounded-2xl focus:border-emerald-500 focus:bg-white dark:focus:bg-neutral-900 outline-none transition-colors font-bold text-neutral-900 dark:text-white"
                 />
               </div>
+
+              <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs">
+                <div>
+                  <span className="font-bold text-neutral-400 uppercase block text-[10px]">Turma Escolar</span>
+                  <strong className="text-sm text-neutral-900 dark:text-white">
+                    {studentData.className || 'Turma 4A'}
+                  </strong>
+                </div>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                  <ShieldCheck size={13} /> Matrícula Ativa
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Minha Constância Semanal */}
+          <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-black text-sm text-neutral-900 dark:text-white flex items-center gap-2">
+                <Zap size={17} className="text-amber-500" />
+                Minha Rotina Desta Semana
+              </h4>
+              <span className="text-xs font-black text-amber-600 dark:text-amber-400">
+                Recorde: {studentData.highestStreak || studentData.streak || 0} dias
+              </span>
+            </div>
+
+            <div className="grid grid-cols-7 gap-2">
+              {weekDays.map((day, idx) => {
+                const done = studentData.weeklyActivity ? studentData.weeklyActivity[idx] : false;
+                return (
+                  <div
+                    key={day}
+                    className={`p-2.5 rounded-2xl border flex flex-col items-center gap-1.5 ${
+                      done
+                        ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-300 dark:border-amber-500/40 text-amber-700 dark:text-amber-300'
+                        : 'bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200/60 dark:border-neutral-800 text-neutral-400'
+                    }`}
+                  >
+                    <span className="text-[10px] font-black uppercase">{day}</span>
+                    <span className="text-sm font-black">{done ? '⚡' : '·'}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
 
         <div className="flex flex-col gap-8">
           {/* Selecionar Avatar */}
-          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
+          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col gap-6">
             <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
               <Sparkles className="text-amber-500" size={24} />
-              Escolher Aparência
+              Escolher Avatar
             </h3>
-            
+
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-              {/* Opção 1: Ícone Padrão */}
-              <div 
+              <div
                 onClick={handleResetToDefault}
-                className={`relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-4 transition-all hover:scale-105 ${
-                  !studentData.avatar 
-                    ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-lg shadow-emerald-500/10 scale-105' 
+                className={`relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-3 transition-all hover:scale-105 ${
+                  !studentData.avatar
+                    ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md'
                     : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-200 dark:hover:border-emerald-900'
                 }`}
               >
@@ -279,13 +275,10 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 )}
               </div>
 
-              {/* Se o aluno tem foto própria carregada */}
               {studentData.avatar && !studentData.avatar.startsWith('data:image/svg+xml') && (
-                <div 
-                  className="relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-4 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-lg shadow-emerald-500/10 scale-105"
-                >
+                <div className="relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-3 border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md">
                   <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white dark:border-neutral-800 shadow-md">
-                    <img src={studentData.avatar} alt="Foto Própria" className="w-full h-full object-cover" />
+                    <img src={studentData.avatar} alt="Foto Pessoal" className="w-full h-full object-cover" />
                   </div>
                   <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 text-center">Foto Pessoal</span>
                   <div className="absolute top-2 right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs">
@@ -294,20 +287,19 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 </div>
               )}
 
-              {/* Avatares da Loja (se possuir) */}
               {unlockedAvatars.map((av) => (
-                <div 
+                <div
                   key={av.id}
                   onClick={() => setStudentData((prev: any) => ({ ...prev, avatar: av.url }))}
-                  className={`relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-4 transition-all hover:scale-105 ${
-                    studentData.avatar === av.url 
-                      ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-lg shadow-emerald-500/20 scale-105' 
+                  className={`relative cursor-pointer rounded-2xl p-4 flex flex-col items-center justify-center gap-2 border-3 transition-all hover:scale-105 ${
+                    studentData.avatar === av.url
+                      ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/20 shadow-md'
                       : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-200 dark:hover:border-emerald-900'
                   }`}
                 >
-                  <img src={av.url} alt={av.id} className="w-14 h-14 rounded-full object-cover shadow-sm bg-white" />
-                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 text-center capitalize">
-                    {av.id.replace('avatar_', '')}
+                  <img src={av.url} alt={av.label} className="w-14 h-14 rounded-full object-cover shadow-sm bg-white" />
+                  <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 text-center">
+                    {av.label}
                   </span>
                   {studentData.avatar === av.url && (
                     <div className="absolute top-2 right-2 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs">
@@ -317,136 +309,86 @@ export const StudentSettings: React.FC<StudentSettingsProps> = ({
                 </div>
               ))}
             </div>
-            
-            <p className="text-xs text-neutral-500 text-center mt-1">Você pode carregar uma foto pessoal ou desbloquear avatares divertidos na Loja de Recompensas!</p>
+
+            <p className="text-xs text-neutral-500 text-center">
+              Desbloqueie novos avatares na <strong>Loja de Recompensas</strong> usando suas moedas!
+            </p>
           </div>
 
-          {/* Notificações */}
-          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
+          {/* Preferências de Avisos */}
+          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col gap-6">
             <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
               <Bell className="text-amber-500" size={24} />
-              Avisos Mágicos
+              Avisos & Sons
             </h3>
 
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer">
-                <div>
-                  <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Novos Desafios Diários</h4>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Me avise quando tiver jogo novo!</p>
-                </div>
-                <ToggleRight size={32} className="text-emerald-500" />
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer">
-                <div>
-                  <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Mensagens dos Professores</h4>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Sons divertidos ao receber dicas.</p>
-                </div>
-                <ToggleRight size={32} className="text-emerald-500" />
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer opacity-75">
-                <div>
-                  <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Lembrete de Estudos</h4>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Aviso gentil no fim de semana.</p>
-                </div>
-                <ToggleLeft size={32} className="text-neutral-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* Gerenciador da Sequência Diária (Poder do Raio ⚡) */}
-          <div className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 md:p-8 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-6">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
-                <Zap className={studentData.hasPracticedToday ? "text-amber-500 fill-amber-400 animate-pulse drop-shadow-[0_0_8px_rgba(245,158,11,0.6)]" : "text-neutral-400"} size={24} />
-                Poder da Sequência Diária (Raio Elétrico ⚡)
-              </h3>
-              <div className={`px-3 py-1 rounded-full text-xs font-black border flex items-center gap-1.5 transition-all ${
-                studentData.hasPracticedToday
-                  ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-yellow-400 border-amber-300 dark:border-amber-500/30 shadow-sm'
-                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 border-neutral-200 dark:border-neutral-700'
-              }`}>
-                {studentData.hasPracticedToday ? '⚡ Raio Carregado Hoje' : '⚡ Aguardando Carga (Pendente)'}
-              </div>
-            </div>
-
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              O sistema dispara o relâmpago cortando a tela estritamente na <strong>primeira atividade</strong> de cada dia. Caso ainda não tenha praticado hoje, o raio aguarda carregamento. Use os botões abaixo para gerenciar ou testar as animações ao vivo:
-            </p>
-
-            {/* Ações de Estado */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-3">
               <button
                 type="button"
-                onClick={handleSimulateNewDay}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-500/10 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs transition-all border border-amber-200/60 dark:border-amber-500/30 cursor-pointer shadow-sm active:scale-95"
+                onClick={() => setNotifyChallenges(!notifyChallenges)}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer text-left"
               >
-                <Calendar size={14} />
-                Simular Novo Dia (Descarregar)
-              </button>
-              
-              <button
-                type="button"
-                onClick={handleSetArthur12Streak}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-yellow-50 hover:bg-yellow-100 dark:bg-yellow-500/10 dark:hover:bg-yellow-500/20 text-yellow-800 dark:text-yellow-300 font-bold text-xs transition-all border border-yellow-200/60 dark:border-yellow-500/30 cursor-pointer shadow-sm active:scale-95"
-              >
-                <Zap size={14} />
-                Definir 12 Dias (Pendente)
+                <div>
+                  <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Novas Atividades da Turma</h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">Avisar quando o professor publicar trilha nova.</p>
+                </div>
+                {notifyChallenges ? (
+                  <ToggleRight size={32} className="text-emerald-500 shrink-0" />
+                ) : (
+                  <ToggleLeft size={32} className="text-neutral-400 shrink-0" />
+                )}
               </button>
 
               <button
                 type="button"
-                onClick={handleResetStreak}
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs transition-all border border-neutral-200 dark:border-neutral-700 cursor-pointer shadow-sm active:scale-95"
+                onClick={() => setNotifyTeacherMsgs(!notifyTeacherMsgs)}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer text-left"
               >
-                <RotateCcw size={14} />
-                Zerar Sequência
+                <div>
+                  <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Recados dos Professores</h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">Destacar novas mensagens e comunicados da escola.</p>
+                </div>
+                {notifyTeacherMsgs ? (
+                  <ToggleRight size={32} className="text-emerald-500 shrink-0" />
+                ) : (
+                  <ToggleLeft size={32} className="text-neutral-400 shrink-0" />
+                )}
               </button>
-            </div>
 
-            {/* Testes ao Vivo da Animação do Raio */}
-            <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
-              <p className="text-[11px] font-black uppercase tracking-wider text-amber-600 dark:text-yellow-400 mb-2.5 flex items-center gap-1.5">
-                <Sparkles size={14} /> Teste Imediato da Animação na Tela:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => onTestStreakAnimation?.(studentData.streak || 12, (studentData.streak || 12) + 1)}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white font-black text-xs transition-all shadow-md shadow-amber-500/25 hover:scale-[1.02] active:scale-95 cursor-pointer"
-                >
-                  <Zap size={16} fill="currentColor" />
-                  Testar Raio Cortando a Tela (1ª Atividade)
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => onTestStreakAnimation?.(29, 30)}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-purple-600 via-amber-500 to-yellow-400 hover:from-purple-700 hover:via-amber-600 hover:to-yellow-500 text-white font-black text-xs transition-all shadow-md shadow-purple-500/25 hover:scale-[1.02] active:scale-95 cursor-pointer"
-                >
-                  <Sparkles size={16} />
-                  Testar Raio Lendário (Marco 30+ Dias 👑)
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setNotifyStudyReminder(!notifyStudyReminder)}
+                className="w-full flex items-center justify-between p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer text-left"
+              >
+                <div>
+                  <h4 className="font-bold text-neutral-900 dark:text-white text-sm">Lembrete no Fim de Semana</h4>
+                  <p className="text-xs text-neutral-500 mt-0.5">Convite leve para leitura livre com a família.</p>
+                </div>
+                {notifyStudyReminder ? (
+                  <ToggleRight size={32} className="text-emerald-500 shrink-0" />
+                ) : (
+                  <ToggleLeft size={32} className="text-neutral-400 shrink-0" />
+                )}
+              </button>
             </div>
           </div>
         </div>
       </div>
-      
-      <div className="flex justify-end pt-4 relative">
-        <button 
+
+      <div className="flex justify-end pt-2 relative">
+        <button
           onClick={handleSave}
-          className="bg-emerald-600 text-white font-bold px-8 py-4 rounded-2xl hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-4 rounded-2xl hover:-translate-y-0.5 shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
         >
-          Salvar Minhas Escolhas <Sparkles size={18} />
+          Salvar Preferências <Sparkles size={18} />
         </button>
       </div>
 
-      {/* Toast Notifier */}
       {toastMessage && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="flex items-center gap-3 px-6 py-4 rounded-2xl shadow-xl border bg-emerald-50 dark:bg-emerald-900/80 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-100">
-            <CheckCircle2 size={24} />
-            <span className="font-bold">{toastMessage}</span>
+        <div className="fixed bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="flex items-center gap-3 px-6 py-4 rounded-2xl shadow-xl border bg-emerald-50 dark:bg-emerald-900/90 border-emerald-200 dark:border-emerald-700 text-emerald-800 dark:text-emerald-100">
+            <CheckCircle2 size={22} />
+            <span className="font-bold text-sm">{toastMessage}</span>
           </div>
         </div>
       )}

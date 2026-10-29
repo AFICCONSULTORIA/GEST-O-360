@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  GraduationCap, Baby, Vote, Users, FileText, HeartHandshake, Bell 
+import {
+  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
-import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationEnrollmentManager } from './components/EducationEnrollmentManager';
 import { FamilyPortalView } from './components/FamilyPortalView';
 import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsManager';
 
 export const EducationModule: React.FC = () => {
-  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'familia' | 'avisos' | 'votacao'>('staff');
+  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'familia' | 'avisos'>('staff');
 
   const navigationTabs = [
     { id: 'staff', label: 'Professores & Equipe', icon: Users },
@@ -19,7 +18,6 @@ export const EducationModule: React.FC = () => {
     { id: 'creche', label: 'Fila CMEI', icon: Baby },
     { id: 'familia', label: 'Portal da Família', icon: HeartHandshake },
     { id: 'avisos', label: 'Mural de Avisos', icon: Bell },
-    { id: 'votacao', label: 'Eleição de Diretores', icon: Vote },
   ] as const;
 
   return (
@@ -46,11 +44,10 @@ export const EducationModule: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setEducationView(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap cursor-pointer ${
-                  educationView === tab.id 
-                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm' 
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap cursor-pointer ${educationView === tab.id
+                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
                     : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
-                }`}
+                  }`}
               >
                 <tab.icon size={14} />
                 {tab.label}
@@ -63,11 +60,11 @@ export const EducationModule: React.FC = () => {
       {/* Main Content Area with Transitions */}
       <AnimatePresence mode="wait">
         {educationView === 'staff' && (
-          <motion.div 
+          <motion.div
             key="staff"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
           >
             <EducationStaffAdmin />
@@ -75,11 +72,11 @@ export const EducationModule: React.FC = () => {
         )}
 
         {educationView === 'matriculas' && (
-          <motion.div 
+          <motion.div
             key="matriculas"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
           >
             <EducationEnrollmentManager />
@@ -87,11 +84,11 @@ export const EducationModule: React.FC = () => {
         )}
 
         {educationView === 'creche' && (
-          <motion.div 
+          <motion.div
             key="creche"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
           >
             <EducationCrecheAdmin />
@@ -99,11 +96,11 @@ export const EducationModule: React.FC = () => {
         )}
 
         {educationView === 'familia' && (
-          <motion.div 
+          <motion.div
             key="familia"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
           >
             <FamilyPortalView />
@@ -111,26 +108,14 @@ export const EducationModule: React.FC = () => {
         )}
 
         {educationView === 'avisos' && (
-          <motion.div 
+          <motion.div
             key="avisos"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
           >
             <SchoolAnnouncementsManager />
-          </motion.div>
-        )}
-
-        {educationView === 'votacao' && (
-          <motion.div 
-            key="votacao"
-            initial={{ opacity: 0, y: 15 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            exit={{ opacity: 0, y: -15 }} 
-            transition={{ duration: 0.2 }}
-          >
-            <EducationVotingAdmin />
           </motion.div>
         )}
       </AnimatePresence>

@@ -21,7 +21,7 @@ import {
   Check,
   Award
 } from 'lucide-react';
-import { Lesson } from '../StudentPortal';
+import { Course, Lesson } from '../StudentPortal';
 import { submitQuizAttempt, getStudentQuizAttempts } from '../../../lib/api/education';
 
 export interface AssessmentQuestion {
@@ -40,6 +40,7 @@ export interface AssessmentMission {
   subject: string;
   subjectColor: 'rose' | 'amber' | 'emerald' | 'sky';
   icon: 'brain' | 'target' | 'book' | 'compass';
+  coverUrl?: string;
   duration: string;
   xp: number;
   coins: number;
@@ -69,6 +70,7 @@ interface StudentAssessmentsProps {
   setActiveView: (view: any) => void;
   studentData?: any;
   studentId?: string;
+  teacherCourses?: Course[];
 }
 
 // Catálogo fixo e completo de Missões de Avaliação
@@ -226,7 +228,60 @@ export const StudentAssessments: React.FC<StudentAssessmentsProps> = ({
   setActiveView,
   studentData,
   studentId,
+  teacherCourses = [],
 }) => {
+  // Converte Atividades Rápidas criadas pelo professor em Missões Avaliativas dinâmicas
+  const dynamicTeacherMissions = useMemo<AssessmentMission[]>(() => {
+    const list: AssessmentMission[] = [];
+    teacherCourses
+      .filter((c) => c.isQuickActivity)
+      .forEach((course) => {
+        course.modules.forEach((mod) => {
+          mod.lessons
+            .filter((l) => l.type === 'quiz' && l.questions && l.questions.length > 0)
+            .forEach((lesson) => {
+              const colorMap: Record<string, 'rose' | 'amber' | 'emerald' | 'sky'> = {
+                rose: 'rose',
+                amber: 'amber',
+                emerald: 'emerald',
+                sky: 'sky',
+                purple: 'sky',
+                indigo: 'sky',
+              };
+              list.push({
+                id: lesson.id,
+                title: course.title || lesson.title,
+                subject: course.subject || 'Atividade da Turma',
+                subjectColor: colorMap[course.color] || 'emerald',
+                icon: 'target',
+                coverUrl: course.coverUrl || lesson.imageUrl,
+                duration: lesson.duration || '10 min',
+                xp: lesson.xp || 100,
+                coins: lesson.coins || 30,
+                rewardTitle: `Atividade do Professor + ${lesson.xp || 100} XP`,
+                description:
+                  course.description ||
+                  `${lesson.questions?.length || 1} questões preparadas pelo seu professor.`,
+                expiresIn: 'Criada pelo Professor',
+                questions: (lesson.questions || []).map((q) => ({
+                  id: q.id,
+                  question: q.question,
+                  contextText: q.contextText,
+                  imageUrl: q.imageUrl || lesson.imageUrl,
+                  options: q.options,
+                  correctAnswer: q.correctAnswer,
+                  explanation: q.explanation,
+                })),
+              });
+            });
+        });
+      });
+    return list;
+  }, [teacherCourses]);
+
+  const allMissions = useMemo<AssessmentMission[]>(() => {
+    return [...dynamicTeacherMissions, ...MISSIONS_CATALOG];
+  }, [dynamicTeacherMissions]);
   // Identificador do aluno
   const currentStudentId = studentData?.id || studentId || localStorage.getItem('edu_student_id') || '2';
   const storageKey = `gestao360_assessments_${currentStudentId}`;
@@ -268,7 +323,7 @@ export const StudentAssessments: React.FC<StudentAssessmentsProps> = ({
         if (dbAttempts && dbAttempts.length > 0 && isMounted) {
           // Mapeia tentativas do DB para o formato da interface
           const dbRecords: CompletedAssessmentRecord[] = dbAttempts.map(att => {
-            const matchedMission = MISSIONS_CATALOG.find(m => 
+            const matchedMission = allMissions.find(m => 
               m.id === att.quizId || 
               att.quizId.toLowerCase().includes(m.id.replace('missao-', '').slice(0, 4))
             );
@@ -326,8 +381,8 @@ export const StudentAssessments: React.FC<StudentAssessmentsProps> = ({
   }, [completedRecords]);
 
   const openMissions = useMemo(() => {
-    return MISSIONS_CATALOG.filter(m => !completedMissionIds.has(m.id));
-  }, [completedMissionIds]);
+    return allMissions.filter(m => !completedMissionIds.has(m.id));
+  }, [allMissions, completedMissionIds]);
 
   // Cálculo da Acurácia Mágica (dinâmico e preciso)
   const accuracyStats = useMemo(() => {
@@ -853,17 +908,27 @@ export const StudentAssessments: React.FC<StudentAssessmentsProps> = ({
                       className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200/50 dark:border-neutral-800/50 shadow-sm flex flex-col gap-5 hover:shadow-xl hover:shadow-orange-500/10 hover:-translate-y-1 transition-all group"
                     >
                       <div className="flex gap-4 items-start">
-                        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform ${
-                          isAmber ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-500' :
-                          isRose ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-500' :
-                          isEmerald ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-500' :
-                          'bg-sky-100 dark:bg-sky-500/20 text-sky-500'
-                        }`}>
-                          {mission.icon === 'brain' && <Brain size={32} />}
-                          {mission.icon === 'target' && <Target size={32} />}
-                          {mission.icon === 'book' && <BookOpen size={32} />}
-                          {mission.icon === 'compass' && <Compass size={32} />}
-                        </div>
+                        {mission.coverUrl ? (
+                          <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0 border border-neutral-200 dark:border-neutral-800 shadow-sm">
+                            <img
+                              src={mission.coverUrl}
+                              alt={mission.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          </div>
+                        ) : (
+                          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform ${
+                            isAmber ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-500' :
+                            isRose ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-500' :
+                            isEmerald ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-500' :
+                            'bg-sky-100 dark:bg-sky-500/20 text-sky-500'
+                          }`}>
+                            {mission.icon === 'brain' && <Brain size={32} />}
+                            {mission.icon === 'target' && <Target size={32} />}
+                            {mission.icon === 'book' && <BookOpen size={32} />}
+                            {mission.icon === 'compass' && <Compass size={32} />}
+                          </div>
+                        )}
                         <div className="flex-1">
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             <span className="bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md">

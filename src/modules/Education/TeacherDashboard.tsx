@@ -52,9 +52,12 @@ import {
   ChevronDown,
   Book,
   Camera,
-  RotateCcw
+  RotateCcw,
+  Sparkles,
+  Image as ImageIcon,
+  LayoutTemplate
 } from 'lucide-react';
-import { TeacherEducationManager } from './TeacherEducationManager';
+import { TeacherEducationManager, StudioInitialMode } from './TeacherEducationManager';
 import { TeacherStudentManager } from './TeacherStudentManager';
 import { SupportArticlesManager } from './SupportArticlesManager';
 import { SupportTutorialsManager } from './SupportTutorialsManager';
@@ -70,9 +73,16 @@ import { getTeacherDashboardMetrics, TeacherDashboardMetrics } from '../../lib/a
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
   const [activeView, setActiveView] = useState<'dashboard' | 'proficiency-entry' | 'training' | 'intervention' | 'settings' | 'support' | 'student-portal-mgmt' | 'student-mgmt' | 'profile' | 'staff-mgmt'>('dashboard');
+  const [studioMode, setStudioMode] = useState<StudioInitialMode>('list');
   const [activeSupportTab, setActiveSupportTab] = useState<'home' | 'articles' | 'tutorials' | 'community' | 'tickets'>('home');
   const [selectedArticleCategory, setSelectedArticleCategory] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const openStudio = (mode: StudioInitialMode = 'list') => {
+    setStudioMode(mode);
+    setActiveView('student-portal-mgmt');
+    setIsMobileMenuOpen(false);
+  };
 
   // --- Teacher Profile & Settings State ---
   const [teacherPhoto, setTeacherPhoto] = useState<string>(() => localStorage.getItem('gestao360_teacher_photo') || '');
@@ -474,56 +484,108 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
           <p className="text-[11px] text-neutral-400 text-center font-medium mt-0.5 truncate max-w-full px-2">{teacherSchool}</p>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        {/* Navigation Links — Organizado pelo fluxo diário do Professor */}
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto">
+          <div className="px-3 pb-1 text-[10px] font-black uppercase tracking-widest text-neutral-400">
+            Sala de Aula
+          </div>
+
           <button
-            onClick={() => setActiveView('staff-mgmt')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'staff-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
-          >
-            <Users size={20} className={activeView !== 'staff-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
-            <span>Equipe Pedagógica</span>
-          </button>
-          <button
-            onClick={() => setActiveView('student-portal-mgmt')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'student-portal-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
-          >
-            <Compass size={20} className={activeView !== 'student-portal-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
-            <span>Gestão de Trilhas EaD</span>
-          </button>
-          <button
-            onClick={() => setActiveView('student-mgmt')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'student-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
-          >
-            <Users size={20} className={activeView !== 'student-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
-            <span>Gestão de Alunos</span>
-          </button>
-          <button
-            onClick={() => setActiveView('proficiency-entry')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'proficiency-entry' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
-          >
-            <Award size={20} className={activeView === 'proficiency-entry' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500 group-hover:scale-110 transition-transform"} />
-            <span>Lançamento SAEB</span>
-          </button>
-          <button
-            onClick={() => setActiveView('dashboard')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'dashboard' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+            onClick={() => {
+              setActiveView('dashboard');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'dashboard' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
             <LayoutDashboard size={20} className={activeView !== 'dashboard' ? "group-hover:scale-110 transition-transform" : ""} />
             <span>Painel do Professor</span>
           </button>
+
           <button
-            onClick={() => setActiveView('training')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'training' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+            onClick={() => openStudio('list')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'student-portal-mgmt' && studioMode !== 'image-bank' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
-            <BookOpen size={20} className={activeView !== 'training' ? "group-hover:scale-110 transition-transform" : ""} />
-            <span>Centro de Treinamento</span>
+            <span className="flex items-center gap-3">
+              <Compass size={20} className={activeView !== 'student-portal-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+              <span>Atividades & Trilhas</span>
+            </span>
+            <span
+              onClick={(e) => {
+                e.stopPropagation();
+                openStudio('quick-activity');
+              }}
+              title="Criar Nova Atividade Rápida"
+              className="px-2 py-0.5 rounded-lg bg-amber-500 text-white text-[10px] font-black uppercase hover:bg-amber-600"
+            >
+              + Criar
+            </span>
           </button>
+
           <button
-            onClick={() => setActiveView('intervention')}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all ${activeView === 'intervention' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+            onClick={() => openStudio('image-bank')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'student-portal-mgmt' && studioMode === 'image-bank' ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <ImageIcon size={20} className="text-purple-500 group-hover:scale-110 transition-transform" />
+            <span>Banco de Imagens IA</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveView('student-mgmt');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'student-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <Users size={20} className={activeView !== 'student-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Turmas & Alunos</span>
+          </button>
+
+          <div className="px-3 pt-4 pb-1 text-[10px] font-black uppercase tracking-widest text-neutral-400">
+            Acompanhamento & Gestão
+          </div>
+
+          <button
+            onClick={() => {
+              setActiveView('proficiency-entry');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'proficiency-entry' ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-black' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <Award size={20} className={activeView === 'proficiency-entry' ? "text-emerald-600 dark:text-emerald-400" : "text-emerald-500 group-hover:scale-110 transition-transform"} />
+            <span>Lançamento SAEB</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveView('intervention');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'intervention' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
           >
             <CalendarDays size={20} className={activeView !== 'intervention' ? "group-hover:scale-110 transition-transform" : ""} />
             <span>Plano de Intervenção</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveView('training');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'training' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <BookOpen size={20} className={activeView !== 'training' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Formação Docente</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveView('staff-mgmt');
+              setIsMobileMenuOpen(false);
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all cursor-pointer ${activeView === 'staff-mgmt' ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/50 hover:text-neutral-900 dark:hover:text-white group'}`}
+          >
+            <UserCog size={20} className={activeView !== 'staff-mgmt' ? "group-hover:scale-110 transition-transform" : ""} />
+            <span>Equipe Pedagógica</span>
           </button>
         </nav>
 
@@ -558,7 +620,9 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         )}
 
         {activeView === 'student-portal-mgmt' && (
-          <TeacherEducationManager />
+          <TeacherEducationManager
+            initialMode={studioMode}
+          />
         )}
 
         {activeView === 'student-mgmt' && (
@@ -641,13 +705,47 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
         {activeView === 'dashboard' && (
           <div className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full pb-24 md:pb-8">
 
-            {/* Greeting and Summary */}
+            {/* Greeting and Quick Studio Actions */}
             <section className="space-y-6">
-              <div>
-                <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 tracking-tight">Bem-vindo de volta, {teacherName}!</h2>
-                <p className="text-neutral-500 dark:text-neutral-400 text-lg max-w-3xl">
-                  Aqui está um resumo consolidado do desempenho escolar. Você tem <span className="font-bold text-rose-500">{metrics.active_interventions} {metrics.active_interventions === 1 ? 'plano de intervenção ativo' : 'planos de intervenção ativos'}</span> e <span className="font-bold text-amber-500">{atRiskStudents.length} alunos em atenção</span>.
-                </p>
+              <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-3xl font-black text-neutral-900 dark:text-white mb-2 tracking-tight">Bem-vindo de volta, {teacherName}!</h2>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-lg max-w-3xl">
+                    Aqui está um resumo consolidado do desempenho escolar. Você tem <span className="font-bold text-rose-500">{metrics.active_interventions} {metrics.active_interventions === 1 ? 'plano de intervenção ativo' : 'planos de intervenção ativos'}</span> e <span className="font-bold text-amber-500">{atRiskStudents.length} alunos em atenção</span>.
+                  </p>
+                </div>
+
+                {/* Atalhos Diretos de Criação Pedagógica */}
+                <div className="flex flex-wrap gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => openStudio('quick-activity')}
+                    className="px-4 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+                  >
+                    <Zap size={16} /> + Atividade Rápida
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openStudio('create-trail')}
+                    className="px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-indigo-500/20 flex items-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+                  >
+                    <Map size={16} /> + Nova Trilha
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openStudio('templates')}
+                    className="px-4 py-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:border-emerald-400 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <LayoutTemplate size={16} className="text-emerald-500" /> Modelos BNCC
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openStudio('image-bank')}
+                    className="px-4 py-3 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:border-purple-400 text-neutral-800 dark:text-neutral-200 font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Sparkles size={16} className="text-purple-500" /> Banco de Imagens IA
+                  </button>
+                </div>
               </div>
 
               {/* KPI Cards Conectados ao Supabase */}

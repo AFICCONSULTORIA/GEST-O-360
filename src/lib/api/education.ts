@@ -15,21 +15,25 @@ export interface StudentData {
 
 export interface QuizQuestion {
   id: string;
-  lesson_id: string;
+  lesson_id?: string;
   question: string;
+  imageUrl?: string;
+  contextText?: string;
+  explanation?: string;
   options: string[];
   correctAnswer: number;
 }
 
 export interface Lesson {
   id: string;
-  module_id: string;
+  module_id?: string;
   type: 'video' | 'text' | 'quiz';
   title: string;
   duration?: string;
   xp: number;
   coins: number;
   contentUrl?: string; // para video
+  imageUrl?: string; // ilustracao para leitura ou desafio
   contentBody?: string; // para texto
   questions?: QuizQuestion[]; // para quiz
   isCompleted?: boolean;
@@ -37,21 +41,144 @@ export interface Lesson {
 
 export interface Module {
   id: string;
-  course_id: string;
+  course_id?: string;
   title: string;
   description: string;
+  order_index?: number;
   lessons: Lesson[];
 }
 
 export interface Course {
   id: string;
+  institution_id?: string | null;
   title: string;
   subject: string;
   description: string;
-  color: 'emerald' | 'sky' | 'rose' | 'amber' | 'purple';
+  color: 'emerald' | 'sky' | 'rose' | 'amber' | 'purple' | 'indigo';
   icon: string;
+  coverUrl?: string;
+  isQuickActivity?: boolean;
   target_classes?: string[];
   modules: Module[];
+}
+
+const QUIZ_META_PREFIX = '__G360Q__:';
+const COURSE_META_SEP = '||G360||';
+
+export function serializeQuizQuestionText(q: {
+  question: string;
+  imageUrl?: string;
+  contextText?: string;
+  explanation?: string;
+}): string {
+  const hasRich = Boolean(
+    q.imageUrl?.trim() || q.contextText?.trim() || q.explanation?.trim()
+  );
+  if (!hasRich) return q.question;
+  return (
+    QUIZ_META_PREFIX +
+    JSON.stringify({
+      q: q.question,
+      img: q.imageUrl?.trim() || undefined,
+      ctx: q.contextText?.trim() || undefined,
+      exp: q.explanation?.trim() || undefined,
+    })
+  );
+}
+
+export function deserializeQuizQuestionRow(row: any): {
+  question: string;
+  imageUrl?: string;
+  contextText?: string;
+  explanation?: string;
+} {
+  const rawText = String(row?.question_text || '');
+  if (rawText.startsWith(QUIZ_META_PREFIX)) {
+    try {
+      const parsed = JSON.parse(rawText.slice(QUIZ_META_PREFIX.length));
+      return {
+        question: parsed.q || '',
+        imageUrl: row?.image_url || parsed.img || undefined,
+        contextText: row?.context_text || parsed.ctx || undefined,
+        explanation: row?.explanation || parsed.exp || undefined,
+      };
+    } catch {
+      // Fallback para texto bruto
+    }
+  }
+  return {
+    question: rawText,
+    imageUrl: row?.image_url || undefined,
+    contextText: row?.context_text || undefined,
+    explanation: row?.explanation || undefined,
+  };
+}
+
+export function serializeCourseIconMeta(meta: {
+  icon: string;
+  coverUrl?: string;
+  isQuickActivity?: boolean;
+  targetClasses?: string[];
+}): string {
+  const baseIcon = (meta.icon || 'BookOpen').split(COURSE_META_SEP)[0];
+  const hasExtra = Boolean(
+    meta.coverUrl?.trim() ||
+      meta.isQuickActivity ||
+      (meta.targetClasses && meta.targetClasses.length > 0)
+  );
+  if (!hasExtra) return baseIcon;
+  return [
+    baseIcon,
+    meta.coverUrl?.trim() || '',
+    meta.isQuickActivity ? '1' : '0',
+    (meta.targetClasses || []).join(','),
+  ].join(COURSE_META_SEP);
+}
+
+export function deserializeCourseRowMeta(row: any): {
+  icon: string;
+  coverUrl?: string;
+  isQuickActivity: boolean;
+  target_classes: string[];
+} {
+  const rawIcon = String(row?.icon || 'BookOpen');
+  let icon = rawIcon;
+  let packedCover = '';
+  let packedQuick = false;
+  let packedClasses: string[] = [];
+
+  if (rawIcon.includes(COURSE_META_SEP)) {
+    const [ic, cov, qk, cls] = rawIcon.split(COURSE_META_SEP);
+    icon = ic || 'BookOpen';
+    packedCover = cov || '';
+    packedQuick = qk === '1';
+    packedClasses = cls ? cls.split(',').filter(Boolean) : [];
+  }
+
+  let localClasses: string[] = [];
+  try {
+    const mapRaw = localStorage.getItem('gestao360_course_classes');
+    if (mapRaw && row?.id) {
+      const map = JSON.parse(mapRaw);
+      if (Array.isArray(map[row.id])) localClasses = map[row.id];
+    }
+  } catch {}
+
+  const dbClasses = Array.isArray(row?.target_classes)
+    ? row.target_classes.filter(Boolean)
+    : [];
+
+  return {
+    icon,
+    coverUrl: row?.cover_url || packedCover || undefined,
+    isQuickActivity: Boolean(row?.is_quick_activity ?? packedQuick),
+    target_classes:
+      dbClasses.length > 0
+        ? dbClasses
+        : packedClasses.length > 0
+        ? packedClasses
+        : localClasses,
+  };
 }
 
 /**
@@ -474,25 +601,47 @@ export async function getCompletedLessons(studentId: string, courseId?: string):
  */
 export async function fetchCoursesWithProgress(studentId?: string, institutionId?: string): Promise<Course[]> {
   try {
-    const query = supabase.from('edu_courses').select(`
-        id, title, subject, description, color, icon,
+    let coursesData: any[] | null = null;
+
+    // 1. Tenta buscar com colunas estendidas (v5)
+    let v5Query = supabase.from('edu_courses').select(`
+        id, institution_id, title, subject, description, color, icon, cover_url, target_classes, is_quick_activity,
         edu_modules (
           id, title, description, order_index,
           edu_lessons (
-            id, type, title, xp_reward, coin_reward, content_url, content_body, order_index,
+            id, type, title, duration_text, xp_reward, coin_reward, content_url, image_url, content_body, order_index,
             edu_quiz_questions (
-              id, question_text, options, correct_answer_index, order_index
+              id, question_text, image_url, context_text, explanation, options, correct_answer_index, order_index
             )
           )
         )
-      `).order('created_at', { ascending: true });
+      `).order('created_at', { ascending: false });
 
     if (institutionId) {
-      query.eq('institution_id', institutionId);
+      v5Query = v5Query.or(`institution_id.eq.${institutionId},institution_id.is.null`);
     }
 
-    const { data: coursesData, error: coursesError } = await query;
-    if (coursesError) throw coursesError;
+    const v5Res = await v5Query;
+    if (!v5Res.error) {
+      coursesData = v5Res.data || [];
+    } else {
+      // 2. Fallback automático caso a migração setup_education_studio_v5.sql ainda não tenha sido aplicada
+      const legacyRes = await supabase.from('edu_courses').select(`
+          id, title, subject, description, color, icon,
+          edu_modules (
+            id, title, description, order_index,
+            edu_lessons (
+              id, type, title, xp_reward, coin_reward, content_url, content_body, order_index,
+              edu_quiz_questions (
+                id, question_text, options, correct_answer_index, order_index
+              )
+            )
+          )
+        `).order('created_at', { ascending: false });
+
+      if (legacyRes.error) throw legacyRes.error;
+      coursesData = legacyRes.data || [];
+    }
 
     let progressMap: Record<string, boolean> = {};
 
@@ -503,39 +652,55 @@ export async function fetchCoursesWithProgress(studentId?: string, institutionId
       });
     }
 
-    // Mapeia para as interfaces da UI
-    const mappedCourses: Course[] = (coursesData || []).map((c: any) => ({
-      id: c.id,
-      title: c.title,
-      subject: c.subject,
-      description: c.description,
-      color: c.color,
-      icon: c.icon,
-      modules: (c.edu_modules || []).sort((a: any, b: any) => a.order_index - b.order_index).map((m: any) => ({
-        id: m.id,
-        course_id: c.id,
-        title: m.title,
-        description: m.description,
-        lessons: (m.edu_lessons || []).sort((a: any, b: any) => a.order_index - b.order_index).map((l: any) => ({
-          id: l.id,
-          module_id: m.id,
-          type: l.type,
-          title: l.title,
-          xp: l.xp_reward || 15,
-          coins: l.coin_reward || 5,
-          contentUrl: l.content_url,
-          contentBody: l.content_body,
-          isCompleted: progressMap[l.id] || false,
-          questions: (l.edu_quiz_questions || []).sort((a: any, b: any) => a.order_index - b.order_index).map((q: any) => ({
-            id: q.id,
-            lesson_id: l.id,
-            question: q.question_text,
-            options: q.options,
-            correctAnswer: q.correct_answer_index
+    // Mapeia para as interfaces da UI com suporte transparente a metadados ricos
+    const mappedCourses: Course[] = (coursesData || []).map((c: any) => {
+      const courseMeta = deserializeCourseRowMeta(c);
+      return {
+        id: c.id,
+        institution_id: c.institution_id ?? null,
+        title: c.title,
+        subject: c.subject,
+        description: c.description,
+        color: c.color || 'emerald',
+        icon: courseMeta.icon,
+        coverUrl: courseMeta.coverUrl,
+        isQuickActivity: courseMeta.isQuickActivity,
+        target_classes: courseMeta.target_classes,
+        modules: (c.edu_modules || []).sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0)).map((m: any) => ({
+          id: m.id,
+          course_id: c.id,
+          title: m.title,
+          description: m.description,
+          order_index: m.order_index ?? 0,
+          lessons: (m.edu_lessons || []).sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0)).map((l: any) => ({
+            id: l.id,
+            module_id: m.id,
+            type: l.type,
+            title: l.title,
+            duration: l.duration_text || undefined,
+            xp: l.xp_reward || 15,
+            coins: l.coin_reward || 5,
+            contentUrl: l.content_url,
+            imageUrl: l.image_url || (l.type !== 'video' ? l.content_url : undefined),
+            contentBody: l.content_body,
+            isCompleted: progressMap[l.id] || false,
+            questions: (l.edu_quiz_questions || []).sort((a: any, b: any) => (a.order_index ?? 0) - (b.order_index ?? 0)).map((q: any) => {
+              const decodedQ = deserializeQuizQuestionRow(q);
+              return {
+                id: q.id,
+                lesson_id: l.id,
+                question: decodedQ.question,
+                imageUrl: decodedQ.imageUrl,
+                contextText: decodedQ.contextText,
+                explanation: decodedQ.explanation,
+                options: Array.isArray(q.options) ? q.options : [],
+                correctAnswer: q.correct_answer_index ?? 0
+              };
+            })
           }))
         }))
-      }))
-    }));
+      };
+    });
 
     return mappedCourses;
   } catch (err) {
@@ -2349,39 +2514,95 @@ export async function updateEnrollmentStatus(enrollmentId: string, status: strin
 }
 
 /**
- * Consolida dados acadêmicos para emissão do Boletim Escolar Oficial
+ * Consolida dados acadêmicos para emissão do Boletim Escolar Oficial (Educação Básica - Qualitativo / SAEB / BNCC)
  */
 export async function getStudentReportCardData(
   studentIdOrEnrollmentId: string, 
-  academicYear: number = 2026
+  academicYear: number = 2026,
+  studentHint?: { name?: string; className?: string; schoolName?: string }
 ): Promise<StudentReportCardData> {
-  // 1. Busca dados da matrícula
+  const cleanId = String(studentIdOrEnrollmentId || '').trim();
+
+  // 1. Busca dados da matrícula no Supabase
   let enrollment: EnrollmentRecord | null = null;
   try {
     const { data } = await supabase
       .from('education_enrollments')
       .select('*')
-      .or(`id.eq.${studentIdOrEnrollmentId},student_id.eq.${studentIdOrEnrollmentId}`)
+      .or(`id.eq.${cleanId},student_id.eq.${cleanId}`)
       .limit(1)
       .maybeSingle();
 
     if (data) enrollment = data as EnrollmentRecord;
   } catch (e) {}
 
+  // 1b. Verifica lista de matrículas locais/demonstração caso não esteja no banco
   if (!enrollment) {
+    try {
+      const allEnrollments = await getEnrollments({ academic_year: academicYear });
+      const matchedEnrollment = allEnrollments.find(
+        (e) =>
+          e.id === cleanId ||
+          e.student_id === cleanId ||
+          (studentHint?.name && e.student_name.toLowerCase() === studentHint.name.trim().toLowerCase())
+      );
+      if (matchedEnrollment) {
+        enrollment = matchedEnrollment;
+      }
+    } catch (_) {}
+  }
+
+  // 1c. Verifica cadastro local do Portal do Professor (gestao360_students) ou DEFAULT_DEMO_STUDENTS
+  let localTeacherStudent: any = null;
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const savedStudents = localStorage.getItem('gestao360_students');
+      if (savedStudents) {
+        const parsed = JSON.parse(savedStudents);
+        localTeacherStudent = parsed.find(
+          (s: any) =>
+            String(s.id) === cleanId ||
+            s.enrollmentId === cleanId ||
+            (studentHint?.name && String(s.name || '').toLowerCase() === studentHint.name.trim().toLowerCase())
+        );
+      }
+    } catch (_) {}
+  }
+
+  const demoMatch = DEFAULT_DEMO_STUDENTS.find(
+    (d) => d.id === cleanId || d.enrollment_code === cleanId
+  );
+
+  if (!enrollment) {
+    const resolvedName =
+      studentHint?.name ||
+      localTeacherStudent?.name ||
+      demoMatch?.name ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('edu_student_name') : null) ||
+      'Estudante da Rede Municipal';
+    const resolvedClass =
+      studentHint?.className ||
+      localTeacherStudent?.studentClass ||
+      localTeacherStudent?.className ||
+      '4º Ano A';
+    const resolvedSchool =
+      studentHint?.schoolName ||
+      (typeof localStorage !== 'undefined' ? localStorage.getItem('gestao360_teacher_school') : null) ||
+      'Escola Municipal Monteiro Lobato';
+
     enrollment = {
-      id: studentIdOrEnrollmentId,
-      student_id: studentIdOrEnrollmentId,
-      student_name: 'Ana Silva',
-      school_name: 'Escola Municipal Monteiro Lobato',
-      class_name: '4º Ano A',
-      shift: 'Matutino',
+      id: cleanId || 'b0000000-0000-0000-0000-000000000001',
+      student_id: cleanId || '00000000-0000-0000-0000-000000000001',
+      student_name: resolvedName,
+      school_name: resolvedSchool,
+      class_name: resolvedClass,
+      shift: resolvedClass.toLowerCase().includes('b') ? 'Vespertino' : 'Matutino',
       academic_year: academicYear,
       status: 'matriculado'
     };
   }
 
-  // 2. Busca notas e proficiências SAEB do aluno no Supabase
+  // 2. Busca proficiências SAEB e registros complementares do aluno no Supabase
   let grades: GradeRecord[] = [];
   try {
     const { data: gradesData } = await supabase
@@ -2399,20 +2620,32 @@ export async function getStudentReportCardData(
     const { data: profData } = await supabase
       .from('education_proficiencies')
       .select('*')
-      .eq('enrollment_id', enrollment.id);
+      .or(`enrollment_id.eq.${enrollment.id},student_id.eq.${enrollment.student_id}`);
 
     if (profData && profData.length > 0) {
       proficienciesList = profData as ProficiencyRecord[];
     }
   } catch (e) {}
 
-  // Fallback cache local de proficiências
-  if (proficienciesList.length === 0 && typeof localStorage !== 'undefined') {
+  // Fallback cache local de proficiências (sincronizado com TeacherProficiencyEntry)
+  if (typeof localStorage !== 'undefined') {
     try {
       const savedProfs = localStorage.getItem('gestao360_proficiencies');
       if (savedProfs) {
-        const parsed = JSON.parse(savedProfs);
-        proficienciesList = parsed.filter((p: any) => p.enrollment_id === enrollment?.id || p.student_id === enrollment?.student_id);
+        const parsed: ProficiencyRecord[] = JSON.parse(savedProfs);
+        const localMatches = parsed.filter(
+          (p: any) =>
+            p.enrollment_id === enrollment?.id ||
+            p.student_id === enrollment?.student_id ||
+            p.student_id === cleanId
+        );
+        if (localMatches.length > 0) {
+          // Mescla priorizando os lançamentos locais mais recentes
+          const mergedMap = new Map<string, ProficiencyRecord>();
+          proficienciesList.forEach((item) => mergedMap.set(`${item.subject}-${item.bimester}`, item));
+          localMatches.forEach((item) => mergedMap.set(`${item.subject}-${item.bimester}`, item));
+          proficienciesList = Array.from(mergedMap.values());
+        }
       }
     } catch (_) {}
   }
@@ -2441,44 +2674,130 @@ export async function getStudentReportCardData(
     'Educação Física'
   ];
 
+  // Progressão qualitativa realista por componente caso ainda não haja lançamentos no banco
+  const defaultQualitativeProgression: Record<string, [ProficiencyLevel, ProficiencyLevel, ProficiencyLevel, ProficiencyLevel | null]> = {
+    'Língua Portuguesa': ['adequado', 'adequado', 'avancado', 'avancado'],
+    'Matemática': ['basico', 'adequado', 'adequado', 'adequado'],
+    'Ciências da Natureza': ['adequado', 'avancado', 'avancado', 'avancado'],
+    'História': ['adequado', 'adequado', 'adequado', 'adequado'],
+    'Geografia': ['basico', 'adequado', 'adequado', 'adequado'],
+    'Arte': ['avancado', 'avancado', 'avancado', 'avancado'],
+    'Educação Física': ['adequado', 'avancado', 'avancado', 'avancado'],
+  };
+
+  const defaultDescriptiveBySubject: Record<string, { bimester: number; opinion: string; teacherName: string }> = {
+    'Língua Portuguesa': {
+      bimester: 3,
+      opinion: 'Demonstra excelente evolução na fluência leitora, compreendendo textos narrativos e informativos com autonomia crescente e participação ativa nas rodas de leitura.',
+      teacherName: 'Profa. Sofia Lima Mendes'
+    },
+    'Matemática': {
+      bimester: 3,
+      opinion: 'Avançou significativamente na resolução de situações-problema envolvendo operações fundamentais e frações do cotidiano, consolidando o raciocínio lógico.',
+      teacherName: 'Prof. Carlos Eduardo Silva'
+    },
+    'Ciências da Natureza': {
+      bimester: 3,
+      opinion: 'Apresenta grande curiosidade investigativa nas atividades práticas sobre ecossistemas, seres vivos e preservação ambiental, colaborando muito bem em grupo.',
+      teacherName: 'Prof. Carlos Eduardo Silva'
+    }
+  };
+
+  const mapTeacherConceptCode = (code?: string | null): ProficiencyLevel | null => {
+    if (!code) return null;
+    const upper = code.toUpperCase();
+    if (upper === 'AV' || upper === 'MB') return 'avancado';
+    if (upper === 'A' || upper === 'C') return 'adequado';
+    if (upper === 'ED' || upper === 'B') return 'basico';
+    if (upper === 'AB' || upper === 'I') return 'abaixo_do_basico';
+    return null;
+  };
+
   const opinionsCollected: Array<{ bimester: number; subject: string; opinion: string; teacherName?: string }> = [];
 
   const subjectsReport: ReportCardSubject[] = standardSubjects.map((sub, idx) => {
-    const subjectGrades = grades.filter(g => g.subject.toLowerCase() === sub.toLowerCase() || (sub.startsWith('Ciências') && g.subject.toLowerCase().startsWith('ciências')));
-    const subjectProfs = proficienciesList.filter(p => p.subject.toLowerCase() === sub.toLowerCase() || (sub.startsWith('Ciências') && p.subject.toLowerCase().startsWith('ciências')));
+    const matchSubject = (name: string) =>
+      name.toLowerCase() === sub.toLowerCase() ||
+      (sub.startsWith('Ciências') && name.toLowerCase().startsWith('ciências')) ||
+      (sub === 'Língua Portuguesa' && name.toLowerCase().includes('português')) ||
+      (sub === 'Arte' && name.toLowerCase().startsWith('arte'));
 
-    const b1Prof = subjectProfs.find(p => p.bimester === 1)?.proficiency_level ?? null;
-    const b2Prof = subjectProfs.find(p => p.bimester === 2)?.proficiency_level ?? null;
-    const b3Prof = subjectProfs.find(p => p.bimester === 3)?.proficiency_level ?? null;
-    const b4Prof = subjectProfs.find(p => p.bimester === 4)?.proficiency_level ?? null;
+    const subjectGrades = grades.filter((g) => matchSubject(g.subject));
+    const subjectProfs = proficienciesList.filter((p) => matchSubject(p.subject));
+    const localEval = localTeacherStudent?.evaluations?.find((ev: any) => matchSubject(ev.subject || ''));
 
-    const b1Grade = subjectGrades.find(g => g.bimester === 1)?.grade ?? (b1Prof ? proficiencyToGrade(b1Prof) : (idx % 2 === 0 ? 8.5 : 9.0));
-    const b2Grade = subjectGrades.find(g => g.bimester === 2)?.grade ?? (b2Prof ? proficiencyToGrade(b2Prof) : (idx % 2 === 0 ? 9.0 : 8.5));
-    const b3Grade = subjectGrades.find(g => g.bimester === 3)?.grade ?? (b3Prof ? proficiencyToGrade(b3Prof) : (idx % 2 === 0 ? 8.8 : 9.5));
-    const b4Grade = subjectGrades.find(g => g.bimester === 4)?.grade ?? (b4Prof ? proficiencyToGrade(b4Prof) : (idx % 2 === 0 ? 9.2 : 9.0));
-    const rec = subjectGrades.find(g => g.bimester === 4)?.recovery_grade ?? null;
+    const defProg = defaultQualitativeProgression[sub] || ['adequado', 'adequado', 'adequado', 'adequado'];
+
+    const b1GradeRaw = subjectGrades.find((g) => g.bimester === 1)?.grade ?? null;
+    const b2GradeRaw = subjectGrades.find((g) => g.bimester === 2)?.grade ?? null;
+    const b3GradeRaw = subjectGrades.find((g) => g.bimester === 3)?.grade ?? null;
+    const b4GradeRaw = subjectGrades.find((g) => g.bimester === 4)?.grade ?? null;
+
+    const b1Prof: ProficiencyLevel | null =
+      subjectProfs.find((p) => p.bimester === 1)?.proficiency_level ??
+      mapTeacherConceptCode(localEval?.bimonthly?.[0]) ??
+      (b1GradeRaw !== null ? gradeToProficiency(b1GradeRaw) : defProg[0]);
+
+    const b2Prof: ProficiencyLevel | null =
+      subjectProfs.find((p) => p.bimester === 2)?.proficiency_level ??
+      mapTeacherConceptCode(localEval?.bimonthly?.[1]) ??
+      (b2GradeRaw !== null ? gradeToProficiency(b2GradeRaw) : defProg[1]);
+
+    const b3Prof: ProficiencyLevel | null =
+      subjectProfs.find((p) => p.bimester === 3)?.proficiency_level ??
+      mapTeacherConceptCode(localEval?.bimonthly?.[2]) ??
+      (b3GradeRaw !== null ? gradeToProficiency(b3GradeRaw) : defProg[2]);
+
+    const b4Prof: ProficiencyLevel | null =
+      subjectProfs.find((p) => p.bimester === 4)?.proficiency_level ??
+      mapTeacherConceptCode(localEval?.bimonthly?.[3]) ??
+      (b4GradeRaw !== null ? gradeToProficiency(b4GradeRaw) : defProg[3]);
+
+    // Mantém valores referenciais internos apenas para retrocompatibilidade de tipagem (não exibidos como nota ao aluno)
+    const b1Grade = b1GradeRaw ?? (b1Prof ? proficiencyToGrade(b1Prof) : null);
+    const b2Grade = b2GradeRaw ?? (b2Prof ? proficiencyToGrade(b2Prof) : null);
+    const b3Grade = b3GradeRaw ?? (b3Prof ? proficiencyToGrade(b3Prof) : null);
+    const b4Grade = b4GradeRaw ?? (b4Prof ? proficiencyToGrade(b4Prof) : null);
+    const rec = subjectGrades.find((g) => g.bimester === 4)?.recovery_grade ?? null;
 
     const validGrades = [b1Grade, b2Grade, b3Grade, b4Grade].filter((v): v is number => v !== null && v !== undefined);
-    const avg = validGrades.length > 0 
+    const avg = validGrades.length > 0
       ? Number((validGrades.reduce((a, b) => a + b, 0) / validGrades.length).toFixed(1))
       : 8.5;
 
-    const subAbsences = Math.floor(totalAbsencesCount / standardSubjects.length) + (idx === 1 ? 1 : 0);
+    const subAbsences =
+      typeof localEval?.absences === 'number'
+        ? localEval.absences
+        : Math.floor(totalAbsencesCount / standardSubjects.length) + (idx === 1 ? 1 : 0);
 
-    // Coleta pareceres
-    const latestOpinion = subjectProfs.slice().reverse().find(p => p.descriptive_opinion)?.descriptive_opinion;
-    subjectProfs.forEach(p => {
+    // Coleta pareceres reais lançados pelo professor
+    let latestOpinion = subjectProfs.slice().reverse().find((p) => p.descriptive_opinion)?.descriptive_opinion || null;
+    subjectProfs.forEach((p) => {
       if (p.descriptive_opinion) {
         opinionsCollected.push({
           bimester: p.bimester,
           subject: sub,
           opinion: p.descriptive_opinion,
-          teacherName: 'Corpo Docente'
+          teacherName: 'Professor(a) Regente'
         });
       }
     });
 
-    const finalProfLevel: ProficiencyLevel = b4Prof || b3Prof || b2Prof || b1Prof || gradeToProficiency(avg);
+    // Se ainda não houver parecer gravado no banco para esta matéria, aplica parecer formativo demonstrativo rico
+    if (!latestOpinion && defaultDescriptiveBySubject[sub]) {
+      const defOp = defaultDescriptiveBySubject[sub];
+      latestOpinion = defOp.opinion;
+      opinionsCollected.push({
+        bimester: defOp.bimester,
+        subject: sub,
+        opinion: defOp.opinion,
+        teacherName: defOp.teacherName
+      });
+    }
+
+    const finalProfLevel: ProficiencyLevel = b4Prof || b3Prof || b2Prof || b1Prof || 'adequado';
+    const qualitativeStatus: ReportCardSubject['status'] =
+      finalProfLevel === 'abaixo_do_basico' ? 'Recuperação' : 'Em Curso';
 
     return {
       subject: sub,
@@ -2489,22 +2808,60 @@ export async function getStudentReportCardData(
       recovery: rec,
       finalAverage: avg,
       totalAbsences: subAbsences,
-      status: avg >= 6.0 ? 'Aprovado' : (avg >= 4.0 ? 'Recuperação' : 'Reprovado'),
+      status: b4Prof && finalProfLevel !== 'abaixo_do_basico' ? 'Aprovado' : qualitativeStatus,
       proficiencyLevel: finalProfLevel,
-      b1Proficiency: b1Prof || (b1Grade !== null ? gradeToProficiency(b1Grade) : null),
-      b2Proficiency: b2Prof || (b2Grade !== null ? gradeToProficiency(b2Grade) : null),
-      b3Proficiency: b3Prof || (b3Grade !== null ? gradeToProficiency(b3Grade) : null),
-      b4Proficiency: b4Prof || (b4Grade !== null ? gradeToProficiency(b4Grade) : null),
-      descriptiveOpinion: latestOpinion || null
+      b1Proficiency: b1Prof,
+      b2Proficiency: b2Prof,
+      b3Proficiency: b3Prof,
+      b4Proficiency: b4Prof,
+      descriptiveOpinion: latestOpinion
     };
   });
 
+  // Se o professor escreveu um parecer geral no cadastro do aluno, adiciona também
+  if (localTeacherStudent?.feedback) {
+    opinionsCollected.unshift({
+      bimester: 4,
+      subject: 'Acompanhamento Pedagógico Geral',
+      opinion: localTeacherStudent.feedback,
+      teacherName: 'Professor(a) Regente da Turma'
+    });
+  }
+
+  const levelWeights: Record<ProficiencyLevel, number> = {
+    avancado: 4,
+    adequado: 3,
+    basico: 2,
+    abaixo_do_basico: 1
+  };
+  const avgWeight =
+    subjectsReport.reduce((acc, s) => acc + levelWeights[s.proficiencyLevel || 'adequado'], 0) /
+    (subjectsReport.length || 1);
+
+  let overallProf: ProficiencyLevel = 'adequado';
+  if (avgWeight >= 3.5) overallProf = 'avancado';
+  else if (avgWeight >= 2.5) overallProf = 'adequado';
+  else if (avgWeight >= 1.5) overallProf = 'basico';
+  else overallProf = 'abaixo_do_basico';
+
   const overallAvg = Number((subjectsReport.reduce((acc, s) => acc + s.finalAverage, 0) / subjectsReport.length).toFixed(1));
-  const totalSchoolDays = 200; // Padrão letivo legal LDB
-  const effectiveAbsences = Math.max(totalAbsencesCount, 4);
+  const totalSchoolDays = 200; // Padrão letivo legal LDB (mínimo 200 dias letivos)
+  const effectiveAbsences = totalAbsencesCount > 0 ? totalAbsencesCount : 4;
   const attendancePct = Number((((totalSchoolDays - effectiveAbsences) / totalSchoolDays) * 100).toFixed(1));
 
-  const overallProf = gradeToProficiency(overallAvg);
+  const isInfantil = /infantil|creche|cmei|maternal|berçário|pré|pre/i.test(enrollment.class_name || '');
+  const minLegalAttendance = isInfantil ? 60 : 75;
+
+  let qualitativeFinalStatus = 'Percurso Consolidado';
+  if (attendancePct < minLegalAttendance) {
+    qualitativeFinalStatus = 'Busca Ativa / Alerta de Frequência';
+  } else if (overallProf === 'abaixo_do_basico') {
+    qualitativeFinalStatus = 'Acompanhamento Pedagógico Prioritário';
+  } else if (overallProf === 'basico') {
+    qualitativeFinalStatus = 'Em Desenvolvimento Contínuo';
+  } else if (overallProf === 'avancado') {
+    qualitativeFinalStatus = 'Desenvolvimento Pleno & Autonomia';
+  }
 
   return {
     enrollment,
@@ -2513,7 +2870,7 @@ export async function getStudentReportCardData(
     totalAbsences: effectiveAbsences,
     totalClasses: totalSchoolDays,
     attendanceRate: attendancePct,
-    finalStatus: overallAvg >= 6.0 && attendancePct >= 75 ? 'Aprovado' : 'Em Curso',
+    finalStatus: qualitativeFinalStatus,
     overallProficiency: overallProf,
     opinions: opinionsCollected
   };

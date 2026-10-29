@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   getStudentProfile, 
@@ -20,7 +20,11 @@ import {
   Paperclip,
   Sparkles,
   MessageSquare,
-  Zap
+  Zap,
+  LayoutDashboard,
+  BookOpen,
+  Target,
+  HeartHandshake
 } from 'lucide-react';
 
 import { 
@@ -49,6 +53,9 @@ import { FamilyPortalView } from './components/FamilyPortalView';
 export interface QuizQuestion {
   id: string;
   question: string;
+  imageUrl?: string;
+  contextText?: string;
+  explanation?: string;
   options: string[];
   correctAnswer: number;
 }
@@ -61,6 +68,7 @@ export interface Lesson {
   xp: number;
   coins: number;
   contentUrl?: string; // para video
+  imageUrl?: string; // ilustracao pedagogica
   contentBody?: string; // para texto
   questions?: QuizQuestion[]; // para quiz
   isCompleted?: boolean;
@@ -78,8 +86,11 @@ export interface Course {
   title: string;
   subject: string;
   description: string;
-  color: 'emerald' | 'sky' | 'rose' | 'amber' | 'purple';
+  color: 'emerald' | 'sky' | 'rose' | 'amber' | 'purple' | 'indigo';
   icon: string;
+  coverUrl?: string;
+  isQuickActivity?: boolean;
+  target_classes?: string[];
   modules: Module[];
 }
 
@@ -223,6 +234,24 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
   const handleAccessCourse = (course: Course) => {
     setActiveCourse(course);
+    const allLessons = course.modules.flatMap((m) => m.lessons || []);
+    if (course.isQuickActivity && allLessons.length === 1) {
+      const onlyLesson = allLessons[0];
+      setActiveLesson(onlyLesson);
+      if (onlyLesson.type === 'quiz') {
+        setQuizState({
+          currentQuestionIndex: 0,
+          selectedOption: null,
+          isCorrect: null,
+          score: 0,
+          isFinished: false,
+        });
+        setActiveView('quiz-player');
+      } else {
+        setActiveView('lesson-player');
+      }
+      return;
+    }
     setActiveView('trail-map');
   };
 
@@ -585,12 +614,42 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
   };
 
   const xpPercentage = Math.min(100, Math.round((studentData.xp / studentData.nextLevelXp) * 100));
+  const isFullscreenPlayer = activeView === 'lesson-player' || activeView === 'quiz-player';
+
+  const completedActivitiesStats = useMemo(() => {
+    let completedLessons = 0;
+    let totalLessons = 0;
+    let completedTrails = 0;
+    let quickActivitiesDone = 0;
+
+    courses.forEach((course) => {
+      const lessons = course.modules.flatMap((m) => m.lessons);
+      const doneInCourse = lessons.filter((l) => l.isCompleted).length;
+      completedLessons += doneInCourse;
+      totalLessons += lessons.length;
+
+      if (lessons.length > 0 && doneInCourse === lessons.length) {
+        if (course.isQuickActivity) {
+          quickActivitiesDone += 1;
+        } else {
+          completedTrails += 1;
+        }
+      }
+    });
+
+    return {
+      completedLessons,
+      totalLessons,
+      completedTrails,
+      quickActivitiesDone
+    };
+  }, [courses]);
 
   return (
     <div className="min-h-[100dvh] bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans flex flex-col md:flex-row selection:bg-emerald-500/20">
       
       {/* Mobile Header */}
-      <header className="md:hidden sticky top-0 z-40 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border-b border-neutral-200/60 dark:border-neutral-800/60 px-4 py-3 flex items-center justify-between shadow-sm">
+      <header className="md:hidden print:hidden sticky top-0 z-40 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border-b border-neutral-200/60 dark:border-neutral-800/60 px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-2 -ml-2 rounded-xl text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-emerald-600 transition-all">
             <ArrowLeft size={20} />
@@ -619,7 +678,11 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             {studentData.hasPracticedToday && <span>⚡</span>}
           </div>
 
-          <button className="p-2 rounded-xl text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-emerald-600 transition-all relative">
+          <button
+            onClick={() => setActiveView('family')}
+            title="Avisos da Escola & Boletim Qualitativo"
+            className="p-2 rounded-xl text-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-emerald-600 transition-all relative"
+          >
             <Bell size={20} />
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white dark:border-neutral-900 animate-pulse"></span>
           </button>
@@ -642,13 +705,15 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-h-[100dvh] relative overflow-x-hidden">
+      <main className={`flex-1 flex flex-col min-h-[100dvh] relative overflow-x-hidden ${!isFullscreenPlayer ? 'pb-24 md:pb-0' : ''}`}>
         
         {/* Desktop Header */}
         <StudentHeader
           activeView={activeView}
           studentData={studentData}
           setActiveView={setActiveView}
+          courses={courses}
+          onSelectCourse={handleAccessCourse}
         />
 
         {/* Dynamic Views */}
@@ -716,6 +781,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
             setActiveView={setActiveView}
             studentData={studentData}
             studentId={studentData.id || studentId}
+            teacherCourses={courses}
           />
         )}
 
@@ -745,7 +811,22 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
 
         {activeView === 'family' && (
           <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
-            <FamilyPortalView initialStudentId={studentData.id || studentId} />
+            <FamilyPortalView
+              mode="student"
+              initialStudentId={studentData.id || studentId}
+              studentProfile={{
+                id: studentData.id || studentId,
+                name: studentData.name,
+                className: studentData.className,
+                avatar: studentData.avatar,
+                streak: studentData.streak,
+                xp: studentData.xp,
+                level: studentData.level,
+                weeklyActivity: studentData.weeklyActivity
+              }}
+              completedActivitiesStats={completedActivitiesStats}
+              onOpenTeacherChat={() => setIsChatOpen(true)}
+            />
           </div>
         )}
 
@@ -760,7 +841,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
       </main>
 
       {/* Floating Chat Button & Window */}
-      <div className="fixed bottom-20 md:bottom-8 right-4 md:right-8 z-[150] flex flex-col items-end gap-4 print:hidden pointer-events-none">
+      <div className="fixed bottom-24 md:bottom-8 right-4 md:right-8 z-[150] flex flex-col items-end gap-4 print:hidden pointer-events-none">
         
         {/* Chat Window */}
         <div className={`w-[calc(100vw-2rem)] md:w-96 h-[500px] max-h-[80vh] bg-white dark:bg-neutral-900 rounded-[32px] shadow-2xl border border-neutral-200 dark:border-neutral-800 flex flex-col overflow-hidden transition-all duration-300 origin-bottom-right pointer-events-auto ${isChatOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-90 opacity-0 translate-y-10 pointer-events-none'}`}>
@@ -915,6 +996,35 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
           )}
         </div>
       </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      {!isFullscreenPlayer && (
+        <nav className="md:hidden print:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-xl border-t border-neutral-200/80 dark:border-neutral-800 px-2 py-1.5 flex items-center justify-around shadow-[0_-4px_20px_rgba(0,0,0,0.06)]">
+          {[
+            { id: 'dashboard', label: 'Início', icon: LayoutDashboard, match: ['dashboard'] },
+            { id: 'courses', label: 'Trilhas', icon: BookOpen, match: ['courses', 'trail-map'] },
+            { id: 'assessments', label: 'Desafios', icon: Target, match: ['assessments'] },
+            { id: 'family', label: 'Família', icon: HeartHandshake, match: ['family'] }
+          ].map((item) => {
+            const Icon = item.icon;
+            const isActive = item.match.includes(activeView);
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveView(item.id as any)}
+                className={`flex flex-col items-center justify-center gap-0.5 px-3 py-1.5 rounded-2xl transition-all min-w-[68px] ${
+                  isActive
+                    ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 font-black'
+                    : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 font-bold'
+                }`}
+              >
+                <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                <span className="text-[11px] leading-tight">{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      )}
 
     </div>
   );
