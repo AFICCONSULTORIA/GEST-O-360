@@ -9,6 +9,7 @@ import { TimbreModal } from './TimbreModal';
 import { OFFICIAL_DEFAULT_TEMPLATES } from './defaultTemplates';
 import { createDefaultTimbreData, generateHeaderHtml, generateFooterHtml } from './timbrePresets';
 import { showToast } from '../../components/ui/Toast';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 const { 
   Plus, Search, Edit2, Trash2, FileText, Download, Clock, FileBadge, X, ChevronLeft,
@@ -59,9 +60,14 @@ export const TemplatesModule = ({
   const [categoryFilter, setCategoryFilter] = React.useState<string>('Todos');
   const [statusFilter, setStatusFilter] = React.useState<'Todos' | 'Rascunho' | 'Finalizado'>('Todos');
 
-  // Timbre State
+  const instKey = currentInstitution?.id || currentInstitution?.subdomain || 'default';
+  const isDemo = isDemoEnvironment(currentInstitution);
+
+  // Timbre State (isolado por prefeitura + sincronizado com Supabase)
   const [institutionTimbre, setInstitutionTimbre] = React.useState<TimbreData>(() => {
-    const saved = localStorage.getItem('@gestao360:timbre_config');
+    const cloudTimbre = (currentInstitution?.cert_links as any)?.__timbre_config;
+    if (cloudTimbre && typeof cloudTimbre === 'object') return cloudTimbre;
+    const saved = localStorage.getItem(`@gestao360:timbre_config:${instKey}`);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -69,9 +75,11 @@ export const TemplatesModule = ({
   });
   const [isTimbreModalOpen, setIsTimbreModalOpen] = React.useState(false);
 
-  // Modelos Oficiais State
+  // Modelos Oficiais State (isolado por prefeitura + sincronizado com Supabase)
   const [templates, setTemplates] = React.useState<DocumentTemplate[]>(() => {
-    const saved = localStorage.getItem('@gestao360:official_templates');
+    const cloudTemplates = (currentInstitution?.cert_links as any)?.__official_templates;
+    if (Array.isArray(cloudTemplates) && cloudTemplates.length > 0) return cloudTemplates;
+    const saved = localStorage.getItem(`@gestao360:official_templates:${instKey}`);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -83,23 +91,28 @@ export const TemplatesModule = ({
     title: '', description: '', category: 'Geral', format: 'Editor Web', fileUrl: ''
   });
 
-  // Meus Documentos State
+  // Meus Documentos State (isolado por prefeitura; sem documento fictício de Cuiabá em produção)
   const [webDocs, setWebDocs] = React.useState<WebDocument[]>(() => {
-    const saved = localStorage.getItem('@gestao360:web_documents');
+    const cloudDocs = (currentInstitution?.cert_links as any)?.__web_documents;
+    if (Array.isArray(cloudDocs)) return cloudDocs;
+    const saved = localStorage.getItem(`@gestao360:web_documents:${instKey}`);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
-    return [
-      {
-        id: 'doc-demo-1',
-        title: 'Ofício de Solicitação de Repasse - SMS',
-        content: '<p style="text-align: right;">Cuiabá, 01 de setembro de 2026.</p><br><p><b>OFÍCIO Nº 142/2026/GAB</b></p><br><p>A Sua Senhoria o Senhor Secretário Municipal de Fazenda,</p><p style="text-align: justify; text-indent: 2.5cm; line-height: 1.5;">Cumprimentando-o cordialmente, sirvo-me do presente para solicitar a liberação do repasse orçamentário referente à execução do programa de atenção básica em saúde.</p><br><p>Atenciosamente,</p><br><div style="text-align: center; margin-top: 40px;"><div style="width: 250px; border-top: 1px solid black; margin: 0 auto 6px auto;"></div><p style="margin:0; font-weight:bold;">Secretário Municipal de Saúde</p></div>',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        status: 'Rascunho',
-        authorName: currentUser?.name || 'Gestor'
-      }
-    ];
+    if (isDemo) {
+      return [
+        {
+          id: 'doc-demo-1',
+          title: 'Ofício de Solicitação de Repasse - SMS',
+          content: '<p style="text-align: right;">Cuiabá, 01 de setembro de 2026.</p><br><p><b>OFÍCIO Nº 142/2026/GAB</b></p><br><p>A Sua Senhoria o Senhor Secretário Municipal de Fazenda,</p><p style="text-align: justify; text-indent: 2.5cm; line-height: 1.5;">Cumprimentando-o cordialmente, sirvo-me do presente para solicitar a liberação do repasse orçamentário referente à execução do programa de atenção básica em saúde.</p><br><p>Atenciosamente,</p><br><div style="text-align: center; margin-top: 40px;"><div style="width: 250px; border-top: 1px solid black; margin: 0 auto 6px auto;"></div><p style="margin:0; font-weight:bold;">Secretário Municipal de Saúde</p></div>',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: 'Rascunho',
+          authorName: currentUser?.name || 'Gestor'
+        }
+      ];
+    }
+    return [];
   });
 
   const [isEditorOpen, setIsEditorOpen] = React.useState(false);
@@ -107,33 +120,99 @@ export const TemplatesModule = ({
   const [editingTemplateId, setEditingTemplateId] = React.useState<string | null>(null);
   const [confirmConfig, setConfirmConfig] = React.useState<any>(null);
 
-  // Sync to LocalStorage
+  // Sincroniza dados salvos no Supabase quando a instituição muda
   React.useEffect(() => {
-    localStorage.setItem('@gestao360:web_documents', JSON.stringify(webDocs));
-  }, [webDocs]);
+    let isMounted = true;
+    const loadFromSupabase = async () => {
+      if (!currentInstitution?.id || isDemoEnvironment(currentInstitution)) return;
+      try {
+        const { data, error } = await supabase
+          .from('institutions')
+          .select('cert_links')
+          .eq('id', currentInstitution.id)
+          .single();
+        if (!error && data?.cert_links && isMounted) {
+          const cl = data.cert_links as any;
+          if (cl.__timbre_config) {
+            setInstitutionTimbre(cl.__timbre_config);
+            localStorage.setItem(`@gestao360:timbre_config:${instKey}`, JSON.stringify(cl.__timbre_config));
+          } else {
+            setInstitutionTimbre(createDefaultTimbreData(currentInstitution));
+          }
+          if (Array.isArray(cl.__official_templates) && cl.__official_templates.length > 0) {
+            setTemplates(cl.__official_templates);
+            localStorage.setItem(`@gestao360:official_templates:${instKey}`, JSON.stringify(cl.__official_templates));
+          }
+          if (Array.isArray(cl.__web_documents)) {
+            setWebDocs(cl.__web_documents);
+            localStorage.setItem(`@gestao360:web_documents:${instKey}`, JSON.stringify(cl.__web_documents));
+          }
+        }
+      } catch (err) {
+        console.warn('Falha ao sincronizar modelos da instituição:', err);
+      }
+    };
+    loadFromSupabase();
+    return () => { isMounted = false; };
+  }, [currentInstitution?.id, instKey]);
+
+  const syncToCloud = React.useCallback(async (patch: {
+    __timbre_config?: TimbreData;
+    __official_templates?: DocumentTemplate[];
+    __web_documents?: WebDocument[];
+  }) => {
+    if (!currentInstitution?.id || isDemoEnvironment(currentInstitution)) return;
+    try {
+      const { data: current } = await supabase
+        .from('institutions')
+        .select('cert_links')
+        .eq('id', currentInstitution.id)
+        .single();
+      const baseLinks = (current?.cert_links && typeof current.cert_links === 'object')
+        ? current.cert_links
+        : (currentInstitution.cert_links || {});
+      const merged = { ...baseLinks, ...patch };
+      await supabase
+        .from('institutions')
+        .update({ cert_links: merged })
+        .eq('id', currentInstitution.id);
+    } catch (err) {
+      console.warn('Erro ao salvar documentos na nuvem:', err);
+    }
+  }, [currentInstitution]);
+
+  // Sync to Scoped LocalStorage
+  React.useEffect(() => {
+    localStorage.setItem(`@gestao360:web_documents:${instKey}`, JSON.stringify(webDocs));
+  }, [webDocs, instKey]);
 
   React.useEffect(() => {
-    localStorage.setItem('@gestao360:official_templates', JSON.stringify(templates));
-  }, [templates]);
+    localStorage.setItem(`@gestao360:official_templates:${instKey}`, JSON.stringify(templates));
+  }, [templates, instKey]);
 
   // -----------------------------------
   // ACTIONS: MEUS DOCUMENTOS
   // -----------------------------------
   const handleSaveWebDoc = (doc: WebDocument, silent?: boolean) => {
     if (editingTemplateId) {
-      setTemplates(templates.map(t => t.id === editingTemplateId ? { ...t, content: doc.content, header: doc.header, footer: doc.footer } as DocumentTemplate : t));
+      const updatedTemplates = templates.map(t =>
+        t.id === editingTemplateId ? { ...t, content: doc.content, header: doc.header, footer: doc.footer } as DocumentTemplate : t
+      );
+      setTemplates(updatedTemplates);
+      syncToCloud({ __official_templates: updatedTemplates });
       if (!silent) {
         setIsEditorOpen(false);
         setEditingTemplateId(null);
-        showToast('Conteúdo do modelo oficial atualizado!', 'success');
+        showToast('Conteúdo do modelo oficial salvo na prefeitura!', 'success');
       }
       return;
     }
 
     setWebDocs(prev => {
       const exists = prev.find(d => d.id === doc.id);
-      if (exists) return prev.map(d => d.id === doc.id ? doc : d);
-      return [doc, ...prev];
+      const next = exists ? prev.map(d => d.id === doc.id ? doc : d) : [doc, ...prev];
+      syncToCloud({ __web_documents: next });
+      return next;
     });
     
     if (!silent) {
@@ -149,7 +228,9 @@ export const TemplatesModule = ({
       confirmText: 'Excluir',
       isDestructive: true,
       onConfirm: () => {
-        setWebDocs(webDocs.filter(d => d.id !== id));
+        const next = webDocs.filter(d => d.id !== id);
+        setWebDocs(next);
+        syncToCloud({ __web_documents: next });
         showToast('Documento excluído.');
         setConfirmConfig(null);
       }
@@ -165,7 +246,9 @@ export const TemplatesModule = ({
       updatedAt: new Date().toISOString(),
       status: 'Rascunho'
     };
-    setWebDocs([newDoc, ...webDocs]);
+    const next = [newDoc, ...webDocs];
+    setWebDocs(next);
+    syncToCloud({ __web_documents: next });
     showToast('Cópia do documento criada com sucesso!', 'success');
   };
 
@@ -215,7 +298,9 @@ export const TemplatesModule = ({
       confirmText: 'Excluir',
       isDestructive: true,
       onConfirm: () => {
-        setTemplates(templates.filter(t => t.id !== id));
+        const next = templates.filter(t => t.id !== id);
+        setTemplates(next);
+        syncToCloud({ __official_templates: next });
         showToast('Modelo excluído com sucesso.', 'success');
         setConfirmConfig(null);
       }
@@ -232,10 +317,14 @@ export const TemplatesModule = ({
     } as DocumentTemplate;
 
     if (templateFormData.id) {
-      setTemplates(templates.map(t => t.id === templateFormData.id ? newTemplate : t));
+      const next = templates.map(t => t.id === templateFormData.id ? newTemplate : t);
+      setTemplates(next);
+      syncToCloud({ __official_templates: next });
       showToast('Modelo atualizado com sucesso.');
     } else {
-      setTemplates([newTemplate, ...templates]);
+      const next = [newTemplate, ...templates];
+      setTemplates(next);
+      syncToCloud({ __official_templates: next });
       showToast('Novo modelo adicionado com sucesso.');
     }
     
@@ -621,7 +710,9 @@ export const TemplatesModule = ({
         currentTimbre={institutionTimbre}
         onApplyTimbre={(newTimbre) => {
           setInstitutionTimbre(newTimbre);
-          localStorage.setItem('@gestao360:timbre_config', JSON.stringify(newTimbre));
+          localStorage.setItem(`@gestao360:timbre_config:${instKey}`, JSON.stringify(newTimbre));
+          syncToCloud({ __timbre_config: newTimbre });
+          showToast('Timbre oficial da prefeitura salvo e sincronizado!', 'success');
         }}
       />
 

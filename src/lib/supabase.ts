@@ -19,5 +19,6 @@ export const signUpNewUser = async (email: string, password?: string) => {
   const secondary = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
-  return secondary.auth.signUp({ email, password: password || 'gestao123@' });
+  const defaultInitialPassword = import.meta.env.VITE_DEFAULT_TEMP_PASSWORD || 'gestao123@';
+  return secondary.auth.signUp({ email, password: password || defaultInitialPassword });
 };

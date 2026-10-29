@@ -298,9 +298,14 @@ export interface Contract {
   number?: string;
   object?: string;
   vendorName?: string;
+  vendorCnpj?: string;
   amount?: number;
   category?: string;
   deadline?: string;
+  fiscalName?: string;
+  processNumber?: string;
+  notes?: string;
+  institution_id?: string;
 }
 
 export interface EnvironmentalReport {

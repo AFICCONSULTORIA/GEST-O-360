@@ -70,7 +70,7 @@ import { ProposalModal } from './components/ProposalModal';
 import { DemoModuleBanner } from './components/DemoModuleBanner';
 import { isDemoEnvironment, setDemoEnvironment } from './lib/demoManager';
 import { DEMO_USER, DEMO_INSTITUTION } from './lib/demoData';
-import { isInstitutionModuleActive } from './lib/institutionModules';
+import { isInstitutionModuleActive, withInstitutionQuery } from './lib/institutionModules';
 
 // Types
 import { 
@@ -167,7 +167,10 @@ export default function App() {
             return;
           }
 
-          if (session.user.email === 'aficconsultoria@gmail.com') {
+          const superAdminEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'aficconsultoria@gmail.com').toLowerCase().trim();
+          const isJwtSuperAdmin = session.user?.app_metadata?.role === 'super_admin' || session.user.email.toLowerCase().trim() === superAdminEmail;
+
+          if (isJwtSuperAdmin) {
             setCurrentUser({
               id: session.user.id,
               name: 'Gestão 360',
@@ -305,17 +308,21 @@ export default function App() {
     if (!isAuthenticated) return;
     
     const fetchPendingReportsCount = async () => {
-      const { count } = await supabase
+      let query = supabase
         .from('meio_ambiente_denuncias')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'Nova');
+      if (currentInstitution?.id) {
+        query = query.eq('institution_id', currentInstitution.id);
+      }
+      const { count } = await query;
       if (count !== null) setPendingReportsCount(count);
     };
     
     fetchPendingReportsCount();
     
     const reportsSub = supabase.channel('reports-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'meio_ambiente_denuncias' }, payload => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'meio_ambiente_denuncias' }, () => {
         fetchPendingReportsCount();
       })
       .subscribe();
@@ -323,7 +330,7 @@ export default function App() {
     return () => {
       reportsSub.unsubscribe();
     };
-  }, [isAuthenticated]);
+  }, [isAuthenticated, currentInstitution?.id]);
 
   React.useEffect(() => {
     // Busca pública das prefeituras oficiais para exibir na Landing Page
@@ -379,22 +386,32 @@ export default function App() {
           return { data: allData };
         };
 
-        const { data: users } = await fetchPaginated('admin_users', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
-        const { data: docs } = await fetchPaginated('documents', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
-        const { data: ords } = await fetchPaginated('orders', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
-        const { data: ctrls } = await fetchPaginated('controls', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
-        const { data: insts } = await fetchPaginated('institutions', q => {
-          if (currentInstitution && currentUser?.role !== 'Super Admin') {
-            return q.eq('id', currentInstitution.id);
-          }
-          return q;
-        });
-        const { data: pats } = await fetchPaginated('patrimonio', q => {
-          let query = q.order('created_at', { ascending: false });
-          if (currentInstitution) query = query.eq('institution_id', currentInstitution.id);
-          return query;
-        });
-        const { data: depts } = await fetchPaginated('departments', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
+        const [
+          { data: users },
+          { data: docs },
+          { data: ords },
+          { data: ctrls },
+          { data: insts },
+          { data: pats },
+          { data: depts }
+        ] = await Promise.all([
+          fetchPaginated('admin_users', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q),
+          fetchPaginated('documents', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q),
+          fetchPaginated('orders', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q),
+          fetchPaginated('controls', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q),
+          fetchPaginated('institutions', q => {
+            if (currentInstitution && currentUser?.role !== 'Super Admin') {
+              return q.eq('id', currentInstitution.id);
+            }
+            return q;
+          }),
+          fetchPaginated('patrimonio', q => {
+            let query = q.order('created_at', { ascending: false });
+            if (currentInstitution) query = query.eq('institution_id', currentInstitution.id);
+            return query;
+          }),
+          fetchPaginated('departments', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q)
+        ]);
 
         const isDemo = isDemoEnvironment(currentInstitution);
 
@@ -753,7 +770,14 @@ export default function App() {
     );
   }
 
+  // Bloqueia acesso direto via URL a portais públicos de módulos não contratados pela prefeitura
+  const redirectInactivePublicPortal = () => {
+    window.location.replace(withInstitutionQuery('/', currentInstitution));
+    return null;
+  };
+
   if (isFarmaciaPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'saude')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
@@ -770,6 +794,7 @@ export default function App() {
   }
 
   if (isPublicPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'saude')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
@@ -786,6 +811,7 @@ export default function App() {
   }
 
   if (isServicosPublicosPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'servicos_publicos')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
@@ -802,6 +828,7 @@ export default function App() {
   }
 
   if (isEducacaoPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'education')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
@@ -818,6 +845,7 @@ export default function App() {
   }
 
   if (isCrechePortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'education')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
@@ -834,6 +862,7 @@ export default function App() {
   }
 
   if (isVotacaoPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'education')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50 print:hidden">
@@ -851,6 +880,7 @@ export default function App() {
   }
 
   if (isMeioAmbientePortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'meio_ambiente')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
          <div className="absolute top-10 right-10 z-50">
@@ -867,6 +897,7 @@ export default function App() {
   }
 
   if (isPublicFormRoute) {
+    if (!isInstitutionModuleActive(currentInstitution, 'forms')) return redirectInactivePublicPortal();
     return (
       <PublicFormRouteLoader 
         darkMode={darkMode} 
@@ -877,6 +908,7 @@ export default function App() {
   }
 
   if (isNoticiasPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'noticias')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
         <PublicNewsPortal darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
@@ -885,6 +917,7 @@ export default function App() {
   }
 
   if (isOuvidoriaPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'ouvidoria')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
         <PublicOuvidoriaPortal 
@@ -892,7 +925,7 @@ export default function App() {
           setDarkMode={setDarkMode} 
           currentInstitution={currentInstitution} 
           onNavigateHome={() => {
-            window.location.href = '/';
+            window.location.href = withInstitutionQuery('/', currentInstitution);
           }}
         />
       </div>
@@ -900,6 +933,7 @@ export default function App() {
   }
 
   if (isNotaFiscalPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'notafiscal')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>
         <PublicNotaFiscalAuditor 
@@ -907,7 +941,7 @@ export default function App() {
           setDarkMode={setDarkMode} 
           currentInstitution={currentInstitution} 
           onNavigateHome={() => {
-            window.location.href = '/';
+            window.location.href = withInstitutionQuery('/', currentInstitution);
           }}
         />
       </div>
@@ -1522,7 +1556,7 @@ export default function App() {
                     // Flatten all allowed items
                     const allAllowedItems = NAVBAR_CATEGORIES.flatMap(category => 
                       category.items
-                        .filter(item => hasPermission(currentUser, item.id as View, 'view'))
+                        .filter(item => hasPermission(currentUser, item.id as View, 'view') && isInstitutionModuleActive(currentInstitution, item.id))
                         .map(item => ({ ...item, categoryLabel: category.label }))
                     );
 
@@ -1605,7 +1639,7 @@ export default function App() {
             )}
             {activeView === 'norms' && <NormsModule />}
             {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} currentInstitution={currentInstitution} />}
-            {activeView === 'contracts' && <ContractsModule currentInstitution={currentInstitution} />}
+            {activeView === 'contracts' && <ContractsModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'education' && <EducationModule />}
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} currentInstitution={currentInstitution} />}
