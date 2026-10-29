@@ -70,6 +70,7 @@ import { ProposalModal } from './components/ProposalModal';
 import { DemoModuleBanner } from './components/DemoModuleBanner';
 import { isDemoEnvironment, setDemoEnvironment } from './lib/demoManager';
 import { DEMO_USER, DEMO_INSTITUTION } from './lib/demoData';
+import { isInstitutionModuleActive } from './lib/institutionModules';
 
 // Types
 import { 
@@ -290,13 +291,13 @@ export default function App() {
   const [isSuperAdminPortal, setIsSuperAdminPortal] = React.useState(false);
   const [activeView, setActiveView] = React.useState<View>('home');
   const [patrimonioItems, setPatrimonioItems] = React.useState<PatrimonioItem[]>([]);
-  const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>(MOCK_USERS);
+  const [adminUsers, setAdminUsers] = React.useState<AdminUser[]>([]);
   const [institutions, setInstitutions] = React.useState<Institution[]>(MOCK_INSTITUTIONS);
   const [selectedYear, setSelectedYear] = React.useState('2026');
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [controls, setControls] = React.useState<CheckItem[]>(MOCK_CONTROLS);
-  const [orders, setOrders] = React.useState<OrderItem[]>(MOCK_ORDERS);
-  const [docRecords, setDocRecords] = React.useState<DocumentRecord[]>(MOCK_DOCUMENTS);
+  const [controls, setControls] = React.useState<CheckItem[]>([]);
+  const [orders, setOrders] = React.useState<OrderItem[]>([]);
+  const [docRecords, setDocRecords] = React.useState<DocumentRecord[]>([]);
   const [departments, setDepartments] = React.useState<Department[]>([]);
   const [pendingReportsCount, setPendingReportsCount] = React.useState(0);
 
@@ -395,30 +396,44 @@ export default function App() {
         });
         const { data: depts } = await fetchPaginated('departments', q => currentInstitution ? q.eq('institution_id', currentInstitution.id) : q);
 
-        if (users) setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
+        const isDemo = isDemoEnvironment(currentInstitution);
+
+        if (users && users.length > 0) {
+          setAdminUsers(users.map(u => ({ ...u, lastLogin: u.last_login } as AdminUser)));
+        } else if (isDemo) {
+          setAdminUsers(MOCK_USERS);
+        } else {
+          setAdminUsers([]);
+        }
         
         // Doc Records
         const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
-        if (demoDoc && (!docs || docs.length === 0)) {
+        if (isDemo && demoDoc && (!docs || docs.length === 0)) {
           try { setDocRecords(JSON.parse(demoDoc)); } catch (e) {}
         } else if (docs) {
           setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
+        } else {
+          setDocRecords([]);
         }
 
         // Orders
         const demoOrd = localStorage.getItem('gestao360_demo_orders');
-        if (demoOrd && (!ords || ords.length === 0)) {
+        if (isDemo && demoOrd && (!ords || ords.length === 0)) {
           try { setOrders(JSON.parse(demoOrd)); } catch (e) {}
         } else if (ords) {
           setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
+        } else {
+          setOrders([]);
         }
 
         // Controls
         const demoCtrl = localStorage.getItem('gestao360_demo_controls');
-        if (demoCtrl && (!ctrls || ctrls.length === 0)) {
+        if (isDemo && demoCtrl && (!ctrls || ctrls.length === 0)) {
           try { setControls(JSON.parse(demoCtrl)); } catch (e) {}
         } else if (ctrls) {
           setControls(ctrls as CheckItem[]);
+        } else {
+          setControls([]);
         }
 
         if (insts) setInstitutions(insts as Institution[]);
@@ -426,22 +441,25 @@ export default function App() {
 
         // Patrimonio
         const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
-        if (demoPat && (!pats || pats.length === 0) && isDemoEnvironment(currentInstitution)) {
+        if (isDemo && demoPat && (!pats || pats.length === 0)) {
           try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) {}
         } else if (pats) {
           setPatrimonioItems(pats.map(p => mapDbRowToPatrimonioItem(p)));
+        } else {
+          setPatrimonioItems([]);
         }
       } catch (err) {
         console.error('Erro ao buscar dados do Supabase:', err);
-        // Fallback imediato para dados demo locais caso haja erro no Supabase
-        const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
-        if (demoPat) { try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) {} }
-        const demoOrd = localStorage.getItem('gestao360_demo_orders');
-        if (demoOrd) { try { setOrders(JSON.parse(demoOrd)); } catch (e) {} }
-        const demoCtrl = localStorage.getItem('gestao360_demo_controls');
-        if (demoCtrl) { try { setControls(JSON.parse(demoCtrl)); } catch (e) {} }
-        const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
-        if (demoDoc) { try { setDocRecords(JSON.parse(demoDoc)); } catch (e) {} }
+        if (isDemoEnvironment(currentInstitution)) {
+          const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
+          if (demoPat) { try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) {} }
+          const demoOrd = localStorage.getItem('gestao360_demo_orders');
+          if (demoOrd) { try { setOrders(JSON.parse(demoOrd)); } catch (e) {} }
+          const demoCtrl = localStorage.getItem('gestao360_demo_controls');
+          if (demoCtrl) { try { setControls(JSON.parse(demoCtrl)); } catch (e) {} }
+          const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
+          if (demoDoc) { try { setDocRecords(JSON.parse(demoDoc)); } catch (e) {} }
+        }
       }
     };
 
@@ -513,17 +531,45 @@ export default function App() {
   const [isNotificationsOpen, setIsNotificationsOpen] = React.useState(false);
   const [isProfileOpen, setIsProfileOpen] = React.useState(false);
   const [expandedCategory, setExpandedCategory] = React.useState<string | null>(null);
-  const [notifications, setNotifications] = React.useState([
-    { id: 1, text: 'Prazo do RREO vencendo em 15 dias', type: 'warning', read: false },
-    { id: 2, text: 'Novo protocolo recebido da Secretaria de Saúde', type: 'info', read: false },
-    { id: 3, text: 'Parecer do Gemini gerado para análise de frotas', type: 'success', read: true },
-  ]);
+  const [notifications, setNotifications] = React.useState<{ id: number; text: string; type: string; read: boolean }[]>([]);
   const [obligations, setObligations] = React.useState([
-    { id: 1, title: 'RREO - 2º Bimestre', date: '2024-05-30', status: 'pending', priority: 'high' },
-    { id: 2, title: 'Siace/TCE - Lançamento Mensal', date: '2024-05-15', status: 'completed', priority: 'medium' },
-    { id: 3, title: 'PCA - Plano de Contratações Anual', date: '2024-06-01', status: 'urgent', priority: 'high' },
-    { id: 4, title: 'Relatório de Gestão da Saúde', date: '2024-05-25', status: 'pending', priority: 'medium' },
+    { id: 1, title: 'RREO - 5º Bimestre (LRF)', date: '2026-11-30', status: 'pending', priority: 'high' },
+    { id: 2, title: 'APLIC/TCE - Remessa Mensal', date: '2026-11-15', status: 'pending', priority: 'high' },
+    { id: 3, title: 'Inventário Anual de Patrimônio (PCASP)', date: '2026-12-15', status: 'pending', priority: 'high' },
+    { id: 4, title: 'PCA - Plano de Contratações Anual (Lei 14.133)', date: '2026-12-20', status: 'pending', priority: 'medium' },
   ]);
+
+  // Atualiza notificações reais baseadas nos alertas operacionais do município
+  React.useEffect(() => {
+    const dynamicAlerts: { id: number; text: string; type: string; read: boolean }[] = [];
+    const urgentControls = controls.filter(c => c.status === 'urgent' || c.status === 'pending');
+    if (urgentControls.length > 0) {
+      dynamicAlerts.push({
+        id: 101,
+        text: `${urgentControls.length} controle(s) interno(s) pendente(s) ou urgente(s)`,
+        type: 'warning',
+        read: false
+      });
+    }
+    const pendingOrders = orders.filter(o => o.status === 'Pendente' || o.status === 'Em Cotação');
+    if (pendingOrders.length > 0) {
+      dynamicAlerts.push({
+        id: 102,
+        text: `${pendingOrders.length} pedido(s) de compra aguardando andamento`,
+        type: 'info',
+        read: false
+      });
+    }
+    if (pendingReportsCount > 0) {
+      dynamicAlerts.push({
+        id: 103,
+        text: `${pendingReportsCount} nova(s) denúncia(s) ambiental(is) aguardando análise`,
+        type: 'warning',
+        read: false
+      });
+    }
+    setNotifications(dynamicAlerts);
+  }, [controls, orders, pendingReportsCount]);
   const [isNewControlModalOpen, setIsNewControlModalOpen] = React.useState(false);
   const [attachingFor, setAttachingFor] = React.useState<number | null>(null);
   const [isChangingPassword, setIsChangingPassword] = React.useState(false);
@@ -1066,7 +1112,9 @@ export default function App() {
                 {/* Desktop Navigation */}
                 <div className="hidden lg:flex items-center gap-2">
                   {NAVBAR_CATEGORIES.map((category) => {
-                    const allowedItems = category.items.filter(item => hasPermission(currentUser, item.id as View, 'view'));
+                    const allowedItems = category.items.filter(
+                      item => hasPermission(currentUser, item.id as View, 'view') && isInstitutionModuleActive(currentInstitution, item.id)
+                    );
                     if (allowedItems.length === 0) return null;
                     const isActiveCategory = allowedItems.some(i => i.id === activeView);
                     
@@ -1244,7 +1292,9 @@ export default function App() {
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 space-y-6">
                     {NAVBAR_CATEGORIES.map((category) => {
-                      const allowedItems = category.items.filter(item => hasPermission(currentUser, item.id as View, 'view'));
+                      const allowedItems = category.items.filter(
+                        item => hasPermission(currentUser, item.id as View, 'view') && isInstitutionModuleActive(currentInstitution, item.id)
+                      );
                       if (allowedItems.length === 0) return null;
 
                       return (

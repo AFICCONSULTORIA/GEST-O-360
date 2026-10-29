@@ -13,6 +13,7 @@ import { hasPermission } from '../../lib/permissions';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 export const INITIAL_MOCK_LAWS: MunicipalLaw[] = [
   {
@@ -827,60 +828,72 @@ export const LawsModule = ({
 
   const loadLaws = React.useCallback(async () => {
     setIsLoading(true);
+    const isDemo = isDemoEnvironment(institution);
     try {
       let query = supabase.from('municipal_laws').select('*').order('publication_date', { ascending: false });
       
-      const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
-      if (institution?.id && isUUID(institution.id)) {
+      if (institution?.id) {
         query = query.eq('institution_id', institution.id);
       }
       
       const { data, error } = await query;
       if (error) {
-        console.warn('Error fetching laws from Supabase, falling back to demo laws:', error);
-        const demoLaws = localStorage.getItem('gestao360_demo_laws');
-        if (demoLaws) {
-          try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+        console.warn('Error fetching laws from Supabase:', error);
+        if (isDemo) {
+          const demoLaws = localStorage.getItem('gestao360_demo_laws');
+          if (demoLaws) {
+            try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+          } else {
+            setLaws(INITIAL_MOCK_LAWS);
+          }
         } else {
-          setLaws(INITIAL_MOCK_LAWS);
+          setLaws([]);
         }
       } else if (data && data.length > 0) {
         setLaws(data as MunicipalLaw[]);
-      } else {
+      } else if (isDemo) {
         const demoLaws = localStorage.getItem('gestao360_demo_laws');
         if (demoLaws) {
           try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
         } else {
           setLaws(INITIAL_MOCK_LAWS);
         }
+      } else {
+        setLaws([]);
       }
     } catch (err) {
       console.error(err);
-      const demoLaws = localStorage.getItem('gestao360_demo_laws');
-      if (demoLaws) {
-        try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+      if (isDemo) {
+        const demoLaws = localStorage.getItem('gestao360_demo_laws');
+        if (demoLaws) {
+          try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+        } else {
+          setLaws(INITIAL_MOCK_LAWS);
+        }
       } else {
-        setLaws(INITIAL_MOCK_LAWS);
+        setLaws([]);
       }
     }
     setIsLoading(false);
-  }, [institution?.id]);
+  }, [institution]);
 
   React.useEffect(() => {
     loadLaws();
     const handleReload = (e: any) => {
       const mod = e.detail?.moduleKey || e.detail?.module;
       if (!mod || mod === 'laws' || mod === 'all') {
-        const demoLaws = localStorage.getItem('gestao360_demo_laws');
-        if (demoLaws) {
-          try { setLaws(JSON.parse(demoLaws)); } catch (e) {}
+        if (isDemoEnvironment(institution)) {
+          const demoLaws = localStorage.getItem('gestao360_demo_laws');
+          if (demoLaws) {
+            try { setLaws(JSON.parse(demoLaws)); } catch (e) {}
+          }
         }
         loadLaws();
       }
     };
     window.addEventListener('gestao360:reload-module', handleReload);
     return () => window.removeEventListener('gestao360:reload-module', handleReload);
-  }, [loadLaws]);
+  }, [loadLaws, institution]);
 
   // Save / Update
   const handleSaveLaw = async (lawData: Partial<MunicipalLaw>, pdfFile?: File | null) => {
@@ -888,7 +901,8 @@ export const LawsModule = ({
 
     if (pdfFile) {
       const safeName = pdfFile.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
-      const filename = `law_${Date.now()}_${safeName}`;
+      const instFolder = institution?.id || 'geral';
+      const filename = `${instFolder}/law_${Date.now()}_${safeName}`;
       const { error: uploadError } = await supabase.storage.from('leis').upload(filename, pdfFile);
       if (!uploadError) {
         const { data: publicUrlData } = supabase.storage.from('leis').getPublicUrl(filename);
@@ -896,11 +910,10 @@ export const LawsModule = ({
       }
     }
 
-    const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
     const payload = {
       ...lawData,
       file_url: fileUrl,
-      institution_id: (institution?.id && isUUID(institution.id)) ? institution.id : null
+      institution_id: institution?.id || null
     };
 
     if (lawData.id) {

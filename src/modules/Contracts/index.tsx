@@ -11,28 +11,32 @@ import {
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 // Destructure common icons to avoid changing code
 const { 
   Plus, Search, Filter, Edit2, Trash2, Eye, FileText, ClipboardCheck, TrendingUp, TrendingDown, ChevronRight, ShieldAlert, Download, CircleOff, History, Info, CheckCircle2, AlertCircle, AlertTriangle, Package, LayoutDashboard, Calendar, FileBox, FileSignature, Landmark, ShieldCheck, ArrowRight, Settings, ChevronLeft, CalendarClock, Briefcase, Users, Activity, Building2, Trees, CircleDollarSign, Tractor, HeartHandshake, Trophy, BookOpen, PieChart: PieChartIcon, AlarmClock, Clock, Target, Upload, GraduationCap, Home, Bus, Salad, Users2, Leaf, BookText, Truck, Globe, FileBadge, X
 } = LucideIcons;
 
-const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: string } | null }) => {
-  const [contracts, setContracts] = React.useState<Contract[]>(MOCK_CONTRACTS);
+const ContractsModule = ({ currentInstitution }: { currentInstitution?: Institution | { id: string } | null }) => {
+  const [contracts, setContracts] = React.useState<Contract[]>([]);
   
   const loadContracts = () => {
+    const isDemo = isDemoEnvironment(currentInstitution as Institution | null);
     let query = supabase.from('contracts').select('*');
     if (currentInstitution?.id) query = query.eq('institution_id', currentInstitution.id);
     query.then(({ data }) => {
       if (data && data.length > 0) {
         setContracts(data.map(c => ({ ...c, vendorName: c.vendor_name } as Contract)));
-      } else {
+      } else if (isDemo) {
         const demoSaved = localStorage.getItem('gestao360_demo_contracts');
         if (demoSaved) {
-          setContracts(JSON.parse(demoSaved));
+          try { setContracts(JSON.parse(demoSaved)); } catch { setContracts(MOCK_CONTRACTS); }
         } else {
           setContracts(MOCK_CONTRACTS);
         }
+      } else {
+        setContracts([]);
       }
     });
   };
@@ -42,9 +46,11 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
     const handleReload = (e: any) => {
       const mod = e.detail?.moduleKey || e.detail?.module;
       if (!mod || mod === 'contracts' || mod === 'all') {
-        const demoSaved = localStorage.getItem('gestao360_demo_contracts');
-        if (demoSaved) {
-          try { setContracts(JSON.parse(demoSaved)); } catch (e) {}
+        if (isDemoEnvironment(currentInstitution as Institution | null)) {
+          const demoSaved = localStorage.getItem('gestao360_demo_contracts');
+          if (demoSaved) {
+            try { setContracts(JSON.parse(demoSaved)); } catch (e) {}
+          }
         }
         loadContracts();
       }
@@ -52,6 +58,13 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
     window.addEventListener('gestao360:reload-module', handleReload);
     return () => window.removeEventListener('gestao360:reload-module', handleReload);
   }, [currentInstitution?.id]);
+
+  const totalVolume = contracts.reduce((acc, c) => acc + (Number(c.amount) || 0), 0);
+  const criticalRisks = contracts.filter(c => c.status === 'risk').length;
+  const activeContractsCount = contracts.filter(c => c.status === 'active').length;
+  const governanceScore = contracts.length > 0
+    ? `${Math.round(((contracts.length - criticalRisks) / contracts.length) * 100)}%`
+    : '100%';
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
@@ -61,7 +74,7 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
           <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Fiscalização proativa e monitoramento da Lei 14.133/21.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <DemoFillButton moduleKey="contracts" onSuccess={loadContracts} />
+          <DemoFillButton moduleKey="contracts" currentInstitution={currentInstitution as Institution | null} onSuccess={loadContracts} />
           <button onClick={() => showToast('Botão em desenvolvimento', 'warning')} className="bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest border border-neutral-100 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-all flex items-center gap-2">
             <Download size={16} /> Relatórios Lupa
           </button>
@@ -73,10 +86,10 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
-          { label: 'Volume Total', value: 'R$ 4.2M', sub: 'Em contratos ativos', icon: TrendingUp, color: 'text-neutral-900 dark:text-neutral-100' },
-          { label: 'Riscos Críticos', value: '2', sub: 'Pendências Jurídicas', icon: AlertTriangle, color: 'text-rose-500' },
-          { label: 'Dispensas (Art. 75)', value: '14%', sub: 'Do total contratado', icon: Target, color: 'text-amber-500' },
-          { label: 'Eficiência de Gasto', value: '92%', sub: 'Score de Governança', icon: CheckCircle2, color: 'text-emerald-500' },
+          { label: 'Volume Total', value: new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(totalVolume), sub: `${contracts.length} contratos registrados`, icon: TrendingUp, color: 'text-neutral-900 dark:text-neutral-100' },
+          { label: 'Riscos Críticos', value: String(criticalRisks), sub: 'Pendências Jurídicas', icon: AlertTriangle, color: 'text-rose-500' },
+          { label: 'Contratos Regulares', value: String(activeContractsCount), sub: 'Em execução vigente', icon: Target, color: 'text-amber-500' },
+          { label: 'Conformidade', value: governanceScore, sub: 'Score de Governança', icon: CheckCircle2, color: 'text-emerald-500' },
         ].map((stat, i) => (
           <div key={i} className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm relative overflow-hidden group">
             <stat.icon className={`absolute -right-4 -bottom-4 w-24 h-24 opacity-5 transition-transform group-hover:scale-110 duration-500 ${stat.color}`} />
@@ -101,7 +114,13 @@ const ContractsModule = ({ currentInstitution }: { currentInstitution?: { id: st
             </tr>
           </thead>
           <tbody className="divide-y divide-neutral-50 dark:divide-neutral-800">
-            {contracts.map((contract) => (
+            {contracts.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-8 py-14 text-center text-sm font-medium text-neutral-400 dark:text-neutral-500">
+                  Nenhum contrato registrado para esta prefeitura até o momento.
+                </td>
+              </tr>
+            ) : contracts.map((contract) => (
               <tr key={contract.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors group">
                 <td className="px-8 py-6">
                   <span className="text-xs font-black text-neutral-900 dark:text-neutral-100 group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">

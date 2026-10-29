@@ -32,6 +32,7 @@ import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 interface NoticiasModuleProps {
   currentUser?: AdminUser | null;
@@ -60,9 +61,11 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
     const handleReload = (e: any) => {
       const mod = e.detail?.moduleKey || e.detail?.module;
       if (!mod || mod === 'noticias' || mod === 'all') {
-        const saved = localStorage.getItem('gestao360_municipal_news');
-        if (saved) {
-          try { setNews(JSON.parse(saved)); } catch (e) {}
+        if (isDemoEnvironment(currentInstitution)) {
+          const saved = localStorage.getItem('gestao360_municipal_news');
+          if (saved) {
+            try { setNews(JSON.parse(saved)); } catch (e) {}
+          }
         }
         fetchNews();
       }
@@ -73,6 +76,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
 
   const fetchNews = async () => {
     setLoading(true);
+    const isDemo = isDemoEnvironment(currentInstitution);
     try {
       let query = supabase
         .from('municipal_news')
@@ -87,7 +91,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
 
       if (!error && data && data.length > 0) {
         setNews(data as MunicipalNews[]);
-      } else {
+      } else if (isDemo) {
         const saved = localStorage.getItem('gestao360_municipal_news');
         if (saved) {
           setNews(JSON.parse(saved));
@@ -95,10 +99,16 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
           setNews(MOCK_MUNICIPAL_NEWS);
           localStorage.setItem('gestao360_municipal_news', JSON.stringify(MOCK_MUNICIPAL_NEWS));
         }
+      } else {
+        setNews([]);
       }
     } catch (err) {
       console.error('Erro ao carregar notícias:', err);
-      setNews(MOCK_MUNICIPAL_NEWS);
+      if (isDemo) {
+        setNews(MOCK_MUNICIPAL_NEWS);
+      } else {
+        setNews([]);
+      }
     } finally {
       setLoading(false);
     }

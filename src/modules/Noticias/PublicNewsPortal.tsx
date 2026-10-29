@@ -31,6 +31,7 @@ import { MOCK_MUNICIPAL_NEWS } from './mockNews';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { LogoCompass } from '../../components/LogoCompass';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 interface PublicNewsPortalProps {
   darkMode: boolean;
@@ -58,6 +59,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
   const fetchNews = async () => {
     setLoading(true);
+    const isDemo = isDemoEnvironment(currentInstitution);
     try {
       let query = supabase
         .from('municipal_news')
@@ -73,8 +75,8 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
       if (!error && data && data.length > 0) {
         setNews(data as MunicipalNews[]);
-      } else {
-        // Fallback para localStorage ou Mocks locais
+      } else if (isDemo) {
+        // Fallback para localStorage ou Mocks locais apenas em ambiente Demo
         const saved = localStorage.getItem('gestao360_municipal_news');
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -83,10 +85,16 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
           setNews(MOCK_MUNICIPAL_NEWS);
           localStorage.setItem('gestao360_municipal_news', JSON.stringify(MOCK_MUNICIPAL_NEWS));
         }
+      } else {
+        setNews([]);
       }
     } catch (err) {
       console.error('Erro ao buscar notícias:', err);
-      setNews(MOCK_MUNICIPAL_NEWS);
+      if (isDemo) {
+        setNews(MOCK_MUNICIPAL_NEWS);
+      } else {
+        setNews([]);
+      }
     } finally {
       setLoading(false);
     }

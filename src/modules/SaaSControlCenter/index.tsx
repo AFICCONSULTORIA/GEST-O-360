@@ -45,6 +45,7 @@ import {
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { AdminUser, Institution, Department, View, SupportTicket } from '../../types';
+import { getInstitutionActiveModules, UNFINISHED_PLACEHOLDER_MODULES } from '../../lib/institutionModules';
 import { SaudeModule } from '../Saude';
 import { SaaSControlCenterEducation } from './SaaSControlCenterEducation';
 import { SaaSControlCenterImport } from './SaaSControlCenterImport';
@@ -456,23 +457,44 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
 
     const cleanSubdomain = editingTenant.subdomain.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
     const tenantId = editingTenant.id || `inst_${Date.now()}`;
+    const existingInst = institutions.find(i => i.id === tenantId);
+    const existingCertLinks = existingInst?.cert_links
+      ? (typeof existingInst.cert_links === 'string' ? JSON.parse(existingInst.cert_links) : existingInst.cert_links)
+      : {};
+
+    const activeModulesToSave = editingTenant.active_modules && editingTenant.active_modules.length > 0
+      ? editingTenant.active_modules
+      : ['patrimonio', 'certificates'];
+
+    const mergedCertLinks = {
+      ...existingCertLinks,
+      __active_modules: activeModulesToSave,
+      ...(editingTenant.contact_phone ? { __contact_phone: editingTenant.contact_phone } : {})
+    };
 
     const newInst: Institution = {
+      ...(existingInst || {}),
       id: tenantId,
       name: editingTenant.name.trim(),
       subdomain: cleanSubdomain,
       logo_url: editingTenant.logo_url || '/brasao-municipio.png',
-      theme_color: '#10b981'
+      theme_color: '#10b981',
+      cert_links: mergedCertLinks,
+      active_modules: activeModulesToSave,
+      contact_phone: editingTenant.contact_phone
     };
 
     try {
+      localStorage.setItem(`@gestao360:active_modules_${newInst.id}`, JSON.stringify(activeModulesToSave));
+
       const { error } = await supabase
         .from('institutions')
         .upsert({
           id: newInst.id,
           name: newInst.name,
           subdomain: newInst.subdomain,
-          logo_url: newInst.logo_url
+          logo_url: newInst.logo_url,
+          cert_links: mergedCertLinks
         });
 
       if (error) {
@@ -488,7 +510,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
         return [...prev, newInst];
       });
 
-      showToast(`Município ${newInst.name} configurado com sucesso!`, 'success');
+      showToast(`Município ${newInst.name} e módulos contratados salvos com sucesso!`, 'success');
       setIsTenantModalOpen(false);
       setEditingTenant(null);
     } catch (err: any) {
@@ -843,7 +865,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                   name: '',
                   subdomain: '',
                   contact_phone: '',
-                  active_modules: ['financas', 'educacao', 'ouvidoria', 'notafiscal', 'saude'],
+                  active_modules: ['patrimonio', 'certificates'],
                   status: 'ativo'
                 });
                 setIsTenantModalOpen(true);
@@ -858,6 +880,10 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
             {filteredInstitutions.map((tenant) => {
               const userCount = adminUsers.filter(u => u.institution_id === tenant.id).length;
               const deptCount = departments.filter(d => d.institution_id === tenant.id).length;
+              const configuredModules = getInstitutionActiveModules(tenant);
+              const displayModules = configuredModules
+                ? ALL_SYSTEM_MODULES.filter(m => configuredModules.includes(m.id))
+                : ALL_SYSTEM_MODULES.filter(m => m.id !== 'home' && m.id !== 'settings' && !UNFINISHED_PLACEHOLDER_MODULES.includes(m.id));
 
               return (
                 <div 
@@ -902,21 +928,19 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
 
                     <div className="mt-4 pt-4 border-t border-neutral-100 dark:border-neutral-800/80">
                       <p className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-2">
-                        Módulos Estratégicos Habilitados
+                        Módulos Contratados ({displayModules.length})
                       </p>
                       <div className="flex flex-wrap gap-1.5">
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
-                          Saúde (Regulação)
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
-                          Educação (SAEB)
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
-                          Ouvidoria (e-SIC)
-                        </span>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
-                          Auditor Fiscal 2026
-                        </span>
+                        {displayModules.slice(0, 6).map(mod => (
+                          <span key={mod.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
+                            {mod.label.split(' (')[0]}
+                          </span>
+                        ))}
+                        {displayModules.length > 6 && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                            +{displayModules.length - 6} módulos
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -925,7 +949,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                     <div className="flex items-center gap-1.5">
                       <button 
                         onClick={() => openWhatsApp(
-                          '66996893617', 
+                          tenant.contact_phone || (tenant.cert_links as any)?.__contact_phone || '66996893617', 
                           `Olá! Aqui é a coordenação do Gestão 360 referente à ${tenant.name}. Como posso ajudar hoje?`
                         )}
                         className="p-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-emerald-600 dark:text-emerald-400 transition shadow-sm"
@@ -945,12 +969,16 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => {
+                          const allReadyIds = ALL_SYSTEM_MODULES
+                            .filter(m => m.id !== 'home' && m.id !== 'settings' && !UNFINISHED_PLACEHOLDER_MODULES.includes(m.id))
+                            .map(m => m.id);
                           setEditingTenant({
                             id: tenant.id,
                             name: tenant.name,
                             subdomain: tenant.subdomain || '',
                             logo_url: tenant.logo_url || '',
-                            active_modules: ['financas', 'educacao', 'ouvidoria', 'notafiscal', 'saude'],
+                            contact_phone: tenant.contact_phone || (tenant.cert_links as any)?.__contact_phone || '',
+                            active_modules: getInstitutionActiveModules(tenant) || allReadyIds,
                             status: 'ativo'
                           });
                           setIsTenantModalOpen(true);
@@ -1730,7 +1758,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
       {/* MODAL DE CADASTRO/EDIÇÃO DE TENANT (MUNICÍPIO) */}
       {isTenantModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl relative">
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative">
             <button
               onClick={() => setIsTenantModalOpen(false)}
               className="absolute top-5 right-5 text-neutral-400 hover:text-neutral-900 dark:hover:text-white p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
@@ -1742,55 +1770,129 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
               {editingTenant?.id ? 'Configurar Município Parceiro' : 'Novo Município na Rede'}
             </h3>
             <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-6">
-              Configure a instituição, defina o subdomínio oficial e os módulos ativos
+              Configure a instituição, defina o subdomínio oficial e os módulos contratados que ficarão visíveis no Portal Público e no Painel Interno
             </p>
             
             <div className="space-y-4 text-xs">
-              <div>
-                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Nome da Instituição Oficial</label>
-                <input
-                  type="text"
-                  placeholder="Ex: Prefeitura Municipal de..."
-                  value={editingTenant?.name || ''}
-                  onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, name: e.target.value }) : null)}
-                  className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
-                />
-              </div>
-
-              <div>
-                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Subdomínio (Slug oficial)</label>
-                <div className="mt-1.5 flex items-center bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl px-3 focus-within:border-emerald-500 transition">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">Nome da Instituição Oficial</label>
                   <input
                     type="text"
-                    placeholder="ex: torixoreu"
-                    value={editingTenant?.subdomain || ''}
-                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, subdomain: e.target.value.toLowerCase().trim() }) : null)}
-                    className="w-full bg-transparent py-3 text-neutral-900 dark:text-white focus:outline-none font-mono text-xs"
+                    placeholder="Ex: Prefeitura Municipal de..."
+                    value={editingTenant?.name || ''}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, name: e.target.value }) : null)}
+                    className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
                   />
-                  <span className="text-neutral-500 font-mono text-[11px]">.gestao360.app</span>
+                </div>
+
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">Subdomínio (Slug oficial)</label>
+                  <div className="mt-1.5 flex items-center bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl px-3 focus-within:border-emerald-500 transition">
+                    <input
+                      type="text"
+                      placeholder="ex: torixoreu"
+                      value={editingTenant?.subdomain || ''}
+                      onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, subdomain: e.target.value.toLowerCase().trim() }) : null)}
+                      className="w-full bg-transparent py-3 text-neutral-900 dark:text-white focus:outline-none font-mono text-xs"
+                    />
+                    <span className="text-neutral-500 font-mono text-[11px]">.gestao360.app</span>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="text-neutral-700 dark:text-neutral-300 font-bold">Telefone do Gestor Responsável (WhatsApp)</label>
-                <input
-                  type="text"
-                  placeholder="DDD + Número (ex: 66996893617)"
-                  value={editingTenant?.contact_phone || ''}
-                  onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, contact_phone: e.target.value }) : null)}
-                  className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">Telefone do Gestor Responsável (WhatsApp)</label>
+                  <input
+                    type="text"
+                    placeholder="DDD + Número (ex: 66996893617)"
+                    value={editingTenant?.contact_phone || ''}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, contact_phone: e.target.value }) : null)}
+                    className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">URL da Logo / Brasão Municipal (Opcional)</label>
+                  <input
+                    type="text"
+                    placeholder="https://... ou /brasao-municipio.png"
+                    value={editingTenant?.logo_url || ''}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, logo_url: e.target.value }) : null)}
+                    className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="text-neutral-700 dark:text-neutral-300 font-bold">URL da Logo / Brasão Municipal (Opcional)</label>
-                <input
-                  type="text"
-                  placeholder="https://... ou /brasao-municipio.png"
-                  value={editingTenant?.logo_url || ''}
-                  onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, logo_url: e.target.value }) : null)}
-                  className="w-full mt-1.5 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 transition"
-                />
+              {/* SELETOR DE MÓDULOS CONTRATADOS */}
+              <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                  <div>
+                    <label className="text-neutral-900 dark:text-white font-bold block">
+                      Módulos Contratados pela Prefeitura ({(editingTenant?.active_modules || []).length} selecionados)
+                    </label>
+                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      Desmarque os módulos que a prefeitura ainda não contratou para ocultá-los do menu e da página inicial pública.
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setEditingTenant(prev => prev ? ({ ...prev, active_modules: ['patrimonio', 'certificates'] }) : null)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 font-bold text-[10px] border border-emerald-200 dark:border-emerald-500/20 transition"
+                    >
+                      Só Patrimônio + Certidões
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allReadyIds = ALL_SYSTEM_MODULES
+                          .filter(m => m.id !== 'home' && m.id !== 'settings' && !UNFINISHED_PLACEHOLDER_MODULES.includes(m.id))
+                          .map(m => m.id);
+                        setEditingTenant(prev => prev ? ({ ...prev, active_modules: allReadyIds }) : null);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-[10px] transition"
+                    >
+                      Marcar Todos Prontos
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto p-2 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800">
+                  {ALL_SYSTEM_MODULES
+                    .filter(m => m.id !== 'home' && m.id !== 'settings' && !UNFINISHED_PLACEHOLDER_MODULES.includes(m.id))
+                    .map((mod) => {
+                      const isChecked = (editingTenant?.active_modules || []).includes(mod.id);
+                      return (
+                        <label
+                          key={mod.id}
+                          className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition ${
+                            isChecked
+                              ? 'bg-emerald-50/70 dark:bg-emerald-500/10 border-emerald-300 dark:border-emerald-500/40 text-neutral-900 dark:text-white'
+                              : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-500 dark:text-neutral-400'
+                          }`}
+                        >
+                          <div className="pr-2">
+                            <p className="font-bold text-[11px] leading-tight">{mod.label}</p>
+                            <p className="text-[10px] opacity-75">{mod.category}</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {
+                              const current = editingTenant?.active_modules || [];
+                              const updated = isChecked
+                                ? current.filter(id => id !== mod.id)
+                                : [...current, mod.id];
+                              setEditingTenant(prev => prev ? ({ ...prev, active_modules: updated }) : null);
+                            }}
+                            className="w-4 h-4 accent-emerald-600 rounded shrink-0"
+                          />
+                        </label>
+                      );
+                    })}
+                </div>
               </div>
             </div>
 

@@ -247,6 +247,8 @@ export interface Institution {
   theme_color?: string;
   cert_links?: any;
   state_links?: any;
+  active_modules?: string[];
+  contact_phone?: string;
 }
 
 export interface Department {
