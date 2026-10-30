@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   ArrowRightLeft, Wallet, Target, AlertTriangle, CheckCircle2, 
   Clock, Plus, Trash2, RefreshCw, Zap, ShieldAlert, FileSpreadsheet,
-  ArrowRight, Info, Edit2
+  ArrowRight, Info, Edit2, Link2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { showToast } from '../../components/ui/Toast';
 import { Institution } from '../../types';
+import {
+  getCurrentMonthId,
+  formatMonthLabel,
+  addMonthsToId,
+  MonthlyRecord,
+  ExtratoFile,
+  InvoiceItem
+} from './ComparativoExtratos';
 
 export interface OriginAccount {
   id: string;
@@ -34,22 +42,211 @@ export interface BalanceAllocation {
   observation?: string;
 }
 
+export interface ExtratoCategorySummary {
+  categoryKey: 'fopag' | 'movimento' | 'educacao' | 'fus';
+  code: string;
+  name: string;
+  department: string;
+  priority: 'Alta' | 'Média' | 'Normal';
+  total: number;
+  totalExtrato: number;
+  totalInvoices: number;
+  filesCount: number;
+  linesCount: number;
+  invoicesCount: number;
+  details: string[];
+}
+
+export const computeExtratoCategoryTotals = (
+  files: ExtratoFile[] = [],
+  invoices: InvoiceItem[] = []
+): Record<'fopag' | 'movimento' | 'educacao' | 'fus', ExtratoCategorySummary> => {
+  const totals: Record<'fopag' | 'movimento' | 'educacao' | 'fus', ExtratoCategorySummary> = {
+    fopag: {
+      categoryKey: 'fopag',
+      code: 'FOPAG',
+      name: 'Folha de Pagamento (FOPAG)',
+      department: 'Recursos Humanos / FOPAG',
+      priority: 'Alta',
+      total: 0,
+      totalExtrato: 0,
+      totalInvoices: 0,
+      filesCount: 0,
+      linesCount: 0,
+      invoicesCount: 0,
+      details: []
+    },
+    movimento: {
+      categoryKey: 'movimento',
+      code: 'MOV',
+      name: 'Conta Movimento Geral',
+      department: 'Secretaria de Finanças',
+      priority: 'Alta',
+      total: 0,
+      totalExtrato: 0,
+      totalInvoices: 0,
+      filesCount: 0,
+      linesCount: 0,
+      invoicesCount: 0,
+      details: []
+    },
+    educacao: {
+      categoryKey: 'educacao',
+      code: 'EDU',
+      name: 'Educação & FUNDEB',
+      department: 'Secretaria de Educação',
+      priority: 'Média',
+      total: 0,
+      totalExtrato: 0,
+      totalInvoices: 0,
+      filesCount: 0,
+      linesCount: 0,
+      invoicesCount: 0,
+      details: []
+    },
+    fus: {
+      categoryKey: 'fus',
+      code: 'FUS',
+      name: 'Fundo Municipal de Saúde (FUS)',
+      department: 'Secretaria de Saúde',
+      priority: 'Alta',
+      total: 0,
+      totalExtrato: 0,
+      totalInvoices: 0,
+      filesCount: 0,
+      linesCount: 0,
+      invoicesCount: 0,
+      details: []
+    }
+  };
+
+  const isFopagText = (t?: string) => /folha|fopag|sal[aá]rio|vencimento|servidor|remunera|inss folha|previd/i.test(t || '');
+  const isEducacao = (c?: string, t?: string) => c === 'Educação' || c === 'FUNDEB' || /educa|fundeb|mde|escola|merenda|creche/i.test(t || '');
+  const isFus = (c?: string, t?: string) => c === 'FUS / Saúde' || /fus|sa[uú]de|fms|hospital|upa|medicamento|m[eé]dic/i.test(t || '');
+  const isMovimento = (c?: string, t?: string) => c === 'Movimento' || /movimento|corrente|operacional/i.test(t || '');
+
+  // 1. Files & Lines
+  files.forEach(f => {
+    const fileIsFopag = isFopagText(f.fileName);
+    const fileIsEdu = isEducacao(f.category, f.fileName);
+    const fileIsFus = isFus(f.category, f.fileName);
+    const fileIsMov = isMovimento(f.category, f.fileName);
+
+    if (fileIsFopag) {
+      totals.fopag.totalExtrato += f.totalAmount || 0;
+      totals.fopag.filesCount++;
+      totals.fopag.linesCount += f.lines?.length || 0;
+      totals.fopag.details.push(f.fileName);
+      return;
+    }
+
+    // Identifica linhas específicas de Folha dentro de outras contas (ex: Movimento)
+    let fileFopagLinesTotal = 0;
+    let fileFopagLinesCount = 0;
+    if (f.lines && f.lines.length > 0) {
+      f.lines.forEach(l => {
+        if (isFopagText(l.account) || isFopagText(l.description)) {
+          fileFopagLinesTotal += (l.amount || 0);
+          fileFopagLinesCount++;
+        }
+      });
+    }
+
+    if (fileFopagLinesCount > 0) {
+      totals.fopag.totalExtrato += fileFopagLinesTotal;
+      totals.fopag.linesCount += fileFopagLinesCount;
+      totals.fopag.details.push(`${f.fileName} (${fileFopagLinesCount} linhas Folha)`);
+    }
+
+    const netFileAmount = Math.max(0, (f.totalAmount || 0) - fileFopagLinesTotal);
+
+    if (fileIsFus) {
+      totals.fus.totalExtrato += netFileAmount;
+      totals.fus.filesCount++;
+      totals.fus.linesCount += Math.max(0, (f.lines?.length || 0) - fileFopagLinesCount);
+      totals.fus.details.push(f.fileName);
+    } else if (fileIsEdu) {
+      totals.educacao.totalExtrato += netFileAmount;
+      totals.educacao.filesCount++;
+      totals.educacao.linesCount += Math.max(0, (f.lines?.length || 0) - fileFopagLinesCount);
+      totals.educacao.details.push(f.fileName);
+    } else if (fileIsMov) {
+      totals.movimento.totalExtrato += netFileAmount;
+      totals.movimento.filesCount++;
+      totals.movimento.linesCount += Math.max(0, (f.lines?.length || 0) - fileFopagLinesCount);
+      totals.movimento.details.push(f.fileName);
+    }
+  });
+
+  // 2. Invoices (Notas Fiscais)
+  invoices.forEach(inv => {
+    const invDesc = [inv.description, inv.supplier, inv.number].filter(Boolean).join(' ');
+    if (isFopagText(invDesc)) {
+      totals.fopag.totalInvoices += inv.amount || 0;
+      totals.fopag.invoicesCount++;
+    } else if (isFus(inv.category, invDesc)) {
+      totals.fus.totalInvoices += inv.amount || 0;
+      totals.fus.invoicesCount++;
+    } else if (isEducacao(inv.category, invDesc)) {
+      totals.educacao.totalInvoices += inv.amount || 0;
+      totals.educacao.invoicesCount++;
+    } else if (isMovimento(inv.category, invDesc)) {
+      totals.movimento.totalInvoices += inv.amount || 0;
+      totals.movimento.invoicesCount++;
+    }
+  });
+
+  totals.fopag.total = totals.fopag.totalExtrato + totals.fopag.totalInvoices;
+  totals.movimento.total = totals.movimento.totalExtrato + totals.movimento.totalInvoices;
+  totals.educacao.total = totals.educacao.totalExtrato + totals.educacao.totalInvoices;
+  totals.fus.total = totals.fus.totalExtrato + totals.fus.totalInvoices;
+
+  return totals;
+};
+
+export const getDestinationExtratoCategory = (
+  dest: DestinationDemand
+): 'fopag' | 'movimento' | 'educacao' | 'fus' | null => {
+  const code = (dest.code || '').trim().toUpperCase();
+  const name = (dest.name || '').toLowerCase();
+  const dept = (dest.department || '').toLowerCase();
+
+  if (code.includes('FOPAG') || code.includes('FOLHA') || /folha|fopag|sal[aá]rio|vencimento|servidor/i.test(name) || /folha|fopag/i.test(dept)) {
+    return 'fopag';
+  }
+  if (code === 'MOV' || code === 'MOVIMENTO' || /movimento|operacional|conta corrente/i.test(name)) {
+    return 'movimento';
+  }
+  if (code === 'EDU' || code === 'FUNDEB' || /educa|fundeb|mde/i.test(name) || /educa/i.test(dept)) {
+    return 'educacao';
+  }
+  if (code === 'FUS' || code === 'SAUDE' || code === 'SAÚDE' || code === 'FMS' || /fus|sa[uú]de|fms|hospital/i.test(name) || /sa[uú]de/i.test(dept)) {
+    return 'fus';
+  }
+  return null;
+};
+
 // Contas e Saldos de Origem Iniciais
 const INITIAL_ORIGIN_ACCOUNTS: OriginAccount[] = [];
 
 // Contas de Destino e Demandas Iniciais
 const INITIAL_DESTINATION_DEMANDS: DestinationDemand[] = [];
 
-
 interface RemanejamentoSaldosProps {
   currentInstitution?: Institution | null;
 }
 
-export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
+export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = ({ currentInstitution }) => {
+  const instId = currentInstitution?.id || 'default';
   const [origins, setOrigins] = useState<OriginAccount[]>(INITIAL_ORIGIN_ACCOUNTS);
   const [destinations, setDestinations] = useState<DestinationDemand[]>(INITIAL_DESTINATION_DEMANDS);
   const [allocations, setAllocations] = useState<BalanceAllocation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Integração com Extratos da Secretaria de Finanças
+  const [selectedCompetence, setSelectedCompetence] = useState<string>(() => getCurrentMonthId());
+  const [monthlyHistory, setMonthlyHistory] = useState<Record<string, MonthlyRecord>>({});
+  const [isSyncingExtratos, setIsSyncingExtratos] = useState<boolean>(false);
 
   // Load from Supabase
   useEffect(() => {
@@ -85,6 +282,195 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
     };
     fetchData();
   }, []);
+
+  // Carrega histórico de extratos da instituição (do localStorage e do Supabase)
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadExtratosHistory = async () => {
+      let localMap: Record<string, MonthlyRecord> = {};
+      const rawScoped = localStorage.getItem(`fin_monthly_history_${instId}`);
+      const rawLegacy = instId === 'default' ? localStorage.getItem('fin_monthly_history') : null;
+      const rawSource = rawScoped || rawLegacy;
+
+      if (rawSource) {
+        try {
+          const parsed = JSON.parse(rawSource) as Record<string, any>;
+          Object.entries(parsed).forEach(([mId, rec]) => {
+            if (/^\d{4}-\d{2}$/.test(mId) && rec) {
+              localMap[mId] = rec;
+            }
+          });
+        } catch {
+          localMap = {};
+        }
+      }
+
+      if (!isCancelled && Object.keys(localMap).length > 0) {
+        setMonthlyHistory(localMap);
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('fin_competencia_registros')
+          .select('month_id, month_label, files, invoices, notes, saved_at')
+          .eq('institution_id', instId)
+          .order('month_id', { ascending: true })
+          .limit(60);
+
+        if (isCancelled) return;
+
+        if (!error && Array.isArray(data)) {
+          const merged: Record<string, MonthlyRecord> = { ...localMap };
+          data.forEach(row => {
+            const mId = row.month_id as string;
+            if (!mId) return;
+            merged[mId] = {
+              monthId: mId,
+              monthLabel: row.month_label || formatMonthLabel(mId),
+              files: (row.files as ExtratoFile[]) || [],
+              invoices: (row.invoices as InvoiceItem[]) || [],
+              savedAt: row.saved_at || new Date().toISOString(),
+              notes: row.notes || undefined
+            };
+          });
+          setMonthlyHistory(merged);
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar extratos do Supabase:', err);
+      }
+    };
+
+    loadExtratosHistory();
+    return () => { isCancelled = true; };
+  }, [instId]);
+
+  const currentMonthRecord = useMemo(() => {
+    return monthlyHistory[selectedCompetence] || {
+      monthId: selectedCompetence,
+      monthLabel: formatMonthLabel(selectedCompetence),
+      files: [],
+      invoices: [],
+      savedAt: ''
+    };
+  }, [monthlyHistory, selectedCompetence]);
+
+  const extratoSummaries = useMemo(() => {
+    return computeExtratoCategoryTotals(
+      currentMonthRecord.files || [],
+      currentMonthRecord.invoices || []
+    );
+  }, [currentMonthRecord]);
+
+  const grandTotalExtratos = useMemo(() => {
+    return (
+      extratoSummaries.fopag.total +
+      extratoSummaries.movimento.total +
+      extratoSummaries.educacao.total +
+      extratoSummaries.fus.total
+    );
+  }, [extratoSummaries]);
+
+  // SINCRONIZAÇÃO DAS DEMANDAS DE DESTINO COM OS EXTRATOS (FOPAG, MOVIMENTO, EDUCAÇÃO E FUS)
+  const handleSyncWithExtratos = async (targetCategoryKey?: 'fopag' | 'movimento' | 'educacao' | 'fus') => {
+    setIsSyncingExtratos(true);
+    const keysToSync: ('fopag' | 'movimento' | 'educacao' | 'fus')[] = targetCategoryKey 
+      ? [targetCategoryKey] 
+      : ['fopag', 'movimento', 'educacao', 'fus'];
+
+    let updatedCount = 0;
+    let createdCount = 0;
+    const currentDestinations = [...destinations];
+    const newDestinationsList = [...destinations];
+
+    for (const key of keysToSync) {
+      const summary = extratoSummaries[key];
+      const existingDest = currentDestinations.find(d => getDestinationExtratoCategory(d) === key);
+
+      if (existingDest) {
+        try {
+          await supabase
+            .from('fin_remanejamento_destinos')
+            .update({
+              total_required: summary.total
+            })
+            .eq('id', existingDest.id);
+        } catch (err) {
+          console.warn('Falha ao atualizar destino remoto:', err);
+        }
+
+        const idx = newDestinationsList.findIndex(d => d.id === existingDest.id);
+        if (idx >= 0) {
+          newDestinationsList[idx] = {
+            ...newDestinationsList[idx],
+            totalRequired: summary.total
+          };
+          updatedCount++;
+        }
+      } else {
+        const newRecord = {
+          code: summary.code,
+          name: summary.name,
+          department: summary.department,
+          total_required: summary.total,
+          priority: summary.priority,
+          institution_id: instId
+        };
+
+        try {
+          const { data, error } = await supabase
+            .from('fin_remanejamento_destinos')
+            .insert(newRecord)
+            .select()
+            .single();
+
+          if (data && !error) {
+            newDestinationsList.push({
+              id: data.id,
+              code: data.code || summary.code,
+              name: data.name,
+              department: data.department || summary.department,
+              totalRequired: Number(data.total_required),
+              priority: (data.priority as 'Alta' | 'Média' | 'Normal') || summary.priority
+            });
+            createdCount++;
+          } else {
+            const localId = `dest-extrato-${key}-${Date.now()}`;
+            newDestinationsList.push({
+              id: localId,
+              code: summary.code,
+              name: summary.name,
+              department: summary.department,
+              totalRequired: summary.total,
+              priority: summary.priority
+            });
+            createdCount++;
+          }
+        } catch {
+          const localId = `dest-extrato-${key}-${Date.now()}`;
+          newDestinationsList.push({
+            id: localId,
+            code: summary.code,
+            name: summary.name,
+            department: summary.department,
+            totalRequired: summary.total,
+            priority: summary.priority
+          });
+          createdCount++;
+        }
+      }
+    }
+
+    setDestinations(newDestinationsList);
+    setIsSyncingExtratos(false);
+
+    if (targetCategoryKey) {
+      const summary = extratoSummaries[targetCategoryKey];
+      showToast(`${summary.name}: valor atualizado para ${formatCurrency(summary.total)} a partir dos extratos de ${formatMonthLabel(selectedCompetence)}.`, 'success');
+    } else {
+      showToast(`Painel de Destino sincronizado com os extratos de ${formatMonthLabel(selectedCompetence)} (${updatedCount} atualizadas, ${createdCount} criadas).`, 'success');
+    }
+  };
 
   // Formulário de Lançamento
   const [selectedOriginId, setSelectedOriginId] = useState<string>('');
@@ -642,7 +1028,7 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
         {/* PILAR 2: PAINEL DE DESTINO (NECESSIDADES / DEMANDAS) */}
         <div className="lg:col-span-4 bg-white dark:bg-[#171717] border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-neutral-100 dark:border-neutral-800">
+            <div className="flex items-center justify-between mb-3 pb-3 border-b border-neutral-100 dark:border-neutral-800">
               <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold">
                 <div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl">
                   <Target size={20} />
@@ -654,19 +1040,139 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                   <p className="text-xs text-neutral-500 font-normal">Demandas & Necessidades Totais</p>
                 </div>
               </div>
-              <button
-                onClick={() => setShowAddDestModal(true)}
-                className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-emerald-600 dark:text-emerald-400 rounded-xl transition-colors"
-                title="Adicionar Nova Demanda de Destino"
-              >
-                <Plus size={18} />
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => handleSyncWithExtratos()}
+                  disabled={isSyncingExtratos}
+                  className="px-2.5 py-1.5 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 rounded-xl transition-all text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                  title="Sincronizar demandas de FOPAG, Movimento, Educação e FUS com os extratos do mês"
+                >
+                  <RefreshCw size={13} className={isSyncingExtratos ? 'animate-spin' : ''} />
+                  <span className="hidden sm:inline">Sincronizar Extratos</span>
+                </button>
+                <button
+                  onClick={() => setShowAddDestModal(true)}
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-emerald-600 dark:text-emerald-400 rounded-xl transition-colors"
+                  title="Adicionar Nova Demanda Manual"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* BARRA DE VÍNCULO COM OS EXTRATOS DA COMPETÊNCIA (FOPAG, MOVIMENTO, EDUCAÇÃO E FUS) */}
+            <div className="mb-3.5 p-3 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-emerald-50/30 dark:from-neutral-900 dark:via-indigo-950/20 dark:to-emerald-950/20 border border-indigo-100/80 dark:border-indigo-900/40 rounded-2xl">
+              <div className="flex items-center justify-between gap-2">
+                {/* Seletor de Mês da Competência */}
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSelectedCompetence(prev => addMonthsToId(prev, -1))}
+                    className="p-1 hover:bg-white dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-300 transition-colors"
+                    title="Mês Anterior"
+                  >
+                    <ChevronLeft size={14} />
+                  </button>
+                  <span className="text-xs font-black text-indigo-950 dark:text-indigo-200 px-2 py-0.5 bg-white/90 dark:bg-neutral-800/90 rounded-lg border border-indigo-100/50 dark:border-neutral-700">
+                    {formatMonthLabel(selectedCompetence)}
+                  </span>
+                  <button
+                    onClick={() => setSelectedCompetence(prev => addMonthsToId(prev, 1))}
+                    className="p-1 hover:bg-white dark:hover:bg-neutral-800 rounded-lg text-neutral-600 dark:text-neutral-300 transition-colors"
+                    title="Próximo Mês"
+                  >
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+
+                {/* Total dos Extratos Linkados */}
+                <div className="text-right">
+                  <span className="text-[10px] text-neutral-500 font-medium block">Total Apurado nos Extratos:</span>
+                  <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 font-['Montserrat']">
+                    {formatCurrency(grandTotalExtratos)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Mini cards das 4 contas linkadas */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2.5 pt-2 border-t border-indigo-100/60 dark:border-neutral-800">
+                {(['fopag', 'movimento', 'educacao', 'fus'] as const).map(catKey => {
+                  const sum = extratoSummaries[catKey];
+                  const isDestLinked = destinations.some(d => getDestinationExtratoCategory(d) === catKey);
+                  return (
+                    <div
+                      key={catKey}
+                      onClick={() => handleSyncWithExtratos(catKey)}
+                      className={`p-1.5 rounded-lg border text-[10px] cursor-pointer transition-all ${
+                        isDestLinked
+                          ? 'bg-white dark:bg-neutral-900 border-indigo-200/60 dark:border-indigo-900/60 hover:border-indigo-400 shadow-2xs'
+                          : 'bg-neutral-100/60 dark:bg-neutral-800/40 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-neutral-400'
+                      }`}
+                      title={`Clique para sincronizar ${sum.name}`}
+                    >
+                      <div className="flex items-center justify-between font-bold text-neutral-700 dark:text-neutral-300">
+                        <span className="truncate">{sum.code}</span>
+                        {isDestLinked ? (
+                          <CheckCircle2 size={10} className="text-emerald-500 shrink-0" />
+                        ) : (
+                          <Plus size={10} className="text-indigo-500 shrink-0" />
+                        )}
+                      </div>
+                      <p className="font-extrabold text-[11px] text-indigo-900 dark:text-indigo-200 mt-0.5 truncate">
+                        {formatCurrency(sum.total)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+              {destinations.length === 0 && (
+                <div className="text-center py-6 px-4 border-2 border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl">
+                  <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-2.5">
+                    <FileSpreadsheet size={24} />
+                  </div>
+                  <h4 className="font-bold text-sm text-neutral-800 dark:text-neutral-200">
+                    Nenhuma Demanda de Destino Cadastrada
+                  </h4>
+                  <p className="text-xs text-neutral-500 mt-1 max-w-xs mx-auto">
+                    Importe automaticamente as 4 demandas vinculadas aos extratos de {formatMonthLabel(selectedCompetence)}:
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 my-3.5 max-w-sm mx-auto text-left text-xs">
+                    <div className="p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="font-bold text-[11px] block text-neutral-700 dark:text-neutral-300">FOPAG (Folha)</span>
+                      <span className="font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(extratoSummaries.fopag.total)}</span>
+                    </div>
+                    <div className="p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="font-bold text-[11px] block text-neutral-700 dark:text-neutral-300">MOV (Movimento)</span>
+                      <span className="font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(extratoSummaries.movimento.total)}</span>
+                    </div>
+                    <div className="p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="font-bold text-[11px] block text-neutral-700 dark:text-neutral-300">EDU (Educação)</span>
+                      <span className="font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(extratoSummaries.educacao.total)}</span>
+                    </div>
+                    <div className="p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                      <span className="font-bold text-[11px] block text-neutral-700 dark:text-neutral-300">FUS (Saúde)</span>
+                      <span className="font-black text-indigo-600 dark:text-indigo-400">{formatCurrency(extratoSummaries.fus.total)}</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleSyncWithExtratos()}
+                    disabled={isSyncingExtratos}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold text-xs rounded-xl shadow-md transition-all inline-flex items-center gap-2"
+                  >
+                    <Zap size={14} />
+                    <span>Criar 4 Demandas Vinculadas aos Extratos</span>
+                  </button>
+                </div>
+              )}
+
               {destinations.map(dest => {
                 const { totalRequired, totalAllocated, pendingDemand, progressPercent, isLiquidated, surplus } = getDestinationTotals(dest.id);
                 const isSelected = selectedDestinationId === dest.id;
+                const linkedCategory = getDestinationExtratoCategory(dest);
+                const categorySummary = linkedCategory ? extratoSummaries[linkedCategory] : null;
+                const isSyncedWithExtrato = categorySummary && totalRequired === categorySummary.total && categorySummary.total > 0;
 
                 return (
                   <div
@@ -680,7 +1186,7 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="px-2 py-0.5 bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded text-[10px] font-black uppercase">
                             {dest.code}
                           </span>
@@ -691,6 +1197,11 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                           }`}>
                             {dest.priority}
                           </span>
+                          {linkedCategory && (
+                            <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1">
+                              <Link2 size={9} /> Link Extrato
+                            </span>
+                          )}
                         </div>
                         <h4 className="font-bold text-sm text-neutral-900 dark:text-white mt-1">
                           {dest.name}
@@ -710,6 +1221,18 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                           </span>
                         )}
                         <div className="flex items-center gap-1">
+                          {linkedCategory && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSyncWithExtratos(linkedCategory);
+                              }}
+                              className="p-1.5 text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 rounded-md transition-all"
+                              title={`Puxar valor do extrato (${categorySummary ? formatCurrency(categorySummary.total) : 'R$ 0,00'})`}
+                            >
+                              <RefreshCw size={13} />
+                            </button>
+                          )}
                           <button
                             onClick={(e) => handleEditDest(dest, e)}
                             className="p-1.5 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-md transition-all"
@@ -727,6 +1250,40 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* VÍNCULO ESPECÍFICO COM EXTRATO */}
+                    {categorySummary && (
+                      <div className="mt-2.5 pt-2 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between text-[11px]">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-neutral-500 font-medium">Extrato Apurado:</span>
+                          <strong className="text-indigo-900 dark:text-indigo-200 font-bold font-['Montserrat']">
+                            {formatCurrency(categorySummary.total)}
+                          </strong>
+                          {(categorySummary.filesCount > 0 || categorySummary.invoicesCount > 0) && (
+                            <span className="text-[9px] text-neutral-400 hidden sm:inline">
+                              ({categorySummary.filesCount} arq, {categorySummary.invoicesCount} nfs)
+                            </span>
+                          )}
+                        </div>
+                        {isSyncedWithExtrato ? (
+                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 size={11} /> Sincronizado
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSyncWithExtratos(linkedCategory!);
+                            }}
+                            className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                            title="Atualizar total da demanda para o valor apurado no extrato"
+                          >
+                            <RefreshCw size={10} /> Puxar R$ {formatCurrency(categorySummary.total)}
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* TERMÔMETRO DE PROGRESSO */}
                     <div className="mt-3">
@@ -825,9 +1382,11 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                 >
                   {destinations.map(d => {
                     const { pendingDemand, isLiquidated } = getDestinationTotals(d.id);
+                    const linkedCat = getDestinationExtratoCategory(d);
+                    const extSum = linkedCat ? extratoSummaries[linkedCat] : null;
                     return (
                       <option key={d.id} value={d.id}>
-                        {d.code} - {d.name} {isLiquidated ? '(100% ATENDIDA)' : `(Falta: ${formatCurrency(pendingDemand)})`}
+                        {d.code} - {d.name} {isLiquidated ? '(100% ATENDIDA)' : `(Falta: ${formatCurrency(pendingDemand)})`} {extSum && extSum.total > 0 ? `• [Extrato: ${formatCurrency(extSum.total)}]` : ''}
                       </option>
                     );
                   })}
@@ -838,6 +1397,20 @@ export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
                     {formatCurrency(currentSelectedDestTotals.pendingDemand)}
                   </strong>
                 </div>
+                {(() => {
+                  const selDest = destinations.find(d => d.id === selectedDestinationId);
+                  const selCat = selDest ? getDestinationExtratoCategory(selDest) : null;
+                  const selExtSum = selCat ? extratoSummaries[selCat] : null;
+                  if (selExtSum && selExtSum.total > 0) {
+                    return (
+                      <div className="mt-1 flex items-center justify-between text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md">
+                        <span>Vinculado ao Extrato ({selExtSum.code}):</span>
+                        <strong>{formatCurrency(selExtSum.total)}</strong>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
               </div>
 
               {/* VALOR A RETIRAR COM BOTOES DE PREENCHIMENTO RÁPIDO */}
