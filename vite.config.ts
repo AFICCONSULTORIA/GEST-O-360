@@ -12,23 +12,53 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
-        includeAssets: ['icon.svg'],
+        includeAssets: [
+          'icon.svg',
+          'apple-touch-icon.png',
+          'favicon-32x32.png',
+          'favicon-16x16.png',
+          'logo-gestao360.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png'
+        ],
         workbox: {
           maximumFileSizeToCacheInBytes: 8 * 1024 * 1024 // 8MB
         },
         manifest: {
-          name: 'Gestão 360',
+          name: 'Gestão 360 - Sistema de Gestão Pública',
           short_name: 'Gestão 360',
-          description: 'Plataforma Integrada de Gestão',
-          theme_color: '#171717',
-          background_color: '#F9F9F8',
+          description: 'Plataforma integrada de inteligência e gestão para a administração pública municipal.',
+          theme_color: '#0a0907',
+          background_color: '#0a0907',
           display: 'standalone',
+          orientation: 'any',
+          start_url: '/',
+          scope: '/',
           icons: [
             {
-              src: 'icon.svg',
-              sizes: '192x192 512x512',
+              src: '/pwa-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/icon.svg',
+              sizes: 'any',
               type: 'image/svg+xml',
-              purpose: 'any maskable'
+              purpose: 'any'
             }
           ]
         }
