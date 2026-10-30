@@ -1729,7 +1729,7 @@ export default function App() {
             {activeView === 'norms' && <NormsModule />}
             {activeView === 'protocol' && <ProtocolModule searchQuery={searchQuery} currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'contracts' && <ContractsModule currentInstitution={currentInstitution} currentUser={currentUser} />}
-            {activeView === 'education' && <EducationModule />}
+            {activeView === 'education' && <EducationModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} currentInstitution={currentInstitution} />}
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}

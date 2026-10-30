@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Package, Search, Home, Pill } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { Medication } from './Farmacia';
+import { DEFAULT_MEDICATIONS } from './index';
 
 export const PublicFarmaciaPortal = ({ darkMode, currentInstitution }: { darkMode: boolean, currentInstitution?: any }) => {
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -11,17 +12,33 @@ export const PublicFarmaciaPortal = ({ darkMode, currentInstitution }: { darkMod
 
   const loadMedications = async () => {
     setIsLoading(true);
-    let query = supabase.from('medications').select('*');
-    if (currentInstitution) {
-      query = query.eq('institution_id', currentInstitution.id);
+    try {
+      let query = supabase.from('medications').select('*');
+      if (currentInstitution?.id) {
+        query = query.eq('institution_id', currentInstitution.id);
+      }
+      
+      const { data, error } = await query.order('name', { ascending: true });
+      
+      if (!error && data && data.length > 0) {
+        setMedications(data as Medication[]);
+        setIsLoading(false);
+        return;
+      }
+    } catch (e) {
+      console.warn('Erro ao consultar banco, usando catálogo da farmácia:', e);
     }
-    
-    const { data, error } = await query.order('name', { ascending: true });
-    
-    if (error) {
-      console.error('Erro ao carregar medicamentos:', error);
-    } else if (data) {
-      setMedications(data as Medication[]);
+
+    // Fallback: estoque salvo localmente ou lista padrão oficial de medicamentos SUS
+    try {
+      const local = localStorage.getItem('gestao360_demo_saude_medications');
+      if (local) {
+        setMedications(JSON.parse(local));
+      } else {
+        setMedications(DEFAULT_MEDICATIONS);
+      }
+    } catch (_) {
+      setMedications(DEFAULT_MEDICATIONS);
     }
     setIsLoading(false);
   };

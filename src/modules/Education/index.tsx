@@ -1,21 +1,31 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell
+  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationEnrollmentManager } from './components/EducationEnrollmentManager';
 import { FamilyPortalView } from './components/FamilyPortalView';
 import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsManager';
+import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 
-export const EducationModule: React.FC = () => {
-  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'familia' | 'avisos'>('staff');
+interface EducationModuleProps {
+  currentInstitution?: { id: string; name?: string; subdomain?: string } | null;
+  currentUser?: any;
+}
+
+export const EducationModule: React.FC<EducationModuleProps> = ({
+  currentInstitution,
+  currentUser
+}) => {
+  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'eleicao' | 'familia' | 'avisos'>('staff');
 
   const navigationTabs = [
     { id: 'staff', label: 'Professores & Equipe', icon: Users },
     { id: 'matriculas', label: 'Secretaria & Matrículas', icon: FileText },
     { id: 'creche', label: 'Fila CMEI', icon: Baby },
+    { id: 'eleicao', label: 'Eleição Escolar & Diretores', icon: Vote },
     { id: 'familia', label: 'Portal da Família', icon: HeartHandshake },
     { id: 'avisos', label: 'Mural de Avisos', icon: Bell },
   ] as const;
@@ -92,6 +102,18 @@ export const EducationModule: React.FC = () => {
             transition={{ duration: 0.2 }}
           >
             <EducationCrecheAdmin />
+          </motion.div>
+        )}
+
+        {educationView === 'eleicao' && (
+          <motion.div
+            key="eleicao"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EducationVotingAdmin />
           </motion.div>
         )}
 

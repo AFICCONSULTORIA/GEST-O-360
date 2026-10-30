@@ -40,10 +40,11 @@ export const SaudeQueue: React.FC<SaudeQueueProps> = ({
   const queueItems = appointments.filter(a => a.status === 'Aguardando Regulação');
 
   const filteredQueue = queueItems.filter(apt => {
+    const q = searchQuery.toLowerCase();
     const matchSearch = 
-      apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.patient_cpf.includes(searchQuery) ||
-      apt.patient_sus.includes(searchQuery);
+      (apt.patient_name || '').toLowerCase().includes(q) ||
+      (apt.patient_cpf || '').includes(q) ||
+      (apt.patient_sus || '').includes(q);
     
     const matchSpecialty = filterSpecialty === 'Todas' || apt.specialty === filterSpecialty;
 

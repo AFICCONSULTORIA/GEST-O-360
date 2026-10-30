@@ -89,9 +89,9 @@ export const SaudeConsultorio: React.FC<SaudeConsultorioProps> = ({
         if (!searchQueue.trim()) return true;
         const q = searchQueue.toLowerCase();
         return (
-          a.patient_name.toLowerCase().includes(q) ||
-          a.patient_cpf.includes(q) ||
-          a.patient_sus.includes(q)
+          (a.patient_name || '').toLowerCase().includes(q) ||
+          (a.patient_cpf || '').includes(q) ||
+          (a.patient_sus || '').includes(q)
         );
       })
       .sort((a, b) => {

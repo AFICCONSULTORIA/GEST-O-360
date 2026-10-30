@@ -49,10 +49,12 @@ export const SaudeAgenda: React.FC<SaudeAgendaProps> = ({
     const matchUnit = filterUnit === 'Todas' || apt.unit_name === filterUnit || (!apt.unit_name && filterUnit === 'Todas');
     const matchSpecialty = filterSpecialty === 'Todas' || apt.specialty === filterSpecialty;
     const matchStatus = filterStatus === 'Todos' || apt.status === filterStatus;
+    const q = searchQuery.toLowerCase();
     const matchSearch = 
-      apt.patient_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      apt.patient_cpf.includes(searchQuery) ||
-      (apt.doctor_name && apt.doctor_name.toLowerCase().includes(searchQuery.toLowerCase()));
+      (apt.patient_name || '').toLowerCase().includes(q) ||
+      (apt.patient_cpf || '').includes(q) ||
+      (apt.patient_sus || '').includes(q) ||
+      (apt.doctor_name && apt.doctor_name.toLowerCase().includes(q));
 
     return matchDate && matchUnit && matchSpecialty && matchStatus && matchSearch;
   }).sort((a, b) => {

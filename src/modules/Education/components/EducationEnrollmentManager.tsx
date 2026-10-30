@@ -110,9 +110,10 @@ export const EducationEnrollmentManager: React.FC = () => {
   };
 
   const filteredEnrollments = enrollments.filter(e => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch = 
-      e.student_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.class_name.toLowerCase().includes(searchQuery.toLowerCase());
+      (e.student_name || '').toLowerCase().includes(q) ||
+      (e.class_name || '').toLowerCase().includes(q);
     return matchesSearch;
   });
 

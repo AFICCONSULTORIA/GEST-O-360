@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 
 import { LogoCompass } from './LogoCompass';
-import { Institution } from '../types';
+import { Institution, AdminUser } from '../types';
 import { isInstitutionModuleActive, withInstitutionQuery } from '../lib/institutionModules';
 
 export interface LandingPageProps {
@@ -13,9 +13,18 @@ export interface LandingPageProps {
   setDarkMode: (v: boolean) => void;
   currentInstitution?: Institution | null;
   onReturnToHome?: () => void;
+  isAuthenticated?: boolean;
+  currentUser?: AdminUser | null;
 }
 
-export const LandingPage = ({ darkMode, setDarkMode, currentInstitution, onReturnToHome }: LandingPageProps) => {
+export const LandingPage = ({ 
+  darkMode, 
+  setDarkMode, 
+  currentInstitution, 
+  onReturnToHome,
+  isAuthenticated = false,
+  currentUser
+}: LandingPageProps) => {
   const showNoticias = isInstitutionModuleActive(currentInstitution, 'noticias');
   const showServicos = isInstitutionModuleActive(currentInstitution, 'servicos_publicos');
   const showSaude = isInstitutionModuleActive(currentInstitution, 'saude');
@@ -59,10 +68,20 @@ export const LandingPage = ({ darkMode, setDarkMode, currentInstitution, onRetur
           <div className="flex items-center gap-2 sm:gap-3">
             <a
               href={withInstitutionQuery('/servidores', currentInstitution)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 shadow-sm transition hover:scale-105"
-              title="Acesso Restrito do Servidor Municipal"
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white shadow-sm transition hover:scale-105 ${isAuthenticated ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-neutral-900 dark:bg-white dark:text-neutral-950'}`}
+              title={isAuthenticated ? 'Acessar minha conta logada' : 'Acesso Restrito do Servidor Municipal'}
             >
-              <Lock size={13} /> Área do Servidor
+              {isAuthenticated ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  <span>Acessar Meu Painel</span>
+                </>
+              ) : (
+                <>
+                  <Lock size={13} />
+                  <span>Área do Servidor</span>
+                </>
+              )}
             </a>
             <button
               onClick={() => {
@@ -317,8 +336,8 @@ export const LandingPage = ({ darkMode, setDarkMode, currentInstitution, onRetur
                   </p>
                 </div>
               </div>
-              <div className="relative mt-8 flex items-center gap-2 text-neutral-800 dark:text-neutral-200 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
-                <span>Entrar no Sistema</span>
+              <div className="relative mt-8 flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
+                <span>{isAuthenticated ? 'Acessar Minha Conta (Logado)' : 'Entrar no Sistema'}</span>
                 <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
               </div>
             </a>

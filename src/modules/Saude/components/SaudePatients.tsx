@@ -79,11 +79,12 @@ export const SaudePatients: React.FC<SaudePatientsProps> = ({
   }, [requests, localExtraRequests]);
 
   const filteredPatients = patients.filter(p => {
+    const q = searchQuery.toLowerCase();
     const matchSearch = 
-      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.cpf.includes(searchQuery) ||
-      p.sus_number.includes(searchQuery) ||
-      (p.neighborhood && p.neighborhood.toLowerCase().includes(searchQuery.toLowerCase()));
+      (p.name || '').toLowerCase().includes(q) ||
+      (p.cpf || '').includes(q) ||
+      (p.sus_number || '').includes(q) ||
+      (p.neighborhood && p.neighborhood.toLowerCase().includes(q));
 
     const matchUbs = filterUbs === 'Todas' || p.ubs_reference === filterUbs;
     const matchCondition = 

@@ -244,12 +244,13 @@ export const EducationStaffAdmin: React.FC<EducationStaffAdminProps> = ({
 
   // Filtragem
   const filteredStaff = staffList.filter(staff => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch = 
-      staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.registration.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.school.toLowerCase().includes(searchQuery.toLowerCase());
+      (staff.name || '').toLowerCase().includes(q) ||
+      (staff.email || '').toLowerCase().includes(q) ||
+      (staff.registration || '').toLowerCase().includes(q) ||
+      (staff.subject || '').toLowerCase().includes(q) ||
+      (staff.school || '').toLowerCase().includes(q);
 
     const matchesRole = roleFilter === 'all' || staff.role === roleFilter;
     const matchesSchool = selectedSchool === 'all' || staff.school === selectedSchool;

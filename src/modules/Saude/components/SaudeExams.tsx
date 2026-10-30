@@ -119,11 +119,11 @@ export const SaudeExams: React.FC<SaudeExamsProps> = ({
   const filteredRequests = requests.filter(req => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = 
-      req.patient_name.toLowerCase().includes(query) ||
-      req.patient_cpf.includes(query) ||
-      req.patient_sus.includes(query) ||
-      req.exam_name.toLowerCase().includes(query) ||
-      req.doctor_name.toLowerCase().includes(query);
+      (req.patient_name || '').toLowerCase().includes(query) ||
+      (req.patient_cpf || '').includes(query) ||
+      (req.patient_sus || '').includes(query) ||
+      (req.exam_name || '').toLowerCase().includes(query) ||
+      (req.doctor_name || '').toLowerCase().includes(query);
 
     const matchesStatus = 
       selectedStatus === 'todos' ||
