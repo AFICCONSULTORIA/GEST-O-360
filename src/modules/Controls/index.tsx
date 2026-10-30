@@ -11,6 +11,7 @@ import {
 import { showToast } from '../../components/ui/Toast';
 import { AccountingChangesControl } from './components/AccountingChangesControl';
 import { FleetFuelManager } from './components/FleetFuelManager';
+import { VerbasIndenizatoriasControl } from './components/VerbasIndenizatoriasControl';
 import { hasPermission } from '../../lib/permissions';
 
 // Destructure common icons to avoid changing code
@@ -25,7 +26,8 @@ const ControlsModule = ({
   onDelete, 
   onView,
   onViewHistory,
-  currentUser
+  currentUser,
+  currentInstitution
 }: { 
   controls: CheckItem[], 
   onAddNew: () => void,
@@ -33,18 +35,20 @@ const ControlsModule = ({
   onDelete: (id: string) => void,
   onView: (c: CheckItem) => void,
   onViewHistory: (c: CheckItem) => void,
-  currentUser?: AdminUser | null
+  currentUser?: AdminUser | null,
+  currentInstitution?: Institution | null
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'urgent' | 'completed'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
-  const [controlsTab, setControlsTab] = useState<'compliance' | 'accounting' | 'fuel'>('compliance');
+  const [controlsTab, setControlsTab] = useState<'compliance' | 'verbas' | 'accounting' | 'fuel'>('compliance');
 
   const canViewAccounting = !currentUser || hasPermission(currentUser, 'accounting_changes', 'view');
   const canViewFuel = !currentUser || hasPermission(currentUser, 'controls', 'view');
 
   const navigationTabs = useMemo(() => [
     { id: 'compliance' as const, label: 'Controles Internos & Compliance', icon: ClipboardCheck },
+    { id: 'verbas' as const, label: 'Verbas Indenizatórias', icon: CircleDollarSign },
     ...(canViewAccounting ? [{ id: 'accounting' as const, label: 'Alterações na Contabilidade', icon: Scale }] : []),
     ...(canViewFuel ? [{ id: 'fuel' as const, label: 'Controle de Frotas & Combustível', icon: Truck }] : [])
   ], [canViewAccounting, canViewFuel]);
@@ -93,6 +97,8 @@ const ControlsModule = ({
           <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center">
             {controlsTab === 'compliance' ? (
               <ClipboardCheck size={28} />
+            ) : controlsTab === 'verbas' ? (
+              <CircleDollarSign size={28} />
             ) : controlsTab === 'accounting' ? (
               <Scale size={28} />
             ) : (
@@ -103,6 +109,8 @@ const ControlsModule = ({
             <h2 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
               {controlsTab === 'compliance' 
                 ? 'Painel de Controles Internos' 
+                : controlsTab === 'verbas'
+                ? 'Controle de Verbas Indenizatórias'
                 : controlsTab === 'accounting' 
                 ? 'Controle de Alterações na Contabilidade' 
                 : 'Controle & Auditoria de Frotas'}
@@ -110,6 +118,8 @@ const ControlsModule = ({
             <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">
               {controlsTab === 'compliance' 
                 ? 'Monitore prazos preventivos, exigências do TCE e conformidade das rotinas municipais.' 
+                : controlsTab === 'verbas'
+                ? 'Acompanhamento mensal da entrega de requerimentos e relatórios comprobatórios por servidor.'
                 : controlsTab === 'accounting' 
                 ? 'Auditoria de solicitações de alterações contábeis, retificações de empenho e pareceres técnicos.'
                 : 'Ordens digitais de abastecimento, canhotos com QR Code validador e conciliação em três vias.'}
@@ -139,6 +149,8 @@ const ControlsModule = ({
         <FleetFuelManager currentUser={currentUser} />
       ) : controlsTab === 'accounting' ? (
         <AccountingChangesControl searchQuery={searchTerm} currentUser={currentUser} />
+      ) : controlsTab === 'verbas' ? (
+        <VerbasIndenizatoriasControl currentUser={currentUser} currentInstitution={currentInstitution} searchQuery={searchTerm} />
       ) : (
 
         <>

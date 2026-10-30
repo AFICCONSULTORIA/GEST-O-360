@@ -1621,6 +1621,7 @@ export default function App() {
                 onView={setViewingControl}
                 onViewHistory={setViewingHistory}
                 currentUser={currentUser}
+                currentInstitution={currentInstitution}
               />
             )}
             {activeView === 'accounting_changes' && (
