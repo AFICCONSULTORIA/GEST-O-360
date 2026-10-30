@@ -165,9 +165,7 @@ export const SalesLandingPage: React.FC<SalesLandingPageProps> = ({
   };
 
   const officialClientInstitutions: Institution[] = [
-    { id: 'inst_1', name: 'Prefeitura Municipal de Torixoréu', subdomain: 'torixoreu', logo_url: 'https://www.torixoreu.mt.gov.br/images/logoHeadernovo.png' },
-    { id: 'inst_2', name: 'Prefeitura Municipal de Barra do Garças', subdomain: 'barradogarcas', logo_url: '/brasao-municipio.png' },
-    { id: 'inst_3', name: 'Prefeitura Municipal de Pontal do Araguaia', subdomain: 'pontaldoaraguaia', logo_url: '/brasao-municipio.png' }
+    { id: 'inst_1', name: 'Prefeitura Municipal de Torixoréu', subdomain: 'torixoreu', logo_url: 'https://www.torixoreu.mt.gov.br/images/logoHeadernovo.png' }
   ];
 
   // Filtro de segurança: elimina terminantemente quaisquer dados fictícios ou registros de 'demo'/'demonstração'
@@ -1348,7 +1346,7 @@ export const SalesLandingPage: React.FC<SalesLandingPageProps> = ({
                 <label className="block text-neutral-700 dark:text-neutral-300 mb-1">Município ou Órgão Público *</label>
                 <input 
                   type="text" 
-                  placeholder="Ex: Prefeitura Municipal de Barra do Garças - MT" 
+                  placeholder="Ex: Prefeitura Municipal de Torixoréu - MT" 
                   value={contactCity}
                   onChange={(e) => setContactCity(e.target.value)}
                   className="w-full bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-700 rounded-xl px-4 py-2.5 text-xs text-neutral-900 dark:text-white placeholder-neutral-500 focus:outline-none focus:border-emerald-500 transition"

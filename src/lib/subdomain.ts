@@ -76,25 +76,13 @@ export const fetchInstitutionBySubdomain = async (subdomain: string): Promise<In
     console.error('Erro de conexão ao buscar instituição pelo subdomínio:', err);
   }
 
-  // Fallback resiliente para municípios oficiais parceiros cadastrados
+  // Fallback para o município oficial ativo em produção
   const fallbackMunicipalities: Institution[] = [
     {
       id: 'inst_1',
       name: 'Prefeitura Municipal de Torixoréu',
       subdomain: 'torixoreu',
       logo_url: 'https://www.torixoreu.mt.gov.br/images/logoHeadernovo.png'
-    },
-    {
-      id: 'inst_2',
-      name: 'Prefeitura Municipal de Barra do Garças',
-      subdomain: 'barradogarcas',
-      logo_url: '/brasao-municipio.png'
-    },
-    {
-      id: 'inst_3',
-      name: 'Prefeitura Municipal de Pontal do Araguaia',
-      subdomain: 'pontaldoaraguaia',
-      logo_url: '/brasao-municipio.png'
     }
   ];
 

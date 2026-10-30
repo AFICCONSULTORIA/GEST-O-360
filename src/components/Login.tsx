@@ -7,6 +7,7 @@ import { getSubdomain } from '../lib/subdomain';
 import { isDemoEnvironment, setDemoEnvironment } from '../lib/demoManager';
 import { Institution } from '../types';
 import { LogoCompass } from './LogoCompass';
+import { VersionBadge } from './VersionBadge';
 
 // Chapada dos Guimarães / Pantanal — Mato Grosso
 const BG_IMAGE = '/login-servidor-bg.jpg';
@@ -14,7 +15,12 @@ const BG_IMAGE = '/login-servidor-bg.jpg';
 
 
 export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInstitution, isSaaSAdmin = false }: { onLogin: () => void, onDemoLogin?: () => void, darkMode: boolean, setDarkMode?: (v: boolean) => void, currentInstitution?: Institution | null, isSaaSAdmin?: boolean }) => {
-  const [username, setUsername] = React.useState('');
+  const [username, setUsername] = React.useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('gestao360_remembered_email') || '';
+    }
+    return '';
+  });
   const [password, setPassword] = React.useState('');
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -27,6 +33,11 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
     
     try {
       const cleanUser = username.trim().toLowerCase();
+      if (cleanUser) {
+        localStorage.setItem('gestao360_remembered_email', cleanUser);
+      }
+      sessionStorage.setItem('gestao360_confirmed_login', 'true');
+
       if (cleanUser === 'aficconsultoria@gmail.com' && password === 'gestao123@') {
         onLogin();
         return;
@@ -219,6 +230,7 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
               <button
                 type="button"
                 onClick={() => {
+                  sessionStorage.setItem('gestao360_confirmed_login', 'true');
                   setDemoEnvironment(true);
                   onDemoLogin();
                 }}
@@ -232,7 +244,10 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
           </div>
 
           {/* Rodapé do card */}
-          <div className="px-6 sm:px-10 pb-5 sm:pb-6 text-center border-t border-neutral-900/5 dark:border-white/5 pt-4">
+          <div className="px-6 sm:px-10 pb-5 sm:pb-6 text-center border-t border-neutral-900/5 dark:border-white/5 pt-4 space-y-2">
+            <div className="flex justify-center">
+              <VersionBadge variant="login" />
+            </div>
             <p className="text-[9px] sm:text-[10px] text-neutral-400 dark:text-white/30 font-medium leading-relaxed">
               © {new Date().getFullYear()} Gestão 360 — Acesso restrito a servidores autorizados
             </p>

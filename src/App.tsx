@@ -65,9 +65,11 @@ import { Dashboard } from './components/Dashboard';
 import { MayorDashboard } from './components/MayorDashboard';
 import { SalesLandingPage } from './components/SalesLandingPage';
 import { LandingPage } from './components/LandingPage';
+import { MunicipalityPortalHub } from './components/MunicipalityPortalHub';
 import { Login } from './components/Login';
 import { ProposalModal } from './components/ProposalModal';
 import { DemoModuleBanner } from './components/DemoModuleBanner';
+import { VersionBadge } from './components/VersionBadge';
 import { isDemoEnvironment, setDemoEnvironment } from './lib/demoManager';
 import { DEMO_USER, DEMO_INSTITUTION } from './lib/demoData';
 import { isInstitutionModuleActive, withInstitutionQuery } from './lib/institutionModules';
@@ -197,6 +199,8 @@ export default function App() {
               // Bloqueio de Segurança para o Portal SaaS (Subdomínio 'admin')
               if (isSaaSAdmin && data.role !== 'Super Admin') {
                 showToast('Acesso restrito para Super Administradores da plataforma.', 'error');
+                localStorage.removeItem('gestao360_confirmed_login');
+                sessionStorage.removeItem('gestao360_confirmed_login');
                 await supabase.auth.signOut();
                 setIsAuthenticated(false);
                 setCurrentUser(null);
@@ -206,6 +210,8 @@ export default function App() {
               // Bloqueio de Segurança para Prefeitura Municipal
               if (resolvedInst && data.role !== 'Super Admin' && data.institution_id !== resolvedInst.id) {
                 showToast('Acesso não autorizado para esta prefeitura.', 'error');
+                localStorage.removeItem('gestao360_confirmed_login');
+                sessionStorage.removeItem('gestao360_confirmed_login');
                 await supabase.auth.signOut();
                 setIsAuthenticated(false);
                 setCurrentUser(null);
@@ -227,6 +233,7 @@ export default function App() {
             } else {
               console.warn('[Auth] Usuário autenticado não encontrado na tabela admin_users.');
               showToast('Seu usuário não possui acesso a este sistema.', 'error');
+              sessionStorage.removeItem('gestao360_confirmed_login');
               await supabase.auth.signOut();
               setIsAuthenticated(false);
               setCurrentUser(null);
@@ -237,6 +244,14 @@ export default function App() {
           setCurrentUser(null);
         }
       };
+
+      // Se for sessão de demonstração salva
+      if (typeof window !== 'undefined' && localStorage.getItem('gestao360_demo_session') === 'true') {
+        setDemoEnvironment(true);
+        setCurrentUser(DEMO_USER);
+        if (!activeInst) setCurrentInstitution(DEMO_INSTITUTION);
+        setIsAuthenticated(true);
+      }
 
       const checkSession = async () => {
         try {
@@ -664,9 +679,20 @@ export default function App() {
     currentPath.startsWith('/form') || 
     currentPath.startsWith('/responder') || 
     (window.location.search.includes('form=') || window.location.search.includes('formulario='));
-  const isAdminRoute = currentPath === '/servidores' || currentPath.startsWith('/servidores/');
+  const isAdminRoute = 
+    currentPath === '/servidores' || 
+    currentPath.startsWith('/servidores/') ||
+    cleanPath === '/login' ||
+    cleanPath === '/entrar';
   const isLandingPage = currentPath === '/';
-  const isSalesPage = currentPath === '/vendas' || currentPath === '/apresentacao' || currentPath === '/institucional';
+  const isLandingPageRoute = 
+    cleanPath === '/landingpage' || 
+    cleanPath === '/lanningpage' || 
+    cleanPath === '/landing' ||
+    cleanPath === '/lanning' ||
+    cleanPath === '/vendas' || 
+    cleanPath === '/apresentacao' || 
+    cleanPath === '/institucional';
   const isProposalRoute = 
     cleanPath === '/proposta' || 
     cleanPath === '/proposta-comercial' || 
@@ -675,11 +701,52 @@ export default function App() {
     cleanPath.startsWith('/proposta/') ||
     cleanPath.startsWith('/proposta-comercial/');
 
+  // Logout seguro: limpa confirmação de sessão, desloga e retorna para a tela de login
+  const handleLogout = async () => {
+    try {
+      localStorage.removeItem('gestao360_demo_session');
+      localStorage.removeItem('gestao360_confirmed_login');
+      sessionStorage.removeItem('gestao360_confirmed_login');
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Erro ao sair do Supabase:', err);
+    } finally {
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+      
+      const sub = currentInstitution?.subdomain || getSubdomain();
+      if (sub && sub !== 'demo') {
+        window.location.href = withInstitutionQuery('/servidores', currentInstitution);
+      } else {
+        window.location.href = '/servidores';
+      }
+    }
+  };
+
   // Rota Especial: Central de Controle SaaS (Subdomínio 'admin')
   if (isSuperAdminPortal) {
     if (!isAuthenticated) {
       return (
-        <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setDemoEnvironment(true); setIsAuthenticated(true); setCurrentUser(DEMO_USER); if (!currentInstitution) setCurrentInstitution(DEMO_INSTITUTION); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={null} isSaaSAdmin={true} />
+        <Login 
+          onLogin={() => {
+            localStorage.setItem('gestao360_confirmed_login', 'true');
+            sessionStorage.setItem('gestao360_confirmed_login', 'true');
+            setIsAuthenticated(true);
+          }} 
+          onDemoLogin={() => { 
+            localStorage.setItem('gestao360_demo_session', 'true');
+            localStorage.setItem('gestao360_confirmed_login', 'true');
+            sessionStorage.setItem('gestao360_confirmed_login', 'true');
+            setDemoEnvironment(true); 
+            setIsAuthenticated(true); 
+            setCurrentUser(DEMO_USER); 
+            if (!currentInstitution) setCurrentInstitution(DEMO_INSTITUTION); 
+          }} 
+          darkMode={darkMode} 
+          setDarkMode={setDarkMode} 
+          currentInstitution={null} 
+          isSaaSAdmin={true} 
+        />
       );
     }
 
@@ -707,8 +774,7 @@ export default function App() {
     const url = new URL(window.location.href);
     url.searchParams.set('inst', targetParam);
     url.searchParams.delete('sales');
-    window.history.pushState({}, '', url.toString());
-    document.title = `GESTÃO 360 · ${inst.name}`;
+    window.location.href = withInstitutionQuery('/', inst);
   };
 
   const handleReturnToSales = () => {
@@ -717,8 +783,7 @@ export default function App() {
     url.searchParams.delete('inst');
     url.searchParams.delete('subdomain');
     url.searchParams.delete('municipio');
-    window.history.pushState({}, '', url.pathname);
-    document.title = 'GESTÃO 360 · Plataforma de Gestão Pública e Governança Municipal';
+    window.location.href = '/';
   };
 
   // Rota de Proposta Comercial Institucional (Standalone / Envio Direto)
@@ -733,8 +798,8 @@ export default function App() {
     );
   }
 
-  // Rota de apresentação e vendas
-  if (isSalesPage) {
+  // Rota de apresentação e vendas comercial (/landingpage, /lanningpage)
+  if (isLandingPageRoute) {
     return (
       <SalesLandingPage 
         darkMode={darkMode} 
@@ -746,17 +811,23 @@ export default function App() {
     );
   }
 
-  // Página inicial — se não houver subdomínio, exibe a página institucional com seletor.
-  // Se houver subdomínio, exibe a landing page pública daquela prefeitura.
+  // Página inicial padrão (link sem subdomínio gestao360sistema.com.br):
+  // Exibe o Menu Principal Clean de Municípios Clientes com logos visíveis
   if (isLandingPage) {
     if (!currentInstitution) {
       return (
-        <SalesLandingPage 
+        <MunicipalityPortalHub 
           darkMode={darkMode} 
           setDarkMode={setDarkMode} 
-          showMunicipalitySelector={true} 
           institutions={institutions} 
           onSelectMunicipality={handleSelectInstitution}
+          onNavigateToLandingPage={() => { window.location.href = '/landingpage'; }}
+          onNavigateToDemo={() => {
+            sessionStorage.setItem('gestao360_confirmed_login', 'true');
+            setDemoEnvironment(true);
+            setCurrentInstitution(DEMO_INSTITUTION);
+            window.location.href = withInstitutionQuery('/servidores', DEMO_INSTITUTION);
+          }}
         />
       );
     }
@@ -766,6 +837,8 @@ export default function App() {
         setDarkMode={setDarkMode} 
         currentInstitution={currentInstitution} 
         onReturnToHome={handleReturnToSales}
+        isAuthenticated={isAuthenticated}
+        currentUser={currentUser}
       />
     );
   }
@@ -956,7 +1029,25 @@ export default function App() {
 
   if (!isAuthenticated) {
     return (
-      <Login onLogin={() => setIsAuthenticated(true)} onDemoLogin={() => { setDemoEnvironment(true); setIsAuthenticated(true); setCurrentUser(DEMO_USER); if (!currentInstitution) setCurrentInstitution(DEMO_INSTITUTION); }} darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
+      <Login 
+        onLogin={() => {
+          localStorage.setItem('gestao360_confirmed_login', 'true');
+          sessionStorage.setItem('gestao360_confirmed_login', 'true');
+          setIsAuthenticated(true);
+        }} 
+        onDemoLogin={() => { 
+          localStorage.setItem('gestao360_demo_session', 'true');
+          localStorage.setItem('gestao360_confirmed_login', 'true');
+          sessionStorage.setItem('gestao360_confirmed_login', 'true');
+          setDemoEnvironment(true); 
+          setIsAuthenticated(true); 
+          setCurrentUser(DEMO_USER); 
+          if (!currentInstitution) setCurrentInstitution(DEMO_INSTITUTION); 
+        }} 
+        darkMode={darkMode} 
+        setDarkMode={setDarkMode} 
+        currentInstitution={currentInstitution} 
+      />
     );
   }
 
@@ -1215,6 +1306,7 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2 sm:gap-4">
+                <VersionBadge variant="navbar" className="hidden sm:inline-flex" />
                 {isDemoEnvironment(currentInstitution) && (
                   <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20 shadow-sm">
                     <Sparkles size={13} className="text-amber-500" /> Demonstração
@@ -1280,12 +1372,8 @@ export default function App() {
                   <Home size={20} />
                 </a>
                 <button 
-                  onClick={async () => {
-                    await supabase.auth.signOut();
-                    setIsAuthenticated(false);
-                    window.location.href = '/';
-                  }}
-                  className="hidden sm:block p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400"
+                  onClick={handleLogout}
+                  className="hidden sm:block p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400 cursor-pointer"
                   title="Sair"
                 >
                   <LogOut size={20} />
@@ -1366,6 +1454,10 @@ export default function App() {
                   
                   {/* Mobile Drawer Footer (User & Logout) */}
                   <div className="p-4 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/50">
+                    <div className="flex items-center justify-between mb-3 px-1">
+                      <span className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider">Gestão 360</span>
+                      <VersionBadge variant="navbar" />
+                    </div>
                     {currentUser && (
                       <div className="flex items-center gap-3 px-3 py-2 mb-3">
                         <div className="w-10 h-10 rounded-full bg-neutral-200 dark:bg-neutral-700 flex items-center justify-center shrink-0">
@@ -1378,12 +1470,8 @@ export default function App() {
                       </div>
                     )}
                     <button 
-                      onClick={async () => {
-                        await supabase.auth.signOut();
-                        setIsAuthenticated(false);
-                        window.location.href = '/';
-                      }}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 rounded-xl font-bold transition-colors"
+                      onClick={handleLogout}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-500/10 dark:hover:bg-rose-500/20 dark:text-rose-400 rounded-xl font-bold transition-colors cursor-pointer"
                     >
                       <LogOut size={18} />
                       Sair do Sistema
