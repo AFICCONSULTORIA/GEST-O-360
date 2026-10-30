@@ -9,9 +9,9 @@ import { Institution } from '../types';
 import { LogoCompass } from './LogoCompass';
 
 // Chapada dos Guimarães / Pantanal — Mato Grosso
-const BG_IMAGE = 'https://images.unsplash.com/photo-1596706935833-28c0b2f90a59?q=80&w=1920&auto=format&fit=crop';
+const BG_IMAGE = '/login-servidor-bg.jpg';
 // Optimizations: w_1280 (resize), q_auto (auto quality), f_auto (auto format like webm), ac_none (remove audio)
-const VIDEO_SOURCE = 'https://res.cloudinary.com/demo/video/upload/w_1280,q_auto,f_auto,ac_none/docs/waterfall.mp4';
+
 
 export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInstitution, isSaaSAdmin = false }: { onLogin: () => void, onDemoLogin?: () => void, darkMode: boolean, setDarkMode?: (v: boolean) => void, currentInstitution?: Institution | null, isSaaSAdmin?: boolean }) => {
   const [username, setUsername] = React.useState('');
@@ -56,72 +56,61 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
   };
 
   return (
-    <div className="dark min-h-[100dvh] relative flex items-center justify-center overflow-x-hidden overflow-y-auto">
+    <div className="dark min-h-[100dvh] relative flex items-center justify-center lg:justify-start overflow-x-hidden overflow-y-auto px-4 sm:px-10 lg:px-20 xl:px-28 py-16 sm:py-12">
 
       {/* Backgrounds wrapper fixed to avoid scrolling with content */}
       <div className="fixed inset-0 z-0">
-        {/* ── Background Fallback: Foto Full-Screen (Mato Grosso) ── */}
+        {/* Background Foto Paisagem Anime com Lago e Raposa */}
         <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
+          className="absolute inset-0 bg-cover bg-center md:bg-[center_right_18%] bg-no-repeat transition-all duration-700 scale-100"
           style={{ backgroundImage: `url('${BG_IMAGE}')` }}
         />
 
-        {/* ── Background: Vídeo Animado (Cachoeira) ── */}
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full object-cover scale-105 select-none pointer-events-none transition-opacity duration-1000"
-        >
-          <source src={VIDEO_SOURCE} type="video/mp4" />
-        </video>
-
-        {/* ── Overlay escuro gradiente (Muda no Claro/Escuro) ── */}
-        <div className="absolute inset-0 bg-gradient-to-br from-white/60 via-white/40 to-neutral-100/50 dark:from-black/60 dark:via-black/45 dark:to-neutral-950/60 transition-colors duration-500" />
+        {/* Gradiente sutil à esquerda para dar legibilidade máxima ao card, mantendo o lado direito da raposa limpo e vívido */}
+        <div className="absolute inset-0 bg-gradient-to-r from-neutral-950/80 via-neutral-950/45 to-transparent dark:from-neutral-950/90 dark:via-neutral-950/50 dark:to-neutral-950/20" />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/60 via-transparent to-neutral-950/30" />
       </div>
 
-      {/* ── Partículas / efeitos decorativos ── */}
+      {/* Partículas / efeitos decorativos sutis inspirados na natureza */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
-        <div className="absolute top-[15%] left-[10%] w-64 h-64 bg-emerald-500/20 dark:bg-emerald-500/10 rounded-full blur-[80px] animate-pulse" />
-        <div className="absolute bottom-[20%] right-[8%] w-80 h-80 bg-indigo-500/20 dark:bg-indigo-500/10 rounded-full blur-[100px] animate-pulse delay-1000" />
-        <div className="absolute top-[60%] left-[60%] w-48 h-48 bg-teal-500/15 dark:bg-teal-500/8 rounded-full blur-[60px] animate-pulse delay-500" />
+        <div className="absolute top-[18%] left-[8%] w-72 h-72 bg-emerald-500/15 dark:bg-emerald-500/10 rounded-full blur-[90px] animate-pulse" />
+        <div className="absolute bottom-[20%] right-[10%] w-80 h-80 bg-amber-500/10 dark:bg-amber-500/5 rounded-full blur-[100px] animate-pulse delay-1000" />
       </div>
 
-      {/* ── Logo no canto superior esquerdo ── */}
-      <div className="absolute top-6 left-6 sm:left-8 flex items-center gap-3 z-20">
-        <div className="bg-neutral-900/5 dark:bg-white/10 backdrop-blur-md border border-neutral-900/10 dark:border-white/20 rounded-xl overflow-hidden flex items-center justify-center">
-          <LogoCompass size={36} className="text-neutral-900 dark:text-white" />
+      {/* Logo no canto superior esquerdo */}
+      <div className="absolute top-6 left-6 sm:left-10 lg:left-16 flex items-center gap-3 z-20">
+        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl overflow-hidden flex items-center justify-center shadow-lg shadow-black/10">
+          <LogoCompass size={36} className="text-white" />
         </div>
         <div>
-          <span className="text-sm font-black text-neutral-900 dark:text-white tracking-tight uppercase">Gestão 360</span>
-          <p className="text-[9px] text-neutral-500 dark:text-white/50 font-bold uppercase tracking-widest leading-none mt-0.5">Sistemas Públicos</p>
+          <span className="text-sm font-black text-white tracking-tight uppercase drop-shadow-sm">Gestão 360</span>
+          <p className="text-[9px] text-white/70 font-bold uppercase tracking-widest leading-none mt-0.5">Portal do Servidor</p>
         </div>
       </div>
 
-      {/* ── Botão Voltar (canto superior direito) ── */}
+      {/* Botão Voltar (canto superior direito) */}
       {!isSaaSAdmin && (
         <a
           href="/"
-          className="absolute top-6 right-6 sm:right-8 z-20 inline-flex items-center gap-2 px-3 py-2 sm:px-4 bg-neutral-900/5 dark:bg-white/10 hover:bg-neutral-900/10 dark:hover:bg-white/20 backdrop-blur-md border border-neutral-900/10 dark:border-white/20 text-neutral-700 dark:text-white/80 hover:text-neutral-900 dark:hover:text-white rounded-xl text-[10px] sm:text-xs font-bold transition-all"
+          className="absolute top-6 right-6 sm:right-10 lg:right-16 z-20 inline-flex items-center gap-2 px-3 py-2 sm:px-4 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white rounded-xl text-[10px] sm:text-xs font-bold transition-all shadow-lg shadow-black/10"
         >
           <Home size={14} /> <span className="hidden sm:inline">Início</span>
         </a>
       )}
 
-      {/* ── Card de Login (Glassmorphism Adaptável) ── */}
+      {/* Card de Login alinhado à esquerda para deixar a raposa e o lago em destaque à direita */}
       <motion.div
-        initial={{ opacity: 0, y: 32, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
+        initial={{ opacity: 0, x: -30, scale: 0.98 }}
+        animate={{ opacity: 1, x: 0, scale: 1 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        className="relative z-10 w-full max-w-md mx-4 my-24 sm:my-12"
+        className="relative z-10 w-full max-w-[420px] my-12"
       >
-        <div className="bg-white/70 dark:bg-neutral-950/70 backdrop-blur-2xl border border-white/40 dark:border-white/10 rounded-[24px] sm:rounded-[32px] shadow-[0_16px_40px_rgba(0,0,0,0.1)] sm:shadow-[0_32px_80px_rgba(0,0,0,0.1)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.7)] dark:sm:shadow-[0_32px_80px_rgba(0,0,0,0.7)] overflow-hidden transition-colors duration-500">
+        <div className="bg-white/90 dark:bg-neutral-900/90 backdrop-blur-2xl border border-white/40 dark:border-white/10 rounded-[28px] shadow-2xl shadow-neutral-950/30 dark:shadow-black/70 overflow-hidden transition-colors duration-500">
           
-          {/* Linha decorativa no topo */}
-          <div className="h-[3px] w-full bg-gradient-to-r from-emerald-500 via-teal-400 to-indigo-500" />
+          {/* Linha decorativa no topo (Esmeralda das árvores, Turquesa do lago e Âmbar da raposa) */}
+          <div className="h-[4px] w-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-500" />
 
-          <div className="px-6 pb-6 pt-6 sm:px-10 sm:pb-10 sm:pt-8 space-y-6 sm:space-y-7">
+          <div className="px-6 pb-6 pt-6 sm:px-9 sm:pb-9 sm:pt-7 space-y-6">
 
             {/* Cabeçalho do card */}
             <div className="text-center space-y-1">
@@ -143,11 +132,11 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
                 </>
               ) : (
                 <>
-                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 border border-neutral-900/10 dark:border-white/10 rounded-2xl mb-2 sm:mb-3 overflow-hidden shadow-lg shadow-black/20">
-                    <LogoCompass size={56} className="text-neutral-900 dark:text-white" />
+                  <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 border border-emerald-500/20 bg-emerald-500/10 rounded-2xl mb-2 sm:mb-3 overflow-hidden shadow-lg shadow-emerald-950/20">
+                    <LogoCompass size={48} className="text-emerald-600 dark:text-emerald-400" />
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white tracking-tight">Bem-vindo de volta</h1>
-                  <p className="text-xs sm:text-sm text-neutral-500 dark:text-white/50 font-medium">Entre com suas credenciais para acessar o sistema</p>
+                  <h1 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white tracking-tight">Portal do Servidor</h1>
+                  <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 font-medium">Entre com suas credenciais para acessar os sistemas municipais</p>
                 </>
               )}
             </div>
@@ -164,7 +153,7 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
                     type="email"
                     placeholder="seu@email.com"
                     autoComplete="email"
-                    className="w-full bg-neutral-900/5 dark:bg-white/5 hover:bg-neutral-900/10 dark:hover:bg-white/8 border border-neutral-900/10 dark:border-white/10 focus:border-emerald-500/60 focus:ring-4 focus:ring-emerald-500/10 px-11 py-3 sm:px-12 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-sm outline-none transition-all font-medium text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-white/25"
+                    className="w-full bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-100/90 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700/80 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 px-11 py-3 sm:px-12 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-sm outline-none transition-all font-semibold text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
                   />
@@ -183,7 +172,7 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     autoComplete="current-password"
-                    className="w-full bg-neutral-900/5 dark:bg-white/5 hover:bg-neutral-900/10 dark:hover:bg-white/8 border border-neutral-900/10 dark:border-white/10 focus:border-emerald-500/60 focus:ring-4 focus:ring-emerald-500/10 px-11 py-3 sm:px-12 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-sm outline-none transition-all font-medium text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-white/25"
+                    className="w-full bg-neutral-100 dark:bg-neutral-800/80 hover:bg-neutral-100/90 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-700/80 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/15 px-11 py-3 sm:px-12 sm:py-3.5 rounded-xl sm:rounded-2xl text-[13px] sm:text-sm outline-none transition-all font-semibold text-neutral-900 dark:text-white placeholder-neutral-400 dark:placeholder-neutral-500"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                   />
@@ -224,20 +213,6 @@ export const Login = ({ onLogin, onDemoLogin, darkMode, setDarkMode, currentInst
                 )}
               </button>
             </form>
-
-            {/* ── Caixinha "Cara Nova" ── */}
-            <div className="flex items-start gap-3 p-3.5 sm:p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl sm:rounded-2xl backdrop-blur-sm">
-              <div className="shrink-0 mt-0.5 p-1.5 bg-emerald-500/20 rounded-lg">
-                <Sparkles size={14} className="text-emerald-600 dark:text-emerald-400 animate-pulse" />
-              </div>
-              <div>
-                <p className="text-[11px] sm:text-xs font-black text-emerald-700 dark:text-emerald-300">Estamos de cara nova!</p>
-                <p className="text-[10px] sm:text-[11px] text-neutral-600 dark:text-white/60 font-medium leading-relaxed mt-0.5">
-                  Buscando cada vez mais melhorar a sua experiência e eficiência no sistema.
-                </p>
-              </div>
-            </div>
-
 
             {/* Botão Demo (Exibido estritamente em demo.gestao360sistema ou subdomínio demo, NUNCA em municípios) */}
             {onDemoLogin && isDemoEnvironment(currentInstitution) && (
