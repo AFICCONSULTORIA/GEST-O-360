@@ -6,6 +6,7 @@ import {
   ArrowRight, Info, Edit2
 } from 'lucide-react';
 import { showToast } from '../../components/ui/Toast';
+import { Institution } from '../../types';
 
 export interface OriginAccount {
   id: string;
@@ -40,7 +41,11 @@ const INITIAL_ORIGIN_ACCOUNTS: OriginAccount[] = [];
 const INITIAL_DESTINATION_DEMANDS: DestinationDemand[] = [];
 
 
-export const RemanejamentoSaldos: React.FC = () => {
+interface RemanejamentoSaldosProps {
+  currentInstitution?: Institution | null;
+}
+
+export const RemanejamentoSaldos: React.FC<RemanejamentoSaldosProps> = () => {
   const [origins, setOrigins] = useState<OriginAccount[]>(INITIAL_ORIGIN_ACCOUNTS);
   const [destinations, setDestinations] = useState<DestinationDemand[]>(INITIAL_DESTINATION_DEMANDS);
   const [allocations, setAllocations] = useState<BalanceAllocation[]>([]);
@@ -486,57 +491,51 @@ export const RemanejamentoSaldos: React.FC = () => {
     <div className="space-y-8 animate-in fade-in duration-300 font-['Inter']">
       
       {/* PAINEL SUPERIOR - RESUMO & AÇÕES RÁPIDAS */}
-      <div className="bg-slate-900 dark:bg-black rounded-3xl p-6 md:p-8 text-white shadow-xl border border-slate-800 relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 md:p-7 shadow-sm border border-slate-200/90 dark:border-slate-800">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-widest mb-1">
-              <Zap size={14} /> Sistema de Gestão Financeira Dinâmica
+            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-widest mb-1">
+              <ArrowRightLeft size={14} /> Distribuição Orçamentária & Cobertura
             </div>
-            <h2 className="text-2xl md:text-3xl font-black font-['Montserrat'] tracking-tight text-white">
-              Matriz de Remanejamento & Distribuição de Saldos
-            </h2>
-            <p className="text-slate-300 text-sm mt-1 max-w-2xl">
-              Alocação em tempo real de saldos bancários disponíveis para liquidação de demandas orçamentárias municipais.
+            <h3 className="text-xl md:text-2xl font-black font-['Montserrat'] tracking-tight text-slate-900 dark:text-white">
+              Matriz de Remanejamento de Saldos
+            </h3>
+            <p className="text-slate-500 dark:text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl">
+              Alocação controlada de saldos bancários disponíveis para cobertura de demandas municipais.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={handleRunExampleSimulation}
-              className="flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-600/20 hover:scale-[1.02] active:scale-[0.98]"
-              title="Carregar alocação de exemplo: FPM R$ 200k + ICMS R$ 127.698,66 -> MOVIMENTO"
-            >
-              <Zap size={16} /> Executar Exemplo do Requisito
-            </button>
-            <button
               onClick={handleResetAll}
-              className="flex items-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm border border-slate-700 transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold text-xs uppercase tracking-wider border border-slate-200 dark:border-slate-700 transition-all"
             >
-              <RefreshCw size={16} /> Restaurar Saldos
+              <RefreshCw size={15} /> Restaurar Saldos
             </button>
           </div>
         </div>
 
         {/* METRICAS CHAVE */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 pt-6 border-t border-slate-800">
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
-            <p className="text-xs text-slate-300 uppercase font-semibold">Total Saldos Origem Disponíveis</p>
-            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat'] text-white">{formatCurrency(grandTotalOriginAvailable)}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-5 border-t border-slate-100 dark:border-slate-800">
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-700/60">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase font-bold">Saldos Origem Disponíveis</p>
+            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat'] text-slate-900 dark:text-white">{formatCurrency(grandTotalOriginAvailable)}</p>
           </div>
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
-            <p className="text-xs text-slate-300 uppercase font-semibold">Total Necessidades Demandadas</p>
-            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat'] text-white">{formatCurrency(grandTotalDemandsRequired)}</p>
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-700/60">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase font-bold">Necessidades Demandadas</p>
+            <p className="text-xl md:text-2xl font-black mt-1 font-['Montserrat'] text-slate-900 dark:text-white">{formatCurrency(grandTotalDemandsRequired)}</p>
           </div>
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
-            <p className="text-xs text-slate-300 uppercase font-semibold">Total Remanejado</p>
-            <p className="text-xl md:text-2xl font-black text-emerald-400 mt-1 font-['Montserrat']">{formatCurrency(grandTotalAllocated)}</p>
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-700/60">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase font-bold">Total Remanejado</p>
+            <p className="text-xl md:text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1 font-['Montserrat']">{formatCurrency(grandTotalAllocated)}</p>
           </div>
-          <div className="bg-slate-800/60 rounded-2xl p-4 border border-slate-700/60">
-            <p className="text-xs text-slate-300 uppercase font-semibold">Demandas Liquidadas</p>
-            <p className="text-xl md:text-2xl font-black text-amber-400 mt-1 font-['Montserrat']">
-              {totalLiquidatedDestinations} de {destinations.length} <span className="text-xs font-normal">({Math.round((totalLiquidatedDestinations / destinations.length) * 100)}%)</span>
+          <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-700/60">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 uppercase font-bold">Demandas Liquidadas</p>
+            <p className="text-xl md:text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 font-['Montserrat']">
+              {totalLiquidatedDestinations} de {destinations.length}{' '}
+              <span className="text-xs font-normal">
+                ({destinations.length > 0 ? Math.round((totalLiquidatedDestinations / destinations.length) * 100) : 0}%)
+              </span>
             </p>
           </div>
         </div>

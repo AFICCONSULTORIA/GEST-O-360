@@ -1646,9 +1646,9 @@ export default function App() {
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'laws' && <LawsModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
-            {activeView === 'admin_financas' && <FinanceModules />}
+            {activeView === 'admin_financas' && <FinanceModules currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'administracao' && <AdministracaoModule />}
-            {activeView === 'financas' && <FinanceModules />}
+            {activeView === 'financas' && <FinanceModules currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'saude' && <SaudeHub currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'consultorio_medico' && <SaudeHub currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'servicos_publicos' && <ServicosPublicosModule currentInstitution={currentInstitution} />}

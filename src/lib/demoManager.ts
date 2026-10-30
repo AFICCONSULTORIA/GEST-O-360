@@ -436,42 +436,75 @@ export const seedDemoDataForModule = async (
 
       case 'admin_financas':
       case 'financas': {
+        const now = new Date();
+        const curMonthId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const prevMonthId = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
         const demoHistory = {
-          '2026-09': {
+          [prevMonthId]: {
+            monthId: prevMonthId,
+            monthLabel: prevMonthId,
+            savedAt: new Date(Date.now() - 86400000 * 20).toISOString(),
             files: [
               {
-                id: 'file-demo-1',
-                fileName: 'EXTRATO_CONTA_MOVIMENTO_092026.TXT',
+                id: 'file-demo-prev-1',
+                fileName: `EXTRATO_CONTA_MOVIMENTO_${prevMonthId.replace('-', '')}.TXT`,
                 fileType: 'CNAB 240',
-                totalAmount: 1845200.50,
+                totalAmount: 1690000.00,
                 category: 'Movimento',
-                uploadDate: '2026-09-15',
+                uploadDate: `${prevMonthId}-15`,
                 isExpanded: false,
                 lines: [
-                  { id: 'l1', account: 'Fundo de Participação dos Municípios (FPM)', amount: 1200000.00, date: '10/09/2026' },
-                  { id: 'l2', account: 'Arrecadação Municipal IPTU / ISSQN', amount: 645200.50, date: '15/09/2026' }
-                ]
-              },
-              {
-                id: 'file-demo-2',
-                fileName: 'EXTRATO_FUS_SAUDE_092026.TXT',
-                fileType: 'CNAB 240',
-                totalAmount: 920400.00,
-                category: 'FUS / Saúde',
-                uploadDate: '2026-09-18',
-                isExpanded: false,
-                lines: [
-                  { id: 'l3', account: 'Repasse Fundo Nacional de Saúde (FNS)', amount: 920400.00, date: '12/09/2026' }
+                  { id: 'lp1', account: 'Fundo de Participação dos Municípios (FPM)', amount: 1120000.00, date: `10/${prevMonthId.slice(5)}/${prevMonthId.slice(0, 4)}` },
+                  { id: 'lp2', account: 'Arrecadação Própria ISSQN / IPTU', amount: 570000.00, date: `15/${prevMonthId.slice(5)}/${prevMonthId.slice(0, 4)}` }
                 ]
               }
             ],
             invoices: [
-              { id: 'inv-1', number: 'NF-00189', supplier: 'Pavimax Asfaltos Ltda', account: 'Movimento', amount: 450000.00, issueDate: '2026-09-12' },
-              { id: 'inv-2', number: 'NF-00842', supplier: 'Distribuidora Farmacêutica Nacional', account: 'FUS / Saúde', amount: 180000.00, issueDate: '2026-09-14' }
+              { id: 'inv-prev-1', number: '00142', supplier: 'Pavimax Asfaltos Ltda', category: 'Movimento', description: 'NF 00142 — Pavimax Asfaltos Ltda', amount: 390000.00, date: `${prevMonthId}-12` },
+              { id: 'inv-prev-2', number: '00798', supplier: 'Distribuidora Farmacêutica Nacional', category: 'FUS / Saúde', description: 'NF 00798 — Distribuidora Farmacêutica Nacional', amount: 165000.00, date: `${prevMonthId}-18` }
+            ]
+          },
+          [curMonthId]: {
+            monthId: curMonthId,
+            monthLabel: curMonthId,
+            savedAt: new Date().toISOString(),
+            files: [
+              {
+                id: 'file-demo-1',
+                fileName: `EXTRATO_CONTA_MOVIMENTO_${curMonthId.replace('-', '')}.TXT`,
+                fileType: 'CNAB 240',
+                totalAmount: 1845200.50,
+                category: 'Movimento',
+                uploadDate: `${curMonthId}-15`,
+                isExpanded: false,
+                lines: [
+                  { id: 'l1', account: 'Fundo de Participação dos Municípios (FPM)', amount: 1200000.00, date: `10/${curMonthId.slice(5)}/${curMonthId.slice(0, 4)}` },
+                  { id: 'l2', account: 'Arrecadação Municipal IPTU / ISSQN', amount: 645200.50, date: `15/${curMonthId.slice(5)}/${curMonthId.slice(0, 4)}` }
+                ]
+              },
+              {
+                id: 'file-demo-2',
+                fileName: `EXTRATO_FUS_SAUDE_${curMonthId.replace('-', '')}.TXT`,
+                fileType: 'CNAB 240',
+                totalAmount: 920400.00,
+                category: 'FUS / Saúde',
+                uploadDate: `${curMonthId}-18`,
+                isExpanded: false,
+                lines: [
+                  { id: 'l3', account: 'Repasse Fundo Nacional de Saúde (FNS)', amount: 920400.00, date: `12/${curMonthId.slice(5)}/${curMonthId.slice(0, 4)}` }
+                ]
+              }
+            ],
+            invoices: [
+              { id: 'inv-1', number: '00189', supplier: 'Pavimax Asfaltos Ltda', category: 'Movimento', description: 'NF 00189 — Pavimax Asfaltos Ltda', amount: 450000.00, date: `${curMonthId}-12` },
+              { id: 'inv-2', number: '00842', supplier: 'Distribuidora Farmacêutica Nacional', category: 'FUS / Saúde', description: 'NF 00842 — Distribuidora Farmacêutica Nacional', amount: 180000.00, date: `${curMonthId}-14` }
             ]
           }
         };
         localStorage.setItem('fin_monthly_history', JSON.stringify(demoHistory));
+        localStorage.setItem(`fin_monthly_history_${instId}`, JSON.stringify(demoHistory));
         break;
       }
 
