@@ -68,6 +68,7 @@ import { LandingPage } from './components/LandingPage';
 import { MunicipalityPortalHub } from './components/MunicipalityPortalHub';
 import { Login } from './components/Login';
 import { ProposalModal } from './components/ProposalModal';
+import { OfficialAnnouncementBanner } from './components/OfficialAnnouncementBanner';
 import { DemoModuleBanner } from './components/DemoModuleBanner';
 import { VersionBadge } from './components/VersionBadge';
 import { isDemoEnvironment, setDemoEnvironment } from './lib/demoManager';
@@ -122,7 +123,7 @@ export default function App() {
   const [loadingInstitution, setLoadingInstitution] = React.useState(true);
   const [isAuthenticated, setIsAuthenticated] = React.useState(false);
   const [currentUser, setCurrentUser] = React.useState<AdminUser | null>(null);
-  const [pendingReport, setPendingReport] = React.useState<'patrimonio' | null>(null);
+  const [pendingReport, setPendingReport] = React.useState<string | null>(null);
   const [darkMode, setDarkMode] = React.useState(() => {
     const saved = localStorage.getItem('gestao360-dark-mode');
     if (saved !== null) return JSON.parse(saved);
@@ -751,20 +752,26 @@ export default function App() {
     }
 
     return (
-      <SaaSControlCenter 
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-        currentUser={currentUser}
-        adminUsers={adminUsers}
-        setAdminUsers={setAdminUsers}
-        institutions={institutions}
-        setInstitutions={setInstitutions}
-        departments={departments}
-        setDepartments={setDepartments}
-        controls={controls}
-        patrimonioItems={patrimonioItems}
-        orders={orders}
-      />
+      <>
+        <SaaSControlCenter 
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          currentUser={currentUser}
+          adminUsers={adminUsers}
+          setAdminUsers={setAdminUsers}
+          institutions={institutions}
+          setInstitutions={setInstitutions}
+          departments={departments}
+          setDepartments={setDepartments}
+          controls={controls}
+          patrimonioItems={patrimonioItems}
+          orders={orders}
+        />
+        <OfficialAnnouncementBanner
+          currentUser={currentUser}
+          currentInstitution={null}
+        />
+      </>
     );
   }
 
@@ -1354,6 +1361,13 @@ export default function App() {
                   </button>
                 )}
                 <button 
+                  onClick={() => window.dispatchEvent(new CustomEvent('gestao360:open_announcements'))}
+                  className="p-2.5 rounded-xl transition-all text-neutral-500 hover:bg-amber-50 hover:text-amber-600 dark:hover:bg-amber-500/10 dark:hover:text-amber-400 cursor-pointer"
+                  title="Comunicados Oficiais AFIC"
+                >
+                  <Bell size={20} />
+                </button>
+                <button 
                   onClick={() => setActiveView('support')}
                   className={`p-2.5 rounded-xl transition-all ${
                     activeView === 'support' 
@@ -1755,6 +1769,26 @@ export default function App() {
             {activeView === 'forms' && <PublicFormsModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'noticias' && <NoticiasModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'ouvidoria' && <OuvidoriaModule currentInstitution={currentInstitution} currentUser={currentUser} />}
+            {activeView === 'notafiscal' && <PublicNotaFiscalAuditor />}
+
+            {/* Trava Anti-Tela-Branca: Redirecionamento seguro para tela inicial */}
+            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
+              <div className="bg-white dark:bg-neutral-900 p-8 sm:p-12 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
+                <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto">
+                  <AlertTriangle size={32} />
+                </div>
+                <h3 className="text-xl font-black text-neutral-900 dark:text-white">Módulo em Configuração</h3>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed">
+                  A tela solicitada não está disponível ou não foi contratada para este município.
+                </p>
+                <button
+                  onClick={() => setActiveView('home')}
+                  className="px-6 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs hover:shadow-lg transition cursor-pointer"
+                >
+                  Voltar ao Painel Geral
+                </button>
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
         </div>
@@ -1764,8 +1798,28 @@ export default function App() {
       {/* Toasts */}
       <ToastContainer />
 
-      {/* Copiloto Nativo com IA - Agente Gestão 360 */}
-      <Gestao360Copilot activeView={activeView} institutionName={currentInstitution?.name} />
+      {/* Banner de Comunicados Oficiais AFIC & Gestão 360 no Login */}
+      <OfficialAnnouncementBanner 
+        currentUser={currentUser} 
+        currentInstitution={currentInstitution} 
+      />
+
+      {/* Copiloto Nativo com IA - Agente de Suporte e Tarefas do Gestão 360 */}
+      <Gestao360Copilot 
+        activeView={activeView} 
+        institutionName={currentInstitution?.name}
+        userData={currentUser ? {
+          name: currentUser.name,
+          role: currentUser.role,
+          email: currentUser.email
+        } : undefined}
+        onNavigate={(view) => setActiveView(view)}
+        onOpenReport={(reportId) => {
+          setActiveView('reports');
+          setPendingReport(reportId);
+        }}
+        onToggleTheme={() => setDarkMode(prev => !prev)}
+      />
       
         </div>
       </div>

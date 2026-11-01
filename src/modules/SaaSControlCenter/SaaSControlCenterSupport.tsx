@@ -2,9 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { SupportTicket, SupportTicketMessage, Institution } from '../../types';
 import { showToast } from '../../components/ui/Toast';
-import { LifeBuoy, Search, MessageSquare, Bug, Lightbulb, Clock, CheckCircle2, XCircle, Send, ShieldAlert, ArrowLeft, ChevronRight, Paperclip, X } from 'lucide-react';
+import { 
+  LifeBuoy, Search, MessageSquare, Bug, Lightbulb, Clock, CheckCircle2, 
+  XCircle, Send, ShieldAlert, ArrowLeft, ChevronRight, Paperclip, X, Headphones, Trash2 
+} from 'lucide-react';
+import { AdminLiveSupportChat } from '../../components/AIAssistant/AdminLiveSupportChat';
 
 export const SaaSControlCenterSupport = ({ institutions, currentUser }: { institutions: Institution[], currentUser: any }) => {
+  const [activeSupportTab, setActiveSupportTab] = useState<'tickets' | 'live_chat'>('tickets');
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -25,6 +30,25 @@ export const SaaSControlCenterSupport = ({ institutions, currentUser }: { instit
   useEffect(() => {
     fetchTickets();
   }, []);
+
+  const handleDeleteTicket = async (ticketId: string) => {
+    if (!confirm('Deseja excluir definitivamente este chamado global? Todas as mensagens serão apagadas.')) return;
+    try {
+      await supabase.from('support_ticket_messages').delete().eq('ticket_id', ticketId);
+      const { error } = await supabase.from('support_tickets').delete().eq('id', ticketId);
+      if (error) {
+        showToast('Erro ao excluir chamado.', 'error');
+      } else {
+        setTickets(prev => prev.filter(t => t.id !== ticketId));
+        if (selectedTicket?.id === ticketId) {
+          setSelectedTicket(null);
+        }
+        showToast('Chamado excluído com sucesso.', 'success');
+      }
+    } catch {
+      showToast('Erro ao excluir chamado.', 'error');
+    }
+  };
 
   const filteredTickets = tickets.filter(t => 
     t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -58,84 +82,162 @@ export const SaaSControlCenterSupport = ({ institutions, currentUser }: { instit
         institution={institutions.find(i => i.id === selectedTicket.institution_id)} 
         currentUser={currentUser} 
         onBack={() => { setSelectedTicket(null); fetchTickets(); }} 
+        onDelete={(id) => handleDeleteTicket(id)}
       />
     );
   }
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm animate-in slide-in-from-bottom-4 duration-500">
-      <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex flex-col md:flex-row justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
-          <input 
-            type="text" 
-            placeholder="Buscar chamado global..." 
-            className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 pl-11 pr-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Page Header Consistente */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-neutral-800">
+        <div>
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+              <LifeBuoy className="w-5 h-5" />
+            </div>
+            <h2 className="text-xl font-black text-neutral-900 dark:text-white tracking-tight">
+              Central Unificada de Atendimento & Suporte
+            </h2>
+            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 font-mono">
+              Tempo Real · Copilot 360
+            </span>
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+            Atenda servidores municipais ao vivo via transbordo humano e gerencie chamados técnicos da rede
+          </p>
+        </div>
+
+        {/* Barra de alternância entre Chat ao Vivo e Chamados */}
+        <div className="flex items-center gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200/60 dark:border-neutral-700/60">
+          <button
+            onClick={() => setActiveSupportTab('live_chat')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSupportTab === 'live_chat'
+                ? 'bg-amber-500 text-neutral-950 shadow-md shadow-amber-500/20 font-black'
+                : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
+            }`}
+          >
+            <Headphones size={15} />
+            <span>Chat ao Vivo (Transbordo)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveSupportTab('tickets')}
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeSupportTab === 'tickets'
+                ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 shadow-sm'
+                : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
+            }`}
+          >
+            <LifeBuoy size={15} />
+            <span>Chamados Globais ({tickets.length})</span>
+          </button>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
-              <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400">Chamado</th>
-              <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400">Prefeitura Origem</th>
-              <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400">Status</th>
-              <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 text-right">Ação</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {isLoading ? (
-               <tr><td colSpan={4} className="p-6 text-center text-sm font-medium text-neutral-500">Carregando chamados...</td></tr>
-            ) : filteredTickets.length === 0 ? (
-               <tr><td colSpan={4} className="p-6 text-center text-sm font-medium text-neutral-500">Nenhum chamado encontrado.</td></tr>
-            ) : (
-               filteredTickets.map(ticket => {
-                 const inst = institutions.find(i => i.id === ticket.institution_id);
-                 return (
-                  <tr key={ticket.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => setSelectedTicket(ticket)}>
-                    <td className="p-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
-                          {getTypeIcon(ticket.type)}
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{ticket.title}</p>
-                          <p className="text-xs font-bold text-neutral-400 mt-0.5">Protocolo: {ticket.id.split('-')[0].toUpperCase()}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-6">
-                      <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                        {inst ? inst.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : 'Desconhecido'}
-                      </p>
-                      <p className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mt-0.5">
-                        Por {ticket.user_name || 'Usuário'}
-                      </p>
-                    </td>
-                    <td className="p-6">
-                      {getStatusBadge(ticket.status)}
-                    </td>
-                    <td className="p-6 text-right">
-                      <button className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-600 dark:bg-purple-900/10 dark:hover:bg-purple-900/20 px-3 py-1.5 rounded-full font-black uppercase tracking-wider transition-colors inline-flex items-center gap-1">
-                        Responder <ChevronRight size={12}/>
-                      </button>
-                    </td>
-                  </tr>
-                 )
-               })
-            )}
-          </tbody>
-        </table>
-      </div>
+      {activeSupportTab === 'live_chat' ? (
+        <AdminLiveSupportChat currentUser={currentUser} institutions={institutions} />
+      ) : (
+        <div className="bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800 rounded-[32px] overflow-hidden shadow-sm">
+          <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 flex flex-col md:flex-row justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" size={16} />
+              <input 
+                type="text" 
+                placeholder="Buscar chamado global..." 
+                className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-100 dark:border-neutral-700 pl-11 pr-4 py-3 rounded-2xl text-sm outline-none text-neutral-900 dark:text-neutral-100 font-bold"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-neutral-50/50 dark:bg-neutral-800/50 border-b border-neutral-100 dark:border-neutral-800">
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400">Chamado</th>
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400">Prefeitura Origem</th>
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400">Status</th>
+                  <th className="p-6 text-[10px] font-black uppercase tracking-widest text-neutral-400 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                {isLoading ? (
+                  <tr><td colSpan={4} className="p-6 text-center text-sm font-medium text-neutral-500">Carregando chamados...</td></tr>
+                ) : filteredTickets.length === 0 ? (
+                  <tr><td colSpan={4} className="p-6 text-center text-sm font-medium text-neutral-500">Nenhum chamado encontrado.</td></tr>
+                ) : (
+                  filteredTickets.map(ticket => {
+                    const inst = institutions.find(i => i.id === ticket.institution_id);
+                    return (
+                      <tr key={ticket.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer" onClick={() => setSelectedTicket(ticket)}>
+                        <td className="p-6">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-white dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-700 rounded-xl flex items-center justify-center shrink-0 shadow-sm">
+                              {getTypeIcon(ticket.type)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm text-neutral-900 dark:text-neutral-100">{ticket.title}</p>
+                              <p className="text-xs font-bold text-neutral-400 mt-0.5">Protocolo: {ticket.id.split('-')[0].toUpperCase()}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-6">
+                          <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                            {inst ? inst.name.replace('Prefeitura Municipal de ', 'Prefeitura de ') : 'Desconhecido'}
+                          </p>
+                          <p className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 mt-0.5">
+                            Por {ticket.user_name || 'Usuário'}
+                          </p>
+                        </td>
+                        <td className="p-6">
+                          {getStatusBadge(ticket.status)}
+                        </td>
+                        <td className="p-6 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button 
+                              onClick={(e) => { 
+                                e.stopPropagation(); 
+                                handleDeleteTicket(ticket.id); 
+                              }}
+                              className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                              title="Excluir chamado definitivamente"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                            <button className="text-[10px] bg-purple-50 hover:bg-purple-100 text-purple-600 dark:bg-purple-900/10 dark:hover:bg-purple-900/20 px-3 py-1.5 rounded-full font-black uppercase tracking-wider transition-colors inline-flex items-center gap-1">
+                              Responder <ChevronRight size={12}/>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const TicketChatView = ({ ticket, institution, currentUser, onBack }: { ticket: SupportTicket, institution?: Institution, currentUser: any, onBack: () => void }) => {
+const TicketChatView = ({ 
+  ticket, 
+  institution, 
+  currentUser, 
+  onBack,
+  onDelete
+}: { 
+  ticket: SupportTicket, 
+  institution?: Institution, 
+  currentUser: any, 
+  onBack: () => void,
+  onDelete?: (id: string) => void
+}) => {
   const [messages, setMessages] = useState<SupportTicketMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -244,6 +346,16 @@ const TicketChatView = ({ ticket, institution, currentUser, onBack }: { ticket: 
         </div>
         
         <div className="flex items-center gap-3">
+          {onDelete && (
+            <button
+              onClick={() => onDelete(ticket.id)}
+              className="p-2 bg-white dark:bg-neutral-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-neutral-400 hover:text-rose-600 rounded-xl border border-neutral-200 dark:border-neutral-700 transition"
+              title="Excluir Chamado Definitivamente"
+            >
+              <Trash2 size={16} />
+            </button>
+          )}
+
           <span className="text-[10px] font-black uppercase text-neutral-400 tracking-widest">Alterar Status:</span>
           <select 
             value={ticketStatus} 

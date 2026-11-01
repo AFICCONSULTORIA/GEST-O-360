@@ -1,101 +1,198 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI } from '@google/genai';
+import { GESTAO_360_SYSTEM_INSTRUCTION } from './_prompts/gestao360Prompt';
 
-export default async function handler(req: any, res: any) {
+export const config = {
+  runtime: 'edge', // Execução ultra-rápida na Vercel com streaming nativo
+};
+
+interface ChatMessage {
+  role: 'user' | 'model';
+  content: string;
+}
+
+interface RequestBody {
+  message: string;
+  history?: ChatMessage[];
+  currentPath?: string;
+  userData?: {
+    name?: string;
+    role?: string;
+    municipio?: string;
+  };
+}
+
+export default async function handler(req: Request) {
+  // CORS para Edge
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+    });
+  }
+
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return new Response(JSON.stringify({ error: 'Método não permitido' }), {
+      status: 405,
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      },
+    });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({ error: 'Configuração ausente: GEMINI_API_KEY não definida no servidor.' }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        } 
+      }
+    );
   }
 
   try {
-    const { message, history = [], moduleContext = 'Geral' } = req.body;
+    const body: RequestBody = await req.json();
+    const { message, history = [], currentPath = '/', userData } = body;
 
     if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'Mensagem inválida ou ausente' });
+      return new Response(JSON.stringify({ error: 'Mensagem inválida ou ausente.' }), {
+        status: 400,
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+      });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ error: 'Chave Gemini API não configurada' });
-    }
+    const ai = new GoogleGenAI({ apiKey });
 
-    const genAI = new GoogleGenAI({
-      apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'gestao360-copilot',
-        }
-      }
-    });
-
-    const systemInstruction = `
-Você é o Agente Gestão 360, o copiloto oficial de inteligência artificial integrado à plataforma Gestão 360.
-Sua missão é auxiliar servidores públicos municipais, gestores, fiscais de contrato, auditores de controle interno e secretários a exercerem uma gestão pública eficiente, transparente e em estrita conformidade legal.
-
-DIRETRIZES FUNDAMENTAIS:
-1. Domínio da Legislação Brasileira:
-   - Nova Lei de Licitações e Contratos Administrativos (Lei nº 14.133/2021)
-   - Lei de Responsabilidade Fiscal (LC nº 101/2000)
-   - Lei de Acesso à Informação (Lei nº 12.527/2011) e Diretrizes PNTP / ATRICON
-   - Marco do Governo Digital (Lei nº 14.129/2021) e LGPD (Lei nº 13.709/2018)
-2. Contexto do Usuário:
-   - O usuário está atualmente no módulo: "${moduleContext}".
-   - Priorize respostas com exemplos e implicações práticas relacionadas a esse módulo quando fizer sentido.
-3. Formato das Respostas:
-   - Respostas executivas, claras, estruturadas em tópicos ou passos quando aplicável.
-   - Use formatação Markdown (negrito, listas, blocos de código se for o caso).
-   - Seja cordial, profissional e seguro. Sempre que alertar sobre riscos fiscais ou operacionais, aponte a solução preventiva recomendada.
+    // Injeção de Contexto Dinâmico do Servidor Público
+    const dynamicContext = `
+DADOS DO USUÁRIO EM ATENDIMENTO:
+- Nome do Servidor: ${userData?.name || 'Servidor(a)'}
+- Perfil / Secretaria: ${userData?.role || 'Geral'}
+- Município / Instância: ${userData?.municipio || 'Prefeitura Municipal'}
+- Tela / Rota onde o servidor está navegando no momento: ${currentPath}
 `;
 
-    // Constrói os conteúdos formatados para o modelo
-    const contents: any[] = [];
+    const fullSystemInstruction = `${GESTAO_360_SYSTEM_INSTRUCTION}\n\n${dynamicContext}`;
 
-    // Contexto de sistema
-    contents.push({
-      role: 'user',
-      parts: [{ text: `[INSTRUÇÕES DO SISTEMA]:\n${systemInstruction}` }]
-    });
-    contents.push({
-      role: 'model',
-      parts: [{ text: 'Entendido. Sou o Agente Gestão 360, copiloto especialista em gestão pública municipal, controle interno e governança. Como posso apoiar os trabalhos agora?' }]
-    });
+    // Mapeamento do histórico para a API do Gemini
+    const contents = [
+      ...history.map((msg) => ({
+        role: msg.role === 'model' ? 'model' : 'user',
+        parts: [{ text: msg.content }],
+      })),
+      {
+        role: 'user',
+        parts: [{ text: message }],
+      },
+    ];
 
-    // Histórico de mensagens anteriores (últimas 6 para otimizar tokens)
-    if (Array.isArray(history)) {
-      const recentHistory = history.slice(-6);
-      for (const item of recentHistory) {
-        if (item.sender === 'user') {
-          contents.push({
-            role: 'user',
-            parts: [{ text: item.text }]
-          });
-        } else if (item.sender === 'agent') {
-          contents.push({
-            role: 'model',
-            parts: [{ text: item.text }]
-          });
-        }
+    // Chamada do modelo Gemini com Streaming e resiliência de modelos
+    const modelsToTry = ['gemini-2.5-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+    let responseStream: any = null;
+    let streamError: any = null;
+
+    for (const modelName of modelsToTry) {
+      try {
+        responseStream = await ai.models.generateContentStream({
+          model: modelName,
+          contents,
+          config: {
+            systemInstruction: fullSystemInstruction,
+            temperature: 0.6, // Balanço ideal entre precisão nas regras e naturalidade na fala
+          },
+        });
+        if (responseStream) break;
+      } catch (err: any) {
+        streamError = err;
+        console.warn(`Tentativa com ${modelName} no Edge falhou:`, err?.message || err);
       }
     }
 
-    // Mensagem atual do usuário com o contexto atual da tela
-    contents.push({
-      role: 'user',
-      parts: [{ text: `[Contexto da tela atual: ${moduleContext}]\n\n${message}` }]
+    if (!responseStream) {
+      throw streamError || new Error('Não foi possível inicializar streaming com os modelos Gemini.');
+    }
+
+    // Stream de transformação para processar texto e extrair <<<ACTION:...>>> em tempo real
+    const encoder = new TextEncoder();
+    let accumulatedText = '';
+    const actionRegex = /<<<ACTION:([\s\S]*?)>>>/;
+
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of responseStream) {
+            const rawChunkText = chunk.text;
+            if (!rawChunkText) continue;
+
+            accumulatedText += rawChunkText;
+
+            // Se o chunk ainda não fechou ou começou uma ação, envia o texto regular
+            if (!accumulatedText.includes('<<<ACTION:')) {
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: 'text', content: rawChunkText })}\n\n`)
+              );
+            } else {
+              // Se detectou o início de uma ação, aguarda fechar o delimitador >>>
+              const actionMatch = accumulatedText.match(actionRegex);
+              if (actionMatch) {
+                const actionJsonRaw = actionMatch[1];
+                try {
+                  const parsedAction = JSON.parse(actionJsonRaw);
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ type: 'action', action: parsedAction })}\n\n`)
+                  );
+                } catch {
+                  // Fallback se o JSON estiver incompleto ou com erro de sintaxe
+                  console.warn('Falha no parse do payload de ação:', actionJsonRaw);
+                }
+                // Limpa o marcador de ação do texto acumulado para evitar duplicação
+                accumulatedText = accumulatedText.replace(actionMatch[0], '');
+              }
+            }
+          }
+
+          // Sinaliza encerramento do stream
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+          controller.close();
+        } catch (streamError) {
+          controller.error(streamError);
+        }
+      },
     });
 
-    // Chamada do modelo Gemini
-    const result = await genAI.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      },
     });
-
-    const reply = result.text || "Desculpe, não consegui processar a resposta no momento. Por favor, tente novamente.";
-
-    return res.status(200).json({ reply });
   } catch (error: any) {
-    console.error("Erro no Agente Gestão 360:", error);
-    return res.status(500).json({
-      error: "Falha ao consultar o Agente Gestão 360",
-      details: error?.message || String(error)
-    });
+    console.error('Erro na execução do chat-assistant:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Erro interno ao processar atendimento inteligente.',
+        details: error?.message || String(error),
+      }),
+      { 
+        status: 500, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        } 
+      }
+    );
   }
 }

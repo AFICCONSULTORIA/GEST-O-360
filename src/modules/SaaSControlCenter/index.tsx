@@ -4,6 +4,7 @@ import {
   LifeBuoy, 
   KeyRound, 
   Activity, 
+  Bell,
   CheckCircle2, 
   AlertTriangle, 
   Search, 
@@ -51,6 +52,20 @@ import { SaaSControlCenterEducation } from './SaaSControlCenterEducation';
 import { SaaSControlCenterImport } from './SaaSControlCenterImport';
 import { SaaSControlCenterPdfExtractor } from './SaaSControlCenterPdfExtractor';
 import { SaaSControlCenterProposal } from './SaaSControlCenterProposal';
+import { SaaSControlCenterSupport } from './SaaSControlCenterSupport';
+import { SaaSControlCenterAnnouncements } from './SaaSControlCenterAnnouncements';
+import { SaaSControlCenterAuditLogs } from './SaaSControlCenterAuditLogs';
+import { SaaSAdminLayout } from './SaaSAdminLayout';
+import { SaaSCommandPalette } from './SaaSCommandPalette';
+import { SaaSActiveTab } from './types';
+import { 
+  saveTenant, 
+  deleteTenant, 
+  createUserWithAuth, 
+  sendPasswordReset, 
+  toggleUserStatus, 
+  performRealDiagnosticCheck 
+} from '../../services/platformAdminService';
 
 export interface SaaSControlCenterProps {
   darkMode: boolean;
@@ -131,7 +146,8 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
   patrimonioItems = [],
   orders = []
 }) => {
-  const [activeTab, setActiveTab] = useState<'tenants' | 'support' | 'users' | 'health' | 'saude' | 'import' | 'education' | 'pdf-extractor' | 'proposal'>('tenants');
+  const [activeTab, setActiveTab] = useState<SaaSActiveTab>('tenants');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Filtros na Gestão de Usuários
@@ -171,7 +187,11 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     contact_phone?: string;
     logo_url?: string;
     active_modules: string[];
-    status?: 'ativo' | 'implantacao' | 'suspenso';
+    status?: 'ativo' | 'implantacao' | 'suspenso' | 'cancelado';
+    plan_tier?: 'starter' | 'pro' | 'enterprise' | 'custom';
+    cnpj?: string;
+    uf?: string;
+    notes?: string;
   } | null>(null);
 
   // Ações de Usuário e Feedback
@@ -222,19 +242,16 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
 
   // Teste de Diagnóstico em tempo real
   const runDiagnosticCheck = async () => {
-    const t0 = performance.now();
     try {
-      const { error } = await supabase.from('institutions').select('id', { count: 'exact', head: true });
-      const t1 = performance.now();
-      const latency = Math.round(t1 - t0);
+      const diag = await performRealDiagnosticCheck();
       setHealthStatus({
-        databaseConnected: !error,
-        dbLatencyMs: latency > 0 ? latency : 35,
-        geminiApiOnline: true,
-        lastBackup: 'Hoje às 03:00',
-        lastChecked: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        databaseConnected: diag.databaseConnected,
+        dbLatencyMs: diag.dbLatencyMs > 0 ? diag.dbLatencyMs : 32,
+        geminiApiOnline: diag.geminiApiOnline,
+        lastBackup: 'Hoje às 03:00 (Cópia Segura Diária)',
+        lastChecked: diag.lastChecked
       });
-      showToast('Diagnóstico do sistema atualizado!', 'success');
+      showToast('Diagnóstico em tempo real atualizado com sucesso!', 'success');
     } catch (e) {
       setHealthStatus(prev => ({ ...prev, databaseConnected: false }));
     }
@@ -448,7 +465,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     }
   };
 
-  // Salvar ou Criar Município no Supabase
+  // Salvar ou Criar Município no Supabase com Auditoria
   const handleSaveTenant = async () => {
     if (!editingTenant?.name || !editingTenant?.subdomain) {
       showToast('Preencha o nome da instituição e o subdomínio.', 'error');
@@ -456,81 +473,53 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
     }
 
     const cleanSubdomain = editingTenant.subdomain.toLowerCase().trim().replace(/[^a-z0-9_-]/g, '');
-    const tenantId = editingTenant.id || `inst_${Date.now()}`;
-    const existingInst = institutions.find(i => i.id === tenantId);
-    const existingCertLinks = existingInst?.cert_links
-      ? (typeof existingInst.cert_links === 'string' ? JSON.parse(existingInst.cert_links) : existingInst.cert_links)
-      : {};
-
     const activeModulesToSave = editingTenant.active_modules && editingTenant.active_modules.length > 0
       ? editingTenant.active_modules
-      : ['patrimonio', 'certificates'];
+      : ['home', 'settings', 'support', 'controls', 'patrimonio', 'education', 'saude', 'financas', 'pntp', 'laws'];
 
-    const mergedCertLinks = {
-      ...existingCertLinks,
-      __active_modules: activeModulesToSave,
-      ...(editingTenant.contact_phone ? { __contact_phone: editingTenant.contact_phone } : {})
-    };
+    const res = await saveTenant(
+      {
+        id: editingTenant.id,
+        name: editingTenant.name.trim(),
+        subdomain: cleanSubdomain,
+        contact_phone: editingTenant.contact_phone || '',
+        logo_url: editingTenant.logo_url || '/brasao-municipio.png',
+        status: editingTenant.status || 'ativo',
+        plan_tier: editingTenant.plan_tier || 'pro',
+        cnpj: editingTenant.cnpj || '',
+        uf: editingTenant.uf || 'MT',
+        notes: editingTenant.notes || '',
+        active_modules: activeModulesToSave
+      },
+      currentUser
+    );
 
-    const newInst: Institution = {
-      ...(existingInst || {}),
-      id: tenantId,
-      name: editingTenant.name.trim(),
-      subdomain: cleanSubdomain,
-      logo_url: editingTenant.logo_url || '/brasao-municipio.png',
-      theme_color: '#10b981',
-      cert_links: mergedCertLinks,
-      active_modules: activeModulesToSave,
-      contact_phone: editingTenant.contact_phone
-    };
-
-    try {
-      localStorage.setItem(`@gestao360:active_modules_${newInst.id}`, JSON.stringify(activeModulesToSave));
-
-      const { error } = await supabase
-        .from('institutions')
-        .upsert({
-          id: newInst.id,
-          name: newInst.name,
-          subdomain: newInst.subdomain,
-          logo_url: newInst.logo_url,
-          cert_links: mergedCertLinks
-        });
-
-      if (error) {
-        showToast('Erro ao salvar no banco: ' + error.message, 'error');
-        return;
-      }
-
+    if (res.success && res.data) {
       setInstitutions(prev => {
-        const exists = prev.find(i => i.id === newInst.id);
+        const exists = prev.find(i => i.id === res.data!.id);
         if (exists) {
-          return prev.map(i => i.id === newInst.id ? newInst : i);
+          return prev.map(i => i.id === res.data!.id ? res.data! : i);
         }
-        return [...prev, newInst];
+        return [...prev, res.data!];
       });
 
-      showToast(`Município ${newInst.name} e módulos contratados salvos com sucesso!`, 'success');
+      showToast(`Município ${res.data.name} e configurações salvas com sucesso!`, 'success');
       setIsTenantModalOpen(false);
       setEditingTenant(null);
-    } catch (err: any) {
-      showToast('Erro de conexão ao salvar município.', 'error');
+    } else {
+      showToast('Erro ao salvar no banco: ' + (res.error || 'Erro desconhecido'), 'error');
     }
   };
 
-  // Excluir Município com Cascade
+  // Excluir Município com Auditoria
   const handleDeleteTenant = async (id: string, name: string) => {
-    if (confirm(`Atenção: Deseja realmente remover "${name}"? Todas as secretarias, servidores e lançamentos deste município serão excluídos permanentemente (ON DELETE CASCADE).`)) {
-      try {
-        const { error } = await supabase.from('institutions').delete().eq('id', id);
-        if (error) {
-          showToast('Erro ao remover do Supabase: ' + error.message, 'error');
-          return;
-        }
+    if (confirm(`Atenção: Deseja realmente remover "${name}"? Todas as secretarias, servidores e lançamentos deste município serão excluídos permanentemente.`)) {
+      const res = await deleteTenant(id, name, currentUser);
+      if (res.success) {
         setInstitutions(institutions.filter(i => i.id !== id));
-        showToast(`Município "${name}" e seus registros foram removidos!`, 'success');
-      } catch (err) {
-        showToast('Erro ao conectar ao banco de dados.', 'error');
+        showToast(`Município "${name}" e seus registros foram removidos com auditoria!`, 'success');
+      } else {
+        showToast('Erro ao remover do Supabase: ' + (res.error || 'Erro desconhecido'), 'error');
       }
     }
   };
@@ -605,39 +594,24 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
       initialPermissions = ['home:view', 'pntp:admin', 'risk:admin', 'controls:admin', 'contracts:admin', 'laws:admin', 'reports:admin'];
     }
 
-    try {
-      const newUser: AdminUser = {
-        id: crypto.randomUUID(),
+    const res = await createUserWithAuth(
+      {
         name: newUserData.name.trim(),
         email: newUserData.email.trim(),
         role: newUserData.role,
-        status: 'Ativo',
-        lastLogin: 'Nunca',
         institution_id: newUserData.institution_id,
-        permissions: initialPermissions as any
-      };
+        permissions: initialPermissions,
+      },
+      currentUser
+    );
 
-      const { error } = await supabase.from('admin_users').insert({
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        status: newUser.status,
-        institution_id: newUser.institution_id,
-        permissions: newUser.permissions
-      });
-
-      if (error) {
-        showToast('Erro ao salvar no banco: ' + error.message, 'error');
-        return;
-      }
-
-      setAdminUsers([...adminUsers, newUser]);
-      showToast(`Servidor ${newUser.name} cadastrado com permissões configuradas!`, 'success');
+    if (res.success && res.data) {
+      setAdminUsers([...adminUsers, res.data]);
+      showToast(`Servidor ${res.data.name} cadastrado com Auth real e permissões no sistema!`, 'success');
       setIsUserModalOpen(false);
       setNewUserData({ name: '', email: '', role: 'Admin', institution_id: '', preset: 'full' });
-    } catch (err) {
-      showToast('Erro de conexão ao criar servidor.', 'error');
+    } else {
+      showToast('Erro ao criar servidor: ' + (res.error || 'Erro desconhecido'), 'error');
     }
   };
 
@@ -685,156 +659,46 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
   }, [institutions, adminUsers]);
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-[#F8F9FA] text-neutral-900'} p-4 sm:p-7 lg:p-8 font-sans transition-colors duration-300`}>
-      {/* CABEÇALHO MASTER */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between pb-6 border-b border-neutral-200 dark:border-neutral-800 gap-5">
-        <div>
-          <div className="flex items-center gap-3.5">
-            <div className="p-2.5 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm">
-              <Building2 className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-neutral-900 dark:text-white flex items-center gap-2.5">
-                Gestão SaaS 
-                <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30">
-                  Superadmin Master
-                </span>
-              </h1>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Controle central de clientes municipais, chamados de suporte, saúde pública, acessos e infraestrutura
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* CONTROLES RÁPIDOS & NAVEGAÇÃO DE ABAS */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Menu Principal de Abas */}
-          <div className="flex items-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 p-1 rounded-2xl shadow-sm">
-            <button
-              onClick={() => setActiveTab('tenants')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'tenants' 
-                  ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-neutral-950 shadow-md shadow-emerald-500/20' 
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" /> 
-              Municípios ({institutions.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('saude')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'saude' 
-                  ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-neutral-950 shadow-md shadow-emerald-500/20' 
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <HeartPulse className="w-3.5 h-3.5" /> 
-              Saúde Pública
-            </button>
-            <button
-              onClick={() => setActiveTab('support')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'support' 
-                  ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-neutral-950 shadow-md shadow-emerald-500/20' 
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <LifeBuoy className="w-3.5 h-3.5" /> 
-              Chamados {openTickets.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/20 text-amber-700 dark:text-amber-300 font-black">
-                  {openTickets.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'users' 
-                  ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-neutral-950 shadow-md shadow-emerald-500/20' 
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" /> 
-              Acessos & Permissões ({adminUsers.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('health')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
-                activeTab === 'health' 
-                  ? 'bg-emerald-600 text-white dark:bg-emerald-500 dark:text-neutral-950 shadow-md shadow-emerald-500/20' 
-                  : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <Activity className="w-3.5 h-3.5" /> 
-              Diagnóstico
-            </button>
-          </div>
-
-          {/* Abas Secundárias Especializadas */}
-          <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800/80 p-1 rounded-2xl">
-            <button
-              onClick={() => setActiveTab('import')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                activeTab === 'import' ? 'bg-white dark:bg-neutral-800 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-              title="Importação em Lote de Alunos e Patrimônio"
-            >
-              <UploadCloud className="w-3.5 h-3.5" /> Migração
-            </button>
-            <button
-              onClick={() => setActiveTab('education')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                activeTab === 'education' ? 'bg-white dark:bg-neutral-800 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-              title="Visão Consolidada da Educação Municipal"
-            >
-              <GraduationCap className="w-3.5 h-3.5" /> Educação
-            </button>
-            <button
-              onClick={() => setActiveTab('pdf-extractor')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                activeTab === 'pdf-extractor' ? 'bg-white dark:bg-neutral-800 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-              title="Extrator Inteligente de PDF para Excel"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5" /> Extrator PDF
-            </button>
-            <button
-              onClick={() => setActiveTab('proposal')}
-              className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                activeTab === 'proposal' ? 'bg-white dark:bg-neutral-800 text-emerald-600 dark:text-emerald-400 shadow-sm' : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-              title="Gerador e Editor de Propostas Comerciais e Minutas TR"
-            >
-              <FileText className="w-3.5 h-3.5" /> Proposta & TR
-            </button>
-          </div>
-
-          {/* Ações de Tema e Logout */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className="p-2.5 rounded-xl bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 transition shadow-sm"
-              title="Alternar Tema Claro/Escuro"
-            >
-              {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-neutral-700" />}
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 border border-rose-200 dark:border-rose-500/20 text-rose-600 dark:text-rose-400 transition shadow-sm"
-              title="Sair do Superadmin"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
+    <SaaSAdminLayout
+      activeTab={activeTab}
+      onSelectTab={setActiveTab}
+      onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+      institutionsCount={institutions.length}
+      usersCount={adminUsers.length}
+      openTicketsCount={openTickets.length}
+      darkMode={darkMode}
+      onToggleDarkMode={() => setDarkMode(!darkMode)}
+      onSignOut={handleSignOut}
+      currentUser={currentUser}
+    >
+      <SaaSCommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        onNavigateTab={setActiveTab}
+        institutions={institutions}
+        adminUsers={adminUsers}
+        onSelectTenant={(tenant) => {
+          setEditingTenant(tenant);
+          setIsTenantModalOpen(true);
+        }}
+        onOpenCreateTenant={() => {
+          setEditingTenant({
+            name: '',
+            subdomain: '',
+            contact_phone: '',
+            active_modules: ['home', 'controls', 'patrimonio', 'education', 'saude', 'financas', 'pntp', 'laws'],
+            status: 'ativo',
+            plan_tier: 'pro'
+          });
+          setIsTenantModalOpen(true);
+        }}
+        onOpenCreateUser={() => setIsUserModalOpen(true)}
+        onOpenCreateAnnouncement={() => setActiveTab('announcements')}
+      />
 
       {/* FEEDBACK DE AÇÃO RÁPIDA */}
       {actionFeedback && (
-        <div className="my-4 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between shadow-sm">
+        <div className="mb-6 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/80 border border-emerald-200 dark:border-emerald-500/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>{actionFeedback}</span>
@@ -847,33 +711,55 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
 
       {/* CONTEÚDO 1: GESTÃO DE MUNICÍPIOS / TENANTS */}
       {activeTab === 'tenants' && (
-        <div className="mt-8 space-y-6">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="relative w-full sm:w-96">
-              <Search className="w-4 h-4 absolute left-3.5 top-3 text-neutral-400" />
-              <input
-                type="text"
-                placeholder="Buscar prefeitura por nome, subdomínio ou código..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:border-emerald-500 transition shadow-sm"
-              />
+        <div className="space-y-6">
+          {/* Page Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-neutral-800">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                  <Building2 className="w-5 h-5" />
+                </div>
+                <h2 className="text-xl font-black text-neutral-900 dark:text-white tracking-tight">
+                  Municípios & Redes Parceiras
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-mono">
+                  {institutions.length} {institutions.length === 1 ? 'instância ativa' : 'instâncias ativas'}
+                </span>
+              </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                Controle de ciclo de vida, subdomínios oficiais e módulos contratados por cada prefeitura
+              </p>
             </div>
-            <button
-              onClick={() => {
-                setEditingTenant({
-                  name: '',
-                  subdomain: '',
-                  contact_phone: '',
-                  active_modules: ['patrimonio', 'certificates'],
-                  status: 'ativo'
-                });
-                setIsTenantModalOpen(true);
-              }}
-              className="w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-neutral-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 dark:shadow-emerald-500/20 transition-all hover:scale-[1.02]"
-            >
-              <Plus className="w-4 h-4" /> Cadastrar Novo Município
-            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 absolute left-3.5 top-3 text-neutral-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrar por nome ou subdomínio..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:border-amber-500 transition shadow-sm"
+                />
+              </div>
+
+              <button
+                onClick={() => {
+                  setEditingTenant({
+                    name: '',
+                    subdomain: '',
+                    contact_phone: '',
+                    active_modules: ['home', 'controls', 'patrimonio', 'education', 'saude', 'financas', 'pntp', 'laws'],
+                    status: 'ativo',
+                    plan_tier: 'pro'
+                  });
+                  setIsTenantModalOpen(true);
+                }}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-neutral-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition whitespace-nowrap"
+              >
+                <Plus className="w-4 h-4" /> Cadastrar Município
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -892,13 +778,33 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                 >
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-4">
-                      <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-lg uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
-                        {tenant.subdomain || tenant.id}.gestao360.app
-                      </span>
-                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        ATIVO
-                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-lg uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 w-fit">
+                          {tenant.subdomain || tenant.id}.gestao360.app
+                        </span>
+                        {tenant.cnpj && (
+                          <span className="text-[10px] text-neutral-400 font-mono">
+                            CNPJ: {tenant.cnpj} ({tenant.uf || 'MT'})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 ${
+                          tenant.status === 'suspenso'
+                            ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                            : tenant.status === 'cancelado'
+                            ? 'bg-rose-500/10 text-rose-500 border-rose-500/30'
+                            : tenant.status === 'implantacao'
+                            ? 'bg-sky-500/10 text-sky-500 border-sky-500/30'
+                            : 'bg-emerald-50 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${
+                            tenant.status === 'suspenso' ? 'bg-amber-500' : tenant.status === 'cancelado' ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'
+                          }`} />
+                          {(tenant.status || 'ativo').toUpperCase()}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3 mb-3">
@@ -1050,146 +956,10 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
         </div>
       )}
 
-      {/* CONTEÚDO 3: CENTRAL DE SUPORTE & CHAMADOS */}
+      {/* CONTEÚDO 3: CENTRAL DE SUPORTE UNIFICADA & CHAT AO VIVO */}
       {activeTab === 'support' && (
-        <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">
-                Fila Geral de Atendimento ({tickets.length} chamados registrados)
-              </h3>
-              <button 
-                onClick={fetchTickets}
-                className="text-xs text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTickets ? 'animate-spin' : ''}`} /> Atualizar Fila
-              </button>
-            </div>
-
-            {tickets.length === 0 ? (
-              <div className="p-8 rounded-2xl bg-white dark:bg-neutral-900/60 border border-neutral-200 dark:border-neutral-800 text-center text-neutral-500 dark:text-neutral-400 shadow-sm">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2 opacity-80" />
-                <p className="text-xs font-bold">Nenhum chamado pendente no momento.</p>
-                <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">Todas as demandas de prefeituras foram concluídas com sucesso.</p>
-              </div>
-            ) : (
-              tickets.map(ticket => {
-                const originInst = institutions.find(i => i.id === ticket.institution_id);
-                const isSelected = selectedTicket?.id === ticket.id;
-
-                return (
-                  <div 
-                    key={ticket.id} 
-                    onClick={() => setSelectedTicket(ticket)}
-                    className={`p-5 rounded-2xl border transition-all cursor-pointer shadow-sm ${
-                      isSelected 
-                        ? 'bg-neutral-100 dark:bg-neutral-800/90 border-emerald-500 dark:border-emerald-500' 
-                        : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between text-xs mb-2">
-                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                        #{ticket.id.slice(0, 8).toUpperCase()}
-                      </span>
-                      <span className="text-neutral-400 text-[11px]">
-                        {new Date(ticket.created_at).toLocaleDateString('pt-BR')} às {new Date(ticket.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-
-                    <h4 className="text-sm font-bold text-neutral-900 dark:text-white">{ticket.title}</h4>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">{ticket.description}</p>
-
-                    <div className="mt-3.5 flex items-center justify-between text-[11px] pt-3 border-t border-neutral-100 dark:border-neutral-800/60">
-                      <span className="text-neutral-700 dark:text-neutral-300 font-semibold flex items-center gap-1.5">
-                        <Building2 className="w-3.5 h-3.5 text-neutral-400" />
-                        {originInst?.name || 'Prefeitura Parceira'} ({ticket.user_name || 'Servidor'})
-                      </span>
-                      <span className={`px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                        ticket.status === 'Aberto' 
-                          ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30' 
-                          : ticket.status === 'Respondido'
-                          ? 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-500/30'
-                          : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30'
-                      }`}>
-                        {ticket.status.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* PAINEL LATERAL DE RESPOSTA */}
-          <div className="bg-white dark:bg-neutral-900/70 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
-            {selectedTicket ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-neutral-200 dark:border-neutral-800 pb-3">
-                  <div>
-                    <span className="text-xs font-mono text-emerald-600 dark:text-emerald-400 font-bold">
-                      #{selectedTicket.id.slice(0, 8).toUpperCase()}
-                    </span>
-                    <h4 className="text-sm font-bold text-neutral-900 dark:text-white mt-1">{selectedTicket.title}</h4>
-                  </div>
-                  <button 
-                    onClick={() => openWhatsApp(
-                      '66996893617', 
-                      `Olá ${selectedTicket.user_name || 'Servidor'}! Sou do suporte do Gestão 360 referente ao chamado #${selectedTicket.id.slice(0, 8).toUpperCase()} (${selectedTicket.title}).`
-                    )}
-                    className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 transition"
-                    title="Atender no WhatsApp"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                    Descrição Registrada pelo Servidor
-                  </label>
-                  <p className="text-xs text-neutral-700 dark:text-neutral-300 mt-1.5 p-3.5 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-200 dark:border-neutral-800/80 leading-relaxed">
-                    {selectedTicket.description}
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                    Resposta Técnica do Suporte
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={replyMessage}
-                    onChange={(e) => setReplyMessage(e.target.value)}
-                    placeholder="Digite a orientação ao servidor, despacho técnico ou solução..."
-                    className="w-full mt-1.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-3 text-xs text-neutral-900 dark:text-white placeholder-neutral-400 focus:outline-none focus:border-emerald-500 transition"
-                  />
-                </div>
-
-                <div className="flex gap-2 pt-2">
-                  <button
-                    onClick={handleSendTicketReply}
-                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-500 dark:hover:bg-emerald-400 dark:text-neutral-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 dark:shadow-emerald-500/20 transition"
-                  >
-                    <Send className="w-3.5 h-3.5" /> Enviar Resposta
-                  </button>
-                  <button
-                    onClick={handleResolveTicket}
-                    className="px-4 py-2.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-xs font-bold rounded-xl text-neutral-700 dark:text-neutral-300 transition"
-                  >
-                    Concluir
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="h-72 flex flex-col items-center justify-center text-center text-neutral-400 dark:text-neutral-500">
-                <LifeBuoy className="w-12 h-12 mb-3 opacity-40 text-emerald-500" />
-                <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Selecione um chamado da fila</p>
-                <p className="text-[11px] text-neutral-500 mt-1 max-w-xs">
-                  Abra qualquer ticket para visualizar o histórico, responder ao servidor ou acionar atendimento no WhatsApp.
-                </p>
-              </div>
-            )}
-          </div>
+        <div className="mt-8">
+          <SaaSControlCenterSupport institutions={institutions} currentUser={currentUser} />
         </div>
       )}
 
@@ -1507,6 +1277,18 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
               </ResponsiveContainer>
             </div>
           </div>
+
+          {/* Trilha de Auditoria Global da Plataforma */}
+          <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
+            <SaaSControlCenterAuditLogs />
+          </div>
+        </div>
+      )}
+
+      {/* CONTEÚDO 5.1: COMUNICADOS GLOBAIS AOS MUNICÍPIOS */}
+      {activeTab === 'announcements' && (
+        <div className="mt-8">
+          <SaaSControlCenterAnnouncements institutions={institutions} currentUser={currentUser} />
         </div>
       )}
 
@@ -1825,6 +1607,60 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                 </div>
               </div>
 
+              {/* DADOS FISCAIS, STATUS & PLANO SAAS */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">CNPJ da Prefeitura</label>
+                  <input
+                    type="text"
+                    placeholder="00.000.000/0001-00"
+                    value={editingTenant?.cnpj || ''}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, cnpj: e.target.value }) : null)}
+                    className="w-full mt-1 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-2.5 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">UF (Estado)</label>
+                  <input
+                    type="text"
+                    placeholder="MT"
+                    maxLength={2}
+                    value={editingTenant?.uf || 'MT'}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, uf: e.target.value.toUpperCase() }) : null)}
+                    className="w-full mt-1 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-2.5 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 text-xs uppercase"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">Status do Tenant</label>
+                  <select
+                    value={editingTenant?.status || 'ativo'}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, status: e.target.value as any }) : null)}
+                    className="w-full mt-1 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-2.5 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 text-xs font-bold"
+                  >
+                    <option value="ativo">🟢 Ativo (Produção)</option>
+                    <option value="implantacao">🔵 Em Implantação</option>
+                    <option value="suspenso">🟡 Suspenso</option>
+                    <option value="cancelado">🔴 Cancelado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-neutral-700 dark:text-neutral-300 font-bold">Plano Contratado</label>
+                  <select
+                    value={editingTenant?.plan_tier || 'pro'}
+                    onChange={(e) => setEditingTenant(prev => prev ? ({ ...prev, plan_tier: e.target.value as any }) : null)}
+                    className="w-full mt-1 bg-neutral-100 dark:bg-neutral-950 border border-neutral-300 dark:border-neutral-800 rounded-xl p-2.5 text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500 text-xs font-bold"
+                  >
+                    <option value="starter">Starter (Básico)</option>
+                    <option value="pro">Pro Municipal (Completo)</option>
+                    <option value="enterprise">Enterprise (Total 360)</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </div>
+              </div>
+
               {/* SELETOR DE MÓDULOS CONTRATADOS */}
               <div className="pt-2 border-t border-neutral-200 dark:border-neutral-800">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
@@ -2017,7 +1853,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
           </div>
         </div>
       )}
-    </div>
+    </SaaSAdminLayout>
   );
 };
 

@@ -70,6 +70,37 @@ export interface SupportTicketMessage {
   is_admin: boolean;
   created_at: string;
 }
+
+export type ChatMode = 'bot' | 'waiting_human' | 'human_active' | 'closed';
+
+export interface SaasSupportTicket {
+  id: string;
+  protocol?: string;
+  institution_id?: string;
+  institution_name?: string;
+  requester_name?: string;
+  requester_email?: string;
+  subject?: string;
+  category?: string;
+  priority?: string;
+  status?: string;
+  description?: string;
+  chat_mode?: ChatMode;
+  session_id?: string;
+  attendant_id?: string;
+  attendant_name?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SaasLiveMessage {
+  id: string;
+  ticket_id: string;
+  sender_type: 'user' | 'bot' | 'admin';
+  sender_name: string;
+  content: string;
+  created_at?: string;
+}
 export interface ProtocolHistoryEntry {
   date: string;
   user: string;
@@ -249,6 +280,48 @@ export interface Institution {
   state_links?: any;
   active_modules?: string[];
   contact_phone?: string;
+  status?: 'ativo' | 'implantacao' | 'suspenso' | 'cancelado';
+  plan_tier?: 'starter' | 'pro' | 'enterprise' | 'custom';
+  cnpj?: string;
+  uf?: string;
+  ibge_code?: string;
+  contract_start?: string;
+  contract_end?: string;
+  max_users?: number;
+  notes?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PlatformAuditLog {
+  id: string;
+  created_at: string;
+  actor_id?: string;
+  actor_email?: string;
+  actor_name?: string;
+  action: string;
+  target_type: 'institution' | 'user' | 'module' | 'system';
+  target_id?: string;
+  target_name?: string;
+  details?: Record<string, any>;
+  ip_address?: string;
+}
+
+export interface PlatformAnnouncement {
+  id: string;
+  created_at: string;
+  title: string;
+  message: string;
+  priority: 'baixa' | 'normal' | 'alta' | 'critica';
+  target_institutions?: string[];
+  valid_until?: string | null;
+  is_active: boolean;
+  created_by?: string;
+  show_login_banner?: boolean;
+  logo_url?: string;
+  action_label?: string;
+  action_url?: string;
+  updated_at?: string;
 }
 
 export interface Department {

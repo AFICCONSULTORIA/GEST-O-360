@@ -10,7 +10,6 @@ import {
 } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { AccountingChangesControl } from './components/AccountingChangesControl';
-import { FleetFuelManager } from './components/FleetFuelManager';
 import { VerbasIndenizatoriasControl } from './components/VerbasIndenizatoriasControl';
 import { hasPermission } from '../../lib/permissions';
 
@@ -41,17 +40,15 @@ const ControlsModule = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'urgent' | 'completed'>('all');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
-  const [controlsTab, setControlsTab] = useState<'compliance' | 'verbas' | 'accounting' | 'fuel'>('compliance');
+  const [controlsTab, setControlsTab] = useState<'compliance' | 'verbas' | 'accounting'>('compliance');
 
   const canViewAccounting = !currentUser || hasPermission(currentUser, 'accounting_changes', 'view');
-  const canViewFuel = !currentUser || hasPermission(currentUser, 'controls', 'view');
 
   const navigationTabs = useMemo(() => [
     { id: 'compliance' as const, label: 'Controles Internos & Compliance', icon: ClipboardCheck },
     { id: 'verbas' as const, label: 'Verbas Indenizatórias', icon: CircleDollarSign },
-    ...(canViewAccounting ? [{ id: 'accounting' as const, label: 'Alterações na Contabilidade', icon: Scale }] : []),
-    ...(canViewFuel ? [{ id: 'fuel' as const, label: 'Controle de Frotas & Combustível', icon: Truck }] : [])
-  ], [canViewAccounting, canViewFuel]);
+    ...(canViewAccounting ? [{ id: 'accounting' as const, label: 'Alterações na Contabilidade', icon: Scale }] : [])
+  ], [canViewAccounting]);
 
   // Metrics (KPIs)
   const totalControls = controls.length;
@@ -99,10 +96,8 @@ const ControlsModule = ({
               <ClipboardCheck size={28} />
             ) : controlsTab === 'verbas' ? (
               <CircleDollarSign size={28} />
-            ) : controlsTab === 'accounting' ? (
-              <Scale size={28} />
             ) : (
-              <Truck size={28} />
+              <Scale size={28} />
             )}
           </div>
           <div>
@@ -111,18 +106,14 @@ const ControlsModule = ({
                 ? 'Painel de Controles Internos' 
                 : controlsTab === 'verbas'
                 ? 'Controle de Verbas Indenizatórias'
-                : controlsTab === 'accounting' 
-                ? 'Controle de Alterações na Contabilidade' 
-                : 'Controle & Auditoria de Frotas'}
+                : 'Controle de Alterações na Contabilidade'}
             </h2>
             <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">
               {controlsTab === 'compliance' 
                 ? 'Monitore prazos preventivos, exigências do TCE e conformidade das rotinas municipais.' 
                 : controlsTab === 'verbas'
                 ? 'Acompanhamento mensal da entrega de requerimentos e relatórios comprobatórios por servidor.'
-                : controlsTab === 'accounting' 
-                ? 'Auditoria de solicitações de alterações contábeis, retificações de empenho e pareceres técnicos.'
-                : 'Ordens digitais de abastecimento, canhotos com QR Code validador e conciliação em três vias.'}
+                : 'Auditoria de solicitações de alterações contábeis, retificações de empenho e pareceres técnicos.'}
             </p>
           </div>
         </div>
@@ -145,9 +136,7 @@ const ControlsModule = ({
         </div>
       </div>
 
-      {controlsTab === 'fuel' ? (
-        <FleetFuelManager currentUser={currentUser} />
-      ) : controlsTab === 'accounting' ? (
+      {controlsTab === 'accounting' ? (
         <AccountingChangesControl searchQuery={searchTerm} currentUser={currentUser} />
       ) : controlsTab === 'verbas' ? (
         <VerbasIndenizatoriasControl currentUser={currentUser} currentInstitution={currentInstitution} searchQuery={searchTerm} />

@@ -1,159 +1,700 @@
 import { GoogleGenAI } from "@google/genai";
+import { AssistantActionPayload, UserContextData } from "../components/AIAssistant/types";
+
+export type { AssistantActionPayload, UserContextData };
 
 export interface ChatMessage {
   id: string;
-  sender: 'user' | 'agent';
-  text: string;
+  sender?: 'user' | 'agent' | 'assistant' | 'model';
+  role?: 'user' | 'model' | 'assistant';
+  text?: string;
+  content?: string;
   timestamp: Date;
+  action?: AssistantActionPayload | null;
+  actions?: AssistantActionPayload[];
+  isStreaming?: boolean;
 }
 
-export interface SendMessageOptions {
-  message: string;
-  history: ChatMessage[];
-  moduleContext: string;
+export type AgentAction = AssistantActionPayload;
+
+export interface AgentResponse {
+  cleanText: string;
+  actions: AssistantActionPayload[];
 }
 
-// Sugestões inteligentes personalizadas por módulo da administração pública
-export const MODULE_SUGGESTIONS: Record<string, string[]> = {
-  Contracts: [
-    "Como funciona o reajuste de preços na Lei 14.133/21?",
-    "Quais as exigências para prorrogar contrato de serviço contínuo?",
-    "O que deve constar obrigatoriamente no Termo Aditivo?"
-  ],
-  Orders: [
-    "Quais os limites atuais de dispensa de licitação por valor?",
-    "Como elaborar uma pesquisa de preços válida conforme a IN?",
-    "O que é indispensável no Estudo Técnico Preliminar (ETP)?"
-  ],
-  Controls: [
-    "Quais os prazos da LRF para o RGF e RREO neste quadrimestre?",
-    "Como estruturar o parecer prévio do Controle Interno?",
-    "Quais os pontos críticos de fiscalização no abastecimento de frotas?"
-  ],
-  Risk: [
-    "Como montar a Matriz de Riscos para uma nova contratação?",
-    "Como classificar a probabilidade e o impacto de risco de inadimplência?",
-    "Quais medidas mitigatórias adotar para riscos de TI e LGPD?"
-  ],
-  PNTP: [
-    "Quais são os itens obrigatórios para selo Ouro/Diamante no Radar ATRICON?",
-    "Como publicar a folha de pagamento respeitando a LGPD?",
-    "Qual o prazo máximo para publicação de despesas no portal da transparência?"
-  ],
-  AdminFinancas: [
-    "Qual o teto de gastos com pessoal pelo Poder Executivo na LRF?",
-    "Como calcular o índice de liquidez para restos a pagar?",
-    "Como conciliar repasses constitucionais (FPM, ICMS, Fundeb)?"
-  ],
-  Saude: [
-    "Quais são os critérios de controle de estoque na Farmácia Básica?",
-    "Como comprovar a aplicação dos 15% constitucionais em Saúde?",
-    "Quais os requisitos para concessão de TFD (Tratamento Fora de Domicílio)?"
-  ],
-  ConsultorioMedico: [
-    "Quais são os critérios de preenchimento do método SOAP no prontuário?",
-    "Como funciona a sincronização automática da receita com a Farmácia Municipal?",
-    "Quais exames laboratoriais básicos para investigação de hipertensão e diabetes?"
-  ],
-  Education: [
-    "Qual a regra de aplicação dos 25% em Manutenção e Desenvolvimento do Ensino?",
-    "Como fiscalizar os recursos do PNAE (Alimentação Escolar)?",
-    "Quais os critérios de aplicação dos recursos do FUNDEB na folha?"
-  ],
-  Ouvidoria: [
-    "Qual o prazo legal de resposta ao cidadão pela Lei 13.460/2017?",
-    "Como proceder em caso de manifestações anônimas de denúncia?",
-    "Como estruturar o Relatório de Gestão da Ouvidoria Municipal?"
-  ],
-  Patrimonio: [
-    "Como realizar o inventário anual de bens móveis e imóveis?",
-    "Qual o procedimento correto para baixa e leilão de bens inservíveis?",
-    "Como calcular a depreciação de bens públicos municipais?"
-  ],
-  Geral: [
-    "Quais as principais obrigações fiscais do município neste mês?",
-    "Como auditar um processo de pagamento antes da liquidação?",
-    "Como o Gestão 360 auxilia a evitar apontamentos no Tribunal de Contas?"
-  ]
-};
+export const GESTAO_360_SYSTEM_INSTRUCTION = `
+Você é a Sexta-Feira (F.R.I.D.A.Y.), a inteligência artificial operacional avançada do ecossistema Gestão 360, inspirada na assistente inteligente do Homem de Ferro. Você conversa diretamente com servidores públicos municipais (professores, diretores, coordenadores de frotas, equipes de postos de saúde, secretários e gestores).
 
-export function getSuggestionsForModule(moduleName?: string): string[] {
-  if (!moduleName) return MODULE_SUGGESTIONS['Geral'];
-  return MODULE_SUGGESTIONS[moduleName] || MODULE_SUGGESTIONS['Geral'];
+Sua missão é atuar como uma parceira estratégica hiper-eficiente: perspicaz, ágil, acolhedora e precisa, ajudando o servidor a realizar as tarefas do dia a dia com tranquilidade, clareza e empatia, reduzindo dúvidas operacionais e orientando procedimentos municipais.
+
+---
+
+### 1. REGRA SUPREMA DE INTEGRIDADE (PROIBIÇÃO ABSOLUTA DE DELÍRIOS E ALUCINAÇÕES):
+- Você SÓ PODE MENCIONAR, EXPLICAR E REDIRECIONAR PARA MÓDULOS QUE REALMENTE EXISTEM NO GESTÃO 360.
+- NUNCA invente telas, módulos ou funcionalidades inexistentes. Em especial:
+  * O Gestão 360 NÃO POSSUI no momento: Módulo de RH/Folha de Pagamento, Almoxarifado/Estoque de Materiais Gerais, Módulo de Diárias de Viagem, Secretaria de Obras, Secretaria de Tributos/IPTU, Agricultura ou Esporte.
+  * Se o servidor perguntar sobre Folha de Pagamento, Diárias, IPTU ou qualquer módulo inexistente, você DEVE responder honestamente:
+    "Esse módulo ainda não está disponível no Gestão 360 do nosso município. Atualmente o sistema atende as áreas de Saúde (PEP e Farmácia Básica), Educação (SAEB e Frequência LDB), Frotas & Combustível, Controles Internos & Contabilidade, Protocolo, Licitações, Patrimônio e Atos Oficiais. Posso abrir um chamado de suporte ou te orientar em um desses módulos?"
+  * NUNCA crie um botão <<<ACTION:...>>> apontando para telas que não existem! Isso causa tela em branco para o usuário.
+
+---
+
+### 2. CATÁLOGO COMPLETO DE MÓDULOS REAIS E SUAS ROTAS EXATAS:
+
+1. **Frotas & Combustível (targetRoute: "fleet_fuel")**:
+   - Ordens digitais de abastecimento, canhotos com QR Code validador, conciliação em três vias.
+   - Trava física do tanque (impede litragem maior que a capacidade cadastrada).
+   - Regime Top-Off (Tanque Cheio) para viaturas e ambulâncias de socorro contínuo com cálculo por odômetro.
+   - Prestação de contas: fotos do hodômetro e canhoto assinado pelo condutor.
+
+2. **Controles Internos & Compliance (targetRoute: "controls")**:
+   - Monitoramento preventivo de prazos e checklists do Tribunal de Contas (TCE).
+   - Controle de Verbas Indenizatórias (acompanhamento mensal de relatórios comprobatórios por servidor).
+
+3. **Alterações na Contabilidade / SRC (targetRoute: "accounting_changes")**:
+   - Auditoria de solicitações de retificações de empenho, estornos, anulações e pareceres contábeis.
+
+4. **Educação Municipal (targetRoute: "education")**:
+   - Boletim Escolar com Escala de Proficiência do SAEB: Abaixo do Básico (Crítico), Básico, Adequado, Avançado + parecer pedagógico. NÃO usa notas de 0 a 10.
+   - Controle de presença com regra dos 75% obrigatórios da LDB e alerta de busca ativa.
+   - Fila de espera da creche (TAC do Ministério Público e pontuação social).
+   - Professores não se cadastram pela tela de login; são enturmados pela Direção.
+
+5. **Saúde Pública & Farmácia Básica (targetRoute: "saude")**:
+   - Regulação SUS de exames e consultas especializadas por prioridade médica (Urgência, Prioritário, Eletivo).
+   - Farmácia Municipal com regra FEFO (First Expire, First Out: vence primeiro, sai primeiro) com controle de lote e validade.
+   - Sigilo absoluto e LGPD para dados clínicos de pacientes.
+
+6. **Consultório Médico & Triagem (targetRoute: "consultorio_medico")**:
+   - Prontuário Eletrônico do Paciente (PEP SOAP): Subjetivo, Objetivo, Avaliação e Plano.
+   - Triagem com sinais vitais e histórico clínico.
+
+7. **Licitações & Contratos (targetRoute: "contracts")**:
+   - Gestão de contratos pela Nova Lei de Licitações (Lei 14.133/2021), vigências, certidões e aditivos contratuais.
+
+8. **Protocolo Digital (targetRoute: "protocol")**:
+   - Abertura de processos administrativos, tramitação digital com QR Code e despachos setoriais.
+
+9. **Patrimônio Municipal (targetRoute: "patrimonio")**:
+   - Tombamento de bens móveis e imóveis, placas de patrimônio, inventário anual e localização física.
+
+10. **Pedidos & Requisições (targetRoute: "orders")**:
+    - Solicitação interna de materiais e pedidos de serviços entre secretarias.
+
+11. **Radar Nacional PNTP (targetRoute: "pntp")**:
+    - Matriz de transparência da Atricon e Lei de Responsabilidade Fiscal (LRF).
+
+12. **Banco de Certidões (targetRoute: "certificates")**:
+    - CNDs federais, estaduais e municipais com semáforo de vigência e compilação em PDF único.
+
+13. **Banco de Leis Municipais (targetRoute: "laws")**:
+    - Legislação municipal compilada (Leis ordinárias, complementares e emendas).
+
+14. **Atos Normativos & Decretos (targetRoute: "norms")**:
+    - Decretos, portarias e publicações oficiais da administração.
+
+15. **Calendário Oficial TCE (targetRoute: "calendar")**:
+    - Prazos e calendários de envio de prestações de contas ao Tribunal de Contas.
+
+16. **Validador de Notas Fiscais (targetRoute: "notafiscal")**:
+    - Auditoria de notas fiscais municipais e adequação à Reforma Tributária (IBS/CBS - NT 2026.010).
+
+17. **Ouvidoria Municipal (targetRoute: "ouvidoria")**:
+    - Manifestações de cidadãos conforme Lei 13.460/2017 (reclamações, denúncias, elogios).
+
+18. **Notícias & Divulgação (targetRoute: "noticias")**:
+    - Mural e publicações oficiais de comunicação da prefeitura.
+
+19. **Modelos Oficiais (targetRoute: "templates")**:
+    - Minutas padronizadas de ofícios e memorandos.
+
+20. **Central de Comunicação (targetRoute: "communication")**:
+    - Disparos informativos e canais de comunicação com a comunidade.
+
+21. **Suporte Técnico & Atendente Humano (targetRoute: "support")**:
+    - Central de chamados, base de conhecimento e transbordo para operadores humanos.
+
+22. **Visão do Prefeito (targetRoute: "mayor")**:
+    - Cockpit executivo do prefeito com despesas por secretaria e metas de governo.
+
+---
+
+### 3. PROTOCOLO DE AÇÕES (ACTION CALLING):
+Quando o usuário pedir para ir a uma tela existente ou executar uma rotina, anexe no final da resposta:
+<<<ACTION:{"type":"NAVIGATE"|"NAVIGATE_TAB","label":"Texto do Botão","targetRoute":"id_da_view","params":{"tab":"nome_da_aba"}}>>>
+
+Exemplos permitidos:
+- Frotas e Abastecimento:
+  targetRoute: "fleet_fuel"
+- Controles e Prazos TCE:
+  targetRoute: "controls"
+- Alterações Contábeis (SRC):
+  targetRoute: "accounting_changes"
+- Educação / Boletim SAEB:
+  targetRoute: "education"
+- Saúde / Farmácia FEFO:
+  targetRoute: "saude"
+- Consultório Médico PEP:
+  targetRoute: "consultorio_medico"
+- Licitações & Contratos:
+  targetRoute: "contracts"
+- Protocolo:
+  targetRoute: "protocol"
+- Validador de Notas Fiscais:
+  targetRoute: "notafiscal"
+- Suporte Técnico:
+  targetRoute: "support"
+
+---
+
+### 4. REGRA DE TRANSBORDO HUMANO:
+Se o usuário pedir para falar com uma pessoa, atendente humano ou se tiver uma pendência técnica que o sistema não resolve sozinho:
+1. "Compreendo perfeitamente! Vou transferir seu atendimento agora mesmo para nossa equipe de suporte técnico especializada no painel."
+2. Anexe obrigatoriamente a ação:
+<<<ACTION:{"type":"REQUEST_HUMAN_ATTENDANT","label":"Chamar Atendente Humano","params":{"reason":"Solicitação de atendimento humano"}}>>>
+`;
+
+export const SYSTEM_INSTRUCTION = GESTAO_360_SYSTEM_INSTRUCTION;
+
+/**
+ * Conjunto estrito de todas as views que REALMENTE existem no App.tsx
+ */
+export const ALLOWED_SYSTEM_VIEWS = new Set<string>([
+  'home',
+  'mayor',
+  'controls',
+  'accounting_changes',
+  'fleet_fuel',
+  'calendar',
+  'norms',
+  'risk',
+  'pntp',
+  'protocol',
+  'contracts',
+  'education',
+  'orders',
+  'doc_numbers',
+  'reports',
+  'certificates',
+  'laws',
+  'saude',
+  'consultorio_medico',
+  'servicos_publicos',
+  'meio_ambiente',
+  'assistencia_social',
+  'camara',
+  'settings',
+  'support',
+  'templates',
+  'communication',
+  'forms',
+  'noticias',
+  'ouvidoria',
+  'notafiscal',
+  'patrimonio'
+]);
+
+/**
+ * Normaliza rota textual e mapeia sinônimos estritamente para views que existem.
+ * Se a rota não for válida, retorna '' (evitando qualquer navegação para telas em branco).
+ */
+export function normalizeTargetRoute(targetRoute?: string): string {
+  if (!targetRoute) return '';
+  const clean = targetRoute.replace(/^\//, '').toLowerCase().trim();
+
+  // Mapeamento semântico de termos comuns para rotas reais
+  switch (clean) {
+    case 'home':
+    case 'inicio':
+    case 'dashboard':
+    case 'painel':
+      return 'home';
+
+    case 'mayor':
+    case 'prefeito':
+    case 'gabinete':
+    case 'visao_prefeito':
+      return 'mayor';
+
+    case 'controls':
+    case 'controle':
+    case 'controles':
+    case 'controles_internos':
+    case 'compliance':
+    case 'verbas':
+    case 'tce':
+      return 'controls';
+
+    case 'accounting_changes':
+    case 'contabilidade':
+    case 'contabil':
+    case 'src':
+    case 'mudancas_contabeis':
+    case 'alteracoes_contabeis':
+      return 'accounting_changes';
+
+    case 'fleet_fuel':
+    case 'frotas':
+    case 'frota':
+    case 'combustivel':
+    case 'veiculos':
+    case 'abastecimento':
+    case 'topoff':
+      return 'fleet_fuel';
+
+    case 'education':
+    case 'educacao':
+    case 'escola':
+    case 'escolas':
+    case 'boletim':
+    case 'saeb':
+    case 'creche':
+    case 'professores':
+    case 'alunos':
+      return 'education';
+
+    case 'saude':
+    case 'saude_municipal':
+    case 'farmacia':
+    case 'fefo':
+    case 'medicamentos':
+    case 'regulacao':
+    case 'sus':
+      return 'saude';
+
+    case 'consultorio':
+    case 'consultorio_medico':
+    case 'pep':
+    case 'prontuario':
+    case 'triagem':
+    case 'medico':
+      return 'consultorio_medico';
+
+    case 'contracts':
+    case 'contratos':
+    case 'licitacao':
+    case 'licitacoes':
+    case 'aditivos':
+      return 'contracts';
+
+    case 'protocol':
+    case 'protocolo':
+    case 'processos':
+    case 'tramitacao':
+      return 'protocol';
+
+    case 'patrimonio':
+    case 'bens':
+    case 'tombamento':
+    case 'inventario':
+      return 'patrimonio';
+
+    case 'orders':
+    case 'pedidos':
+    case 'requisicoes':
+    case 'compras':
+      return 'orders';
+
+    case 'certificates':
+    case 'certificados':
+    case 'certidoes':
+    case 'cnd':
+      return 'certificates';
+
+    case 'laws':
+    case 'leis':
+    case 'legislacao':
+      return 'laws';
+
+    case 'norms':
+    case 'normas':
+    case 'decretos':
+    case 'portarias':
+      return 'norms';
+
+    case 'notafiscal':
+    case 'nota_fiscal':
+    case 'fiscal':
+    case 'auditor_fiscal':
+    case 'reforma_tributaria':
+      return 'notafiscal';
+
+    case 'pntp':
+    case 'transparencia':
+    case 'radar_pntp':
+      return 'pntp';
+
+    case 'risk':
+    case 'risco':
+    case 'riscos':
+      return 'risk';
+
+    case 'calendar':
+    case 'calendario':
+    case 'prazos':
+      return 'calendar';
+
+    case 'doc_numbers':
+    case 'numeracao':
+      return 'doc_numbers';
+
+    case 'reports':
+    case 'relatorios':
+      return 'reports';
+
+    case 'ouvidoria':
+    case 'reclamacao':
+      return 'ouvidoria';
+
+    case 'noticias':
+    case 'noticia':
+    case 'comunicacao_social':
+      return 'noticias';
+
+    case 'communication':
+    case 'whatsapp':
+    case 'mensagens':
+      return 'communication';
+
+    case 'forms':
+    case 'formularios':
+    case 'pesquisas':
+      return 'forms';
+
+    case 'templates':
+    case 'modelos':
+      return 'templates';
+
+    case 'servicos_publicos':
+    case 'servicos':
+    case 'iluminacao':
+    case 'limpeza':
+      return 'servicos_publicos';
+
+    case 'meio_ambiente':
+    case 'ambiental':
+      return 'meio_ambiente';
+
+    case 'assistencia_social':
+    case 'social':
+    case 'cras':
+      return 'assistencia_social';
+
+    case 'camara':
+    case 'legislativo':
+      return 'camara';
+
+    case 'support':
+    case 'suporte':
+    case 'ajuda':
+    case 'chamados':
+    case 'saas-control-center':
+      return 'support';
+
+    case 'settings':
+    case 'configuracoes':
+    case 'usuarios':
+      return 'settings';
+
+    default:
+      // Se não for um ID de view válido, NÃO deixa passar para evitar tela branca
+      if (ALLOWED_SYSTEM_VIEWS.has(clean)) {
+        return clean;
+      }
+      return '';
+  }
 }
 
 /**
- * Envia uma mensagem para o Agente Gestão 360.
- * Tenta primeiro a rota de backend /api/chat-assistant.
- * Se houver falha de rede ou rota inexistente (ex: Vite dev puro), faz fallback direto via SDK com a chave local.
+ * Faz o parsing de ações embutidas na resposta do agente:
+ * 1. Protocolo Oficial: <<<ACTION:{...}>>>
+ * 2. Tags simples: [ACTION:NAVIGATE:view_id:Texto do Botão]
+ * 3. Blocos JSON: ```action-payload ... ```
  */
-export async function sendMessageToAgent({
+export function parseAgentActions(rawText: string): { cleanText: string; actions: AssistantActionPayload[] } {
+  const actions: AssistantActionPayload[] = [];
+  let cleanText = rawText;
+
+  // 1. Parsing do Protocolo Oficial <<<ACTION:{...}>>>
+  const actionCallRegex = /<<<ACTION:([\s\S]*?)>>>/gi;
+  cleanText = cleanText.replace(actionCallRegex, (_match, jsonStr) => {
+    try {
+      const parsed = JSON.parse(jsonStr.trim());
+      if (parsed && typeof parsed === 'object') {
+        const targetRoute = parsed.targetRoute || parsed.route || '';
+        const normalizedRoute = normalizeTargetRoute(targetRoute);
+        const actionPayload: AssistantActionPayload = {
+          type: parsed.type || 'NAVIGATE',
+          label: parsed.label || 'Acessar no Sistema',
+          targetRoute,
+          route: normalizedRoute,
+          tab: parsed.params?.tab || parsed.tab,
+          modalId: parsed.params?.modalId || parsed.modalId,
+          params: parsed.params,
+          formData: parsed.params?.formData || parsed.formData
+        };
+        actions.push(actionPayload);
+      }
+    } catch (err) {
+      console.warn("Falha ao analisar JSON da tag <<<ACTION:...>>>", err);
+    }
+    return '';
+  });
+
+  // 2. Parsing de Tags [ACTION:TYPE:TARGET:LABEL]
+  const regexTag = /\[ACTION:(NAVIGATE|NAVIGATE_TAB|TRIGGER_MODAL|SELECT_TAB|TAB|OPEN_MODAL|MODAL|REPORT|THEME|SUPPORT_TICKET|TICKET):?([^:\]]*):?([^:\]]*):?([^\]]*)\]/gi;
+  cleanText = cleanText.replace(regexTag, (_match, rawType, p1, p2) => {
+    const normType = rawType.toUpperCase();
+    if (normType === 'THEME') {
+      actions.push({
+        type: 'THEME',
+        label: p1 || p2 || 'Alternar Modo Escuro/Claro'
+      });
+    } else if (normType === 'SELECT_TAB' || normType === 'TAB' || normType === 'NAVIGATE_TAB') {
+      actions.push({
+        type: 'NAVIGATE_TAB',
+        tab: (p1 || '').trim(),
+        label: (p2 || p1 || 'Ir para Aba').trim(),
+        params: { tab: (p1 || '').trim() }
+      });
+    } else if (normType === 'OPEN_MODAL' || normType === 'MODAL' || normType === 'TRIGGER_MODAL') {
+      actions.push({
+        type: 'TRIGGER_MODAL',
+        modalId: (p1 || '').trim(),
+        label: (p2 || p1 || 'Abrir Formulário').trim(),
+        params: { modalId: (p1 || '').trim() }
+      });
+    } else if (normType === 'SUPPORT_TICKET' || normType === 'TICKET') {
+      actions.push({
+        type: 'SUPPORT_TICKET',
+        description: (p1 || '').trim(),
+        label: (p2 || p1 || 'Abrir Chamado de Suporte').trim(),
+        targetRoute: '/saas-control-center',
+        route: 'support',
+        params: { tab: 'support' }
+      });
+    } else if (normType === 'REPORT') {
+      actions.push({
+        type: 'REPORT',
+        reportId: (p1 || '').trim(),
+        label: (p2 || p1 || 'Gerar Relatório A4').trim()
+      });
+    } else {
+      const rawTarget = (p1 || '').trim();
+      actions.push({
+        type: 'NAVIGATE',
+        targetRoute: rawTarget,
+        route: normalizeTargetRoute(rawTarget),
+        label: (p2 || p1 || 'Navegar').trim()
+      });
+    }
+    return '';
+  });
+
+  // 3. Suporte a bloco de payload JSON estruturado
+  const jsonBlockRegex = /```action-payload\s*([\s\S]*?)\s*```/gi;
+  cleanText = cleanText.replace(jsonBlockRegex, (_match, jsonStr) => {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) {
+        actions.push(...parsed);
+      } else if (parsed && parsed.type) {
+        actions.push(parsed);
+      }
+    } catch {
+      // Ignora erro de JSON mal formatado
+    }
+    return '';
+  });
+
+  return { cleanText: cleanText.trim(), actions };
+}
+
+/**
+ * Transmite a resposta da IA em tempo real (Streaming de Tokens)
+ * Suporta streaming direto client-side e streaming Edge nativo via SSE na Vercel.
+ */
+export async function streamMessageFromAgent({
   message,
   history,
-  moduleContext
-}: SendMessageOptions): Promise<string> {
-  // 1. Tentar via API backend
+  moduleContext,
+  userData,
+  currentPath,
+  onChunk
+}: {
+  message: string;
+  history: ChatMessage[];
+  moduleContext: string;
+  userData?: UserContextData;
+  currentPath?: string;
+  onChunk: (accumulatedText: string) => void;
+}): Promise<AgentResponse> {
+  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
+  
+  const dynamicContext = `
+DADOS DO USUÁRIO EM ATENDIMENTO:
+- Nome do Servidor: ${userData?.name || 'Servidor(a)'}
+- Perfil / Secretaria: ${userData?.role || 'Geral'}
+- Município / Instância: ${userData?.municipio || 'Prefeitura Municipal'}
+- Tela / Rota onde o servidor está navegando no momento: ${currentPath || moduleContext || 'Painel Inicial'}
+`;
+
+  const finalSystemInstruction = `${GESTAO_360_SYSTEM_INSTRUCTION}\n\n${dynamicContext}`;
+
+  // 1. Streaming Direto via @google/genai (se chave presente no front)
+  if (apiKey) {
+    try {
+      const genAI = new GoogleGenAI({ apiKey });
+
+      const contents: any[] = [];
+      const recentHistory = history.slice(-6);
+      let lastRole = '';
+
+      for (const item of recentHistory) {
+        const role = item.sender === 'user' ? 'user' : 'model';
+        if (role !== lastRole && item.text?.trim()) {
+          contents.push({
+            role,
+            parts: [{ text: item.text }]
+          });
+          lastRole = role;
+        }
+      }
+
+      if (lastRole === 'user' && contents.length > 0) {
+        contents[contents.length - 1].parts[0].text += `\n\n[Tela Atual: ${currentPath || moduleContext}]\n${message}`;
+      } else {
+        contents.push({
+          role: 'user',
+          parts: [{ text: `[Tela Atual: ${currentPath || moduleContext}]\n\n${message}` }]
+        });
+      }
+
+      const modelsToTry = ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      let fullAccumulated = '';
+      let succeeded = false;
+
+      for (const modelName of modelsToTry) {
+        try {
+          const responseStream = await genAI.models.generateContentStream({
+            model: modelName,
+            contents,
+            config: {
+              systemInstruction: finalSystemInstruction,
+              temperature: 0.6
+            }
+          });
+
+          for await (const chunk of responseStream) {
+            const textChunk = chunk.text;
+            if (textChunk) {
+              fullAccumulated += textChunk;
+              onChunk(fullAccumulated);
+            }
+          }
+
+          if (fullAccumulated.trim()) {
+            succeeded = true;
+            break;
+          }
+        } catch (modelError: any) {
+          console.warn(`Tentativa direta com ${modelName} falhou:`, modelError?.message || modelError);
+          if (fullAccumulated.trim()) break;
+        }
+      }
+
+      if (succeeded && fullAccumulated.trim()) {
+        const { cleanText, actions } = parseAgentActions(fullAccumulated);
+        return { cleanText, actions };
+      }
+    } catch (clientErr) {
+      console.warn("Falha no client-side SDK, tentando rota Edge serverless /api/chat-assistant...", clientErr);
+    }
+  }
+
+  // 2. Chamada ao Backend Serverless Edge (/api/chat-assistant) com SSE Streaming
   try {
+    const formattedHistory = history.slice(-6).map((msg) => ({
+      role: msg.sender === 'user' ? 'user' : 'model',
+      content: msg.text
+    }));
+
     const res = await fetch('/api/chat-assistant', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
-        history: history.map(h => ({ sender: h.sender, text: h.text })),
-        moduleContext
+        history: formattedHistory,
+        currentPath: currentPath || moduleContext,
+        userData
       })
     });
 
     if (res.ok) {
-      const data = await res.json();
-      if (data?.reply) {
-        return data.reply;
+      const contentType = res.headers.get('content-type') || '';
+      
+      // Streaming nativo via SSE
+      if (contentType.includes('text/event-stream') && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let sseAccumulated = '';
+        const serverActions: AssistantActionPayload[] = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunkStr = decoder.decode(value, { stream: true });
+          const lines = chunkStr.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.type === 'text' && data.content) {
+                  sseAccumulated += data.content;
+                  onChunk(sseAccumulated);
+                } else if (data.type === 'action' && data.action) {
+                  const act = data.action;
+                  const normalizedRoute = normalizeTargetRoute(act.targetRoute || act.route);
+                  serverActions.push({
+                    type: act.type || 'NAVIGATE',
+                    label: act.label || 'Acessar no Sistema',
+                    targetRoute: act.targetRoute || act.route,
+                    route: normalizedRoute,
+                    tab: act.params?.tab || act.tab,
+                    modalId: act.params?.modalId || act.modalId,
+                    params: act.params,
+                    formData: act.params?.formData || act.formData
+                  });
+                }
+              } catch {
+                // Fragmentos de chunks ignorados
+              }
+            }
+          }
+        }
+
+        const { cleanText, actions } = parseAgentActions(sseAccumulated);
+        return {
+          cleanText: cleanText || sseAccumulated,
+          actions: serverActions.length > 0 ? serverActions : actions
+        };
+      } else {
+        // Resposta JSON padrão
+        const data = await res.json();
+        const rawText = data.reply || data.rawReply || '';
+        onChunk(rawText);
+        const { cleanText, actions } = parseAgentActions(rawText);
+        return { 
+          cleanText: cleanText || rawText, 
+          actions: (data.actions && data.actions.length > 0) ? data.actions : actions 
+        };
       }
     }
-  } catch (backendError) {
-    console.warn("Backend /api/chat-assistant indisponível, usando fallback de cliente:", backendError);
+  } catch (backendErr) {
+    console.error("Falha na chamada ao backend serverless Edge:", backendErr);
   }
 
-  // 2. Fallback direto com o SDK do Gemini no cliente
-  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Chave do Gemini não encontrada. Configure VITE_GEMINI_API_KEY no arquivo .env.");
-  }
-
-  const genAI = new GoogleGenAI({ apiKey });
-
-  const systemInstruction = `
-Você é o Agente Gestão 360, o copiloto oficial de inteligência artificial da plataforma Gestão 360.
-Você assessora servidores públicos, auditores e secretários municipais no Brasil.
-Legislações principais: Lei 14.133/21 (Licitações), LC 101/00 (LRF), Lei 12.527/11 (LAI) e critérios PNTP/ATRICON.
-Contexto atual da tela: "${moduleContext}".
-Responda de forma clara, técnica, estruturada em tópicos executivos com formatação Markdown.
-`;
-
-  const contents: any[] = [
-    { role: 'user', parts: [{ text: `[INSTRUÇÕES DO SISTEMA]: ${systemInstruction}` }] },
-    { role: 'model', parts: [{ text: 'Entendido. Sou o Agente Gestão 360, pronto para orientar os procedimentos municipais.' }] }
-  ];
-
-  const recentHistory = history.slice(-6);
-  for (const item of recentHistory) {
-    contents.push({
-      role: item.sender === 'user' ? 'user' : 'model',
-      parts: [{ text: item.text }]
-    });
-  }
-
-  contents.push({
-    role: 'user',
-    parts: [{ text: `[Tela Atual: ${moduleContext}]\n\n${message}` }]
-  });
-
-  const result = await genAI.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents
-  });
-
-  return result.text || "Sem resposta do modelo.";
+  throw new Error("Não foi possível conectar aos servidores de inteligência artificial do Gestão 360. Verifique sua conexão e tente novamente.");
 }

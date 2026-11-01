@@ -1,11 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Package, Download, Plus, Search, Filter, Printer, X, HeartPulse, Wrench, ShoppingCart } from 'lucide-react';
+import { 
+  Package, Download, Plus, Search, Filter, Printer, X, 
+  HeartPulse, Wrench, ShoppingCart, GraduationCap, ShieldCheck, 
+  FileSpreadsheet, Baby, Users, Award, AlertTriangle, CheckCircle2,
+  Activity, Pill, Calendar, Building2, UserCheck
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { PatrimonioItem, OrderItem } from '../../types';
 import { Appointment } from '../Saude';
 import { Demanda } from '../ServicosPublicos';
 import { Medication } from '../Saude/Farmacia';
+import { SaudeReportModal } from './saude/SaudeReports';
+import { EducacaoReportModal } from './educacao/EducacaoReports';
+import { VerbasIndenizatoriasReportModal } from './controles/VerbasIndenizatoriasReport';
 
 // ==========================================
 // SAÚDE: RELATÓRIO DE AGENDAMENTOS
@@ -1149,133 +1157,362 @@ const PedidosPrintLayout = ({ filteredItems, filters, loading }: { filteredItems
 // ==========================================
 // MÓDULO PRINCIPAL DE RELATÓRIOS
 // ==========================================
-const ReportsModule = ({ patrimonioItems, initialReport, clearPendingReport, currentInstitution }: { patrimonioItems: PatrimonioItem[], initialReport?: 'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null, clearPendingReport?: () => void, currentInstitution?: { id: string } | null }) => {
-  const [activeReport, setActiveReport] = React.useState<'patrimonio' | 'saude' | 'servicos_publicos' | 'medicamentos' | 'pedidos' | null>(initialReport || null);
+type ReportIdentifier = 
+  | 'patrimonio' 
+  | 'saude' 
+  | 'saude_producao'
+  | 'saude_farmacia'
+  | 'saude_exames'
+  | 'saude_cronicos'
+  | 'educacao_creche'
+  | 'educacao_frequencia'
+  | 'educacao_proficiencia'
+  | 'educacao_docentes'
+  | 'controles_verbas'
+  | 'servicos_publicos' 
+  | 'medicamentos' 
+  | 'pedidos' 
+  | null;
+
+const ReportsModule = ({ 
+  patrimonioItems, 
+  initialReport, 
+  clearPendingReport, 
+  currentInstitution 
+}: { 
+  patrimonioItems: PatrimonioItem[], 
+  initialReport?: string | null, 
+  clearPendingReport?: () => void, 
+  currentInstitution?: { id: string; name?: string } | null 
+}) => {
+  const [activeReport, setActiveReport] = React.useState<ReportIdentifier>((initialReport as ReportIdentifier) || null);
+  const [selectedCategory, setSelectedCategory] = React.useState<'todas' | 'saude' | 'educacao' | 'controles' | 'patrimonio_servicos'>('todas');
+  const [reportSearch, setReportSearch] = React.useState('');
 
   React.useEffect(() => {
     if (initialReport) {
-      setActiveReport(initialReport);
+      setActiveReport(initialReport as ReportIdentifier);
       if (clearPendingReport) clearPendingReport();
     }
   }, [initialReport, clearPendingReport]);
 
+  // Modais de Saúde Especializados
+  if (activeReport === 'saude_producao') {
+    return <SaudeReportModal reportType="producao" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+  if (activeReport === 'saude_farmacia') {
+    return <SaudeReportModal reportType="farmacia" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+  if (activeReport === 'saude_exames') {
+    return <SaudeReportModal reportType="exames" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+  if (activeReport === 'saude_cronicos') {
+    return <SaudeReportModal reportType="cronicos" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+
+  // Modais de Educação Especializados
+  if (activeReport === 'educacao_creche') {
+    return <EducacaoReportModal reportType="creche" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+  if (activeReport === 'educacao_frequencia') {
+    return <EducacaoReportModal reportType="frequencia" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+  if (activeReport === 'educacao_proficiencia') {
+    return <EducacaoReportModal reportType="proficiencia" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+  if (activeReport === 'educacao_docentes') {
+    return <EducacaoReportModal reportType="docentes" onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+
+  // Modal de Controles (Verbas Indenizatórias)
+  if (activeReport === 'controles_verbas') {
+    return <VerbasIndenizatoriasReportModal onClose={() => setActiveReport(null)} currentInstitution={currentInstitution} />;
+  }
+
+  // Relatórios Legados Mantidos
   if (activeReport === 'patrimonio') {
     return <PatrimonioPrintView patrimonioItems={patrimonioItems} onClose={() => setActiveReport(null)} />;
   }
-
   if (activeReport === 'saude') {
     return <SaudePrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
-
   if (activeReport === 'servicos_publicos') {
     return <ServicosPublicosPrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
-
   if (activeReport === 'medicamentos') {
     return <MedicamentosPrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
-
   if (activeReport === 'pedidos') {
     return <PedidosPrintView onClose={() => setActiveReport(null)} institutionId={currentInstitution?.id} />;
   }
 
+  // Catálogo Completo de Relatórios com Busca e Categorização
+  const reportCatalog = [
+    // SAÚDE
+    {
+      id: 'saude_producao',
+      category: 'saude',
+      title: 'Saúde: Boletim da Atenção Básica & No-Show',
+      description: 'Volume mensal de consultas por UBS, médico, especialidade e índice de absenteísmo (faltas dos munícipes).',
+      badge: 'SUS • RAG',
+      color: 'emerald',
+      icon: HeartPulse,
+      actionText: 'Emitir Boletim Mensal'
+    },
+    {
+      id: 'saude_farmacia',
+      category: 'saude',
+      title: 'Saúde: Estoque e Consumo Farmácia SUS (Curva ABC)',
+      description: 'Medicamentos mais dispensados, estoque crítico abaixo do mínimo e medicamentos próximos do vencimento.',
+      badge: 'Farmácia Básica',
+      color: 'emerald',
+      icon: Pill,
+      actionText: 'Emitir Relatório de Estoque'
+    },
+    {
+      id: 'saude_exames',
+      category: 'saude',
+      title: 'Saúde: Fila de Regulação de Exames & Custos',
+      description: 'Demonstrativo de exames aguardando regulação vs. agendados/realizados e estimativa de custos com laboratórios.',
+      badge: 'Regulação SUS',
+      color: 'emerald',
+      icon: Activity,
+      actionText: 'Emitir Fila de Exames'
+    },
+    {
+      id: 'saude_cronicos',
+      category: 'saude',
+      title: 'Saúde: Painel de Pacientes Crônicos & Gestantes',
+      description: 'Mapeamento epidemiológico municipal de hipertensos, diabéticos, gestantes ativas e pessoas com deficiência.',
+      badge: 'Vigilância em Saúde',
+      color: 'emerald',
+      icon: UserCheck,
+      actionText: 'Emitir Painel Crônico'
+    },
+
+    // EDUCAÇÃO
+    {
+      id: 'educacao_creche',
+      category: 'educacao',
+      title: 'Educação: Fila Única da Creche / CMEI (Transparência MP)',
+      description: 'Relação oficial de crianças na fila de espera ordenada por critérios socioeconômicos e protocolo para o Ministério Público.',
+      badge: 'CMEI • Transparência',
+      color: 'indigo',
+      icon: Baby,
+      actionText: 'Emitir Fila da Creche'
+    },
+    {
+      id: 'educacao_frequencia',
+      category: 'educacao',
+      title: 'Educação: Frequência Escolar & Alerta de Evasão (LDB)',
+      description: 'Monitoramento de presença por turma e relação de alunos com frequência abaixo de 75% para busca ativa escolar.',
+      badge: 'Busca Ativa • LDB',
+      color: 'indigo',
+      icon: GraduationCap,
+      actionText: 'Emitir Frequência & Evasão'
+    },
+    {
+      id: 'educacao_proficiencia',
+      category: 'educacao',
+      title: 'Educação: Diagnóstico de Aprendizagem & Matriz SAEB',
+      description: 'Distribuição dos alunos nos níveis de proficiência (Abaixo do Básico, Básico, Adequado, Avançado) em Português e Matemática.',
+      badge: 'Meta IDEB / SAEB',
+      color: 'indigo',
+      icon: Award,
+      actionText: 'Emitir Diagnóstico SAEB'
+    },
+    {
+      id: 'educacao_docentes',
+      category: 'educacao',
+      title: 'Educação: Quadro Geral de Docentes & Lotação',
+      description: 'Quadro de professores, secretários e coordenadores, carga horária semanal e escolas de lotação da rede municipal.',
+      badge: 'Gestão de Pessoas',
+      color: 'indigo',
+      icon: Users,
+      actionText: 'Emitir Lotação Docente'
+    },
+
+    // CONTROLES & FINANÇAS
+    {
+      id: 'controles_verbas',
+      category: 'controles',
+      title: 'Controles: Prestação de Contas Mensal de Verba Indenizatória',
+      description: 'Demonstrativo oficial de entrega de Requerimentos e Relatórios dos 32 cargos de Torixoréu para o Controle Interno e TCE-MT.',
+      badge: 'UCCI • TCE-MT',
+      color: 'teal',
+      icon: ShieldCheck,
+      actionText: 'Emitir Prestação de Contas'
+    },
+
+    // PATRIMÔNIO & SERVIÇOS
+    {
+      id: 'patrimonio',
+      category: 'patrimonio_servicos',
+      title: 'Patrimônio: Inventário de Bens e Tombamento',
+      description: 'Relação patrimonial completa de todos os bens cadastrados, seus valores de aquisição, conservação e tombamento.',
+      badge: 'Inventário Geral',
+      color: 'neutral',
+      icon: Package,
+      actionText: 'Emitir Inventário de Bens'
+    },
+    {
+      id: 'servicos_publicos',
+      category: 'patrimonio_servicos',
+      title: 'Serviços Públicos: Demandas Urbanas e Chamados',
+      description: 'Relação de chamados abertos pelo cidadão no portal municipal, agrupados por bairro e situação de atendimento.',
+      badge: 'Zeladoria Urbana',
+      color: 'sky',
+      icon: Wrench,
+      actionText: 'Emitir Relatório de Chamados'
+    },
+    {
+      id: 'pedidos',
+      category: 'patrimonio_servicos',
+      title: 'Compras & Suprimentos: Pedidos e Cotações',
+      description: 'Relação de solicitações de compras, ordens de serviço de manutenção de frotas e cotações de preços.',
+      badge: 'Setor de Compras',
+      color: 'amber',
+      icon: ShoppingCart,
+      actionText: 'Emitir Pedidos de Compra'
+    }
+  ];
+
+  // Filtragem dos cards
+  const filteredCatalog = reportCatalog.filter(rep => {
+    const matchCat = selectedCategory === 'todas' || rep.category === selectedCategory;
+    const q = reportSearch.toLowerCase().trim();
+    const matchSearch = !q || rep.title.toLowerCase().includes(q) ||
+      rep.description.toLowerCase().includes(q) ||
+      rep.badge.toLowerCase().includes(q);
+    return matchCat && matchSearch;
+  });
+
   return (
-    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-center bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+    <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-16">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div>
-          <h2 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">Relatórios <span className="text-neutral-400 font-normal">Inteligentes</span></h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">Central de emissão de relatórios personalizados e automatizados.</p>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 mb-3">
+            <ShieldCheck size={14} />
+            <span>Central de Inteligência & Prestação de Contas</span>
+          </div>
+          <h2 className="text-3xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight italic">
+            Relatórios <span className="text-emerald-600 dark:text-emerald-400 font-normal">Oficiais</span>
+          </h2>
+          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
+            Geração de demonstrativos timbrados com conformidade legal para Prefeito, Conselhos, TCE-MT e Ministério Público.
+          </p>
+        </div>
+
+        {/* Campo de Busca Rápida de Relatórios */}
+        <div className="w-full md:w-80">
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <input
+              type="text"
+              placeholder="Pesquisar relatório..."
+              value={reportSearch}
+              onChange={e => setReportSearch(e.target.value)}
+              className="w-full pl-11 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm focus:ring-4 focus:ring-emerald-500/15 outline-none font-semibold text-neutral-900 dark:text-white"
+            />
+          </div>
         </div>
       </div>
 
+      {/* Navegação por Categorias */}
+      <div className="flex bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 gap-1.5 overflow-x-auto">
+        {[
+          { id: 'todas', label: 'Todos os Relatórios', icon: FileSpreadsheet, count: reportCatalog.length },
+          { id: 'saude', label: 'Saúde Pública (SUS)', icon: HeartPulse, count: reportCatalog.filter(r => r.category === 'saude').length },
+          { id: 'educacao', label: 'Educação Municipal', icon: GraduationCap, count: reportCatalog.filter(r => r.category === 'educacao').length },
+          { id: 'controles', label: 'Controles & Finanças', icon: ShieldCheck, count: reportCatalog.filter(r => r.category === 'controles').length },
+          { id: 'patrimonio_servicos', label: 'Patrimônio & Serviços', icon: Package, count: reportCatalog.filter(r => r.category === 'patrimonio_servicos').length },
+        ].map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setSelectedCategory(cat.id as any)}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer ${
+              selectedCategory === cat.id
+                ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-md'
+                : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <cat.icon size={15} />
+            <span>{cat.label}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+              selectedCategory === cat.id
+                ? 'bg-white/20 dark:bg-black/20 text-white dark:text-black'
+                : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+            }`}>
+              {cat.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Grade de Relatórios */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        
-        {/* Card: Saúde */}
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-emerald-500/30 transition-colors shadow-sm hover:shadow-md">
-          <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center mb-4">
-            <HeartPulse size={24} />
-          </div>
-          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Saúde: Agendamentos</h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
-            Relatório de controle de pacientes, exames, consultas e situação de atendimento em tempo real.
-          </p>
-          <button 
-            onClick={() => setActiveReport('saude')}
-            className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
-          >
-            <Download size={16} /> Emitir Relatório
-          </button>
-        </div>
+        {filteredCatalog.map(rep => {
+          const Icon = rep.icon;
+          return (
+            <div
+              key={rep.id}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 sm:p-7 flex flex-col justify-between hover:border-emerald-500/50 dark:hover:border-emerald-500/40 transition-all shadow-sm hover:shadow-xl hover:shadow-neutral-950/5 group"
+            >
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                    rep.color === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600' :
+                    rep.color === 'indigo' ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600' :
+                    rep.color === 'teal' ? 'bg-teal-50 dark:bg-teal-950/40 text-teal-600' :
+                    rep.color === 'sky' ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-600' :
+                    rep.color === 'amber' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600' :
+                    'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                  }`}>
+                    <Icon size={24} />
+                  </div>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 border border-neutral-200 dark:border-neutral-700">
+                    {rep.badge}
+                  </span>
+                </div>
 
-        {/* Card: Serviços Públicos */}
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-sky-500/30 transition-colors shadow-sm hover:shadow-md">
-          <div className="w-12 h-12 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-xl flex items-center justify-center mb-4">
-            <Wrench size={24} />
-          </div>
-          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Serviços Públicos: Demandas</h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
-            Relação de chamados abertos pelo cidadão, categorizados por serviço e seus respectivos status de atendimento.
-          </p>
-          <button 
-            onClick={() => setActiveReport('servicos_publicos')}
-            className="w-full py-3 bg-sky-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-sky-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-sky-500/20"
-          >
-            <Download size={16} /> Emitir Relatório
-          </button>
-        </div>
+                <h3 className="text-base sm:text-lg font-black text-neutral-900 dark:text-white mb-2 leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                  {rep.title}
+                </h3>
 
-        {/* Card: Patrimônio */}
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-neutral-400/30 transition-colors shadow-sm hover:shadow-md">
-          <div className="w-12 h-12 bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 rounded-xl flex items-center justify-center mb-4">
-            <Package size={24} />
-          </div>
-          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Controle Patrimonial</h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
-            Relatório completo com a relação de todos os bens cadastrados, seus valores, estado de conservação e tombamento.
-          </p>
-          <button 
-            onClick={() => setActiveReport('patrimonio')}
-            className="w-full py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-neutral-800 dark:hover:bg-neutral-200 transition-colors flex items-center justify-center gap-2 shadow-sm"
-          >
-            <Download size={16} /> Emitir Relatório
-          </button>
-        </div>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 leading-relaxed mb-6 font-medium">
+                  {rep.description}
+                </p>
+              </div>
 
-        {/* Card: Medicamentos */}
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-indigo-500/30 transition-colors shadow-sm hover:shadow-md">
-          <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center mb-4">
-            <Package size={24} />
-          </div>
-          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Farmácia: Medicamentos</h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
-            Controle de estoque, vencimentos e informações detalhadas sobre os medicamentos disponíveis.
-          </p>
-          <button 
-            onClick={() => setActiveReport('medicamentos')}
-            className="w-full py-3 bg-indigo-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/20"
-          >
-            <Download size={16} /> Emitir Relatório
-          </button>
-        </div>
-
-        {/* Card: Pedidos */}
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-6 flex flex-col hover:border-amber-500/30 transition-colors shadow-sm hover:shadow-md">
-          <div className="w-12 h-12 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-xl flex items-center justify-center mb-4">
-            <ShoppingCart size={24} />
-          </div>
-          <h3 className="text-lg font-black text-neutral-900 dark:text-neutral-100 mb-2">Pedidos de Compras</h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-6 flex-1">
-            Lista de pedidos (obras e veículos), cotações e andamento das contratações.
-          </p>
-          <button 
-            onClick={() => setActiveReport('pedidos')}
-            className="w-full py-3 bg-amber-600 text-white rounded-xl text-sm font-black uppercase tracking-widest hover:bg-amber-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
-          >
-            <Download size={16} /> Emitir Relatório
-          </button>
-        </div>
-
+              <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center gap-2">
+                <button
+                  onClick={() => setActiveReport(rep.id as ReportIdentifier)}
+                  className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer ${
+                    rep.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20' :
+                    rep.color === 'indigo' ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20' :
+                    rep.color === 'teal' ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-teal-600/20' :
+                    rep.color === 'sky' ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sky-600/20' :
+                    rep.color === 'amber' ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20' :
+                    'bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 shadow-neutral-900/10'
+                  }`}
+                >
+                  <Download size={15} />
+                  <span>{rep.actionText}</span>
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
+
+      {filteredCatalog.length === 0 && (
+        <div className="text-center py-16 bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 p-8">
+          <FileSpreadsheet size={40} className="mx-auto text-neutral-400 mb-3" />
+          <h4 className="font-bold text-neutral-700 dark:text-neutral-300">Nenhum relatório encontrado</h4>
+          <p className="text-xs text-neutral-500 mt-1">Tente pesquisar com outros termos ou altere a categoria selecionada.</p>
+        </div>
+      )}
     </div>
   );
 };

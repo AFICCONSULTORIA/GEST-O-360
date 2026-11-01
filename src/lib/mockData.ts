@@ -32,6 +32,7 @@ import {
   Newspaper,
   Headphones,
   Fuel,
+  Truck,
   Stethoscope
 } from 'lucide-react';
 
@@ -95,9 +96,9 @@ export const NAVBAR_CATEGORIES = [
     label: 'Controles',
     icon: ShieldAlert,
     items: [
-      { id: 'controls', label: 'Controles Internos', icon: ClipboardCheck },
+      { id: 'controls', label: 'Controles Internos & Compliance', icon: ClipboardCheck },
       { id: 'accounting_changes', label: 'Alterações na Contabilidade', icon: Scale },
-      { id: 'fleet_fuel', label: 'Frotas & Abastecimento', icon: Fuel },
+      { id: 'fleet_fuel', label: 'Controle & Auditoria de Frotas', icon: Truck },
       { id: 'calendar', label: 'Calendário TCE', icon: Calendar },
       { id: 'norms', label: 'Normativas', icon: BookText },
       { id: 'risk', label: 'Análise de Risco', icon: ShieldAlert },
@@ -164,9 +165,9 @@ export const NAVBAR_CATEGORIES = [
 export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
   { id: 'mayor', label: 'Visão do Prefeito' },
-  { id: 'controls', label: 'Controles Internos' },
+  { id: 'controls', label: 'Controles Internos & Compliance' },
   { id: 'accounting_changes', label: 'Alterações na Contabilidade' },
-  { id: 'fleet_fuel', label: 'Frotas & Abastecimento' },
+  { id: 'fleet_fuel', label: 'Controle & Auditoria de Frotas' },
   { id: 'calendar', label: 'Calendário Oficial' },
   { id: 'norms', label: 'Atos Normativos' },
   { id: 'risk', label: 'Gestão de Riscos' },

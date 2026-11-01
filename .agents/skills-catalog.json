@@ -1,0 +1,15 @@
+{
+  "system": "Gestão 360",
+  "version": "2026.1",
+  "skills": [
+    { "id": "saude-fefo", "name": "Dispensação FEFO Farmácia", "scope": "Saúde" },
+    { "id": "saeb-evaluation", "name": "Proficiência Pedagógica SAEB", "scope": "Educação" },
+    { "id": "fleet-top-off", "name": "Auditoria de Tanque Cheio", "scope": "Frotas" },
+    { "id": "fiscal-reforma", "name": "Validação NT 2026.010 / NT 008", "scope": "Fiscal" },
+    { "id": "action-dispatch", "name": "Navegação e Execução de Tarefas", "scope": "Copilot" },
+    { "id": "saas-tenant-lifecycle", "name": "Provisionamento e Ciclo de Vida Multi-Tenant", "scope": "SaaS" },
+    { "id": "saas-live-support", "name": "Transbordo e Atendimento ao Vivo em Tempo Real", "scope": "SaaS" },
+    { "id": "saas-platform-audit", "name": "Auditoria Global da Infraestrutura e Permissões", "scope": "SaaS" }
+  ]
+}
+
