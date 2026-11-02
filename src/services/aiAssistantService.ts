@@ -39,9 +39,30 @@ Sua missão é atuar como uma parceira estratégica hiper-eficiente: perspicaz, 
 
 ---
 
-### 2. CATÁLOGO COMPLETO DE MÓDULOS REAIS E SUAS ROTAS EXATAS:
+### 2. ATENÇÃO CRÍTICA: DIFERENÇA ENTRE BANCO DE CERTIDÕES E VALIDADOR FISCAL
 
-1. **Frotas & Combustível (targetRoute: "fleet_fuel")**:
+⚠️ **REGRA DE OURO PARA CERTIDÕES DE EMPRESAS E FORNECEDORES:**
+- **SEMPRE que o servidor perguntar sobre certidões de empresas, fornecedores contratados (ex: Bicki, prestadores de serviços, construtoras), certidões negativas de débitos (CNDs), certidão trabalhista (CNDT), FGTS, certidão estadual, federal, municipal ou alvarás:**
+  * O módulo correto e ÚNICO no sistema é o **BANCO DE CERTIDÕES (targetRoute: "certificates")**, acessível no menu **Gestão > Banco de Certidões**.
+  * É no **Banco de Certidões** que o servidor busca a empresa pelo CNPJ ou Razão Social, visualiza o semáforo de validade das certidões (Verde, Amarelo, Vermelho), faz upload de novas certidões e clica em **"Mesclar Certidões"** para gerar o PDF unificado para empenho.
+  * O botão de ação DEVE ser:
+    <<<ACTION:{"type":"NAVIGATE","label":"Ir para Banco de Certidões","targetRoute":"certificates"}>>>
+  * **NUNCA direcione para o validador de notas fiscais (/notafiscal) quando o assunto for certidões ou empresas!**
+
+- **O MÓDULO VALIDADOR FISCAL (targetRoute: "notafiscal")**:
+  * É **EXCLUSIVAMENTE** para fazer upload e análise técnica de arquivos **PDF (DANFE/DANFSe)** ou **XML** de Notas Fiscais para conferência da Reforma Tributária (IBS/CBS, cClassTrib, CST, ISSQN).
+  * O Validador Fiscal **NÃO** guarda cadastro de empresas nem certidões.
+
+---
+
+### 3. CATÁLOGO COMPLETO DE MÓDULOS REAIS E SUAS ROTAS EXATAS:
+
+1. **Banco de Certidões (targetRoute: "certificates")**:
+   - Cadastro e consulta de empresas/fornecedores por CNPJ ou Razão Social (ex: Bicki, empresas contratadas).
+   - Monitoramento de CNDs: Federal (Receita/PGFN), Estadual (SEFAZ), Municipal, Trabalhista (CNDT), FGTS (CRF), Falência e Concordata.
+   - Semáforo de validade e botão para Mesclar Certidões em PDF único para liquidação de empenhos.
+
+2. **Frotas & Combustível (targetRoute: "fleet_fuel")**:
    - Ordens digitais de abastecimento, canhotos com QR Code validador, conciliação em três vias.
    - Trava física do tanque (impede litragem maior que a capacidade cadastrada).
    - Regime Top-Off (Tanque Cheio) para viaturas e ambulâncias de socorro contínuo com cálculo por odômetro.
@@ -201,6 +222,26 @@ export const ALLOWED_SYSTEM_VIEWS = new Set<string>([
 export function normalizeTargetRoute(targetRoute?: string): string {
   if (!targetRoute) return '';
   const clean = targetRoute.replace(/^\//, '').toLowerCase().trim();
+
+  // Regra de Ouro: Qualquer referência a certidões, CNDs ou fornecedores deve SEMPRE ir para certificates
+  if (clean.includes('certid') || clean.includes('cnd') || clean.includes('certific')) {
+    return 'certificates';
+  }
+
+  // Prioridade: Frotas e combustível
+  if (clean.includes('frota') || clean.includes('combustivel') || clean.includes('abastecimento') || clean.includes('topoff') || clean.includes('tanque')) {
+    return 'fleet_fuel';
+  }
+
+  // Prioridade: Contabilidade SRC
+  if (clean.includes('contabil') || clean.includes('accounting') || clean === 'src') {
+    return 'accounting_changes';
+  }
+
+  // Prioridade: Nota fiscal (apenas validação e auditoria de XML/PDF da Reforma Tributária)
+  if (clean.includes('notafiscal') || clean.includes('nota_fiscal') || clean === 'notafiscal' || clean === 'fiscal' || clean === 'auditor_fiscal' || clean === 'reforma_tributaria') {
+    return 'notafiscal';
+  }
 
   // Mapeamento semântico de termos comuns para rotas reais
   switch (clean) {
