@@ -128,7 +128,10 @@ export const staffService = {
         await supabase.from('edu_staff').delete().eq('email', email);
       }
       for (const mockId of MOCK_STAFF_IDS) {
-        await supabase.from('edu_staff').delete().eq('id', mockId);
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(mockId);
+        if (isUUID) {
+          await supabase.from('edu_staff').delete().eq('id', mockId);
+        }
       }
     } catch (e) {
       console.warn('Erro ao purgar dados mock no Supabase:', e);

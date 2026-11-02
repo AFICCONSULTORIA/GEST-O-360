@@ -609,14 +609,17 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
                     )
                   );
                 } else if (parsed.type === 'action') {
-                  actions.push(parsed.content);
-                  setMessages((prev) =>
-                    prev.map((m) =>
-                      m.id === assistantMsgId
-                        ? { ...m, actions: [...actions] }
-                        : m
-                    )
-                  );
+                  const act = parsed.action || parsed.actionPayload || parsed.content;
+                  if (act && typeof act === 'object') {
+                    actions.push(act);
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === assistantMsgId
+                          ? { ...m, actions: [...actions] }
+                          : m
+                      )
+                    );
+                  }
                 } else if (parsed.type === 'done') {
                   streamSucceeded = true;
                 }
@@ -626,7 +629,7 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
 
           if (fullText.trim().length > 0) {
             streamSucceeded = true;
-            const humanAction = actions.find(a => a.type === 'REQUEST_HUMAN_ATTENDANT');
+            const humanAction = actions.find(a => a?.type === 'REQUEST_HUMAN_ATTENDANT');
             if (humanAction) {
               handleRequestHuman(humanAction.params?.reason || 'Solicitado pela IA');
             }
@@ -669,7 +672,7 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
         });
 
         const finalParsed = parseAgentActions(clientAccumulated);
-        const humanAction = finalParsed.actions.find(a => a.type === 'REQUEST_HUMAN_ATTENDANT');
+        const humanAction = finalParsed.actions.find(a => a?.type === 'REQUEST_HUMAN_ATTENDANT');
         if (humanAction) {
           handleRequestHuman(humanAction.params?.reason || 'Solicitado pela IA');
         }
@@ -917,8 +920,10 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
                           <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center gap-1">
                             <Zap className="w-3 h-3" /> Ações Rápidas:
                           </span>
-                          {msg.actions.map((act: AssistantActionPayload, actIdx: number) => {
-                            const isExec = executedActionId?.includes(act.type);
+                          {msg.actions
+                            .filter((act): act is AssistantActionPayload => Boolean(act && typeof act === 'object'))
+                            .map((act: AssistantActionPayload, actIdx: number) => {
+                            const isExec = Boolean(act?.type && executedActionId?.includes(act.type));
                             return (
                               <button
                                 key={actIdx}
@@ -930,7 +935,7 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
                                     : 'bg-neutral-100 dark:bg-neutral-800 hover:bg-amber-500 hover:text-neutral-950 text-neutral-800 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700'
                                 }`}
                               >
-                                <span className="truncate">{act.label || 'Executar Ação'}</span>
+                                <span className="truncate">{act?.label || 'Executar Ação'}</span>
                                 {isExec ? (
                                   <CheckCircle2 className="w-4 h-4 shrink-0 text-neutral-950" />
                                 ) : (

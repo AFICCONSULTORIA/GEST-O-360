@@ -197,7 +197,7 @@ export const SaaSAdminLayout: React.FC<SaaSAdminLayoutProps> = ({
                 </span>
               )}
 
-              {group.items.map((item) => {
+              {group.items?.filter(Boolean).map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
 
@@ -218,13 +218,13 @@ export const SaaSAdminLayout: React.FC<SaaSAdminLayoutProps> = ({
                               : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/70 hover:text-neutral-900 dark:hover:text-white'
                           }`
                     }`}
-                    title={!isSidebarOpen ? item.label : undefined}
+                    title={!isSidebarOpen ? (item?.label || '') : undefined}
                   >
-                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-neutral-950' : 'text-neutral-500 dark:text-neutral-400'}`} />
+                    {Icon && <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-neutral-950' : 'text-neutral-500 dark:text-neutral-400'}`} />}
                     
                     {isSidebarOpen && (
                       <span className="truncate flex-1 text-left">
-                        {item.label}
+                        {item?.label || ''}
                       </span>
                     )}
 

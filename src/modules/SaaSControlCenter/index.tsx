@@ -838,8 +838,8 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                       </p>
                       <div className="flex flex-wrap gap-1.5">
                         {displayModules.slice(0, 6).map(mod => (
-                          <span key={mod.id} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
-                            {mod.label.split(' (')[0]}
+                          <span key={mod?.id || Math.random()} className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700/60">
+                            {mod?.label ? mod.label.split(' (')[0] : (mod?.id || 'Módulo')}
                           </span>
                         ))}
                         {displayModules.length > 6 && (

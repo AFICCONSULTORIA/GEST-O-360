@@ -324,15 +324,28 @@ export default function App() {
     if (!isAuthenticated) return;
     
     const fetchPendingReportsCount = async () => {
-      let query = supabase
-        .from('meio_ambiente_denuncias')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'Nova');
-      if (currentInstitution?.id) {
-        query = query.eq('institution_id', currentInstitution.id);
+      try {
+        let { count, error } = await supabase
+          .from('meio_ambiente_denuncias')
+          .select('*', { count: 'exact', head: true })
+          .eq('status', 'Nova')
+          .eq('institution_id', currentInstitution?.id || '');
+
+        if (error) {
+          // Fallback seguro caso a coluna institution_id ainda não exista no banco
+          const resFallback = await supabase
+            .from('meio_ambiente_denuncias')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'Nova');
+          count = resFallback.count;
+        }
+
+        if (count !== null && count !== undefined) {
+          setPendingReportsCount(count);
+        }
+      } catch {
+        // Silencia erro de contagem para evitar quebrar a inicialização
       }
-      const { count } = await query;
-      if (count !== null) setPendingReportsCount(count);
     };
     
     fetchPendingReportsCount();
