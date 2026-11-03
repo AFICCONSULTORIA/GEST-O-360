@@ -1256,6 +1256,17 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
           <Award size={16} className="text-amber-500" />
           Emissor em Lote de Certificados (Cursos & Eventos)
         </button>
+        <a
+          href="/validar-documento"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-all cursor-pointer"
+          title="Abrir o Portal Público de Validação em nova aba"
+        >
+          <ShieldCheck size={16} className="text-amber-500" />
+          Validador Público
+          <ExternalLink size={12} className="text-neutral-400" />
+        </a>
       </div>
 
       {activeSection === 'courses' ? (

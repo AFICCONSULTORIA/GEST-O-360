@@ -1261,6 +1261,18 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 <option value="oficina">Oficinas</option>
               </select>
 
+              <a
+                href="/validar-documento"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3.5 py-2 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold text-xs flex items-center gap-1.5 hover:bg-amber-500 hover:text-white transition cursor-pointer"
+                title="Abrir o Portal Público de Validação em nova aba"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Validador Público</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
               <button
                 type="button"
                 onClick={loadHistory}
@@ -1405,6 +1417,17 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                             >
                               <Copy className="w-4 h-4" />
                             </button>
+
+                            {/* Abrir no Validador Público */}
+                            <a
+                              href={`/validar-documento?codigo=${encodeURIComponent(cert.validation_hash)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 rounded-xl text-neutral-500 hover:text-emerald-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition cursor-pointer"
+                              title="Verificar no Portal Público de Autenticidade"
+                            >
+                              <ShieldCheck className="w-4 h-4" />
+                            </a>
 
                             {/* Visualizar */}
                             <button

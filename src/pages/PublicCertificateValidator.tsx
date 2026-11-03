@@ -3,7 +3,7 @@ import {
   ShieldCheck, CheckCircle2, XCircle, Search, Award, 
   Calendar, Clock, User, FileText, ArrowLeft, Printer, ExternalLink, Sparkles, Building2, Sun, Moon
 } from 'lucide-react';
-import { fetchCertificateByHash } from '../modules/Education/services/certificateService';
+import { fetchCertificateByHash, syncLocalCertificatesToSupabase } from '../modules/Education/services/certificateService';
 import { IssuedCertificate } from '../modules/Education/types/certificates';
 import { Institution } from '../types';
 
@@ -24,20 +24,43 @@ export const PublicCertificateValidator: React.FC<PublicCertificateValidatorProp
   const [searched, setSearched] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Lê código da URL se presente (?codigo=... ou ?hash=...)
+  // Sincroniza cache local e lê código da URL (?codigo=... ou /validar-documento/CERT-...)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const codeParam = params.get('codigo') || params.get('hash') || params.get('code');
+    // Sincroniza eventuais certificados emitidos em cache local
+    syncLocalCertificatesToSupabase().catch(() => {});
+
+    // Extrai parâmetros tanto da busca (?codigo=) quanto do hash (#...?)
+    let searchStr = window.location.search;
+    if (!searchStr && window.location.hash.includes('?')) {
+      searchStr = window.location.hash.slice(window.location.hash.indexOf('?'));
+    }
+
+    const params = new URLSearchParams(searchStr);
+    const codeParam = params.get('codigo') || params.get('hash') || params.get('code') || params.get('c');
+
     if (codeParam) {
-      setSearchCode(codeParam.trim());
-      handleValidate(codeParam.trim());
-    } else {
-      // Verifica se a URL tem /validar-documento/CERT-XXX
-      const pathParts = window.location.pathname.split('/');
-      const lastPart = pathParts[pathParts.length - 1];
-      if (lastPart && lastPart.toUpperCase().startsWith('CERT-')) {
-        setSearchCode(lastPart.trim());
-        handleValidate(lastPart.trim());
+      const clean = codeParam.trim();
+      setSearchCode(clean);
+      handleValidate(clean);
+      return;
+    }
+
+    // Verifica se a URL tem /validar-documento/CERT-XXX ou /validar/CERT-XXX
+    const pathParts = window.location.pathname.split('/');
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && (lastPart.toUpperCase().startsWith('CERT-') || lastPart.length >= 6)) {
+      const clean = lastPart.trim();
+      setSearchCode(clean);
+      handleValidate(clean);
+      return;
+    }
+
+    // Verifica hash puro (ex: #CERT-2026-FLX6NX)
+    if (window.location.hash) {
+      const hashClean = window.location.hash.replace('#', '').split('?')[0].trim();
+      if (hashClean.toUpperCase().startsWith('CERT-')) {
+        setSearchCode(hashClean);
+        handleValidate(hashClean);
       }
     }
   }, []);
