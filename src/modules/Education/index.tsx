@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote
+  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
@@ -9,6 +9,7 @@ import { EducationEnrollmentManager } from './components/EducationEnrollmentMana
 import { FamilyPortalView } from './components/FamilyPortalView';
 import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsManager';
 import { EducationVotingAdmin } from './components/EducationVotingAdmin';
+import { EducationCertificatesManager } from './components/EducationCertificatesManager';
 
 interface EducationModuleProps {
   currentInstitution?: { id: string; name?: string; subdomain?: string } | null;

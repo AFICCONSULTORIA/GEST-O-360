@@ -23,7 +23,7 @@ export default defineConfig(({mode}) => {
           'pwa-maskable-512x512.png'
         ],
         workbox: {
-          maximumFileSizeToCacheInBytes: 8 * 1024 * 1024 // 8MB
+          maximumFileSizeToCacheInBytes: 15 * 1024 * 1024 // 15MB
         },
         manifest: {
           name: 'Gestão 360 - Sistema de Gestão Pública',

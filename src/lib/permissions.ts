@@ -62,6 +62,14 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
     effectivePermissions.push('consultorio_medico:admin');
   }
 
+  // Auto-grant 'course_certificates' para quem tem acesso a certidões ou educação
+  if (
+    effectivePermissions.some(p => p.startsWith('certificates') || p.startsWith('education')) &&
+    !effectivePermissions.some(p => p === 'course_certificates' || p.startsWith('course_certificates:'))
+  ) {
+    effectivePermissions.push('course_certificates:admin');
+  }
+
   // 1. Procurar por permissão granular específica no formato "modulo:nivel"
   const adminPattern = `${moduleId}:admin`;
   const editPattern = `${moduleId}:edit`;

@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2, Printer, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, ShieldCheck, Clock, AlertCircle
+  Building2, XCircle, FileBadge, Download, CheckCircle2, AlertTriangle, Plus, Search, ExternalLink, Trash2, FileText, Link as LinkIcon, Settings, Edit2, Printer, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Loader2, ShieldCheck, Clock, AlertCircle, Award, Sparkles
 } from 'lucide-react';
 import { PDFDocument } from 'pdf-lib';
 import { supabase } from '../../lib/supabase';
@@ -11,6 +11,7 @@ import { hasPermission } from '../../lib/permissions';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { EducationCertificatesManager } from '../Education/components/EducationCertificatesManager';
 
 export const DEFAULT_STATE_LINKS: Record<string, string> = {
   AC: 'https://sefaznet.ac.gov.br/sefazonline/servlet/wcertidaonegativa',
@@ -1002,6 +1003,7 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
 
   const [searchName, setSearchName] = React.useState('');
   const [searchCnpj, setSearchCnpj] = React.useState('');
+  const [activeSection, setActiveSection] = React.useState<'companies' | 'courses'>('companies');
   const [statusFilter, setStatusFilter] = React.useState<'all' | 'expired' | 'warning' | 'valid' | 'incomplete'>('all');
   const [companies, setCompanies] = React.useState<CompanyCertificates[]>([]);
   const [managingCompany, setManagingCompany] = React.useState<CompanyCertificates | null>(null);
@@ -1230,15 +1232,45 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
 
   return (
     <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
-      <WhatsNewBanner 
-        version="1.4.0"
-        title="Novidades no Banco de Certidões"
-        features={[
-          "Busca Automática de CNPJ: Ao digitar o CNPJ do fornecedor, a Razão Social é preenchida automaticamente via Receita/BrasilAPI.",
-          "Filtros de Regularidade Fiscal: Filtre rapidamente empresas com certidões vencidas, vencendo em 30 dias ou 100% regulares.",
-          "Lei 14.133/2021: Suporte às certidões complementares (Falência e Concordata, CEIS/CNEP e TCU/TCE) e links sincronizados por prefeitura."
-        ]}
-      />
+      {/* Abas Superiores do Banco de Certidões (Gestão Geral) */}
+      <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-2 w-full sm:w-fit shadow-inner">
+        <button
+          onClick={() => setActiveSection('companies')}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+            activeSection === 'companies'
+              ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+          }`}
+        >
+          <Building2 size={16} className="text-emerald-500" />
+          Certidões de Fornecedores & CNDs
+        </button>
+        <button
+          onClick={() => setActiveSection('courses')}
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+            activeSection === 'courses'
+              ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
+              : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+          }`}
+        >
+          <Award size={16} className="text-amber-500" />
+          Emissor em Lote de Certificados (Cursos & Eventos)
+        </button>
+      </div>
+
+      {activeSection === 'courses' ? (
+        <EducationCertificatesManager currentInstitution={institution} currentUser={currentUser} />
+      ) : (
+        <>
+          <WhatsNewBanner 
+            version="1.4.0"
+            title="Novidades no Banco de Certidões"
+            features={[
+              "Busca Automática de CNPJ: Ao digitar o CNPJ do fornecedor, a Razão Social é preenchida automaticamente via Receita/BrasilAPI.",
+              "Filtros de Regularidade Fiscal: Filtre rapidamente empresas com certidões vencidas, vencendo em 30 dias ou 100% regulares.",
+              "Lei 14.133/2021: Suporte às certidões complementares (Falência e Concordata, CEIS/CNEP e TCU/TCE) e links sincronizados por prefeitura."
+            ]}
+          />
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 bg-white dark:bg-neutral-900 p-8 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
         <div className="flex items-center gap-6">
@@ -1694,6 +1726,8 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
           />
         )}
       </AnimatePresence>
+        </>
+      )}
     </div>
   );
 };

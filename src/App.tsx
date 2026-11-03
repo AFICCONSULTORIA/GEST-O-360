@@ -33,6 +33,7 @@ import { PublicMeioAmbientePortal } from './modules/MeioAmbiente/PublicPortal';
 import { CamaraModule } from './modules/Camara';
 import { ContractsModule } from './modules/Contracts';
 import { EducationModule } from './modules/Education';
+import { EducationCertificatesManager } from './modules/Education/components/EducationCertificatesManager';
 import { CalendarModule } from './modules/Calendar';
 import { NormsModule } from './modules/Norms';
 import { SupportModule } from './modules/Support';
@@ -47,6 +48,7 @@ import { PublicNewsPortal } from './modules/Noticias/PublicNewsPortal';
 import { OuvidoriaModule } from './modules/Ouvidoria';
 import { PublicOuvidoriaPortal } from './modules/Ouvidoria/PublicPortal';
 import { PublicNotaFiscalAuditor } from './pages/PublicNotaFiscalAuditor';
+import { PublicCertificateValidator } from './pages/PublicCertificateValidator';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -682,6 +684,13 @@ export default function App() {
     currentPath.startsWith('/ouvidoria/') || 
     (currentSubdomain && currentSubdomain.toLowerCase() === 'ouvidoria');
   const cleanPath = decodedPath.replace(/\/+$/, '');
+  const isCertificateValidatorPortal = 
+    cleanPath === '/validar-documento' || 
+    cleanPath === '/validar-certificado' || 
+    cleanPath === '/validar' ||
+    cleanPath === '/autenticidade' ||
+    cleanPath.startsWith('/validar-documento/') ||
+    cleanPath.startsWith('/validar-certificado/');
   const isNotaFiscalPortal = 
     cleanPath === '/notafiscal' || 
     cleanPath === '/nota-fiscal' || 
@@ -1022,6 +1031,16 @@ export default function App() {
           }}
         />
       </div>
+    );
+  }
+
+  if (isCertificateValidatorPortal) {
+    return (
+      <PublicCertificateValidator 
+        darkMode={darkMode} 
+        setDarkMode={setDarkMode} 
+        currentInstitution={currentInstitution} 
+      />
     );
   }
 
@@ -1760,6 +1779,7 @@ export default function App() {
             {activeView === 'doc_numbers' && <DocumentNumbersModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'reports' && <ReportsModule patrimonioItems={patrimonioItems} initialReport={pendingReport} clearPendingReport={() => setPendingReport(null)} currentInstitution={currentInstitution} />}
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
+            {activeView === 'course_certificates' && <EducationCertificatesManager currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'laws' && <LawsModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <FinanceModules currentInstitution={currentInstitution} currentUser={currentUser} />}
@@ -1785,7 +1805,7 @@ export default function App() {
             {activeView === 'notafiscal' && <PublicNotaFiscalAuditor />}
 
             {/* Trava Anti-Tela-Branca: Redirecionamento seguro para tela inicial */}
-            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'laws', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
+            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
               <div className="bg-white dark:bg-neutral-900 p-8 sm:p-12 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
                 <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto">
                   <AlertTriangle size={32} />

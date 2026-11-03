@@ -70,6 +70,7 @@ export function isInstitutionModuleActive(
   if (moduleId === 'admin_financas') return normalizedSet.has('financas') || normalizedSet.has('admin_financas');
   if (moduleId === 'fleet_fuel') return normalizedSet.has('fleet_fuel') || normalizedSet.has('patrimonio') || normalizedSet.has('controls');
   if (moduleId === 'education') return normalizedSet.has('education') || normalizedSet.has('educacao');
+  if (moduleId === 'course_certificates') return normalizedSet.has('certificates') || normalizedSet.has('education') || normalizedSet.has('course_certificates') || normalizedSet.has('gestao');
 
   return normalizedSet.has(moduleId.toLowerCase().trim());
 }

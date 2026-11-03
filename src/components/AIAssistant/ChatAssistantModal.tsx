@@ -46,6 +46,7 @@ const VIEW_LABEL_MAP: Record<string, string> = {
   education: 'Educação Municipal',
   reports: 'Central de Relatórios',
   certificates: 'Banco de Certidões',
+  course_certificates: 'Emissor de Certificados',
   ouvidoria: 'Ouvidoria Geral',
   admin_financas: 'Finanças & LRF',
   financas: 'Tesouraria',
@@ -437,7 +438,19 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
       onExecuteAction(action);
     }
 
-    const resolvedRoute = normalizeTargetRoute(action.targetRoute || action.route);
+    let targetCandidate = action.targetRoute || action.route || '';
+    const labelLower = (action.label || '').toLowerCase();
+    if (
+      labelLower.includes('certid') || 
+      labelLower.includes('cnd') || 
+      labelLower.includes('certific') ||
+      labelLower.includes('banco de cert') ||
+      (labelLower.includes('empresa') && (labelLower.includes('fiscal') || labelLower.includes('cert')))
+    ) {
+      targetCandidate = 'certificates';
+    }
+
+    const resolvedRoute = normalizeTargetRoute(targetCandidate);
 
     if (action.type === 'NAVIGATE') {
       if (resolvedRoute && onNavigate) {

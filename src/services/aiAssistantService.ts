@@ -39,19 +39,20 @@ Sua missão é atuar como uma parceira estratégica hiper-eficiente: perspicaz, 
 
 ---
 
-### 2. ATENÇÃO CRÍTICA: DIFERENÇA ENTRE BANCO DE CERTIDÕES E VALIDADOR FISCAL
+### 2. ATENÇÃO CRÍTICA: BANCO DE CERTIDÕES vs VALIDADOR FISCAL
 
-⚠️ **REGRA DE OURO PARA CERTIDÕES DE EMPRESAS E FORNECEDORES:**
-- **SEMPRE que o servidor perguntar sobre certidões de empresas, fornecedores contratados (ex: Bicki, prestadores de serviços, construtoras), certidões negativas de débitos (CNDs), certidão trabalhista (CNDT), FGTS, certidão estadual, federal, municipal ou alvarás:**
-  * O módulo correto e ÚNICO no sistema é o **BANCO DE CERTIDÕES (targetRoute: "certificates")**, acessível no menu **Gestão > Banco de Certidões**.
-  * É no **Banco de Certidões** que o servidor busca a empresa pelo CNPJ ou Razão Social, visualiza o semáforo de validade das certidões (Verde, Amarelo, Vermelho), faz upload de novas certidões e clica em **"Mesclar Certidões"** para gerar o PDF unificado para empenho.
-  * O botão de ação DEVE ser:
+⚠️ **REGRA DE OURO PARA CERTIDÕES DE EMPRESAS E FORNECEDORES (ex: BICKI, CONSTRUTORAS, PRESTADORES):**
+- **NÃO EXISTE no sistema "Portal Fiscal / Tributos" nem cadastro de empresas em módulo fiscal.**
+- **SEMPRE que o servidor perguntar sobre certidões de empresas, fornecedores contratados (ex: Bicki, construtoras, cooperativas, prestadores), certidões negativas de débitos (CNDs), CNDT trabalhista, FGTS, certidão estadual SEFAZ, federal Receita/PGFN, certidão municipal, falência ou alvarás:**
+  * O módulo correto, oficial e ÚNICO no sistema é o **BANCO DE CERTIDÕES (targetRoute: "certificates")**, acessível no menu **Gestão > Banco de Certidões**.
+  * É no **Banco de Certidões** que o servidor busca a empresa pelo CNPJ ou Razão Social (ex: digita "Bicki" na busca), visualiza o semáforo de validade de cada certidão (Verde, Amarelo, Vermelho), faz upload de novas certidões e clica em **"Mesclar Certidões"** para gerar o PDF unificado para liquidação e empenho.
+  * O botão de ação DEVE ser OBRIGATORIAMENTE:
     <<<ACTION:{"type":"NAVIGATE","label":"Ir para Banco de Certidões","targetRoute":"certificates"}>>>
-  * **NUNCA direcione para o validador de notas fiscais (/notafiscal) quando o assunto for certidões ou empresas!**
+  * **NUNCA diga "Acesse o Portal Fiscal / Tributos". NUNCA direcione para "fiscal" ou "/notafiscal" quando o assunto for empresas, fornecedores ou certidões!**
 
-- **O MÓDULO VALIDADOR FISCAL (targetRoute: "notafiscal")**:
+- **O MÓDULO VALIDADOR DE NOTAS FISCAIS (targetRoute: "notafiscal")**:
   * É **EXCLUSIVAMENTE** para fazer upload e análise técnica de arquivos **PDF (DANFE/DANFSe)** ou **XML** de Notas Fiscais para conferência da Reforma Tributária (IBS/CBS, cClassTrib, CST, ISSQN).
-  * O Validador Fiscal **NÃO** guarda cadastro de empresas nem certidões.
+  * O Validador de Notas Fiscais **NÃO** possui cadastro de empresas, nem consulta CNPJ, nem emite ou guarda certidões.
 
 ---
 
@@ -62,7 +63,12 @@ Sua missão é atuar como uma parceira estratégica hiper-eficiente: perspicaz, 
    - Monitoramento de CNDs: Federal (Receita/PGFN), Estadual (SEFAZ), Municipal, Trabalhista (CNDT), FGTS (CRF), Falência e Concordata.
    - Semáforo de validade e botão para Mesclar Certidões em PDF único para liquidação de empenhos.
 
-2. **Frotas & Combustível (targetRoute: "fleet_fuel")**:
+2. **Emissor em Lote de Certificados & Cursos (targetRoute: "course_certificates")**:
+   - Acessível no menu **Gestão > Emissor de Certificados**.
+   - Emissão oficial em lote de certificados em PDF com QR Code de autenticidade (Lei 14.063/2020) para cursos, palestras, oficinas e capacitações de todas as secretarias municipais.
+   - Upload de planilhas Excel/CSV com mapeamento automático de participantes e download unificado em arquivo ZIP.
+
+3. **Frotas & Combustível (targetRoute: "fleet_fuel")**:
    - Ordens digitais de abastecimento, canhotos com QR Code validador, conciliação em três vias.
    - Trava física do tanque (impede litragem maior que a capacidade cadastrada).
    - Regime Top-Off (Tanque Cheio) para viaturas e ambulâncias de socorro contínuo com cálculo por odômetro.
@@ -197,6 +203,7 @@ export const ALLOWED_SYSTEM_VIEWS = new Set<string>([
   'doc_numbers',
   'reports',
   'certificates',
+  'course_certificates',
   'laws',
   'saude',
   'consultorio_medico',
@@ -223,8 +230,31 @@ export function normalizeTargetRoute(targetRoute?: string): string {
   if (!targetRoute) return '';
   const clean = targetRoute.replace(/^\//, '').toLowerCase().trim();
 
-  // Regra de Ouro: Qualquer referência a certidões, CNDs ou fornecedores deve SEMPRE ir para certificates
-  if (clean.includes('certid') || clean.includes('cnd') || clean.includes('certific')) {
+  // Emissor em lote de certificados de cursos, palestras e eventos (Gestão Geral)
+  if (
+    clean === 'course_certificates' ||
+    clean === 'emissor_certificados' ||
+    clean === 'certificados_cursos' ||
+    clean.includes('emissor_cert') ||
+    clean.includes('certificado_curso') ||
+    clean.includes('lote_cert')
+  ) {
+    return 'course_certificates';
+  }
+
+  // Regra de Ouro: Qualquer referência a certidões, CNDs, empresas, fornecedores ou regularidade deve SEMPRE ir para certificates
+  if (
+    clean.includes('certid') || 
+    clean.includes('cnd') || 
+    clean.includes('certific') ||
+    clean.includes('fornecedor') ||
+    clean.includes('empresa') ||
+    clean.includes('bicki') ||
+    clean.includes('alvara') ||
+    clean.includes('situacao_fiscal') ||
+    clean.includes('regularidade_fiscal') ||
+    clean.includes('banco_certid')
+  ) {
     return 'certificates';
   }
 
@@ -239,8 +269,13 @@ export function normalizeTargetRoute(targetRoute?: string): string {
   }
 
   // Prioridade: Nota fiscal (apenas validação e auditoria de XML/PDF da Reforma Tributária)
-  if (clean.includes('notafiscal') || clean.includes('nota_fiscal') || clean === 'notafiscal' || clean === 'fiscal' || clean === 'auditor_fiscal' || clean === 'reforma_tributaria') {
+  if (clean.includes('notafiscal') || clean.includes('nota_fiscal') || clean === 'notafiscal' || clean === 'danfe' || clean === 'xml_nota' || clean === 'auditor_fiscal' || clean === 'reforma_tributaria') {
     return 'notafiscal';
+  }
+
+  // Se o usuário/IA citou termos fiscais genéricos, portal_fiscal ou tributos sem citar nota fiscal, direciona para certificates
+  if (clean === 'fiscal' || clean.includes('portal_fiscal') || clean.includes('tributo') || clean === 'certidoes_fiscais') {
+    return 'certificates';
   }
 
   // Mapeamento semântico de termos comuns para rotas reais
@@ -340,6 +375,13 @@ export function normalizeTargetRoute(targetRoute?: string): string {
     case 'certificados':
     case 'certidoes':
     case 'cnd':
+    case 'banco_certidoes':
+    case 'fornecedores':
+    case 'fornecedor':
+    case 'empresas':
+    case 'empresa':
+    case 'situacao_fiscal':
+    case 'regularidade_fiscal':
       return 'certificates';
 
     case 'laws':
@@ -355,7 +397,7 @@ export function normalizeTargetRoute(targetRoute?: string): string {
 
     case 'notafiscal':
     case 'nota_fiscal':
-    case 'fiscal':
+    case 'danfe':
     case 'auditor_fiscal':
     case 'reforma_tributaria':
       return 'notafiscal';
@@ -462,12 +504,26 @@ export function parseAgentActions(rawText: string): { cleanText: string; actions
     try {
       const parsed = JSON.parse(jsonStr.trim());
       if (parsed && typeof parsed === 'object') {
-        const targetRoute = parsed.targetRoute || parsed.route || '';
+        let targetRoute = parsed.targetRoute || parsed.route || '';
+        const label = parsed.label || 'Acessar no Sistema';
+        const labelLower = label.toLowerCase();
+        
+        // Safeguard supremo: se o rótulo do botão mencionar certidões, CNDs ou fornecedores, direciona para certificates
+        if (
+          labelLower.includes('certid') || 
+          labelLower.includes('cnd') || 
+          labelLower.includes('certific') ||
+          labelLower.includes('banco de cert') ||
+          (labelLower.includes('empresa') && labelLower.includes('fiscal'))
+        ) {
+          targetRoute = 'certificates';
+        }
+
         const normalizedRoute = normalizeTargetRoute(targetRoute);
         const actionPayload: AssistantActionPayload = {
           type: parsed.type || 'NAVIGATE',
-          label: parsed.label || 'Acessar no Sistema',
-          targetRoute,
+          label,
+          targetRoute: targetRoute || normalizedRoute,
           route: normalizedRoute,
           tab: parsed.params?.tab || parsed.tab,
           modalId: parsed.params?.modalId || parsed.modalId,

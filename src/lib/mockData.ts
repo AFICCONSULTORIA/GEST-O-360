@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Scale,
   Activity,
+  Award,
   ClipboardList,
   Newspaper,
   Headphones,
@@ -112,6 +113,7 @@ export const NAVBAR_CATEGORIES = [
     items: [
       { id: 'mayor', label: 'Visão do Prefeito', icon: Activity },
       { id: 'certificates', label: 'Banco de Certidões', icon: FileCheck },
+      { id: 'course_certificates', label: 'Emissor de Certificados', icon: Award },
       { id: 'laws', label: 'Banco de Leis', icon: Scale },
       { id: 'protocol', label: 'Protocolo Digital', icon: ClipboardCheck },
       { id: 'doc_numbers', label: 'Controle de Numeração', icon: FileText },
