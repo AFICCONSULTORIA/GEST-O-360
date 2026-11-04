@@ -40,7 +40,13 @@ import {
   MapPin,
   Store,
   Calendar,
-  CreditCard
+  CreditCard,
+  Clock,
+  Sliders,
+  DollarSign,
+  Receipt,
+  ArrowRight,
+  Camera
 } from 'lucide-react';
 import {
   FleetVehicle,
@@ -72,6 +78,19 @@ import {
   deleteFleetFuelStation
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
+import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVoucherPDF';
+import { 
+  CONTRACTUAL_BIDDED_PRICES, 
+  issueFuelAuthorization,
+  getBiddedFuelPrices,
+  saveBiddedFuelPrices,
+  BiddedPricesMap,
+  validateAndCompleteFuelOrder,
+  calculateRealtimeMetrics,
+  uploadFuelDocumentPhoto,
+  linkInvoiceToFuelOrder
+} from '../../../lib/api/fleetFuelAudit';
+import { formatCPF } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
 import { showToast } from '../../../components/ui/Toast';
 import { AdminUser } from '../../../types';
@@ -98,11 +117,27 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [driverSearchTerm, setDriverSearchTerm] = useState('');
   const [stationSearchTerm, setStationSearchTerm] = useState('');
 
+  // Tabela Dinâmica de Preços Licitados & Reequilíbrio Econômico-Financeiro
+  const [biddedPrices, setBiddedPrices] = useState<BiddedPricesMap>(() => {
+    return getBiddedFuelPrices(currentUser?.institution_id);
+  });
+  const [isPriceConfigModalOpen, setIsPriceConfigModalOpen] = useState(false);
+  const [priceEditForm, setPriceEditForm] = useState<BiddedPricesMap>(biddedPrices);
+  const [rebalanceReasonInput, setRebalanceReasonInput] = useState('');
+  const [rebalanceTermInput, setRebalanceTermInput] = useState('Termo Aditivo nº 02/2026 - Reequilíbrio ANP');
+
   // Modais
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
+  const [newOrderStep, setNewOrderStep] = useState<1 | 2 | 3>(1);
+  const [vehicleSearchFilter, setVehicleSearchFilter] = useState('');
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+  const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
   const [isExecutionModalOpen, setIsExecutionModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
+  const [isLinkInvoiceModalOpen, setIsLinkInvoiceModalOpen] = useState(false);
+  const [invoiceLinkOrder, setInvoiceLinkOrder] = useState<FuelSupplyOrder | null>(null);
+  const [invoiceLinkNumber, setInvoiceLinkNumber] = useState('');
   const [selectedOrderForAction, setSelectedOrderForAction] = useState<FuelSupplyOrder | null>(null);
   const [viewingAttachmentOrder, setViewingAttachmentOrder] = useState<FuelSupplyOrder | null>(null);
 
@@ -114,6 +149,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     station_name: 'Auto Posto Central Municipal Ltda',
     fuel_type: 'diesel_s10' as FuelType,
     liters_authorized: 50,
+    current_odometer: 0,
     is_full_tank_order: false,
     emergency_call_reason: ''
   });
@@ -565,7 +601,111 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setIsExecutionModalOpen(true);
   };
 
-  // Envio de nova ordem
+  // Preço unitário contratual licitado e valor total travado
+  const currentBiddedPrice = useMemo(() => {
+    if (!selectedVehicleForNewOrder) return 6.19;
+    return biddedPrices[selectedVehicleForNewOrder.fuel_type]?.price || CONTRACTUAL_BIDDED_PRICES[selectedVehicleForNewOrder.fuel_type]?.price || 6.19;
+  }, [selectedVehicleForNewOrder, biddedPrices]);
+
+  const currentTotalAuthorized = useMemo(() => {
+    return Number((newOrderForm.liters_authorized * currentBiddedPrice).toFixed(2));
+  }, [newOrderForm.liters_authorized, currentBiddedPrice]);
+
+  // Salvar tabela de preços licitados / reequilíbrio
+  const handleSaveBiddedPrices = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const saved = await saveBiddedFuelPrices(
+        priceEditForm,
+        currentUser?.institution_id,
+        rebalanceReasonInput,
+        rebalanceTermInput
+      );
+      setBiddedPrices(saved);
+      setIsPriceConfigModalOpen(false);
+      showToast('Tabela de Preços Licitados e Reequilíbrio atualizados com sucesso!', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao salvar tabela de preços.', 'error');
+    }
+  };
+
+  // Vincular Nota Fiscal faturada pelo posto à requisição
+  const handleSaveLinkedInvoice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!invoiceLinkOrder || !invoiceLinkNumber.trim()) return;
+
+    try {
+      await linkInvoiceToFuelOrder(invoiceLinkOrder.id, invoiceLinkNumber);
+      showToast(`Nota Fiscal ${invoiceLinkNumber} vinculada com sucesso à requisição!`, 'success');
+      setIsLinkInvoiceModalOpen(false);
+      setInvoiceLinkOrder(null);
+      setInvoiceLinkNumber('');
+      loadData();
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao vincular Nota Fiscal.', 'error');
+    }
+  };
+
+  // Identificação automática de motorista no passo 2 por Nome ou CPF
+  const matchedDriverFromForm = useMemo(() => {
+    const cleanDoc = newOrderForm.driver_document.replace(/\D/g, '');
+    if (cleanDoc.length === 11) {
+      return drivers.find(d => d.cpf.replace(/\D/g, '') === cleanDoc) || null;
+    }
+    if (newOrderForm.driver_name.trim().length >= 3) {
+      return drivers.find(d => d.full_name.toLowerCase().trim() === newOrderForm.driver_name.toLowerCase().trim()) || null;
+    }
+    return null;
+  }, [drivers, newOrderForm.driver_document, newOrderForm.driver_name]);
+
+  const filteredDriversForStep2 = useMemo(() => {
+    const term = (driverSearchQuery || newOrderForm.driver_name).toLowerCase().trim();
+    if (!term || term.length < 2) return [];
+    const cleanDigits = term.replace(/\D/g, '');
+    return drivers.filter(d => {
+      const matchName = d.full_name.toLowerCase().includes(term);
+      const matchCpf = cleanDigits ? d.cpf.replace(/\D/g, '').includes(cleanDigits) : false;
+      const matchDept = d.department.toLowerCase().includes(term);
+      return matchName || matchCpf || matchDept;
+    }).slice(0, 6);
+  }, [drivers, driverSearchQuery, newOrderForm.driver_name]);
+
+  const handleDriverCpfChange = (raw: string) => {
+    const formatted = formatCPF(raw);
+    const clean = raw.replace(/\D/g, '');
+    const found = drivers.find(d => d.cpf.replace(/\D/g, '') === clean);
+    setNewOrderForm(prev => ({
+      ...prev,
+      driver_document: formatted,
+      driver_name: found ? found.full_name : prev.driver_name
+    }));
+    if (found && !newOrderForm.driver_name) {
+      showToast(`Motorista identificado: ${found.full_name} (${found.department})`, 'info');
+    }
+  };
+
+  const handleDriverNameChange = (val: string) => {
+    setShowDriverSuggestions(true);
+    const found = drivers.find(d => d.full_name.toLowerCase().trim() === val.toLowerCase().trim());
+    setNewOrderForm(prev => ({
+      ...prev,
+      driver_name: val,
+      driver_document: found ? formatCPF(found.cpf) : prev.driver_document
+    }));
+  };
+
+  const handleSelectDriverQuick = (driver: FleetDriver) => {
+    setNewOrderForm(prev => ({
+      ...prev,
+      driver_name: driver.full_name,
+      driver_document: formatCPF(driver.cpf)
+    }));
+    setShowDriverSuggestions(false);
+    setDriverSearchQuery('');
+    showToast(`Condutor selecionado: ${driver.full_name}`, 'info');
+  };
+
+  // Envio de nova ordem com emissão em duas vias e parâmetros travados
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newOrderForm.vehicle_id) {
@@ -578,19 +718,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
 
     try {
-      const created = await createFuelOrder({
+      const created = await issueFuelAuthorization({
         vehicle_id: newOrderForm.vehicle_id,
         driver_name: newOrderForm.driver_name,
         driver_document: newOrderForm.driver_document,
         station_name: newOrderForm.station_name,
-        fuel_type: newOrderForm.fuel_type,
+        bidded_unit_price: currentBiddedPrice,
         liters_authorized: Number(newOrderForm.liters_authorized),
-        is_full_tank_order: newOrderForm.is_full_tank_order,
-        emergency_call_reason: newOrderForm.emergency_call_reason
+        current_odometer: Number(newOrderForm.current_odometer)
       });
 
-      showToast(`Ordem ${created.order_number} emitida com sucesso!`, 'success');
+      showToast(`Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`, 'success');
       setIsNewOrderModalOpen(false);
+      setNewOrderStep(1);
       setNewOrderForm({
         vehicle_id: '',
         driver_name: '',
@@ -598,48 +738,53 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         station_name: 'Auto Posto Central Municipal Ltda',
         fuel_type: 'diesel_s10',
         liters_authorized: 50,
+        current_odometer: 0,
         is_full_tank_order: false,
         emergency_call_reason: ''
       });
       loadData();
 
-      // Pergunta se deseja imprimir agora
-      if (confirm(`Deseja imprimir a Ordem Oficial ${created.order_number} agora?`)) {
-        imprimirOrdemAbastecimento(created, created.vehicle || selectedVehicleForNewOrder);
-      }
+      // Dispara imediatamente a impressão da folha A4 com as 2 vias e QR Code
+      imprimirCanhotoDuasVias(created, created.vehicle || selectedVehicleForNewOrder);
     } catch (err: any) {
-      showToast(err.message || 'Erro ao emitir ordem.', 'error');
+      showToast(err.message || 'Erro ao emitir autorização.', 'error');
     }
   };
 
-  // Envio de execução / baixa de canhoto
+  // Envio de execução / baixa de canhoto no próprio sistema
   const handleSaveExecution = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrderForAction) return;
 
+    const currentKm = Number(executionForm.current_odometer);
+    if (isNaN(currentKm) || currentKm <= 0) {
+      showToast('Por favor, informe a leitura atual do odômetro no painel do veículo.', 'warning');
+      return;
+    }
+
     try {
-      const updated = await registerFuelExecution(selectedOrderForAction.id, {
-        liters_supplied: Number(executionForm.liters_supplied),
-        current_odometer: Number(executionForm.current_odometer),
-        unit_price: Number(executionForm.unit_price),
-        invoice_number: executionForm.invoice_number,
-        invoice_key: executionForm.invoice_key,
-        receipt_attachment_url: executionForm.receipt_attachment_url,
-        odometer_photo_url: executionForm.odometer_photo_url,
-        invoice_attachment_url: executionForm.invoice_attachment_url
+      const res = await validateAndCompleteFuelOrder(selectedOrderForAction.id, {
+        current_odometer: currentKm,
+        liters_supplied: Number(executionForm.liters_supplied) || selectedOrderForAction.liters_authorized,
+        receipt_photo_url: executionForm.receipt_attachment_url || undefined,
+        odometer_photo_url: executionForm.odometer_photo_url || undefined,
+        invoice_coupon_number: executionForm.invoice_number?.trim() || undefined,
+        audit_justification: executionForm.invoice_key?.trim() || undefined
       });
 
-      if (updated.is_anomaly) {
-        showToast(`Abastecimento registrado com ALERTA DE ANOMALIA: ${updated.anomaly_reason}`, 'warning');
+      if (res.audit.anomaly_level === 'bloqueio_critico') {
+        showToast(`Abastecimento registrado com BLOQUEIO CRÍTICO DE AUDITORIA: ${res.audit.anomaly_reason}`, 'error');
+      } else if (res.audit.anomaly_level === 'alerta_amarelo') {
+        showToast(`Abastecimento registrado com ALERTA MODERADO (${res.audit.deviation_percent}% desvio).`, 'warning');
       } else {
-        showToast('Abastecimento registrado com sucesso e sem anomalias!', 'success');
+        showToast(`Abastecimento registrado com sucesso! Consumo apurado: ${res.audit.calculated_km_per_liter} km/l`, 'success');
       }
 
       setIsExecutionModalOpen(false);
       setSelectedOrderForAction(null);
       loadData();
     } catch (err: any) {
-      showToast(err.message || 'Erro ao registrar execução.', 'error');
+      showToast(err.message || 'Erro ao registrar baixa do odômetro.', 'error');
     }
   };
 
@@ -747,24 +892,39 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         'Condutor / Motorista',
         'Posto Credenciado',
         'Combustível',
+        'Preço Licitado (R$/L)',
         'Litros Autorizados',
+        'Total Autorizado (R$)',
         'Litros Abastecidos',
         'Métrica',
         'Leitura Anterior',
         'Leitura no Ato',
+        'Delta KM',
         'Consumo Apurado',
-        'Consumo Esperado',
-        'Preço Unitário (R$)',
-        'Valor Total (R$)',
+        'Meta de Referência',
+        'Desvio de Consumo (%)',
         'Número NF/Cupom',
+        'Nível de Risco TCE',
         'Status de Liquidação',
-        'Anomalia Detectada',
-        'Motivo da Anomalia',
-        'Parecer do Controle Interno'
+        'Motivo da Anomalia / Parecer'
       ];
 
       const data = orders.map(ord => {
         const v = ord.vehicle || vehicles.find(item => item.id === ord.vehicle_id);
+        const delta = ord.current_odometer && ord.previous_odometer ? (ord.current_odometer - ord.previous_odometer) : 0;
+        const bidded = ord.bidded_unit_price || ord.unit_price || 6.19;
+        const totalAut = ord.total_authorized_value || (ord.liters_authorized * bidded);
+        const consumption = ord.calculated_km_per_liter || ord.calculated_consumption;
+        const dev = ord.deviation_percent !== undefined 
+          ? `${ord.deviation_percent}%` 
+          : (v?.expected_consumption && consumption ? `${(((consumption - v.expected_consumption) / v.expected_consumption) * 100).toFixed(1)}%` : '-');
+
+        const anomalyLabel = ord.anomaly_level === 'bloqueio_critico' || ord.is_anomaly
+          ? 'BLOQUEIO CRÍTICO'
+          : ord.anomaly_level === 'alerta_amarelo'
+          ? 'ALERTA MODERADO'
+          : 'CONFORME';
+
         return {
           'Número da Ordem': ord.order_number,
           'Data de Emissão': new Date(ord.created_at).toLocaleDateString('pt-BR'),
@@ -775,20 +935,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           'Condutor / Motorista': ord.driver_name,
           'Posto Credenciado': ord.station_name,
           'Combustível': ord.fuel_type.toUpperCase(),
+          'Preço Licitado (R$/L)': `R$ ${bidded.toFixed(3)}`,
           'Litros Autorizados': ord.liters_authorized,
+          'Total Autorizado (R$)': `R$ ${totalAut.toFixed(2)}`,
           'Litros Abastecidos': ord.liters_supplied || 'Aguardando',
-          'Métrica': v?.metric_type === 'horimetro' ? 'Horímetro (h)' : 'Odômetro (km)',
+          'Métrica': 'Odômetro (km)',
           'Leitura Anterior': ord.previous_odometer,
           'Leitura no Ato': ord.current_odometer || '-',
-          'Consumo Apurado': ord.calculated_consumption ? `${ord.calculated_consumption} ${v?.metric_type === 'horimetro' ? 'l/h' : 'km/l'}` : '-',
-          'Consumo Esperado': v?.expected_consumption ? `${v.expected_consumption} ${v?.metric_type === 'horimetro' ? 'l/h' : 'km/l'}` : '-',
-          'Preço Unitário (R$)': ord.unit_price ? `R$ ${ord.unit_price.toFixed(3)}` : '-',
-          'Valor Total (R$)': ord.total_value ? `R$ ${ord.total_value.toFixed(2)}` : '-',
-          'Número NF/Cupom': ord.invoice_number || '-',
+          'Delta KM': delta > 0 ? `+${delta}` : '-',
+          'Consumo Apurado': consumption ? `${consumption.toFixed(2)} km/l` : '-',
+          'Meta de Referência': v?.expected_consumption ? `${v.expected_consumption.toFixed(2)} km/l` : '-',
+          'Desvio de Consumo (%)': dev,
+          'Número NF/Cupom': ord.invoice_coupon_number || ord.invoice_number || '-',
+          'Nível de Risco TCE': anomalyLabel,
           'Status de Liquidação': ord.status.toUpperCase(),
-          'Anomalia Detectada': ord.is_anomaly ? 'SIM (RISCO DE GLOSA)' : 'NÃO (CONFORME)',
-          'Motivo da Anomalia': ord.anomaly_reason || '-',
-          'Parecer do Controle Interno': ord.audit_justification || '-'
+          'Motivo da Anomalia / Parecer': ord.anomaly_reason || ord.audit_justification || '-'
         };
       });
 
@@ -1055,6 +1216,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             <span>Exportar Relatório TCE (Excel)</span>
           </button>
 
+          <button
+            onClick={() => {
+              setPriceEditForm(biddedPrices);
+              setIsPriceConfigModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded-xl transition-all cursor-pointer border border-amber-200 dark:border-amber-800"
+            title="Tabela de Preços Licitados por Combustível e Aditivos de Reequilíbrio Contratual"
+          >
+            <Sliders size={14} />
+            <span>Preços Licitados / Reequilíbrio</span>
+          </button>
+
           {activeTab === 'vehicles' ? (
             <button
               onClick={() => setIsNewVehicleModalOpen(true)}
@@ -1191,17 +1364,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                         {/* Status */}
                         <td className="px-4 py-3.5">
-                          {order.status === 'autorizado' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          {(order.status === 'autorizado' || order.status === 'autorizado_pendente') && (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                               Aguardando Abastecimento
                             </span>
                           )}
                           {order.status === 'abastecido' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                              Abastecido (Pendente)
-                            </span>
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                Abastecido no Posto
+                              </span>
+                              {order.anomaly_level === 'alerta_amarelo' && (
+                                <span className="block text-[9px] font-bold text-amber-600 dark:text-amber-400">
+                                  ⚠️ Desvio moderado
+                                </span>
+                              )}
+                            </div>
                           )}
                           {order.status === 'auditado' && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
@@ -1210,10 +1390,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             </span>
                           )}
                           {order.status === 'glosado' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
-                              <Ban size={11} />
-                              Glosado (Suspenso)
-                            </span>
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
+                                <Ban size={11} />
+                                Glosado (Bloqueio)
+                              </span>
+                              {order.anomaly_level === 'bloqueio_critico' && (
+                                <span className="block text-[9px] font-black text-rose-600 dark:text-rose-400">
+                                  🔴 Bloqueio Crítico TCE
+                                </span>
+                              )}
+                            </div>
                           )}
                         </td>
 
@@ -1221,26 +1408,49 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         <td className="px-4 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={() => imprimirOrdemAbastecimento(order, v)}
-                              title="Imprimir Ordem Oficial (PDF)"
-                              className="p-1.5 text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+                              onClick={() => imprimirCanhotoDuasVias(order as any, v)}
+                              title="Imprimir Canhoto em Duas Vias (A4 Oficial com QR Code)"
+                              className="flex items-center gap-1 px-2 py-1 text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                             >
-                              <Printer size={15} />
+                              <Printer size={13} />
+                              <span className="hidden sm:inline">2 Vias</span>
                             </button>
 
-                            {order.status === 'autorizado' && (
+                            {(order.status === 'autorizado' || order.status === 'autorizado_pendente') && (
                               <button
                                 onClick={() => handleOpenExecution(order)}
-                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                title="Preencher Leitura do Odômetro e Baixar Ordem"
+                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
                               >
-                                Lançar Canhoto
+                                <Gauge size={12} />
+                                <span>Odômetro</span>
                               </button>
                             )}
 
-                            {(order.receipt_attachment_url || order.odometer_photo_url || order.invoice_attachment_url) && (
+                            {/* Vincular Nota Fiscal Faturada (Controle Interno) */}
+                            {order.status !== 'autorizado_pendente' && (
+                              <button
+                                onClick={() => {
+                                  setInvoiceLinkOrder(order);
+                                  setInvoiceLinkNumber(order.invoice_number || '');
+                                  setIsLinkInvoiceModalOpen(true);
+                                }}
+                                title={order.invoice_number ? `Nota Fiscal Vinculada: ${order.invoice_number} (clique para alterar)` : "Vincular Nota Fiscal enviada pelo posto"}
+                                className={`px-2 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
+                                  order.invoice_number
+                                    ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200'
+                                    : 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200 hover:bg-amber-200'
+                                }`}
+                              >
+                                <Receipt size={12} />
+                                <span>{order.invoice_number ? `NF: ${order.invoice_number}` : '+ Vincular NF'}</span>
+                              </button>
+                            )}
+
+                            {(order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.invoice_attachment_url) && (
                               <button
                                 onClick={() => setViewingAttachmentOrder(order)}
-                                title="Ver Comprovantes Anexados"
+                                title="Ver Comprovantes (Canhoto & Painel)"
                                 className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
                               >
                                 <Eye size={15} />
@@ -1278,14 +1488,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders.filter(o => o.status === 'autorizado').length === 0 ? (
+            {orders.filter(o => o.status === 'autorizado' || o.status === 'autorizado_pendente').length === 0 ? (
               <div className="col-span-full bg-white dark:bg-neutral-900 p-12 text-center rounded-3xl border border-neutral-100 dark:border-neutral-800 text-neutral-400">
                 <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-2 opacity-80" />
                 <p className="font-bold text-neutral-800 dark:text-white">Todas as ordens emitidas já foram liquidadas ou lançadas!</p>
                 <p className="text-xs mt-1">Nenhuma autorização pendente de abastecimento no momento.</p>
               </div>
             ) : (
-              orders.filter(o => o.status === 'autorizado').map(order => {
+              orders.filter(o => o.status === 'autorizado' || o.status === 'autorizado_pendente').map(order => {
                 const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
                 return (
                   <div key={order.id} className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col justify-between">
@@ -1321,14 +1531,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         </div>
                         <div className="flex justify-between">
                           <span className="text-neutral-400">Leitura Anterior:</span>
-                          <span className="font-mono">{order.previous_odometer} {v?.metric_type}</span>
+                          <span className="font-mono">{order.previous_odometer} km</span>
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                       <button
-                        onClick={() => imprimirOrdemAbastecimento(order, v)}
+                        onClick={() => imprimirCanhotoDuasVias(order as any, v)}
                         className="flex-1 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 rounded-xl hover:bg-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Printer size={14} />
@@ -1465,7 +1675,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             {order.calculated_consumption ? (
                               <div>
                                 <span className="font-black text-xs text-neutral-900 dark:text-white">
-                                  {order.calculated_consumption.toFixed(2)} {v?.metric_type === 'horimetro' ? 'l/h' : 'km/l'}
+                                  {order.calculated_consumption.toFixed(2)} km/l
                                 </span>
                                 <span className="text-[10px] text-neutral-400 block">
                                   Ref.: {v?.expected_consumption.toFixed(2)}
@@ -1513,20 +1723,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                           {/* Semáforo / Anomalia */}
                           <td className="px-4 py-3.5 max-w-[220px]">
-                            {order.is_anomaly ? (
+                            {order.anomaly_level === 'bloqueio_critico' || order.is_anomaly ? (
                               <div className="space-y-1">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-600 text-white animate-pulse">
                                   <AlertTriangle size={11} />
-                                  Anomalia Grave
+                                  🔴 Bloqueio Crítico TCE
                                 </span>
-                                <div className="text-[10px] font-medium text-rose-700 dark:text-rose-300 leading-tight">
-                                  {order.anomaly_reason}
+                                <div className="text-[10px] font-bold text-rose-700 dark:text-rose-300 leading-tight">
+                                  {order.anomaly_reason || 'Inconsistência grave no odômetro ou consumo discrepante (>25%).'}
                                 </div>
                               </div>
+                            ) : order.anomaly_level === 'alerta_amarelo' ? (
+                              <div className="space-y-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-amber-500 text-white">
+                                  <AlertTriangle size={11} />
+                                  🟡 Alerta de Consumo
+                                </span>
+                                <div className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 leading-tight">
+                                  {order.anomaly_reason || 'Desvio moderado de consumo entre 15% e 25%.'}
+                                </div>
+                              </div>
+                            ) : (order.status === 'autorizado' || order.status === 'autorizado_pendente') ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                                <Clock size={11} />
+                                Aguardando Posto
+                              </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                                 <CheckCircle2 size={11} />
-                                Conforme
+                                🟢 Conforme
                               </span>
                             )}
                           </td>
@@ -1535,11 +1760,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <td className="px-4 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               {order.status === 'glosado' ? (
-                                <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
-                                  Glosado
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                  Glosado (Bloqueado)
                                 </span>
                               ) : order.status === 'auditado' ? (
-                                <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
                                   Homologado
                                 </span>
                               ) : (
@@ -1549,11 +1774,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                       setSelectedOrderForAction(order);
                                       setAuditForm({
                                         status: 'auditado',
-                                        justification: 'Documentação física, odômetro e notas fiscais conferidas em conformidade.'
+                                        justification: 'Documentação física, odômetro e notas fiscais conferidas em conformidade com as diretrizes do Tribunal de Contas.'
                                       });
                                       setIsAuditModalOpen(true);
                                     }}
                                     className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer"
+                                    title="Aprovar e homologar ordem para liquidação contábil"
                                   >
                                     Aprovar
                                   </button>
@@ -1563,11 +1789,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                       setSelectedOrderForAction(order);
                                       setAuditForm({
                                         status: 'glosado',
-                                        justification: order.anomaly_reason || 'Glosa preventiva de liquidação de despesa por inconsistência de dados.'
+                                        justification: order.anomaly_reason || 'Glosa e bloqueio cautelar de pagamento por inconsistência técnica no odômetro ou consumo.'
                                       });
                                       setIsAuditModalOpen(true);
                                     }}
                                     className="px-2.5 py-1 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors cursor-pointer"
+                                    title="Glosar e bloquear pagamento para averiguação"
                                   >
                                     Glosar
                                   </button>
@@ -1697,10 +1924,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         {vehicle.tank_capacity.toFixed(2)} L
                       </td>
                       <td className="px-4 py-3.5 font-semibold text-emerald-600">
-                        {vehicle.expected_consumption.toFixed(2)} {vehicle.metric_type === 'horimetro' ? 'l/h' : 'km/l'}
+                        {vehicle.expected_consumption.toFixed(2)} km/l
                       </td>
                       <td className="px-4 py-3.5 font-mono text-neutral-800 dark:text-neutral-200">
-                        {vehicle.current_odometer.toLocaleString('pt-BR')} {vehicle.metric_type}
+                        {vehicle.current_odometer.toLocaleString('pt-BR')} km
                       </td>
                       <td className="px-4 py-3.5">
                         {vehicle.status === 'ativo' && (
@@ -1993,7 +2220,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         </div>
       )}
 
-      {/* MODAL 1: EMISSÃO DE NOVA ORDEM DIGITAL COM BLOQUEIO DE TANQUE */}
+      {/* MODAL 1: EMISSÃO DE NOVA ORDEM DIGITAL GUIADA EM 3 PASSOS (UX FLUIDA) */}
       <AnimatePresence>
         {isNewOrderModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -2001,8 +2228,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-xl w-full p-6 overflow-hidden"
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-2xl w-full p-6 overflow-hidden"
             >
+              {/* Header do Modal */}
               <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
@@ -2010,326 +2238,556 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                   <div>
                     <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                      Emitir Ordem de Abastecimento
+                      Emissão de Ordem de Abastecimento Digital
                     </h3>
-                    <p className="text-neutral-400 text-xs">Geração com QR Code validador e trava de tanque</p>
+                    <p className="text-neutral-400 text-xs">Canhoto em 2 vias, QR Code validador e parâmetros travados</p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setIsNewOrderModalOpen(false)}
+                  onClick={() => {
+                    setIsNewOrderModalOpen(false);
+                    setNewOrderStep(1);
+                  }}
                   className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateOrder} className="mt-4 space-y-4">
-                {/* Seleção do Veículo pela Placa */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                      Veículo Oficial da Frota (Buscar pela Placa) *
-                    </label>
-                    {vehicles.length === 0 && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
-                        Nenhum veículo cadastrado
-                      </span>
-                    )}
-                  </div>
-                  <select
-                    value={newOrderForm.vehicle_id}
-                    onChange={e => {
-                      const vehId = e.target.value;
-                      const found = vehicles.find(v => v.id === vehId);
-                      const isEmergency = !!found?.is_emergency_priority;
-                      setNewOrderForm(prev => ({
-                        ...prev,
-                        vehicle_id: vehId,
-                        fuel_type: found ? found.fuel_type : prev.fuel_type,
-                        is_full_tank_order: isEmergency ? true : prev.is_full_tank_order,
-                        liters_authorized: found ? (isEmergency ? found.tank_capacity : Math.min(prev.liters_authorized, found.tank_capacity)) : prev.liters_authorized,
-                        emergency_call_reason: isEmergency && !prev.emergency_call_reason ? `Plantão de Prontidão 24h - ${found?.model}` : prev.emergency_call_reason
-                      }));
-                    }}
-                    required
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  >
-                    <option value="">Selecione a placa do veículo...</option>
-                    {vehicles.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.plate} — {v.model} ({v.department}) [Tanque: {v.tank_capacity}L]{v.is_emergency_priority ? ' 🚨 [Prontidão 24h]' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {/* STEPPER DE NAVEGAÇÃO RÁPIDA (UX PREMIUM) */}
+              <div className="grid grid-cols-3 gap-2 my-4">
+                <button
+                  type="button"
+                  onClick={() => setNewOrderStep(1)}
+                  className={`p-2.5 rounded-xl text-left border transition-all ${
+                    newOrderStep === 1
+                      ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+                      : newOrderForm.vehicle_id
+                      ? 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300'
+                      : 'opacity-50 border-transparent text-neutral-400'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold block uppercase tracking-wider text-neutral-400">Passo 1</span>
+                  <span className="text-xs font-black flex items-center gap-1.5">
+                    <Car size={13} />
+                    Veículo Oficial
+                  </span>
+                </button>
 
-                {/* Exibição Técnica do Veículo Selecionado */}
-                {selectedVehicleForNewOrder && (
-                  <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700/60 text-xs space-y-1">
-                    <div className="flex justify-between items-center">
-                      <span className="text-neutral-500">Modelo e Secretaria:</span>
-                      <div className="flex items-center gap-1.5">
-                        <strong className="text-neutral-900 dark:text-white">{selectedVehicleForNewOrder.model} ({selectedVehicleForNewOrder.department})</strong>
-                        {selectedVehicleForNewOrder.is_emergency_priority && (
-                          <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded uppercase">
-                            🚨 Prontidão 24h
-                          </span>
-                        )}
+                <button
+                  type="button"
+                  onClick={() => newOrderForm.vehicle_id && setNewOrderStep(2)}
+                  disabled={!newOrderForm.vehicle_id}
+                  className={`p-2.5 rounded-xl text-left border transition-all ${
+                    newOrderStep === 2
+                      ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+                      : newOrderForm.driver_name
+                      ? 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300'
+                      : 'opacity-50 border-transparent text-neutral-400'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold block uppercase tracking-wider text-neutral-400">Passo 2</span>
+                  <span className="text-xs font-black flex items-center gap-1.5">
+                    <Users size={13} />
+                    Condutor & Posto
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => newOrderForm.vehicle_id && newOrderForm.driver_name && setNewOrderStep(3)}
+                  disabled={!newOrderForm.vehicle_id || !newOrderForm.driver_name}
+                  className={`p-2.5 rounded-xl text-left border transition-all ${
+                    newOrderStep === 3
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
+                      : 'opacity-50 border-transparent text-neutral-400'
+                  }`}
+                >
+                  <span className="text-[10px] font-bold block uppercase tracking-wider text-neutral-400">Passo 3</span>
+                  <span className="text-xs font-black flex items-center gap-1.5">
+                    <DollarSign size={13} />
+                    Litragem & Trava
+                  </span>
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateOrder} className="space-y-4">
+                {/* PASSO 1: SELEÇÃO DO VEÍCULO COM BUSCA INTELIGENTE */}
+                {newOrderStep === 1 && (
+                  <div className="space-y-3 animate-in fade-in duration-200">
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Localizar Veículo por Placa, Modelo ou Secretaria:
+                      </label>
+                      <div className="relative">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                        <input
+                          type="text"
+                          placeholder="Ex: RNT-4E12, Ambulância, Hilux, Educação..."
+                          value={vehicleSearchFilter}
+                          onChange={e => setVehicleSearchFilter(e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
                       </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Capacidade Máxima do Tanque:</span>
-                      <strong className="text-neutral-900 dark:text-white">{selectedVehicleForNewOrder.tank_capacity.toFixed(2)} Litros</strong>
+
+                    {/* Lista com rolagem rápida de veículos */}
+                    <div className="max-h-56 overflow-y-auto space-y-1.5 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-1.5">
+                      {vehicles
+                        .filter(v => {
+                          const q = vehicleSearchFilter.toLowerCase().trim();
+                          return !q || 
+                            v.plate.toLowerCase().includes(q) || 
+                            v.model.toLowerCase().includes(q) || 
+                            v.department.toLowerCase().includes(q);
+                        })
+                        .map(v => {
+                          const isSelected = newOrderForm.vehicle_id === v.id;
+                          return (
+                            <div
+                              key={v.id}
+                              onClick={() => {
+                                const isEmergency = !!v.is_emergency_priority;
+                                setNewOrderForm(prev => ({
+                                  ...prev,
+                                  vehicle_id: v.id,
+                                  fuel_type: v.fuel_type,
+                                  current_odometer: v.current_odometer || 0,
+                                  is_full_tank_order: isEmergency ? true : prev.is_full_tank_order,
+                                  liters_authorized: isEmergency ? v.tank_capacity : Math.min(prev.liters_authorized, v.tank_capacity),
+                                  emergency_call_reason: isEmergency && !prev.emergency_call_reason ? `Plantão de Prontidão 24h - ${v.model}` : prev.emergency_call_reason
+                                }));
+                              }}
+                              className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                                isSelected
+                                  ? 'bg-amber-50/80 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 shadow-sm'
+                                  : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50 border-neutral-100 dark:border-neutral-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <span className="font-mono font-black text-xs px-2 py-1 rounded bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
+                                  {v.plate}
+                                </span>
+                                <div>
+                                  <div className="font-bold text-xs text-neutral-900 dark:text-white flex items-center gap-1.5">
+                                    <span>{v.model}</span>
+                                    {v.is_emergency_priority && (
+                                      <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded uppercase">
+                                        🚨 24h
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-neutral-400">
+                                    {v.department} • Tanque: {v.tank_capacity}L • Combustível: {formatFuelLabel(v.fuel_type)}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="text-right">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isSelected ? 'bg-amber-500 text-white' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
+                                }`}>
+                                  {isSelected ? '✓ Selecionado' : 'Selecionar'}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Última Leitura ({selectedVehicleForNewOrder.metric_type}):</span>
-                      <span className="font-mono font-bold text-neutral-800 dark:text-neutral-200">{selectedVehicleForNewOrder.current_odometer}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-neutral-500">Consumo de Referência:</span>
-                      <span className="font-semibold text-emerald-600">{selectedVehicleForNewOrder.expected_consumption} {selectedVehicleForNewOrder.metric_type === 'horimetro' ? 'l/h' : 'km/l'}</span>
+
+                    {/* Resumo do Veículo Selecionado & Entrada Manual do Odômetro Atual */}
+                    {selectedVehicleForNewOrder && (
+                      <div className="p-3.5 bg-amber-50/60 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-800/60 space-y-3">
+                        <div className="flex justify-between items-center text-xs">
+                          <div>
+                            <span className="text-[10px] text-amber-700 dark:text-amber-400 block font-bold uppercase">Veículo Oficial Definido:</span>
+                            <span className="font-bold text-neutral-900 dark:text-white text-sm">
+                              {selectedVehicleForNewOrder.plate} — {selectedVehicleForNewOrder.model}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-neutral-400 block font-bold uppercase">Último Odômetro no Sistema:</span>
+                            <span className="font-mono font-bold text-neutral-700 dark:text-neutral-300">
+                              {selectedVehicleForNewOrder.current_odometer} km
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Campo para Digitação Manual do KM Atual do Painel */}
+                        <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                          <label className="block text-xs font-black text-amber-950 dark:text-amber-200 mb-1 flex items-center gap-1.5">
+                            <Gauge size={14} className="text-amber-600" />
+                            Odômetro Atual no Painel do Veículo (KM) *
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={newOrderForm.current_odometer || ''}
+                              onChange={e => setNewOrderForm({ ...newOrderForm, current_odometer: parseFloat(e.target.value) || 0 })}
+                              placeholder={`Ex: ${selectedVehicleForNewOrder.current_odometer || 0}`}
+                              required
+                              className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-xl text-sm font-black font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-neutral-400 font-mono">
+                              KM
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center mt-1 text-[11px]">
+                            <span className="text-neutral-500">
+                              Informe a leitura visível no painel do veículo no momento da emissão.
+                            </span>
+                            {newOrderForm.current_odometer > selectedVehicleForNewOrder.current_odometer && (
+                              <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
+                                +{newOrderForm.current_odometer - selectedVehicleForNewOrder.current_odometer} km rodados
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsNewOrderModalOpen(false)}
+                        className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!newOrderForm.vehicle_id}
+                        onClick={() => setNewOrderStep(2)}
+                        className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <span>Avançar: Condutor & Posto</span>
+                        <ArrowRight size={14} />
+                      </button>
                     </div>
                   </div>
                 )}
 
-                {/* REGIME DE PRONTIDÃO (TANQUE CHEIO) E AUDITORIA ANTIFRAUDE */}
-                <div className={`p-3.5 rounded-2xl border transition-all ${
-                  newOrderForm.is_full_tank_order 
-                    ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800' 
-                    : 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700'
-                }`}>
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newOrderForm.is_full_tank_order}
-                      onChange={e => {
-                        const checked = e.target.checked;
-                        setNewOrderForm(prev => ({
-                          ...prev,
-                          is_full_tank_order: checked,
-                          liters_authorized: checked && selectedVehicleForNewOrder 
-                            ? selectedVehicleForNewOrder.tank_capacity 
-                            : prev.liters_authorized,
-                          emergency_call_reason: checked && !prev.emergency_call_reason
-                            ? (selectedVehicleForNewOrder ? `Plantão de Prontidão 24h - ${selectedVehicleForNewOrder.model}` : 'Plantão de Urgência / Emergência')
-                            : prev.emergency_call_reason
-                        }));
-                      }}
-                      className="mt-0.5 rounded text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-wide">
-                          Regime de Prontidão Operacional (Tanque Cheio)
+                {/* PASSO 2: CONDUTOR E POSTO CREDENCIADO */}
+                {newOrderStep === 2 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* Condutor e CPF com Auto-Preenchimento e Formatação */}
+                    <div className="p-4 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase tracking-wider text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                          <Users size={15} className="text-amber-600 dark:text-amber-400" />
+                          Identificação do Condutor Oficial
                         </span>
-                        {selectedVehicleForNewOrder?.is_emergency_priority && (
-                          <span className="px-1.5 py-0.2 bg-rose-600 text-white text-[9px] font-black rounded uppercase">
-                            Recomendado para Ambulâncias e Ônibus
+                        {matchedDriverFromForm && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                            <CheckCircle2 size={11} />
+                            Cadastrado ({matchedDriverFromForm.department})
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-0.5 leading-snug">
-                        Autoriza o abastecimento de capacidade total para veículos de socorro e plantão contínuo.
-                        <strong> Auditoria Antifraude:</strong> O sistema checará a quilometragem percorrida no fechamento do canhoto para coibir desvios.
-                      </p>
-                    </div>
-                  </label>
 
-                  {newOrderForm.is_full_tank_order && (
-                    <div className="mt-3 pt-3 border-t border-rose-200 dark:border-rose-900/40 space-y-1.5">
-                      <label className="block text-[11px] font-bold text-rose-900 dark:text-rose-200">
-                        Motivo da Prontidão / Chamado de Urgência *
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Plantão Ambulância SAMU 24h - Transferência Regional / Linha Escolar Rural"
-                        value={newOrderForm.emergency_call_reason}
-                        onChange={e => setNewOrderForm({ ...newOrderForm, emergency_call_reason: e.target.value })}
-                        required={newOrderForm.is_full_tank_order}
-                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-semibold text-rose-900 dark:text-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                      />
-                      <span className="text-[10px] text-rose-600 dark:text-rose-400 block font-medium">
-                        ⚖️ Exigência legal de controle interno (TCE) para justificar autorização em regime de prontidão contínua.
-                      </span>
-                    </div>
-                  )}
-                </div>
+                      {/* Seletor Rápido de Motorista Cadastrado */}
+                      {drivers.length > 0 && (
+                        <div>
+                          <label className="block text-[11px] font-bold text-amber-800 dark:text-amber-300 mb-1">
+                            Puxar Motorista Oficial (por Nome ou CPF):
+                          </label>
+                          <select
+                            value={drivers.find(d => d.cpf.replace(/\D/g, '') === newOrderForm.driver_document.replace(/\D/g, ''))?.id || ''}
+                            onChange={e => {
+                              const drvId = e.target.value;
+                              const found = drivers.find(d => d.id === drvId);
+                              if (found) {
+                                handleSelectDriverQuick(found);
+                              }
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer shadow-sm"
+                          >
+                            <option value="">Selecione na lista ou digite abaixo para busca instantânea...</option>
+                            {drivers.map(d => (
+                              <option key={d.id} value={d.id}>
+                                {d.full_name} • CPF: {formatCPF(d.cpf)} ({d.department})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
-                {/* Litros Autorizados & Validação de Tanque */}
-                <div>
-                  <div className="flex justify-between items-center mb-1">
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                      Litragem Autorizada (Litros) *
-                    </label>
-                    {selectedVehicleForNewOrder && (
-                      <span className="text-[10px] text-neutral-400">
-                        Limite do Tanque: {selectedVehicleForNewOrder.tank_capacity} L
-                      </span>
-                    )}
-                  </div>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="1"
-                    value={newOrderForm.liters_authorized}
-                    onChange={e => setNewOrderForm({ ...newOrderForm, liters_authorized: parseFloat(e.target.value) || 0 })}
-                    required
-                    className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 ${
-                      isLitersOverCapacity 
-                        ? 'border-rose-500 text-rose-600 focus:ring-rose-500 bg-rose-50/30' 
-                        : 'border-neutral-200 dark:border-neutral-700 focus:ring-amber-500 text-neutral-900 dark:text-white'
-                    }`}
-                  />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Campo Nome com Auto-Suggest */}
+                        <div className="relative">
+                          <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                            Nome do Motorista / Condutor *
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Digite o nome do motorista..."
+                            value={newOrderForm.driver_name}
+                            onChange={e => handleDriverNameChange(e.target.value)}
+                            onFocus={() => setShowDriverSuggestions(true)}
+                            required
+                            className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+                          />
 
-                  {/* ALERTA VISUAL DE TRAVA DE TANQUE */}
-                  {isLitersOverCapacity && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-2 p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 flex items-start gap-2 text-rose-800 dark:text-rose-200 text-xs"
-                    >
-                      <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
-                      <div>
-                        <strong>BLOQUEIO ANTIFRAUDE DO TCE:</strong> A litragem autorizada ({newOrderForm.liters_authorized}L) é maior que a capacidade física do tanque do veículo ({selectedVehicleForNewOrder?.tank_capacity}L). Reduza a quantidade para prosseguir.
+                          {/* Lista flutuante de sugestões quando digita o nome */}
+                          {showDriverSuggestions && filteredDriversForStep2.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl z-20 max-h-48 overflow-y-auto p-1 space-y-1">
+                              {filteredDriversForStep2.map(drv => (
+                                <button
+                                  key={drv.id}
+                                  type="button"
+                                  onClick={() => handleSelectDriverQuick(drv)}
+                                  className="w-full text-left p-2 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors flex items-center justify-between text-xs cursor-pointer"
+                                >
+                                  <div>
+                                    <span className="font-bold text-neutral-900 dark:text-white block">
+                                      {drv.full_name}
+                                    </span>
+                                    <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                                      {drv.department} {drv.cnh_category ? `• CNH ${drv.cnh_category}` : ''}
+                                    </span>
+                                  </div>
+                                  <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                                    {formatCPF(drv.cpf)}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Campo CPF com Máscara e Detecção Instantânea */}
+                        <div>
+                          <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                            CPF do Condutor *
+                          </label>
+                          <input
+                            type="text"
+                            maxLength={14}
+                            placeholder="000.000.000-00"
+                            value={newOrderForm.driver_document}
+                            onChange={e => handleDriverCpfChange(e.target.value)}
+                            required
+                            className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+                          />
+                          <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                            Formatação automática. Ao digitar o CPF, o motorista é identificado.
+                          </span>
+                        </div>
                       </div>
-                    </motion.div>
-                  )}
-                </div>
-
-                {/* Condutor e CPF com autopreenchimento de Motorista Cadastrado */}
-                <div className="space-y-2">
-                  {drivers.length > 0 && (
-                    <div>
-                      <label className="block text-xs font-bold text-amber-800 dark:text-amber-300 mb-1">
-                        Puxar Motorista Cadastrado (Nome ou CPF)
-                      </label>
-                      <select
-                        onChange={e => {
-                          const drvId = e.target.value;
-                          const found = drivers.find(d => d.id === drvId);
-                          if (found) {
-                            setNewOrderForm(prev => ({
-                              ...prev,
-                              driver_name: found.full_name,
-                              driver_document: found.cpf
-                            }));
-                          }
-                        }}
-                        className="w-full px-3 py-2 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold text-amber-900 dark:text-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      >
-                        <option value="">Selecione o motorista para preencher Nome e CPF...</option>
-                        {drivers.map(d => (
-                          <option key={d.id} value={d.id}>
-                            {d.full_name} — CPF: {d.cpf} ({d.department})
-                          </option>
-                        ))}
-                      </select>
                     </div>
-                  )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Posto Credenciado */}
                     <div>
                       <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                        Nome do Condutor / Motorista *
+                        Posto Conveniado Credenciado (Contrato Municipal) *
                       </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Carlos Alberto Ferreira"
-                        value={newOrderForm.driver_name}
-                        onChange={e => setNewOrderForm({ ...newOrderForm, driver_name: e.target.value })}
-                        required
-                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      />
+                      {stations.length > 0 ? (
+                        <select
+                          value={newOrderForm.station_name}
+                          onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
+                          required
+                          className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        >
+                          <option value="">Selecione o posto credenciado...</option>
+                          {stations.map(st => (
+                            <option key={st.id} value={st.name}>
+                              {st.name} {st.cnpj ? `(${st.cnpj})` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Ex: Auto Posto Central Municipal Ltda"
+                          value={newOrderForm.station_name}
+                          onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
+                          required
+                          className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      )}
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                        CPF do Motorista *
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: 849.201.554-00"
-                        value={newOrderForm.driver_document}
-                        onChange={e => setNewOrderForm({ ...newOrderForm, driver_document: e.target.value })}
-                        required
-                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Posto e Combustível */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Posto Conveniado Credenciado *
-                    </label>
-                    {stations.length > 0 ? (
-                      <select
-                        value={newOrderForm.station_name}
-                        onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
-                        required
-                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    <div className="flex justify-between gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewOrderStep(1)}
+                        className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
                       >
-                        <option value="">Selecione o posto credenciado...</option>
-                        {stations.map(st => (
-                          <option key={st.id} value={st.name}>
-                            {st.name} {st.cnpj ? `(${st.cnpj})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        placeholder="Ex: Auto Posto Central Municipal"
-                        value={newOrderForm.station_name}
-                        onChange={e => setNewOrderForm({ ...newOrderForm, station_name: e.target.value })}
-                        required
-                        className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      />
-                    )}
+                        ← Voltar ao Veículo
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!newOrderForm.driver_name.trim()}
+                        onClick={() => setNewOrderStep(3)}
+                        className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                      >
+                        <span>Avançar: Litragem & Valores Travados</span>
+                        <ArrowRight size={14} />
+                      </button>
+                    </div>
                   </div>
+                )}
 
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Combustível Homologado
-                    </label>
-                    <select
-                      value={newOrderForm.fuel_type}
-                      onChange={e => setNewOrderForm({ ...newOrderForm, fuel_type: e.target.value as FuelType })}
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    >
-                      <option value="diesel_s10">Diesel S-10</option>
-                      <option value="diesel_s500">Diesel S-500</option>
-                      <option value="gasolina">Gasolina Comum</option>
-                      <option value="etanol">Etanol Hidratado</option>
-                      <option value="arla32">Arla 32</option>
-                    </select>
+                {/* PASSO 3: LITRAGEM E PARÂMETROS LICITATÓRIOS TRAVADOS */}
+                {newOrderStep === 3 && (
+                  <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* Litros Autorizados & Atalhos */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                          Quantidade de Combustível Autorizada (Litros) *
+                        </label>
+                        {selectedVehicleForNewOrder && (
+                          <span className="text-[11px] font-bold text-neutral-500">
+                            Tanque Físico: <strong>{selectedVehicleForNewOrder.tank_capacity} L</strong>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="1"
+                          value={newOrderForm.liters_authorized}
+                          onChange={e => setNewOrderForm({ ...newOrderForm, liters_authorized: parseFloat(e.target.value) || 0 })}
+                          required
+                          className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-sm font-mono font-black focus:outline-none focus:ring-2 ${
+                            isLitersOverCapacity 
+                              ? 'border-rose-500 text-rose-600 focus:ring-rose-500 bg-rose-50/30' 
+                              : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500 text-neutral-900 dark:text-white'
+                          }`}
+                        />
+                      </div>
+
+                      {/* Botões de Atalho de Litros */}
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <button
+                          type="button"
+                          onClick={() => setNewOrderForm({ ...newOrderForm, liters_authorized: 20 })}
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 transition-colors"
+                        >
+                          20L
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewOrderForm({ ...newOrderForm, liters_authorized: 40 })}
+                          className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 transition-colors"
+                        >
+                          40L
+                        </button>
+                        {selectedVehicleForNewOrder && (
+                          <button
+                            type="button"
+                            onClick={() => setNewOrderForm({ ...newOrderForm, liters_authorized: selectedVehicleForNewOrder.tank_capacity })}
+                            className="px-2.5 py-1 text-[11px] font-black rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors"
+                          >
+                            Tanque Cheio ({selectedVehicleForNewOrder.tank_capacity}L)
+                          </button>
+                        )}
+                      </div>
+
+                      {/* ALERTA VISUAL DE TRAVA DE TANQUE */}
+                      {isLitersOverCapacity && (
+                        <div className="mt-2 p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 flex items-start gap-2 text-rose-800 dark:text-rose-200 text-xs">
+                          <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>BLOQUEIO ANTIFRAUDE DO TCE:</strong> A litragem autorizada ({newOrderForm.liters_authorized}L) excede a capacidade física do tanque do veículo ({selectedVehicleForNewOrder?.tank_capacity}L). Reduza a quantidade.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                                        {/* Odômetro Atual Confirmado */}
+                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-xs">
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block font-bold uppercase">Odômetro do Painel Gravado:</span>
+                        <span className="font-mono font-black text-sm text-neutral-900 dark:text-white">
+                          {newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0} km
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNewOrderStep(1)}
+                        className="text-[11px] font-bold text-amber-600 hover:underline cursor-pointer"
+                      >
+                        Ajustar KM
+                      </button>
+                    </div>
+
+                    {/* QUADRO FINANCEIRO E VOLUMÉTRICO TRAVADO (SEM CAMPOS EM BRANCO) */}
+                    <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                          <ShieldCheck size={14} className="text-emerald-600 dark:text-emerald-400" />
+                          Parâmetros Licitatórios Homologados • 100% Travados
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPriceEditForm(biddedPrices);
+                            setIsPriceConfigModalOpen(true);
+                          }}
+                          className="text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1"
+                        >
+                          <Sliders size={11} />
+                          Reequilíbrio / Ajustar Tabela
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                          <span className="text-[9px] text-neutral-500 block font-bold uppercase">Combustível</span>
+                          <span className="text-xs font-black text-blue-700 dark:text-blue-300 block truncate">
+                            {selectedVehicleForNewOrder ? formatFuelLabel(selectedVehicleForNewOrder.fuel_type) : '-'}
+                          </span>
+                        </div>
+                        <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                          <span className="text-[9px] text-neutral-500 block font-bold uppercase">Preço Licitado</span>
+                          <span className="text-xs font-black font-mono text-neutral-900 dark:text-white block">
+                            R$ {currentBiddedPrice.toFixed(3)}/L
+                          </span>
+                        </div>
+                        <div className="bg-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
+                          <span className="text-[9px] text-emerald-100 block font-bold uppercase">Total Travado</span>
+                          <span className="text-sm font-black font-mono block">
+                            R$ {currentTotalAuthorized.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-emerald-700 dark:text-emerald-400 text-center font-medium leading-tight">
+                        * A ordem já sai 100% preenchida na emissão. O frentista e motorista assinam o canhoto e conferem apenas o odômetro.
+                      </div>
+                    </div>
+
+                    {/* Botões do Rodapé */}
+                    <div className="flex justify-between items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => setNewOrderStep(2)}
+                        className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                      >
+                        ← Voltar
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={isLitersOverCapacity || !newOrderForm.vehicle_id || !newOrderForm.driver_name}
+                        className={`px-5 py-2.5 text-xs font-black text-white rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg ${
+                          isLitersOverCapacity 
+                            ? 'bg-neutral-400 cursor-not-allowed opacity-60' 
+                            : 'bg-emerald-600 hover:bg-emerald-700'
+                        }`}
+                      >
+                        <Printer size={16} />
+                        <span>Emitir Ordem & Imprimir Canhoto em 2 Vias (A4)</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-
-                {/* Botões do Rodapé do Modal */}
-                <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100 dark:border-neutral-800">
-                  <button
-                    type="button"
-                    onClick={() => setIsNewOrderModalOpen(false)}
-                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isLitersOverCapacity}
-                    className={`px-5 py-2 text-xs font-bold text-white rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
-                      isLitersOverCapacity 
-                        ? 'bg-neutral-400 cursor-not-allowed opacity-60' 
-                        : 'bg-amber-600 hover:bg-amber-700 shadow-md'
-                    }`}
-                  >
-                    <CheckSquare size={14} />
-                    Confirmar & Gerar Ordem
-                  </button>
-                </div>
+                )}
               </form>
             </motion.div>
           </div>
@@ -2379,26 +2837,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <span className="text-[10px] text-neutral-400">Autorizado: {selectedOrderForAction.liters_authorized} L</span>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Preço Unitário (R$) *
-                    </label>
-                    <input
-                      type="number"
-                      step="0.001"
-                      value={executionForm.unit_price}
-                      onChange={e => setExecutionForm({ ...executionForm, unit_price: parseFloat(e.target.value) || 0 })}
-                      required
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
-                    <span className="text-[10px] text-emerald-600 font-bold">
-                      Total: R$ {(executionForm.liters_supplied * executionForm.unit_price).toFixed(2)}
+                  <div className="bg-neutral-50 dark:bg-neutral-800/80 p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                    <span className="block text-[10px] font-bold text-neutral-500 uppercase">
+                      Preço Unitário Homologado
+                    </span>
+                    <span className="text-sm font-black text-emerald-600 block mt-0.5">
+                      R$ {Number(selectedOrderForAction.bidded_unit_price || executionForm.unit_price || 6.19).toFixed(3)}/L
+                    </span>
+                    <span className="text-[10px] text-neutral-500 font-semibold block">
+                      Total Previsto: R$ {((executionForm.liters_supplied || selectedOrderForAction.liters_authorized) * Number(selectedOrderForAction.bidded_unit_price || executionForm.unit_price || 6.19)).toFixed(2)}
                     </span>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Leitura Atual (KM/H) *
+                      Odômetro Atual no Painel (KM) *
                     </label>
                     <input
                       type="number"
@@ -2425,7 +2878,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     ? executionForm.current_odometer - selectedOrderForAction.previous_odometer
                     : 0;
                   const expectedLiters = (v && v.expected_consumption > 0 && deltaOdo > 0)
-                    ? (v.metric_type === 'horimetro' ? (deltaOdo * v.expected_consumption) : (deltaOdo / v.expected_consumption))
+                    ? (deltaOdo / v.expected_consumption)
                     : 0;
                   const maxAllowed = expectedLiters * 1.30;
                   const isEmergencyOrFullTank = selectedOrderForAction.is_full_tank_order || v?.is_emergency_priority;
@@ -2456,7 +2909,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-black/5 dark:border-white/5">
                         <div>
                           <span className="text-[10px] opacity-70 block">Deslocamento:</span>
-                          <strong className="text-xs font-mono">+{deltaOdo} {v?.metric_type || 'km'}</strong>
+                          <strong className="text-xs font-mono">+{deltaOdo} km</strong>
                         </div>
                         <div>
                           <span className="text-[10px] opacity-70 block">Consumo Teórico:</span>
@@ -2487,7 +2940,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         <div className="p-2 bg-amber-100 dark:bg-amber-900/50 rounded-xl flex items-start gap-2 text-amber-900 dark:text-amber-100 text-[11px] font-bold">
                           <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
                           <span>
-                            ALERTA DE ODÔMETRO ESTAGNADO: Abastecimento de alto volume para apenas {deltaOdo} {v?.metric_type} rodados. Requer comprovação de funcionamento em marcha lenta ou manutenção técnica.
+                            ALERTA DE ODÔMETRO ESTAGNADO: Abastecimento de alto volume para apenas {deltaOdo} km rodados. Requer comprovação de funcionamento em marcha lenta ou manutenção técnica.
                           </span>
                         </div>
                       )}
@@ -2502,34 +2955,45 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   );
                 })()}
 
-                {/* Nota Fiscal e Chave de Acesso */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Número da Nota / Cupom Fiscal *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: NF-e 004821 ou NFC-e 1198"
-                      value={executionForm.invoice_number}
-                      onChange={e => setExecutionForm({ ...executionForm, invoice_number: e.target.value })}
-                      required
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
+                {/* Nota Fiscal e Chave de Acesso (Opcional - Controle Interno) */}
+                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-200 dark:border-neutral-700 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Receipt size={14} className="text-neutral-500" />
+                      Nota Fiscal / Fatura (Opcional no momento)
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      As NFs podem ser vinculadas posteriormente pelo Controle Interno
+                    </span>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Chave de Acesso da NF-e (44 dígitos)
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={44}
-                      placeholder="Ex: 51260403849201000155550010000048211928374821"
-                      value={executionForm.invoice_key}
-                      onChange={e => setExecutionForm({ ...executionForm, invoice_key: e.target.value })}
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Número da NF-e / Fatura (se já disponível)
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: NF-e 004821 (ou vincular depois)"
+                        value={executionForm.invoice_number}
+                        onChange={e => setExecutionForm({ ...executionForm, invoice_number: e.target.value })}
+                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Chave de Acesso da NF-e (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={44}
+                        placeholder="Ex: 51260403849201000155550010000048211928374821"
+                        value={executionForm.invoice_key}
+                        onChange={e => setExecutionForm({ ...executionForm, invoice_key: e.target.value })}
+                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -2875,14 +3339,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
                       Métrica de Medição
                     </label>
-                    <select
-                      value={newVehicleForm.metric_type}
-                      onChange={e => setNewVehicleForm({ ...newVehicleForm, metric_type: e.target.value as MetricType })}
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
-                    >
-                      <option value="km">Odômetro (KM)</option>
-                      <option value="horimetro">Horímetro (Horas)</option>
-                    </select>
+                    <input
+                      type="text"
+                      disabled
+                      value="Odômetro (KM)"
+                      className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-300 cursor-not-allowed"
+                    />
                   </div>
 
                   <div>
@@ -2967,20 +3429,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                {/* 1. Canhoto */}
+                {/* 1. Canhoto Assinado */}
                 <div className="space-y-2">
                   <h5 className="font-bold text-xs text-neutral-700 dark:text-neutral-300 uppercase">
-                    1. Canhoto Assinado
+                    1. Canhoto Físico Assinado
                   </h5>
-                  {viewingAttachmentOrder.receipt_attachment_url ? (
+                  {(viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url) ? (
                     <a
-                      href={viewingAttachmentOrder.receipt_attachment_url}
+                      href={viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url}
                       target="_blank"
                       rel="noreferrer"
                       className="block group overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-700 relative"
                     >
                       <img
-                        src={viewingAttachmentOrder.receipt_attachment_url}
+                        src={viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url}
                         alt="Canhoto"
                         className="w-full h-56 object-cover group-hover:scale-105 transition-transform"
                       />
@@ -3194,14 +3656,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
                       Métrica de Medição
                     </label>
-                    <select
-                      value={editVehicleForm.metric_type}
-                      onChange={e => setEditVehicleForm({ ...editVehicleForm, metric_type: e.target.value as MetricType })}
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
-                    >
-                      <option value="km">Odômetro (KM)</option>
-                      <option value="horimetro">Horímetro (Horas)</option>
-                    </select>
+                    <input
+                      type="text"
+                      disabled
+                      value="Odômetro (KM)"
+                      className="w-full px-3 py-2 bg-neutral-100 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-300 cursor-not-allowed"
+                    />
                   </div>
 
                   <div>
@@ -3222,7 +3682,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Odômetro / Horímetro Atual
+                      Odômetro Atual (KM)
                     </label>
                     <input
                       type="number"
@@ -3352,7 +3812,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       type="text"
                       placeholder="000.000.000-00"
                       value={driverForm.cpf}
-                      onChange={e => setDriverForm({ ...driverForm, cpf: e.target.value })}
+                      onChange={e => setDriverForm({ ...driverForm, cpf: formatCPF(e.target.value) })}
                       required
                       className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
@@ -3601,6 +4061,298 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all cursor-pointer"
                   >
                     {editingStation ? 'Salvar Alterações' : 'Cadastrar Posto'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 9: TABELA DE PREÇOS LICITADOS E REEQUILÍBRIO CONTRATUAL */}
+      <AnimatePresence>
+        {isPriceConfigModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-2xl w-full p-6 max-h-[92vh] overflow-y-auto"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                    <Sliders size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      Preços Licitados & Reequilíbrio Contratual
+                    </h3>
+                    <p className="text-neutral-400 text-xs">
+                      Valores homologados por combustível e termos de aditivo (Lei 14.133/2021)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsPriceConfigModalOpen(false)}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveBiddedPrices} className="mt-4 space-y-4">
+                {/* Banner de Conformidade TCE */}
+                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200">
+                  <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold mb-0.5">Parâmetros Licitatórios Travados na Emissão</strong>
+                    <span>
+                      Toda ordem de fornecimento emitida utilizará obrigatoriamente os preços unitários desta tabela. Havendo reajuste ou reequilíbrio econômico homologado, atualize os valores abaixo indicando o Termo Aditivo.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Grade de Combustíveis e Valores Licitados */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
+                    Valores Homologados por Combustível (R$ / Litro)
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(['diesel_s10', 'diesel_s500', 'gasolina', 'etanol', 'arla32'] as const).map(fuel => {
+                      const item = priceEditForm[fuel] || { price: 6.00, name: fuel, contractNumber: '' };
+                      return (
+                        <div
+                          key={fuel}
+                          className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-2"
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                              {item.name || fuel}
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold">
+                              {fuel.toUpperCase().replace('_', ' ')}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] text-neutral-500 font-bold mb-0.5">
+                                Preço Licitado (R$/L) *
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-2 text-xs font-bold text-neutral-400">R$</span>
+                                <input
+                                  type="number"
+                                  step="0.001"
+                                  min="0.001"
+                                  required
+                                  value={item.price}
+                                  onChange={e => {
+                                    const val = parseFloat(e.target.value) || 0;
+                                    setPriceEditForm(prev => ({
+                                      ...prev,
+                                      [fuel]: {
+                                        ...prev[fuel],
+                                        price: val
+                                      }
+                                    }));
+                                  }}
+                                  className="w-full pl-8 pr-2 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-xl text-xs font-black text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] text-neutral-500 font-bold mb-0.5">
+                                Ata / Lote Contratual
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: ATA 042/26 - Lote 01"
+                                value={item.contractNumber || ''}
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  setPriceEditForm(prev => ({
+                                    ...prev,
+                                    [fuel]: {
+                                      ...prev[fuel],
+                                      contractNumber: val
+                                    }
+                                  }));
+                                }}
+                                className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-xl text-[11px] font-medium text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Registro Formal do Reequilíbrio */}
+                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-200 dark:border-neutral-700 space-y-3">
+                  <span className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                    <FileCheck size={14} className="text-amber-600" />
+                    Registro de Reequilíbrio / Termo Aditivo
+                  </span>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Instrumento Jurídico / Termo Aditivo
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Termo Aditivo nº 02/2026 - Reequilíbrio ANP"
+                        value={rebalanceTermInput}
+                        onChange={e => setRebalanceTermInput(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Motivação / Fundamentação Legal
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Variação de preços comprovada por nota fiscal de refinaria"
+                        value={rebalanceReasonInput}
+                        onChange={e => setRebalanceReasonInput(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rodapé do Modal */}
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsPriceConfigModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckSquare size={14} />
+                    <span>Salvar e Atualizar Preços Licitados</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL 10: VINCULAÇÃO DE NOTA FISCAL FATURADA (CONTROLE INTERNO) */}
+      <AnimatePresence>
+        {isLinkInvoiceModalOpen && invoiceLinkOrder && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                    <Receipt size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      Vincular Nota Fiscal à Requisição
+                    </h3>
+                    <p className="text-neutral-400 text-xs">Controle Interno & Conciliação Faturada</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsLinkInvoiceModalOpen(false);
+                    setInvoiceLinkOrder(null);
+                    setInvoiceLinkNumber('');
+                  }}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveLinkedInvoice} className="mt-4 space-y-4">
+                {/* Resumo da Requisição */}
+                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Ordem de Fornecimento:</span>
+                    <span className="font-mono font-bold text-amber-600">{invoiceLinkOrder.order_number}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Veículo Oficial:</span>
+                    <span className="font-bold text-neutral-800 dark:text-neutral-200">
+                      {invoiceLinkOrder.vehicle?.model || 'Veículo Municipal'} ({invoiceLinkOrder.vehicle?.plate})
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Motorista:</span>
+                    <span className="font-medium">{invoiceLinkOrder.driver_name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Combustível & Litros:</span>
+                    <span className="font-bold text-blue-600">
+                      {invoiceLinkOrder.liters_supplied || invoiceLinkOrder.liters_authorized} L ({formatFuelLabel(invoiceLinkOrder.fuel_type)})
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-neutral-200 dark:border-neutral-700">
+                    <span className="text-neutral-500">Valor Homologado:</span>
+                    <strong className="text-emerald-600 font-bold">
+                      R$ {Number(invoiceLinkOrder.total_authorized_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                </div>
+
+                {/* Input do Número da Nota Fiscal */}
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Número da Nota Fiscal / Fatura Eletrônica (NF-e) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ex: NF-e 004821 ou Fatura Mensal 2026/089"
+                    value={invoiceLinkNumber}
+                    onChange={e => setInvoiceLinkNumber(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    autoFocus
+                  />
+                  <p className="text-[11px] text-neutral-500 mt-1">
+                    Insira o número da nota fiscal enviada posteriormente pelo posto conveniado para liquidar a despesa.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsLinkInvoiceModalOpen(false);
+                      setInvoiceLinkOrder(null);
+                      setInvoiceLinkNumber('');
+                    }}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckSquare size={14} />
+                    <span>Vincular Nota Fiscal</span>
                   </button>
                 </div>
               </form>

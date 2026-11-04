@@ -49,6 +49,7 @@ import { OuvidoriaModule } from './modules/Ouvidoria';
 import { PublicOuvidoriaPortal } from './modules/Ouvidoria/PublicPortal';
 import { PublicNotaFiscalAuditor } from './pages/PublicNotaFiscalAuditor';
 import { PublicCertificateValidator } from './pages/PublicCertificateValidator';
+import { PublicFuelValidation } from './pages/PublicFuelValidation';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -691,6 +692,13 @@ export default function App() {
     cleanPath === '/autenticidade' ||
     cleanPath.startsWith('/validar-documento/') ||
     cleanPath.startsWith('/validar-certificado/');
+  const isFuelValidationPortal = 
+    cleanPath === '/validar-abastecimento' || 
+    cleanPath === '/validar-combustivel' || 
+    cleanPath === '/valida-abastecimento' ||
+    cleanPath.startsWith('/validar-abastecimento/') ||
+    cleanPath.startsWith('/validar-combustivel/') ||
+    cleanPath.startsWith('/valida-abastecimento/');
   const isNotaFiscalPortal = 
     cleanPath === '/notafiscal' || 
     cleanPath === '/nota-fiscal' || 
@@ -1037,6 +1045,16 @@ export default function App() {
   if (isCertificateValidatorPortal) {
     return (
       <PublicCertificateValidator 
+        darkMode={darkMode} 
+        setDarkMode={setDarkMode} 
+        currentInstitution={currentInstitution} 
+      />
+    );
+  }
+
+  if (isFuelValidationPortal) {
+    return (
+      <PublicFuelValidation 
         darkMode={darkMode} 
         setDarkMode={setDarkMode} 
         currentInstitution={currentInstitution} 

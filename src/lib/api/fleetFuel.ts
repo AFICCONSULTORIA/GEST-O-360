@@ -8,7 +8,7 @@ import { supabase } from '../supabase';
 
 export type FuelType = 'gasolina' | 'etanol' | 'diesel_s10' | 'diesel_s500' | 'arla32';
 export type MetricType = 'km' | 'horimetro';
-export type FuelOrderStatus = 'autorizado' | 'abastecido' | 'auditado' | 'glosado' | 'liquidado';
+export type FuelOrderStatus = 'autorizado_pendente' | 'autorizado' | 'abastecido' | 'auditado' | 'glosado' | 'liquidado';
 
 export interface FleetVehicle {
   id: string;
@@ -54,8 +54,18 @@ export interface FuelSupplyOrder {
 
   // Comprovação documental
   receipt_attachment_url?: string; // Foto/scan do canhoto assinado
+  receipt_photo_url?: string; // Foto do canhoto físico assinado
   odometer_photo_url?: string; // Foto do painel/bomba
   invoice_attachment_url?: string; // Foto/PDF da nota fiscal
+  invoice_coupon_number?: string;
+
+  // Parâmetros Licitatórios e Auditoria em Duas Vias
+  bidded_unit_price?: number;
+  total_authorized_value?: number;
+  calculated_km_per_liter?: number;
+  deviation_percent?: number;
+  anomaly_level?: 'none' | 'alerta_amarelo' | 'bloqueio_critico';
+  supplied_at?: string;
 
   // Auditoria e Motor Antifraude
   is_anomaly: boolean;
