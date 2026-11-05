@@ -46,7 +46,8 @@ import {
   DollarSign,
   Receipt,
   ArrowRight,
-  Camera
+  Camera,
+  CloudUpload
 } from 'lucide-react';
 import {
   FleetVehicle,
@@ -2159,6 +2160,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
               <button
                 type="button"
+                onClick={async () => {
+                  try {
+                    showToast('Sincronizando motoristas com a nuvem Supabase...', 'info');
+                    await syncLocalDriversAndStationsToSupabase(currentUser?.institution_id || 'inst_1');
+                    await loadData(true);
+                    showToast('Motoristas sincronizados com a nuvem com sucesso!', 'success');
+                  } catch (err: any) {
+                    showToast(err.message || 'Erro na sincronização.', 'error');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl cursor-pointer shrink-0 border border-amber-300 dark:border-amber-800 transition"
+                title="Sincronizar motoristas com a nuvem Supabase"
+              >
+                <CloudUpload size={14} className="text-amber-600 dark:text-amber-400" />
+                Sincronizar Nuvem
+              </button>
+              <button
+                type="button"
                 onClick={() => setIsDriverBatchModalOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl cursor-pointer shrink-0 border border-neutral-300 dark:border-neutral-700 transition"
               >
@@ -2290,6 +2309,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   className="w-full pl-8 pr-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
                 />
               </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    showToast('Sincronizando postos com a nuvem Supabase...', 'info');
+                    await syncLocalDriversAndStationsToSupabase(currentUser?.institution_id || 'inst_1');
+                    await loadData(true);
+                    showToast('Postos credenciados sincronizados com a nuvem!', 'success');
+                  } catch (err: any) {
+                    showToast(err.message || 'Erro na sincronização.', 'error');
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl cursor-pointer shrink-0 border border-amber-300 dark:border-amber-800 transition"
+                title="Sincronizar postos com a nuvem Supabase"
+              >
+                <CloudUpload size={14} className="text-amber-600 dark:text-amber-400" />
+                Sincronizar Nuvem
+              </button>
               <button
                 onClick={handleOpenNewStation}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"

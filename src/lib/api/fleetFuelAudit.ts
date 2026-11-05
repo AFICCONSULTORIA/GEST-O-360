@@ -375,7 +375,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     authorized_by_role: payload.authorized_by_role || 'Gestor de Frotas',
     budget_classification_id: resolvedBudgetId,
     budget_classification: resolvedBudget,
-    status: supply_mode === 'encher_tanque' ? 'aguardando_abastecimento' : 'autorizado_pendente',
+    status: 'autorizado_pendente',
     created_at: new Date().toISOString()
   };
 
@@ -420,7 +420,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     pump_photo_url: newOrder.pump_photo_url,
     authorized_by_name: newOrder.authorized_by_name,
     authorized_by_role: newOrder.authorized_by_role,
-    status: newOrder.status,
+    status: 'autorizado_pendente',
     created_at: newOrder.created_at
   };
 
@@ -444,10 +444,15 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     if (!error && data) {
       newOrder.id = data.id;
     } else if (error) {
-      console.warn('[FleetFuelAudit] Aviso ao gravar ordem no Supabase, mantendo no cache:', error);
+      console.error('[FleetFuelAudit] Erro ao gravar ordem no Supabase:', error);
+      throw new Error(`Falha ao gravar autorização na nuvem Supabase: ${error.message || 'Verifique a conexão de rede.'}`);
     }
-  } catch (err) {
-    console.warn('[FleetFuelAudit] Exceção ao gravar ordem no Supabase, mantendo no cache:', err);
+  } catch (err: unknown) {
+    console.error('[FleetFuelAudit] Exceção ao gravar ordem no Supabase:', err);
+    if (err instanceof Error && err.message.includes('Supabase:')) {
+      throw err;
+    }
+    throw new Error(`Erro de comunicação com o Supabase ao emitir ordem: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   // Se o odômetro digitado manualmente for superior ao anterior, atualiza o veículo
@@ -680,12 +685,15 @@ export async function syncLocalOrdersToSupabase(): Promise<void> {
           pump_photo_url: ord.pump_photo_url,
           authorized_by_name: ord.authorized_by_name || 'Gestor de Frotas',
           authorized_by_role: ord.authorized_by_role || 'Gestor de Frotas',
-          status: ord.status || 'autorizado_pendente',
+          status: (ord.status === 'aguardando_abastecimento' || !ord.status) ? 'autorizado_pendente' : ord.status,
           created_at: ord.created_at || new Date().toISOString()
         };
 
         try {
-          await supabase.from('fuel_supply_orders').insert([orderRecord]);
+          const { error: insErr } = await supabase.from('fuel_supply_orders').insert([orderRecord]);
+          if (insErr) {
+            console.warn('[FleetFuelAudit] Erro ao sincronizar ordem individual no Supabase:', ord.order_number, insErr);
+          }
         } catch (errSync) {
           console.warn('[FleetFuelAudit] Erro ao sincronizar ordem individual:', ord.order_number, errSync);
         }

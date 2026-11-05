@@ -1315,15 +1315,15 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
       return data as FleetDriver;
     } else if (error) {
       console.error('[FleetFuel] Erro ao gravar motorista no Supabase:', error);
+      throw new Error(`Falha ao registrar motorista na nuvem Supabase: ${error.message}`);
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[FleetFuel] Exceção ao gravar motorista no Supabase:', err);
+    if (err instanceof Error && err.message.includes('Supabase:')) {
+      throw err;
+    }
+    throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
-
-  const list = getLocalDrivers();
-  list.unshift(newDriver);
-  saveLocalDrivers(list);
-  return newDriver;
 }
 
 export async function updateFleetDriver(id: string, updates: Partial<FleetDriver>): Promise<FleetDriver> {
@@ -1461,15 +1461,15 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
       return data as FleetFuelStation;
     } else if (error) {
       console.error('[FleetFuel] Erro ao gravar posto no Supabase:', error);
+      throw new Error(`Falha ao registrar posto na nuvem Supabase: ${error.message}`);
     }
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('[FleetFuel] Exceção ao gravar posto no Supabase:', err);
+    if (err instanceof Error && err.message.includes('Supabase:')) {
+      throw err;
+    }
+    throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
-
-  const list = getLocalStations();
-  list.unshift(newStation);
-  saveLocalStations(list);
-  return newStation;
 }
 
 export async function updateFleetFuelStation(id: string, updates: Partial<FleetFuelStation>): Promise<FleetFuelStation> {
