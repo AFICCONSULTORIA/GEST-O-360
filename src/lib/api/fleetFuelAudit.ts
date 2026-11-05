@@ -957,16 +957,61 @@ export async function auditFuelAuthorization(
 }
 
 /**
- * Upload de comprovante físico (canhoto assinado ou foto do odômetro)
+ * Comprime fotografias tiradas na bomba/odômetro para até 1280px e qualidade equilibrada,
+ * reduzindo fotos pesadas de celulares (5MB-10MB) para ~150KB, garantindo uploads ultra-rápidos
+ * mesmo em conexões móveis 3G/4G no posto de combustível.
+ */
+async function compressFuelPhoto(file: File): Promise<File> {
+  if (typeof window === 'undefined' || !file.type.startsWith('image/')) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const MAX_DIM = 1280;
+    let width = bitmap.width;
+    let height = bitmap.height;
+
+    if (width > MAX_DIM || height > MAX_DIM) {
+      if (width > height) {
+        height = Math.round(height * (MAX_DIM / width));
+        width = MAX_DIM;
+      } else {
+        width = Math.round(width * (MAX_DIM / height));
+        height = MAX_DIM;
+      }
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx?.drawImage(bitmap, 0, 0, width, height);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const compressed = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
+          resolve(compressed);
+        } else {
+          resolve(file);
+        }
+      }, 'image/jpeg', 0.82);
+    });
+  } catch {
+    return file;
+  }
+}
+
+/**
+ * Upload de comprovante físico (canhoto assinado, foto da bomba ou foto do odômetro)
  */
 export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | 'odometers' | 'pumps' | 'invoices'): Promise<string> {
-  const fileExt = file.name.split('.').pop() || 'jpg';
+  const processedFile = await compressFuelPhoto(file);
+  const fileExt = processedFile.name.split('.').pop() || 'jpg';
   const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
   try {
     const { error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(fileName, file, { cacheControl: '3600', upsert: true });
+      .upload(fileName, processedFile, { cacheControl: '3600', upsert: true });
 
     if (!uploadError) {
       const { data: publicUrlData } = supabase.storage
@@ -986,7 +1031,7 @@ export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | '
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = error => reject(error);
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(processedFile);
   });
 }
 

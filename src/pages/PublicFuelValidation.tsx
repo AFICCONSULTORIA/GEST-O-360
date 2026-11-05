@@ -48,10 +48,16 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
   // Foto da Bomba (Câmera ao vivo sem salvar no telefone)
   const [pumpPhoto, setPumpPhoto] = useState<File | null>(null);
   const [pumpPhotoPreview, setPumpPhotoPreview] = useState<string | null>(null);
+  
+  // Foto do Odômetro / Painel do Carro (Câmera ao vivo)
+  const [odometerPhoto, setOdometerPhoto] = useState<File | null>(null);
+  const [odometerPhotoPreview, setOdometerPhotoPreview] = useState<string | null>(null);
+
   const [submitting, setSubmitting] = useState(false);
   const [successResult, setSuccessResult] = useState<{ order: TwoWayFuelOrder; audit: ConsumptionAuditCalculation } | null>(null);
 
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const odometerInputRef = useRef<HTMLInputElement | null>(null);
 
   // Ordens recentes emitidas no dispositivo (para teste rápido ou conferência)
   const recentOrders = React.useMemo(() => {
@@ -174,6 +180,34 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     }
   };
 
+  // Captura direta da foto do odômetro via câmera do painel do veículo
+  const handleCaptureOdometerPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showToast('Por favor, fotografe diretamente o painel com o odômetro do veículo.', 'error');
+      return;
+    }
+
+    setOdometerPhoto(file);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setOdometerPhotoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRetakeOdometerPhoto = () => {
+    setOdometerPhoto(null);
+    setOdometerPhotoPreview(null);
+    if (odometerInputRef.current) {
+      odometerInputRef.current.value = '';
+      odometerInputRef.current.click();
+    }
+  };
+
   // Envio final para o Gestor de Frotas
   const handleSubmitSupply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,7 +222,16 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       return;
     }
 
-    // 2. Validação da Quilometragem
+    // 2. Validação da Foto do Odômetro (Painel do Carro)
+    if (!odometerPhoto && !order.odometer_photo_url) {
+      showToast('A foto do painel/odômetro do veículo é obrigatória!', 'warning');
+      if (odometerInputRef.current) {
+        odometerInputRef.current.click();
+      }
+      return;
+    }
+
+    // 3. Validação da Quilometragem
     const kmNumber = parseThousands(currentKmFormatted);
     if (isNaN(kmNumber) || kmNumber <= 0) {
       showToast('Informe a quilometragem atual do odômetro no painel.', 'error');
@@ -200,7 +243,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       return;
     }
 
-    // 3. Validação dos Litros
+    // 4. Validação dos Litros
     const litersNumber = parseFloat(litersSupplied.replace(',', '.'));
     if (isNaN(litersNumber) || litersNumber <= 0) {
       showToast('Informe a quantidade de litros abastecidos.', 'error');
@@ -212,7 +255,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       return;
     }
 
-    // 4. Validação do Nome do Motorista e Placa
+    // 5. Validação do Nome do Motorista e Placa
     if (!driverName.trim()) {
       showToast('Informe o nome do motorista.', 'error');
       return;
@@ -225,10 +268,16 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         uploadedPumpUrl = await uploadFuelDocumentPhoto(pumpPhoto, 'pumps');
       }
 
+      let uploadedOdometerUrl = order.odometer_photo_url;
+      if (odometerPhoto) {
+        uploadedOdometerUrl = await uploadFuelDocumentPhoto(odometerPhoto, 'odometers');
+      }
+
       const result = await validateAndCompleteFuelOrder(order.id, {
         current_odometer: kmNumber,
         liters_supplied: litersNumber,
         pump_photo_url: uploadedPumpUrl,
+        odometer_photo_url: uploadedOdometerUrl,
         driver_name: driverName.trim(),
         vehicle_plate: vehiclePlate.trim().toUpperCase()
       });
@@ -386,8 +435,38 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
             </div>
 
             <p className="text-xs text-emerald-800 dark:text-emerald-200 leading-relaxed">
-              Os dados e a foto da bomba da ordem <span className="font-mono font-bold">{successResult.order.order_number}</span> foram recebidos pelo Gestor de Frotas e liquidados com carimbo de autenticidade.
+              Os dados e os comprovantes fotográficos (bomba e painel do veículo) da ordem <span className="font-mono font-bold">{successResult.order.order_number}</span> foram recebidos pelo Gestor de Frotas e arquivados para auditoria.
             </p>
+
+            {/* MINIATURAS DOS COMPROVANTES ENVIADOS */}
+            {(successResult.order.pump_photo_url || successResult.order.odometer_photo_url) && (
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                {successResult.order.pump_photo_url && (
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 block">
+                      Bomba Comprovada
+                    </span>
+                    <img 
+                      src={successResult.order.pump_photo_url} 
+                      alt="Bomba" 
+                      className="w-full h-24 object-cover rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-sm"
+                    />
+                  </div>
+                )}
+                {successResult.order.odometer_photo_url && (
+                  <div className="space-y-1">
+                    <span className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 block">
+                      Odômetro Comprovado
+                    </span>
+                    <img 
+                      src={successResult.order.odometer_photo_url} 
+                      alt="Odômetro" 
+                      className="w-full h-24 object-cover rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-sm"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="bg-white/80 dark:bg-neutral-900/80 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-800">
@@ -506,18 +585,34 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                     </div>
                   </div>
 
-                  {order.pump_photo_url && (
-                    <div className="space-y-1.5 text-left">
-                      <span className="text-[11px] font-black uppercase text-slate-500 block">
-                        Foto da Bomba Comprovada:
-                      </span>
-                      <img 
-                        src={order.pump_photo_url} 
-                        alt="Comprovante Bomba" 
-                        className="w-full h-48 object-cover rounded-2xl border border-slate-200 dark:border-neutral-700 shadow-inner"
-                      />
-                    </div>
-                  )}
+                  {/* COMPROVANTES FOTOGRÁFICOS (BOMBA E ODÔMETRO) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+                    {order.pump_photo_url && (
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-black uppercase text-slate-500 block">
+                          Foto da Bomba Comprovada:
+                        </span>
+                        <img 
+                          src={order.pump_photo_url} 
+                          alt="Comprovante Bomba" 
+                          className="w-full h-44 object-cover rounded-2xl border border-slate-200 dark:border-neutral-700 shadow-inner"
+                        />
+                      </div>
+                    )}
+
+                    {order.odometer_photo_url && (
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-black uppercase text-slate-500 block">
+                          Foto do Odômetro / Painel:
+                        </span>
+                        <img 
+                          src={order.odometer_photo_url} 
+                          alt="Comprovante Odômetro" 
+                          className="w-full h-44 object-cover rounded-2xl border border-slate-200 dark:border-neutral-700 shadow-inner"
+                        />
+                      </div>
+                    )}
+                  </div>
 
                   <div className="pt-2">
                     <button
@@ -541,7 +636,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                   <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-2.5">
                     <ShieldCheck className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
                     <p className="text-xs text-amber-900 dark:text-amber-200 leading-snug">
-                      Tire a foto da bomba no ato do abastecimento e confirme o odômetro atual. Os dados serão transmitidos instantaneamente para a fiscalização da Prefeitura.
+                      Fotografe o visor da bomba e o painel com o odômetro do veículo no ato do abastecimento. Os comprovantes serão anexados diretamente à autorização para fiscalização e auditoria.
                     </p>
                   </div>
 
@@ -566,7 +661,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                         <img
                           src={pumpPhotoPreview}
                           alt="Foto da Bomba"
-                          className="w-full h-56 object-cover"
+                          className="w-full h-52 object-cover"
                         />
                         <div className="absolute top-2 right-2 flex gap-1.5">
                           <button
@@ -578,23 +673,23 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                           </button>
                         </div>
                         <div className="absolute bottom-2 left-2 bg-emerald-600/90 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1">
-                          <Check size={12} /> Foto Registrada na Bomba
+                          <Check size={12} /> Visor da Bomba Registrado
                         </div>
                       </div>
                     ) : (
                       <button
                         type="button"
                         onClick={() => cameraInputRef.current?.click()}
-                        className="w-full py-8 px-4 border-2 border-dashed border-amber-400 dark:border-amber-600 hover:border-amber-500 rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 text-center flex flex-col items-center justify-center gap-2.5 transition-all hover:bg-amber-100/50 active:scale-[0.98] cursor-pointer group"
+                        className="w-full py-6 px-4 border-2 border-dashed border-amber-400 dark:border-amber-600 hover:border-amber-500 rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-amber-100/50 active:scale-[0.98] cursor-pointer group"
                       >
-                        <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform">
-                          <Camera size={28} />
+                        <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform">
+                          <Camera size={24} />
                         </div>
                         <div>
-                          <span className="text-sm font-black uppercase text-amber-900 dark:text-amber-200 block">
+                          <span className="text-xs font-black uppercase text-amber-900 dark:text-amber-200 block">
                             Abrir Câmera e Fotografar Bomba
                           </span>
-                          <span className="text-[11px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5">
+                          <span className="text-[10px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5">
                             Mostre no visor a litragem e o valor total
                           </span>
                         </div>
@@ -602,12 +697,68 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                     )}
                   </div>
 
-                  {/* 2. QUILOMETRAGEM (ODÔMETRO ATUAL DO PAINEL) */}
+                  {/* 2. FOTO DO ODÔMETRO (PAINEL DO CARRO) */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200">
+                      2. Foto do Odômetro (Painel do Carro) *
+                    </label>
+
+                    <input
+                      ref={odometerInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handleCaptureOdometerPhoto}
+                    />
+
+                    {odometerPhotoPreview ? (
+                      <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-500 dark:border-emerald-600 bg-black shadow-md">
+                        <img
+                          src={odometerPhotoPreview}
+                          alt="Foto do Odômetro"
+                          className="w-full h-52 object-cover"
+                        />
+                        <div className="absolute top-2 right-2 flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleRetakeOdometerPhoto}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/75 hover:bg-black text-white text-xs font-bold rounded-xl backdrop-blur-md shadow cursor-pointer transition-colors"
+                          >
+                            <RotateCcw size={14} /> Tirar Outra
+                          </button>
+                        </div>
+                        <div className="absolute bottom-2 left-2 bg-emerald-600/90 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1">
+                          <Check size={12} /> Odômetro do Painel Registrado
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => odometerInputRef.current?.click()}
+                        className="w-full py-6 px-4 border-2 border-dashed border-sky-400 dark:border-sky-600 hover:border-sky-500 rounded-3xl bg-sky-50/60 dark:bg-sky-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-sky-100/50 active:scale-[0.98] cursor-pointer group"
+                      >
+                        <div className="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/30 group-hover:scale-105 transition-transform">
+                          <Gauge size={24} />
+                        </div>
+                        <div>
+                          <span className="text-xs font-black uppercase text-sky-900 dark:text-sky-200 block">
+                            Abrir Câmera e Fotografar Odômetro
+                          </span>
+                          <span className="text-[10px] text-sky-700/80 dark:text-sky-400/80 block mt-0.5">
+                            Mostre a quilometragem atual visível no painel do veículo
+                          </span>
+                        </div>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 3. QUILOMETRAGEM (ODÔMETRO DIGITADO) */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
                         <Gauge size={14} className="text-amber-500" />
-                        2. Quilometragem Atual (Painel) *
+                        3. Quilometragem Atual do Odômetro *
                       </label>
                       <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md">
                         Último: {formatThousands(order.previous_odometer)} km
