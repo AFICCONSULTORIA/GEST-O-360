@@ -251,10 +251,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   });
 
   const [syncingPatrimonio, setSyncingPatrimonio] = useState(false);
+  const prevStatusesRef = React.useRef<Record<string, string>>({});
 
   // Carregar dados reais (Veículos, Ordens, Motoristas e Postos)
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (isSilent: boolean = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const instId = currentUser?.institution_id || 'inst_1';
       const [vehList, ordList, drvList, staList, bclassList] = await Promise.all([
@@ -269,11 +270,25 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setDrivers(drvList);
       setStations(staList);
       setBudgetClassifications(bclassList);
+
+      // Detectar em tempo real se alguma ordem foi abastecida via celular na bomba
+      ordList.forEach(ord => {
+        const prevStatus = prevStatusesRef.current[ord.id] || prevStatusesRef.current[ord.order_number];
+        if (
+          prevStatus &&
+          (prevStatus === 'autorizado_pendente' || prevStatus === 'aguardando_abastecimento' || prevStatus === 'autorizado') &&
+          (ord.status === 'abastecido' || ord.status === 'auditado')
+        ) {
+          showToast(`⛽ Abastecimento recebido na bomba! Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) finalizada pelo condutor.`, 'success');
+        }
+        prevStatusesRef.current[ord.id] = ord.status;
+        prevStatusesRef.current[ord.order_number] = ord.status;
+      });
     } catch (err) {
       console.error('Erro ao carregar dados de frotas:', err);
-      showToast('Erro ao carregar dados do módulo de frotas.', 'error');
+      if (!isSilent) showToast('Erro ao carregar dados do módulo de frotas.', 'error');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -561,10 +576,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       )
       .subscribe();
 
-    // 4. Polling seguro a cada 20 segundos
+    // 4. Polling seguro em segundo plano a cada 4 segundos
     const interval = setInterval(() => {
-      loadData();
-    }, 20000);
+      loadData(true);
+    }, 4000);
 
     return () => {
       window.removeEventListener('gestao360_fuel_order_updated', handleLocalUpdate);
@@ -1545,7 +1560,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               </button>
                             )}
 
-                            {(order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url || order.invoice_attachment_url) && (
+                            {(order.status === 'abastecido' || order.status === 'auditado' || order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url || order.invoice_attachment_url) && (
                               <button
                                 onClick={() => setViewingAttachmentOrder(order)}
                                 title="Ver Comprovantes (Foto da Bomba, Odômetro, Canhoto)"

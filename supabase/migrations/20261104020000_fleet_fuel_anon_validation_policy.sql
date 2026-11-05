@@ -56,3 +56,11 @@ CREATE POLICY "Public select for fleet fuel receipts" ON storage.objects
   FOR SELECT TO anon, authenticated
   USING (bucket_id = 'fleet-fuel-receipts');
 
+-- 4. Habilitar Realtime para a tabela fuel_supply_orders (notificações push no painel do gestor)
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.fuel_supply_orders;
+EXCEPTION WHEN duplicate_object THEN
+  NULL;
+END $$;
+
