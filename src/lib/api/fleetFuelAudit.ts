@@ -400,38 +400,55 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     console.warn('[FleetFuelAudit] Aviso ao sincronizar veículo com Supabase:', errVeh);
   }
 
-  // 6. Persistir no Supabase
+  // 6. Persistir no Supabase de forma resiliente
+  const orderRecord: Record<string, any> = {
+    id: newOrder.id,
+    institution_id: newOrder.institution_id,
+    order_number: newOrder.order_number,
+    vehicle_id: newOrder.vehicle_id,
+    driver_name: newOrder.driver_name,
+    driver_document: newOrder.driver_document,
+    station_name: newOrder.station_name,
+    fuel_type: newOrder.fuel_type,
+    bidded_unit_price: newOrder.bidded_unit_price,
+    liters_authorized: newOrder.liters_authorized,
+    total_authorized_value: newOrder.total_authorized_value,
+    previous_odometer: newOrder.previous_odometer,
+    current_odometer: newOrder.current_odometer,
+    calculated_km_per_liter: newOrder.calculated_km_per_liter,
+    anomaly_level: 'none',
+    supply_mode: newOrder.supply_mode,
+    pump_photo_url: newOrder.pump_photo_url,
+    authorized_by_name: newOrder.authorized_by_name,
+    authorized_by_role: newOrder.authorized_by_role,
+    status: newOrder.status,
+    created_at: newOrder.created_at
+  };
+
+  // Se tiver um UUID válido de budget_classification_id, tenta incluir
+  const isBudgetUUID = newOrder.budget_classification_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(newOrder.budget_classification_id);
+  if (isBudgetUUID) {
+    orderRecord.budget_classification_id = newOrder.budget_classification_id;
+  }
+
   try {
-    const { data, error } = await supabase.from('fuel_supply_orders').insert([{
-      id: newOrder.id,
-      institution_id: newOrder.institution_id,
-      order_number: newOrder.order_number,
-      vehicle_id: newOrder.vehicle_id,
-      driver_name: newOrder.driver_name,
-      driver_document: newOrder.driver_document,
-      station_name: newOrder.station_name,
-      fuel_type: newOrder.fuel_type,
-      bidded_unit_price: newOrder.bidded_unit_price,
-      liters_authorized: newOrder.liters_authorized,
-      total_authorized_value: newOrder.total_authorized_value,
-      previous_odometer: newOrder.previous_odometer,
-      current_odometer: newOrder.current_odometer,
-      calculated_km_per_liter: newOrder.calculated_km_per_liter,
-      anomaly_level: 'none',
-      supply_mode: newOrder.supply_mode,
-      pump_photo_url: newOrder.pump_photo_url,
-      authorized_by_name: newOrder.authorized_by_name,
-      authorized_by_role: newOrder.authorized_by_role,
-      budget_classification_id: newOrder.budget_classification_id,
-      status: newOrder.status,
-      created_at: newOrder.created_at
-    }]).select().single();
+    let { data, error } = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
+
+    // Se o schema remoto ainda não tiver a coluna budget_classification_id, retenta sem ela para garantir a gravação
+    if (error && (error.code === 'PGRST204' || error.message?.includes('budget_classification_id'))) {
+      delete orderRecord.budget_classification_id;
+      const retry = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (!error && data) {
       newOrder.id = data.id;
+    } else if (error) {
+      console.warn('[FleetFuelAudit] Aviso ao gravar ordem no Supabase, mantendo no cache:', error);
     }
   } catch (err) {
-    console.warn('[FleetFuelAudit] Aviso ao gravar ordem no Supabase, mantendo no cache:', err);
+    console.warn('[FleetFuelAudit] Exceção ao gravar ordem no Supabase, mantendo no cache:', err);
   }
 
   // Se o odômetro digitado manualmente for superior ao anterior, atualiza o veículo
@@ -626,6 +643,55 @@ export async function validateAndCompleteFuelOrder(
   saveLocalOrders(orders);
 
   return { order: updatedOrder, audit };
+}
+
+/**
+ * Sincroniza ordens do cache local para o Supabase (garante que ordens emitidas fiquem visíveis no celular via QR Code)
+ */
+export async function syncLocalOrdersToSupabase(): Promise<void> {
+  const localOrders = getLocalOrders();
+  if (localOrders.length === 0) return;
+
+  try {
+    const { data: remoteOrders } = await supabase.from('fuel_supply_orders').select('id, order_number');
+    const remoteOrderNumbers = new Set((remoteOrders || []).map(r => r.order_number?.toLowerCase()));
+
+    for (const ord of localOrders) {
+      if (ord.order_number && !remoteOrderNumbers.has(ord.order_number.toLowerCase())) {
+        const orderRecord: Record<string, any> = {
+          id: ord.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ord.id) ? ord.id : generateUUID(),
+          institution_id: ord.institution_id || 'inst_1',
+          order_number: ord.order_number,
+          vehicle_id: ord.vehicle_id,
+          driver_name: ord.driver_name,
+          driver_document: ord.driver_document,
+          station_name: ord.station_name,
+          fuel_type: ord.fuel_type,
+          bidded_unit_price: ord.bidded_unit_price,
+          liters_authorized: ord.liters_authorized,
+          total_authorized_value: ord.total_authorized_value,
+          previous_odometer: ord.previous_odometer,
+          current_odometer: ord.current_odometer,
+          calculated_km_per_liter: ord.calculated_km_per_liter,
+          anomaly_level: ord.anomaly_level || 'none',
+          supply_mode: ord.supply_mode || 'litragem_fixa',
+          pump_photo_url: ord.pump_photo_url,
+          authorized_by_name: ord.authorized_by_name || 'Gestor de Frotas',
+          authorized_by_role: ord.authorized_by_role || 'Gestor de Frotas',
+          status: ord.status || 'autorizado_pendente',
+          created_at: ord.created_at || new Date().toISOString()
+        };
+
+        try {
+          await supabase.from('fuel_supply_orders').insert([orderRecord]);
+        } catch (errSync) {
+          console.warn('[FleetFuelAudit] Erro ao sincronizar ordem individual:', ord.order_number, errSync);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuelAudit] Aviso ao sincronizar ordens locais com Supabase:', err);
+  }
 }
 
 /**
