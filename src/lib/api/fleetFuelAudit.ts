@@ -170,6 +170,7 @@ export interface TwoWayFuelOrder {
   calculated_km_per_liter?: number;
   deviation_percent?: number;
   receipt_photo_url?: string;
+  receipt_attachment_url?: string;
   odometer_photo_url?: string;
   pump_photo_url?: string; // Foto do visor da bomba de combustível
   invoice_coupon_number?: string;
@@ -211,6 +212,7 @@ export interface OrderCompletionPayload {
   current_odometer: number;
   liters_supplied?: number;
   receipt_photo_url?: string;
+  receipt_attachment_url?: string;
   odometer_photo_url?: string;
   pump_photo_url?: string;
   invoice_coupon_number?: string;
