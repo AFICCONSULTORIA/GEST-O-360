@@ -8,7 +8,7 @@
 */
 
 import { supabase } from '../supabase';
-import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
 export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado';
@@ -343,11 +343,10 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
 
   const delta_km = current_odometer > previous_odometer ? current_odometer - previous_odometer : 0;
 
-  // 4. Sequencial "AUT-YYYY-XXXX"
+  // 4. Sequencial "AUT-YYYY-XXXX" estritamente crescente e contínuo
+  // Mesmo que uma ordem anterior seja excluída, a numeração nunca retrocede ou gera duplicidade.
   const currentYear = new Date().getFullYear();
-  const allOrders = getLocalOrders();
-  const yearOrders = allOrders.filter(o => o.order_number?.startsWith(`AUT-${currentYear}`));
-  const nextSeq = yearOrders.length + 1;
+  const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
   const orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
 
   const newOrder: TwoWayFuelOrder = {

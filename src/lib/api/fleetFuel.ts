@@ -664,6 +664,71 @@ export async function getFuelSupplyOrders(filters?: {
   return orders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
+export const STORAGE_KEY_FUEL_MAX_SEQ = (prefix: string, year: number) => `gestao360_max_fuel_seq_${prefix}_${year}`;
+
+/**
+ * Obtém o próximo número sequencial de autorização para o ano corrente de forma estritamente crescente.
+ * Mesmo se uma ordem anterior for excluída, a numeração nunca retrocede ou colide.
+ */
+export async function getNextFuelOrderSequence(prefix: string = 'AUT', year: number = new Date().getFullYear()): Promise<number> {
+  let maxSeq = 0;
+
+  // 1. Contador persistente salvo no localStorage
+  try {
+    const rawSaved = localStorage.getItem(STORAGE_KEY_FUEL_MAX_SEQ(prefix, year));
+    if (rawSaved) {
+      const parsed = parseInt(rawSaved, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    }
+  } catch {}
+
+  // 2. Extrai o maior número já existente em ordens locais
+  const localOrders = getLocalRealOrders();
+  for (const ord of localOrders) {
+    if (ord.order_number && ord.order_number.startsWith(`${prefix}-${year}-`)) {
+      const parts = ord.order_number.split('-');
+      const num = parseInt(parts[parts.length - 1], 10);
+      if (!isNaN(num) && num > maxSeq) {
+        maxSeq = num;
+      }
+    }
+  }
+
+  // 3. Consulta o Supabase para verificar o maior número já emitido no banco
+  try {
+    const { data } = await supabase
+      .from('fuel_supply_orders')
+      .select('order_number')
+      .ilike('order_number', `${prefix}-${year}-%`)
+      .order('order_number', { ascending: false })
+      .limit(20);
+
+    if (data && data.length > 0) {
+      for (const row of data) {
+        if (row.order_number) {
+          const parts = row.order_number.split('-');
+          const num = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Aviso ao consultar maior sequencial no Supabase:', err);
+  }
+
+  const nextSeq = maxSeq + 1;
+  // Atualiza imediatamente o contador persistente
+  try {
+    localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ(prefix, year), String(nextSeq));
+  } catch {}
+
+  return nextSeq;
+}
+
 /**
  * 2. createFuelOrder: Emissão de Ordem Real com validação bloqueante de capacidade de tanque
  */
@@ -686,11 +751,9 @@ export async function createFuelOrder(orderData: NewFuelOrderPayload): Promise<F
     throw new Error('A litragem autorizada deve ser maior que zero.');
   }
 
-  // Gera número sequencial anual único ("ABAST-YYYY-XXXX")
+  // Gera número sequencial anual único contínuo ("ABAST-YYYY-XXXX")
   const currentYear = new Date().getFullYear();
-  const allOrders = getLocalRealOrders();
-  const yearOrders = allOrders.filter(o => o.order_number.startsWith(`ABAST-${currentYear}`));
-  const nextSeq = yearOrders.length + 1;
+  const nextSeq = await getNextFuelOrderSequence('ABAST', currentYear);
   const orderNumber = `ABAST-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
 
   const newOrder: FuelSupplyOrder = {
@@ -1027,31 +1090,53 @@ export async function auditFuelOrder(
 
 /**
  * 6. deleteFuelSupplyOrder: Excluir ordem/auditoria de abastecimento (Acesso Administrativo)
+ * Nota: A exclusão de uma ordem mantém o contador sequencial contínuo para evitar colisões
+ * e garantir que cada nova ordem gerada receba um número inédito.
  */
-export async function deleteFuelSupplyOrder(orderId: string): Promise<boolean> {
+export async function deleteFuelSupplyOrder(orderIdOrNumber: string): Promise<boolean> {
   try {
-    await supabase.from('fuel_supply_orders').delete().eq('id', orderId);
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderIdOrNumber);
+    if (isUuid) {
+      await supabase.from('fuel_supply_orders').delete().eq('id', orderIdOrNumber);
+    } else {
+      await supabase.from('fuel_supply_orders').delete().eq('order_number', orderIdOrNumber);
+    }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao excluir ordem no Supabase:', err);
   }
 
   const orders = getLocalRealOrders();
-  const filtered = orders.filter(o => o.id !== orderId);
+  const filtered = orders.filter(o => o.id !== orderIdOrNumber && o.order_number !== orderIdOrNumber);
   saveLocalRealOrders(filtered);
   return true;
 }
 
 /**
  * 7. clearAllFuelOrders: Limpar todo o histórico de ordens/auditorias (Acesso Administrativo)
+ * Reinicia também o contador sequencial anual para permitir recomeçar os testes do zero.
  */
-export async function clearAllFuelOrders(institutionId: string = 'inst_1'): Promise<boolean> {
+export async function clearAllFuelOrders(institutionId?: string, resetSequence: boolean = true): Promise<boolean> {
   try {
-    await supabase.from('fuel_supply_orders').delete().eq('institution_id', institutionId);
+    if (institutionId) {
+      await supabase.from('fuel_supply_orders').delete().eq('institution_id', institutionId);
+    }
+    // Remove todas as ordens de teste para garantir limpeza total
+    await supabase.from('fuel_supply_orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   } catch (err) {
     console.warn('[FleetFuel] Erro ao limpar histórico de ordens no Supabase:', err);
   }
 
   saveLocalRealOrders([]);
+
+  if (resetSequence) {
+    const currentYear = new Date().getFullYear();
+    try {
+      localStorage.removeItem(STORAGE_KEY_FUEL_MAX_SEQ('AUT', currentYear));
+      localStorage.removeItem(STORAGE_KEY_FUEL_MAX_SEQ('ABAST', currentYear));
+      localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ('AUT', currentYear), '0');
+      localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ('ABAST', currentYear), '0');
+    } catch {}
+  }
   return true;
 }
 

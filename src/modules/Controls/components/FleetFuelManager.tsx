@@ -388,15 +388,34 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Excluir ordem de abastecimento / auditoria
   const handleDeleteOrder = async (order: FuelSupplyOrder) => {
-    if (!confirm(`Deseja realmente excluir a ordem de abastecimento ${order.order_number}? Esta operação é definitiva para controle interno.`)) {
+    if (!confirm(`Deseja realmente excluir a ordem ${order.order_number}? A numeração continuará na sequência contínua para novas ordens.`)) {
       return;
     }
     try {
-      await deleteFuelSupplyOrder(order.id);
-      showToast(`Ordem ${order.order_number} excluída com sucesso!`, 'success');
+      await deleteFuelSupplyOrder(order.id || order.order_number);
+      showToast(`Ordem ${order.order_number} excluída com sucesso! Próxima ordem continuará na sequência.`, 'success');
       loadData();
     } catch (err) {
       showToast('Erro ao excluir ordem.', 'error');
+    }
+  };
+
+  // Limpar todo o histórico de ordens e reiniciar testes a partir de 0001
+  const handleClearAllOrders = async () => {
+    const confirmMsg =
+      "ATENÇÃO: Deseja apagar todas as ordens de abastecimento e limpar os registros de teste?\n\n" +
+      "• Todas as ordens locais e no banco de dados serão excluídas.\n" +
+      "• O contador de autorizações será reiniciado para AUT-" + new Date().getFullYear() + "-0001 para que você possa iniciar novos testes do zero.\n\n" +
+      "Deseja confirmar a limpeza total de ordens?";
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      await clearAllFuelOrders();
+      showToast(`Histórico de ordens limpo com sucesso! Próxima autorização iniciará em AUT-${new Date().getFullYear()}-0001.`, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao limpar histórico de ordens.', 'error');
     }
   };
 
@@ -1371,9 +1390,22 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </h4>
               <p className="text-neutral-400 text-xs">Acompanhamento e impressão de autorizações oficiais</p>
             </div>
-            <span className="text-xs font-bold text-neutral-500">
-              {filteredOrders.length} ordens encontradas
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-neutral-500">
+                {filteredOrders.length} {filteredOrders.length === 1 ? 'ordem encontrada' : 'ordens encontradas'}
+              </span>
+              {orders.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllOrders}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-xl transition-all cursor-pointer border border-rose-200 dark:border-rose-900/50 shadow-sm"
+                  title="Limpar todas as ordens de teste e reiniciar numeração em AUT-2026-0001"
+                >
+                  <Trash2 size={13} />
+                  <span>Limpar Ordens</span>
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
