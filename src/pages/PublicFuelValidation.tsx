@@ -59,7 +59,12 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       const raw = localStorage.getItem('gestao360_real_orders');
       if (raw) {
         const list = JSON.parse(raw) as TwoWayFuelOrder[];
-        return list.slice(0, 3);
+        return list.filter(o => 
+          o && 
+          o.order_number !== 'AUT-2026-0001' && 
+          o.anomaly_reason !== 'CANCELADO_EXCLUIDO' && 
+          o.status !== 'cancelado'
+        ).slice(0, 3);
       }
     } catch {}
     return [];
@@ -126,6 +131,9 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       } else {
         setOrder(null);
         setErrorMsg(`Autorização nº "${clean}" não foi encontrada no sistema. Verifique o número digitado ou a placa do veículo.`);
+        if (typeof window !== 'undefined' && window.location.pathname.includes(clean)) {
+          window.history.replaceState({}, '', '/validar-abastecimento');
+        }
       }
     } catch (err: unknown) {
       console.error('Erro ao consultar autorização:', err);

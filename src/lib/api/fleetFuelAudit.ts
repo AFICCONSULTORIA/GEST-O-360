@@ -696,8 +696,28 @@ export async function syncLocalOrdersToSupabase(): Promise<void> {
   }
 }
 
+function removeLocalOrderByIdentifier(clean: string) {
+  try {
+    const cleanLower = clean.toLowerCase();
+    const cleanAlpha = clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    const orders = getLocalOrders();
+    const filtered = orders.filter(o => {
+      if (!o) return false;
+      if (o.id && o.id.toLowerCase() === cleanLower) return false;
+      if (o.order_number && o.order_number.toLowerCase() === cleanLower) return false;
+      const oAlpha = (o.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      if (oAlpha === cleanAlpha) return false;
+      return true;
+    });
+    saveLocalOrders(filtered);
+  } catch {}
+}
+
 /**
  * Consulta ordem pública por número sequencial, placa ou UUID (para o QR Code /validar-abastecimento)
+ * Prioridade Absoluta: SUPABASE (Remote-First). 
+ * Se uma ordem foi excluída no painel do gestor, o celular consultará o banco e saberá imediatamente
+ * que ela não existe mais, expurgando cópias fantasmas do cache local.
  */
 export async function getFuelAuthorizationByNumber(identifier: string): Promise<TwoWayFuelOrder | null> {
   const clean = identifier.trim();
@@ -710,87 +730,93 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
   }
 
   const cleanAlphanumeric = clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-
-  // 1. Tentar busca no cache local (flexível: exata, sem traços ou pelo número final)
-  const orders = getLocalOrders();
-  let foundLocal = orders.find(o => {
-    if (!o) return false;
-    if (o.order_number && o.order_number.toLowerCase() === clean.toLowerCase()) return true;
-    if (o.id === clean) return true;
-
-    // Normalização sem traços / espaços (ex: AUT20260001 == AUT-2026-0001)
-    const orderNumAlpha = (o.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    if (orderNumAlpha && orderNumAlpha === cleanAlphanumeric) return true;
-
-    // Se o usuário digitou apenas os dígitos finais (ex: "0001" ou "1")
-    if (cleanAlphanumeric.length >= 1 && orderNumAlpha.endsWith(cleanAlphanumeric)) return true;
-
-    // Se o usuário digitou a placa do veículo
-    const plateAlpha = (o.vehicle?.plate || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    if (plateAlpha && plateAlpha === cleanAlphanumeric) return true;
-
-    return false;
-  });
-
-  if (foundLocal) {
-    if (foundLocal.anomaly_reason === 'CANCELADO_EXCLUIDO' || foundLocal.status === 'cancelado') {
-      return null;
-    }
-    const vehicles = getLocalVehicles();
-    const vehicle = vehicles.find(v => v.id === foundLocal!.vehicle_id);
-    return { ...foundLocal, vehicle: foundLocal.vehicle || vehicle };
-  }
-
-  // 2. Busca no Supabase
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean);
 
+  let networkFailed = false;
+
+  // 1. CONSULTA DIRETA NO SUPABASE (Fonte Única da Verdade)
   try {
     let query = supabase.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
     if (isUUID) {
       query = query.or(`id.eq.${clean},order_number.ilike.${clean}`);
     } else {
-      // Se não for UUID, não incluir id.eq para não quebrar a sintaxe do PostgreSQL
       query = query.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
     }
 
     const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
 
-    if (!error && data) {
-      if (data.anomaly_reason === 'CANCELADO_EXCLUIDO' || data.status === 'cancelado') {
-        return null;
+    if (!error) {
+      if (data) {
+        if (data.anomaly_reason === 'CANCELADO_EXCLUIDO' || data.status === 'cancelado') {
+          removeLocalOrderByIdentifier(clean);
+          return null;
+        }
+        return data as TwoWayFuelOrder;
+      } else {
+        // Se a busca com join retornou vazio, tenta busca direta simples sem join
+        let simpleQuery = supabase.from('fuel_supply_orders').select('*');
+        if (isUUID) {
+          simpleQuery = simpleQuery.eq('id', clean);
+        } else {
+          simpleQuery = simpleQuery.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+        }
+
+        const { data: rawOrder, error: simpleErr } = await simpleQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+        if (!simpleErr) {
+          if (rawOrder) {
+            if (rawOrder.anomaly_reason === 'CANCELADO_EXCLUIDO' || rawOrder.status === 'cancelado') {
+              removeLocalOrderByIdentifier(clean);
+              return null;
+            }
+            const orderObj = rawOrder as TwoWayFuelOrder;
+            if (orderObj.vehicle_id) {
+              try {
+                const { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
+                if (vData) orderObj.vehicle = vData as FleetVehicle;
+              } catch {}
+            }
+            return orderObj;
+          } else {
+            // O BANCO DE DADOS NÃO POSSUI ESTA ORDEM (FOI EXCLUÍDA!)
+            // Remove imediatamente do cache do aparelho para não exibir dados obsoletos
+            removeLocalOrderByIdentifier(clean);
+            return null;
+          }
+        }
       }
-      return data as TwoWayFuelOrder;
+    } else {
+      console.warn('[FleetFuelAudit] Erro na consulta do Supabase:', error);
+      networkFailed = true;
     }
   } catch (err) {
-    console.warn('[FleetFuelAudit] Erro na busca com join no Supabase, tentando fallback simples:', err);
+    console.warn('[FleetFuelAudit] Falha de conexão ao consultar Supabase:', err);
+    networkFailed = true;
   }
 
-  // 3. Fallback: Consulta direta sem join (caso o RLS de fleet_vehicles bloqueie anon)
-  try {
-    let simpleQuery = supabase.from('fuel_supply_orders').select('*');
-    if (isUUID) {
-      simpleQuery = simpleQuery.eq('id', clean);
-    } else {
-      simpleQuery = simpleQuery.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
-    }
+  // 2. FALLBACK SECUNDÁRIO: Somente executado se o celular estiver 100% sem internet (offline)
+  if (networkFailed) {
+    const orders = getLocalOrders();
+    const foundLocal = orders.find(o => {
+      if (!o) return false;
+      if (o.order_number && o.order_number.toLowerCase() === clean.toLowerCase()) return true;
+      if (o.id === clean) return true;
+      const orderNumAlpha = (o.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      if (orderNumAlpha && orderNumAlpha === cleanAlphanumeric) return true;
+      if (cleanAlphanumeric.length >= 1 && orderNumAlpha.endsWith(cleanAlphanumeric)) return true;
+      const plateAlpha = (o.vehicle?.plate || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+      if (plateAlpha && plateAlpha === cleanAlphanumeric) return true;
+      return false;
+    });
 
-    const { data: rawOrder, error: simpleErr } = await simpleQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
-
-    if (!simpleErr && rawOrder) {
-      if (rawOrder.anomaly_reason === 'CANCELADO_EXCLUIDO' || rawOrder.status === 'cancelado') {
+    if (foundLocal) {
+      if (foundLocal.anomaly_reason === 'CANCELADO_EXCLUIDO' || foundLocal.status === 'cancelado') {
         return null;
       }
-      const orderObj = rawOrder as TwoWayFuelOrder;
-      if (orderObj.vehicle_id) {
-        try {
-          const { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
-          if (vData) orderObj.vehicle = vData as FleetVehicle;
-        } catch {}
-      }
-      return orderObj;
+      const vehicles = getLocalVehicles();
+      const vehicle = vehicles.find(v => v.id === foundLocal!.vehicle_id);
+      return { ...foundLocal, vehicle: foundLocal.vehicle || vehicle };
     }
-  } catch (err2) {
-    console.warn('[FleetFuelAudit] Falha na consulta fallback:', err2);
   }
 
   return null;
