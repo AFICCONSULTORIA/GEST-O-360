@@ -15,6 +15,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+/**
+ * Cliente anônimo desvinculado de sessões do usuário.
+ * Usado para operações públicas (QR Code, validação na bomba) e para contornar
+ * bloqueios de RLS quando a sessão autenticada não possui claims de tenant.
+ */
+export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  global: {
+    fetch: (url, options) => {
+      return fetch(url, { ...options, cache: 'no-store' });
+    }
+  }
+});
+
 export const signUpNewUser = async (email: string, password?: string) => {
   const secondary = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }

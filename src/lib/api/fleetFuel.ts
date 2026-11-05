@@ -4,7 +4,7 @@
  * Em conformidade com o Tribunal de Contas do Estado (TCE) e Lei Federal 4.320/64
  */
 
-import { supabase } from '../supabase';
+import { supabase, supabaseAnon } from '../supabase';
 
 export type FuelType = 'gasolina' | 'etanol' | 'diesel_s10' | 'diesel_s500' | 'arla32';
 export type MetricType = 'km' | 'horimetro';

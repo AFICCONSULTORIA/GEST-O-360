@@ -7,7 +7,7 @@
 -- ====================================================================
 */
 
-import { supabase } from '../supabase';
+import { supabase, supabaseAnon } from '../supabase';
 import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
