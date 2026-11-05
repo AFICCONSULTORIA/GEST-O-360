@@ -1335,51 +1335,8 @@ export async function ensureDriverExistsInSupabase(driver: {
     if (existing) {
       return existing as FleetDriver;
     }
-
-    const isCleared = typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_DRIVERS_CLEARED) === 'true';
-    if (isCleared) {
-      return null;
-    }
-
-    // 2. Se não existir e não estiver zerado, cadastra automaticamente no Supabase
-    const newId = generateValidUUID();
-    const newRecord = {
-      id: newId,
-      institution_id: institutionId,
-      full_name: name,
-      cpf: formattedCpf,
-      department: department,
-      status: 'ativo'
-    };
-
-    let { data: created, error } = await supabase
-      .from('fleet_drivers')
-      .insert([newRecord])
-      .select()
-      .single();
-
-    if (error && isRlsError(error)) {
-      const retry = await supabaseAnon
-        .from('fleet_drivers')
-        .insert([newRecord])
-        .select()
-        .single();
-      created = retry.data;
-      error = retry.error;
-    }
-
-    if (!error && created) {
-      console.log(`[FleetFuel] Motorista auto-salvo no Supabase com sucesso: ${name}`);
-      const list = getLocalDrivers();
-      const existsIdx = list.findIndex(d => d.id === created.id || d.cpf === created.cpf);
-      if (existsIdx !== -1) {
-        list[existsIdx] = created as FleetDriver;
-      } else {
-        list.unshift(created as FleetDriver);
-      }
-      saveLocalDrivers(list);
-      return created as FleetDriver;
-    }
+    // Não auto-cria condutores fantasmas no banco para não ressuscitar registros excluídos
+    return null;
   } catch (err) {
     console.warn('[FleetFuel] Aviso ao auto-salvar motorista:', err);
   }
@@ -1428,11 +1385,6 @@ export async function getFleetDrivers(filters?: {
 
   // Se a consulta remota ao Supabase respondeu, ela é a Fonte Única da Verdade!
   if (remoteList !== null) {
-    if (remoteList.length === 0 && isCleared) {
-      saveLocalDrivers([]);
-      return [];
-    }
-    // Atualiza cache local com a lista real do banco (sem ressuscitar dados deletados)
     saveLocalDrivers(remoteList);
     let result = remoteList;
     if (filters?.department && filters.department !== 'all') {
@@ -1440,7 +1392,7 @@ export async function getFleetDrivers(filters?: {
     }
     if (filters?.search) {
       const q = filters.search.toLowerCase().trim();
-      result = result.filter(d => d.full_name.toLowerCase().includes(q) || d.cpf.includes(q));
+      result = result.filter(d => d.full_name.toLowerCase().includes(q) || (d.cpf && d.cpf.includes(q)));
     }
     return result.sort((a, b) => a.full_name.localeCompare(b.full_name));
   }
@@ -1577,6 +1529,9 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
 }
 
 export async function deleteFleetDriver(id: string, cpf?: string): Promise<boolean> {
+  const rawCpf = cpf ? cpf.trim() : null;
+  const digitsCpf = rawCpf ? rawCpf.replace(/\D/g, '') : null;
+
   // 1. Tentar deletar no Supabase por ID
   try {
     if (isValidUUID(id)) {
@@ -1589,13 +1544,17 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
     console.warn('[FleetFuel] Erro ao excluir motorista por ID no Supabase:', err);
   }
 
-  // 2. Tentar deletar no Supabase por CPF
-  const cleanCpf = cpf ? cpf.trim() : null;
-  if (cleanCpf) {
+  // 2. Tentar deletar no Supabase por CPF (tanto formatado quanto apenas dígitos)
+  if (rawCpf || digitsCpf) {
     try {
-      let { error } = await supabase.from('fleet_drivers').delete().eq('cpf', cleanCpf);
-      if (error && isRlsError(error)) {
-        await supabaseAnon.from('fleet_drivers').delete().eq('cpf', cleanCpf);
+      const filters: string[] = [];
+      if (rawCpf) filters.push(`cpf.eq.${rawCpf}`);
+      if (digitsCpf && digitsCpf !== rawCpf) filters.push(`cpf.eq.${digitsCpf}`);
+      if (filters.length > 0) {
+        let { error } = await supabase.from('fleet_drivers').delete().or(filters.join(','));
+        if (error && isRlsError(error)) {
+          await supabaseAnon.from('fleet_drivers').delete().or(filters.join(','));
+        }
       }
     } catch (err) {
       console.warn('[FleetFuel] Erro ao excluir motorista por CPF no Supabase:', err);
@@ -1604,21 +1563,18 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
 
   // 3. Remover do cache local
   const list = getLocalDrivers();
-  const filtered = list.filter(d => d.id !== id && (!cleanCpf || d.cpf !== cleanCpf));
+  const filtered = list.filter(d => {
+    if (d.id === id) return false;
+    if (rawCpf && d.cpf === rawCpf) return false;
+    if (digitsCpf && d.cpf && d.cpf.replace(/\D/g, '') === digitsCpf) return false;
+    return true;
+  });
   saveLocalDrivers(filtered);
   return true;
 }
 
 export async function clearAllFleetDrivers(institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
-  const currentDrivers = getLocalDrivers();
-  const count = currentDrivers.length;
-
   try {
-    if (institutionId) {
-      await supabase.from('fleet_drivers').delete().eq('institution_id', institutionId);
-      await supabaseAnon.from('fleet_drivers').delete().eq('institution_id', institutionId);
-    }
-    // Remove todos os registros
     await supabase.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     await supabaseAnon.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
   } catch (err) {
@@ -1635,7 +1591,7 @@ export async function clearAllFleetDrivers(institutionId?: string): Promise<{ su
 
   return {
     success: true,
-    count,
+    count: 0,
     message: 'Todos os motoristas foram excluídos com sucesso do banco de dados e do sistema. O cadastro está zerado.'
   };
 }
