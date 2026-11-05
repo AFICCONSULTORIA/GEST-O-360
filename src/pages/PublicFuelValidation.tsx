@@ -53,6 +53,18 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
 
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Ordens recentes emitidas no dispositivo (para teste rápido ou conferência)
+  const recentOrders = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem('gestao360_real_orders');
+      if (raw) {
+        const list = JSON.parse(raw) as TwoWayFuelOrder[];
+        return list.slice(0, 3);
+      }
+    } catch {}
+    return [];
+  }, []);
+
   // Leitura automática da URL ao carregar via QR Code (?order=AUT-2026-XXXX)
   useEffect(() => {
     let searchStr = window.location.search;
@@ -71,23 +83,36 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     }
 
     // Leitura por path: /validar-abastecimento/AUT-2026-XXXX
-    const pathParts = window.location.pathname.split('/');
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
     const lastPart = pathParts[pathParts.length - 1];
-    if (lastPart && (lastPart.toUpperCase().startsWith('AUT-') || lastPart.toUpperCase().startsWith('ABAST-') || lastPart.length > 5)) {
-      const clean = lastPart.trim();
-      setSearchCode(clean);
-      handleSearch(clean);
+    
+    // Ignorar nomes de rotas para evitar buscas falsas na inicialização
+    const ignoredRoutes = ['validar-abastecimento', 'validar-combustivel', 'valida-abastecimento', 'validar'];
+    if (lastPart && !ignoredRoutes.includes(lastPart.toLowerCase())) {
+      if (lastPart.toUpperCase().startsWith('AUT-') || lastPart.toUpperCase().startsWith('ABAST-') || lastPart.length >= 8) {
+        const clean = lastPart.trim();
+        setSearchCode(clean);
+        handleSearch(clean);
+      }
     }
   }, []);
 
   const handleSearch = async (codeToSearch: string) => {
-    if (!codeToSearch.trim()) return;
+    const clean = codeToSearch.trim();
+    if (!clean) return;
+
+    // Se for o próprio nome da rota, não executa busca
+    const ignoredRoutes = ['validar-abastecimento', 'validar-combustivel', 'valida-abastecimento', 'validar'];
+    if (ignoredRoutes.includes(clean.toLowerCase())) {
+      return;
+    }
+
     setLoading(true);
     setErrorMsg(null);
     setSuccessResult(null);
 
     try {
-      const result = await getFuelAuthorizationByNumber(codeToSearch);
+      const result = await getFuelAuthorizationByNumber(clean);
       if (result) {
         setOrder(result);
         setDriverName(result.driver_name || '');
@@ -100,7 +125,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         }
       } else {
         setOrder(null);
-        setErrorMsg(`Autorização nº "${codeToSearch}" não foi encontrada no sistema.`);
+        setErrorMsg(`Autorização nº "${clean}" não foi encontrada no sistema. Verifique o número digitado ou a placa do veículo.`);
       }
     } catch (err: unknown) {
       console.error('Erro ao consultar autorização:', err);
@@ -284,6 +309,29 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                 Localizar
               </button>
             </form>
+
+            {recentOrders.length > 0 && (
+              <div className="pt-2 border-t border-slate-100 dark:border-neutral-800">
+                <span className="text-[10px] font-black uppercase text-slate-400 dark:text-neutral-500 block mb-1.5">
+                  Ordens Recentes Emitidas:
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {recentOrders.map(ro => (
+                    <button
+                      key={ro.id}
+                      type="button"
+                      onClick={() => {
+                        setSearchCode(ro.order_number);
+                        handleSearch(ro.order_number);
+                      }}
+                      className="px-2.5 py-1 text-xs font-mono font-bold bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 rounded-lg cursor-pointer transition-colors"
+                    >
+                      {ro.order_number} {ro.vehicle?.plate ? `• ${ro.vehicle.plate}` : ''}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

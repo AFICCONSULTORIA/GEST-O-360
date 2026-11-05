@@ -172,6 +172,17 @@ export interface ConsumptionAuditCalculation {
   is_blocked: boolean;
 }
 
+function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 const STORAGE_KEY_ORDERS = 'gestao360_real_orders';
 const STORAGE_KEY_VEHICLES = 'gestao360_real_vehicles';
 const BUCKET_NAME = 'fleet-fuel-receipts';
@@ -340,7 +351,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   const orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
 
   const newOrder: TwoWayFuelOrder = {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ord-${Date.now()}`,
+    id: generateUUID(),
     institution_id: payload.institution_id || vehicle.institution_id || 'inst_1',
     order_number: orderNumber,
     vehicle_id: vehicle.id,
@@ -369,7 +380,27 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     created_at: new Date().toISOString()
   };
 
-  // 5. Persistir no Supabase
+  // 5. Garantir que o veículo exista no Supabase antes da ordem (evita erro de foreign key)
+  try {
+    await supabase.from('fleet_vehicles').upsert([{
+      id: vehicle.id,
+      institution_id: vehicle.institution_id || 'inst_1',
+      plate: vehicle.plate,
+      prefix_code: vehicle.prefix_code,
+      model: vehicle.model,
+      department: vehicle.department,
+      fuel_type: vehicle.fuel_type,
+      tank_capacity: vehicle.tank_capacity,
+      metric_type: vehicle.metric_type,
+      expected_consumption: vehicle.expected_consumption,
+      current_odometer: vehicle.current_odometer,
+      status: vehicle.status || 'ativo'
+    }], { onConflict: 'id' });
+  } catch (errVeh) {
+    console.warn('[FleetFuelAudit] Aviso ao sincronizar veículo com Supabase:', errVeh);
+  }
+
+  // 6. Persistir no Supabase
   try {
     const { data, error } = await supabase.from('fuel_supply_orders').insert([{
       id: newOrder.id,
@@ -598,35 +629,91 @@ export async function validateAndCompleteFuelOrder(
 }
 
 /**
- * Consulta ordem pública por número sequencial ou UUID (para o QR Code /validar-abastecimento)
+ * Consulta ordem pública por número sequencial, placa ou UUID (para o QR Code /validar-abastecimento)
  */
 export async function getFuelAuthorizationByNumber(identifier: string): Promise<TwoWayFuelOrder | null> {
   const clean = identifier.trim();
+  if (!clean) return null;
 
-  // 1. Tentar busca no cache local
+  // Ignorar palavras-chave de rotas para evitar buscas falsas na inicialização
+  const ignoredRoutes = ['validar-abastecimento', 'validar-combustivel', 'valida-abastecimento', 'validar', 'abastecimento'];
+  if (ignoredRoutes.includes(clean.toLowerCase())) {
+    return null;
+  }
+
+  const cleanAlphanumeric = clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+
+  // 1. Tentar busca no cache local (flexível: exata, sem traços ou pelo número final)
   const orders = getLocalOrders();
-  const foundLocal = orders.find(
-    o => o.order_number?.toLowerCase() === clean.toLowerCase() || o.id === clean
-  );
+  let foundLocal = orders.find(o => {
+    if (!o) return false;
+    if (o.order_number && o.order_number.toLowerCase() === clean.toLowerCase()) return true;
+    if (o.id === clean) return true;
+
+    // Normalização sem traços / espaços (ex: AUT20260001 == AUT-2026-0001)
+    const orderNumAlpha = (o.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (orderNumAlpha && orderNumAlpha === cleanAlphanumeric) return true;
+
+    // Se o usuário digitou apenas os dígitos finais (ex: "0001" ou "1")
+    if (cleanAlphanumeric.length >= 1 && orderNumAlpha.endsWith(cleanAlphanumeric)) return true;
+
+    // Se o usuário digitou a placa do veículo
+    const plateAlpha = (o.vehicle?.plate || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (plateAlpha && plateAlpha === cleanAlphanumeric) return true;
+
+    return false;
+  });
+
   if (foundLocal) {
     const vehicles = getLocalVehicles();
-    const vehicle = vehicles.find(v => v.id === foundLocal.vehicle_id);
+    const vehicle = vehicles.find(v => v.id === foundLocal!.vehicle_id);
     return { ...foundLocal, vehicle: foundLocal.vehicle || vehicle };
   }
 
   // 2. Busca no Supabase
+  const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean);
+
   try {
-    const { data, error } = await supabase
-      .from('fuel_supply_orders')
-      .select('*, vehicle:fleet_vehicles(*)')
-      .or(`order_number.ilike.${clean},id.eq.${clean}`)
-      .maybeSingle();
+    let query = supabase.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
+    if (isUUID) {
+      query = query.or(`id.eq.${clean},order_number.ilike.${clean}`);
+    } else {
+      // Se não for UUID, não incluir id.eq para não quebrar a sintaxe do PostgreSQL
+      query = query.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
 
     if (!error && data) {
       return data as TwoWayFuelOrder;
     }
   } catch (err) {
-    console.warn('[FleetFuelAudit] Erro ao buscar ordem por identificador no Supabase:', err);
+    console.warn('[FleetFuelAudit] Erro na busca com join no Supabase, tentando fallback simples:', err);
+  }
+
+  // 3. Fallback: Consulta direta sem join (caso o RLS de fleet_vehicles bloqueie anon)
+  try {
+    let simpleQuery = supabase.from('fuel_supply_orders').select('*');
+    if (isUUID) {
+      simpleQuery = simpleQuery.eq('id', clean);
+    } else {
+      simpleQuery = simpleQuery.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+    }
+
+    const { data: rawOrder, error: simpleErr } = await simpleQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
+
+    if (!simpleErr && rawOrder) {
+      const orderObj = rawOrder as TwoWayFuelOrder;
+      if (orderObj.vehicle_id) {
+        try {
+          const { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
+          if (vData) orderObj.vehicle = vData as FleetVehicle;
+        } catch {}
+      }
+      return orderObj;
+    }
+  } catch (err2) {
+    console.warn('[FleetFuelAudit] Falha na consulta fallback:', err2);
   }
 
   return null;
