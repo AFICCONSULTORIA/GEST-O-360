@@ -192,8 +192,9 @@ function isRlsError(err: unknown): boolean {
   );
 }
 
-// Limpeza de chaves mock legadas e expurgo definitivo do cache antigo de motoristas
+// Limpeza de chaves mock legadas e expurgo definitivo do cache antigo de motoristas e postos
 const STORAGE_KEY_DRIVERS_PURGE = 'gestao360_drivers_purged_v1';
+const STORAGE_KEY_STATIONS_PURGE = 'gestao360_stations_purged_v1';
 if (typeof window !== 'undefined') {
   try {
     localStorage.removeItem('gestao360_fleet_vehicles');
@@ -202,6 +203,11 @@ if (typeof window !== 'undefined') {
       localStorage.removeItem(STORAGE_KEY_DRIVERS);
       localStorage.setItem(STORAGE_KEY_DRIVERS_PURGE, 'true');
       localStorage.setItem(STORAGE_KEY_DRIVERS_CLEARED, 'true');
+    }
+    if (!localStorage.getItem(STORAGE_KEY_STATIONS_PURGE)) {
+      localStorage.removeItem(STORAGE_KEY_STATIONS);
+      localStorage.setItem(STORAGE_KEY_STATIONS_PURGE, 'true');
+      localStorage.setItem('gestao360_stations_cleared', 'true');
     }
   } catch {}
 }
@@ -1903,50 +1909,59 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
     saveLocalDrivers([]);
   }
 
-  // 2. Sincronizar Postos Credenciados
-  try {
-    const localStations = getLocalStations();
-    if (localStations.length > 0) {
-      const { data: remoteStations } = await supabase.from('fleet_fuel_stations').select('id, name');
-      const remoteNames = new Set((remoteStations || []).map(r => r.name?.toLowerCase().trim()));
-      const remoteIds = new Set((remoteStations || []).map(r => r.id));
+  // 2. Sincronizar Postos Credenciados (apenas se o cadastro não foi explicitamente zerado)
+  const isStationsCleared = typeof window !== 'undefined' && localStorage.getItem('gestao360_stations_cleared') === 'true';
+  if (!isStationsCleared) {
+    try {
+      const localStations = getLocalStations();
+      if (localStations.length > 0) {
+        const { data: remoteStations } = await supabase.from('fleet_fuel_stations').select('id, name');
+        const remoteNames = new Set((remoteStations || []).map(r => r.name?.toLowerCase().trim()));
+        const remoteIds = new Set((remoteStations || []).map(r => r.id));
 
-      const updatedLocalStations: FleetFuelStation[] = [];
-      const stationsToInsert = [];
+        const updatedLocalStations: FleetFuelStation[] = [];
+        const stationsToInsert = [];
 
-      for (const s of localStations) {
-        const validId = isValidUUID(s.id) ? s.id : generateValidUUID();
-        const updatedStation: FleetFuelStation = { ...s, id: validId };
-        updatedLocalStations.push(updatedStation);
+        for (const s of localStations) {
+          const validId = isValidUUID(s.id) ? s.id : generateValidUUID();
+          const updatedStation: FleetFuelStation = { ...s, id: validId };
+          updatedLocalStations.push(updatedStation);
 
-        if (!remoteNames.has(s.name.toLowerCase().trim()) && !remoteIds.has(validId)) {
-          stationsToInsert.push({
-            id: validId,
-            institution_id: s.institution_id || institutionId,
-            name: s.name.trim(),
-            cnpj: s.cnpj && s.cnpj.trim() !== '' ? s.cnpj.trim() : null,
-            address: s.address && s.address.trim() !== '' ? s.address.trim() : null,
-            city: s.city && s.city.trim() !== '' ? s.city.trim() : null,
-            phone: s.phone && s.phone.trim() !== '' ? s.phone.trim() : null,
-            status: s.status || 'ativo'
-          });
+          if (!remoteNames.has(s.name.toLowerCase().trim()) && !remoteIds.has(validId)) {
+            stationsToInsert.push({
+              id: validId,
+              institution_id: s.institution_id || institutionId,
+              name: s.name.trim(),
+              cnpj: s.cnpj && s.cnpj.trim() !== '' ? s.cnpj.trim() : null,
+              address: s.address && s.address.trim() !== '' ? s.address.trim() : null,
+              city: s.city && s.city.trim() !== '' ? s.city.trim() : null,
+              phone: s.phone && s.phone.trim() !== '' ? s.phone.trim() : null,
+              status: s.status || 'ativo'
+            });
+          }
+        }
+
+        saveLocalStations(updatedLocalStations);
+
+        if (stationsToInsert.length > 0) {
+          let { error } = await supabase.from('fleet_fuel_stations').upsert(stationsToInsert, { onConflict: 'id' });
+          if (error && isRlsError(error)) {
+            const retry = await supabaseAnon.from('fleet_fuel_stations').upsert(stationsToInsert, { onConflict: 'id' });
+            error = retry.error;
+          }
+          if (!error) {
+            syncedStations = stationsToInsert.length;
+            console.log(`[FleetFuel] ${syncedStations} postos sincronizados com Supabase!`);
+          } else {
+            console.error('[FleetFuel] Erro ao sincronizar postos com Supabase:', error);
+          }
         }
       }
-
-      saveLocalStations(updatedLocalStations);
-
-      if (stationsToInsert.length > 0) {
-        const { error } = await supabase.from('fleet_fuel_stations').upsert(stationsToInsert, { onConflict: 'id' });
-        if (!error) {
-          syncedStations = stationsToInsert.length;
-          console.log(`[FleetFuel] ${syncedStations} postos sincronizados com Supabase!`);
-        } else {
-          console.error('[FleetFuel] Erro ao sincronizar postos com Supabase:', error);
-        }
-      }
+    } catch (err) {
+      console.warn('[FleetFuel] Erro no sync de postos:', err);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Erro no sync de postos:', err);
+  } else {
+    saveLocalStations([]);
   }
 
   return { syncedDrivers, syncedStations };
