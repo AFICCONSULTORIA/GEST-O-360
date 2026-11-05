@@ -1612,15 +1612,24 @@ export async function getFleetFuelStations(filters?: {
   institutionId?: string;
   search?: string;
 }): Promise<FleetFuelStation[]> {
-  const localList = getLocalStations();
-  let remoteList: FleetFuelStation[] = [];
+  let remoteList: FleetFuelStation[] | null = null;
 
   try {
     let query = supabase.from('fleet_fuel_stations').select('*');
     if (filters?.institutionId && filters.institutionId !== 'all') {
       query = query.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
     }
-    const { data, error } = await query.order('name', { ascending: true });
+    let { data, error } = await query.order('name', { ascending: true });
+    if (error && isRlsError(error)) {
+      let anonQuery = supabaseAnon.from('fleet_fuel_stations').select('*');
+      if (filters?.institutionId && filters.institutionId !== 'all') {
+        anonQuery = anonQuery.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+      }
+      const anonRes = await anonQuery.order('name', { ascending: true });
+      data = anonRes.data;
+      error = anonRes.error;
+    }
+
     if (!error && data) {
       remoteList = data as FleetFuelStation[];
     } else if (error) {
@@ -1630,50 +1639,20 @@ export async function getFleetFuelStations(filters?: {
     console.warn('[FleetFuel] Exceção ao consultar postos no Supabase:', err);
   }
 
-  // Two-Way Smart Merge: auto-sincroniza postos locais no Supabase
-  const remoteNames = new Set(remoteList.map(r => r.name?.toLowerCase().trim()));
-  const remoteIds = new Set(remoteList.map(r => r.id));
-  const missingFromRemote: FleetFuelStation[] = [];
-
-  for (const loc of localList) {
-    const nameKey = (loc.name || '').toLowerCase().trim();
-    if (!remoteIds.has(loc.id) && (!nameKey || !remoteNames.has(nameKey))) {
-      missingFromRemote.push(loc);
+  // Se a consulta remota ao Supabase respondeu, ela é a Fonte Única da Verdade!
+  if (remoteList !== null) {
+    saveLocalStations(remoteList);
+    let result = remoteList;
+    if (filters?.search) {
+      const q = filters.search.toLowerCase().trim();
+      result = result.filter(s => s.name.toLowerCase().includes(q) || (s.cnpj && s.cnpj.includes(q)));
     }
+    return result.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  if (missingFromRemote.length > 0) {
-    const toUpload = missingFromRemote.map(s => ({
-      id: isValidUUID(s.id) ? s.id : generateValidUUID(),
-      institution_id: s.institution_id || filters?.institutionId || 'inst_1',
-      name: s.name.trim(),
-      cnpj: s.cnpj && s.cnpj.trim() !== '' ? s.cnpj.trim() : null,
-      address: s.address && s.address.trim() !== '' ? s.address.trim() : null,
-      city: s.city && s.city.trim() !== '' ? s.city.trim() : null,
-      phone: s.phone && s.phone.trim() !== '' ? s.phone.trim() : null,
-      status: s.status || 'ativo'
-    }));
-
-    try {
-      const { data: uploaded, error: upErr } = await supabase.from('fleet_fuel_stations').upsert(toUpload, { onConflict: 'id' }).select();
-      if (!upErr && uploaded) {
-        remoteList = [...remoteList, ...(uploaded as FleetFuelStation[])];
-      }
-    } catch (errUp) {
-      console.warn('[FleetFuel] Erro ao auto-sincronizar postos locais no Supabase:', errUp);
-    }
-  }
-
-  const mergedMap = new Map<string, FleetFuelStation>();
-  remoteList.forEach(s => mergedMap.set(s.id, s));
-  missingFromRemote.forEach(s => {
-    if (!mergedMap.has(s.id)) mergedMap.set(s.id, s);
-  });
-
-  const finalList = Array.from(mergedMap.values());
-  saveLocalStations(finalList);
-
-  let result = finalList;
+  // Fallback offline
+  const localList = getLocalStations();
+  let result = localList;
   if (filters?.search) {
     const q = filters.search.toLowerCase().trim();
     result = result.filter(s => s.name.toLowerCase().includes(q) || (s.cnpj && s.cnpj.includes(q)));
@@ -1779,21 +1758,75 @@ export async function updateFleetFuelStation(id: string, updates: Partial<FleetF
   throw new Error('Posto credenciado não encontrado para atualização.');
 }
 
-export async function deleteFleetFuelStation(id: string): Promise<boolean> {
-  if (isValidUUID(id)) {
-    try {
+export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: string): Promise<boolean> {
+  const cleanName = name ? name.trim() : null;
+  const cleanCnpj = cnpj ? cnpj.trim() : null;
+  const digitsCnpj = cleanCnpj ? cleanCnpj.replace(/\D/g, '') : null;
+
+  // 1. Tentar deletar por ID no Supabase
+  try {
+    if (isValidUUID(id)) {
       let { error } = await supabase.from('fleet_fuel_stations').delete().eq('id', id);
       if (error && isRlsError(error)) {
         await supabaseAnon.from('fleet_fuel_stations').delete().eq('id', id);
       }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao excluir posto por ID no Supabase:', err);
+  }
+
+  // 2. Tentar deletar por Nome ou CNPJ no Supabase (garante limpeza completa mesmo se id for local)
+  if (cleanName || cleanCnpj) {
+    try {
+      const filters: string[] = [];
+      if (cleanName) filters.push(`name.ilike.${cleanName}`);
+      if (cleanCnpj) filters.push(`cnpj.eq.${cleanCnpj}`);
+      if (digitsCnpj && digitsCnpj !== cleanCnpj) filters.push(`cnpj.eq.${digitsCnpj}`);
+      if (filters.length > 0) {
+        let { error } = await supabase.from('fleet_fuel_stations').delete().or(filters.join(','));
+        if (error && isRlsError(error)) {
+          await supabaseAnon.from('fleet_fuel_stations').delete().or(filters.join(','));
+        }
+      }
     } catch (err) {
-      console.warn('[FleetFuel] Erro ao excluir posto no Supabase:', err);
+      console.warn('[FleetFuel] Erro ao excluir posto por Nome/CNPJ no Supabase:', err);
     }
   }
+
+  // 3. Atualizar cache local
   const list = getLocalStations();
-  const filtered = list.filter(s => s.id !== id);
+  const filtered = list.filter(s => {
+    if (s.id === id) return false;
+    if (cleanName && s.name.toLowerCase().trim() === cleanName.toLowerCase()) return false;
+    if (cleanCnpj && s.cnpj === cleanCnpj) return false;
+    if (digitsCnpj && s.cnpj && s.cnpj.replace(/\D/g, '') === digitsCnpj) return false;
+    return true;
+  });
   saveLocalStations(filtered);
   return true;
+}
+
+export async function clearAllFleetFuelStations(institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
+  try {
+    await supabase.from('fleet_fuel_stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAnon.from('fleet_fuel_stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao limpar postos no Supabase:', err);
+  }
+
+  saveLocalStations([]);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('gestao360_stations_cleared', 'true');
+      localStorage.removeItem(STORAGE_KEY_STATIONS);
+    } catch {}
+  }
+
+  return {
+    success: true,
+    count: 0,
+    message: 'Todos os postos credenciados foram excluídos com sucesso do banco de dados e do sistema.'
+  };
 }
 
 /**

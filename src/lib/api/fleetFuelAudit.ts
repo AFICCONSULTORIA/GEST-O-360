@@ -41,7 +41,49 @@ const getPricesStorageKey = (institutionId?: string) =>
   `@gestao360:fuel_bidded_prices_${institutionId || 'default'}`;
 
 /**
- * Consulta a tabela vigente de preços licitados para a prefeitura/instituição
+ * Consulta a tabela vigente de preços licitados com carregamento remoto do Supabase
+ */
+export async function getBiddedFuelPricesFromSupabase(institutionId: string = 'inst_1'): Promise<BiddedPricesMap> {
+  try {
+    const targetInst = institutionId || 'inst_1';
+    let { data, error } = await supabase
+      .from('institutions')
+      .select('notes')
+      .eq('id', targetInst)
+      .maybeSingle();
+
+    if (error) {
+      const anonRes = await supabaseAnon
+        .from('institutions')
+        .select('notes')
+        .eq('id', targetInst)
+        .maybeSingle();
+      data = anonRes.data;
+      error = anonRes.error;
+    }
+
+    if (!error && data?.notes) {
+      try {
+        const parsedNotes = JSON.parse(data.notes);
+        if (parsedNotes?.fuel_bidded_prices) {
+          const remotePrices = { ...DEFAULT_BIDDED_PRICES, ...parsedNotes.fuel_bidded_prices };
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(remotePrices)); } catch {}
+          }
+          return remotePrices;
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('[FleetFuelAudit] Aviso ao carregar precos licitados do Supabase:', err);
+  }
+
+  // Fallback para cache local ou defaults
+  return getBiddedFuelPrices(institutionId);
+}
+
+/**
+ * Consulta síncrona da tabela vigente de preços licitados (cache local ou defaults)
  */
 export function getBiddedFuelPrices(institutionId?: string): BiddedPricesMap {
   try {
@@ -56,15 +98,17 @@ export function getBiddedFuelPrices(institutionId?: string): BiddedPricesMap {
 
 /**
  * Salva e aplica nova tabela de preços licitados após pedido de reequilíbrio econômico-financeiro
+ * Persiste no Supabase (institutions.notes) para ficar disponível em todos os computadores e celulares.
  */
 export async function saveBiddedFuelPrices(
   newPrices: BiddedPricesMap,
-  institutionId?: string,
+  institutionId: string = 'inst_1',
   rebalanceReason?: string,
   contractTerm?: string
 ): Promise<BiddedPricesMap> {
   const updatedPrices: BiddedPricesMap = { ...newPrices };
   const todayIso = new Date().toISOString();
+  const targetInst = institutionId || 'inst_1';
 
   // Marca data e motivo do reequilíbrio se fornecido
   (Object.keys(updatedPrices) as FuelType[]).forEach((fuel) => {
@@ -79,18 +123,29 @@ export async function saveBiddedFuelPrices(
   });
 
   try {
-    localStorage.setItem(getPricesStorageKey(institutionId), JSON.stringify(updatedPrices));
+    localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(updatedPrices));
   } catch {}
 
-  // Sincroniza opcionalmente com a tabela institutions no Supabase
-  if (institutionId && institutionId !== 'default' && institutionId !== 'inst_1') {
-    try {
-      await supabase.from('institutions').update({
-        fuel_bidded_prices: updatedPrices
-      }).eq('id', institutionId);
-    } catch (err) {
-      console.warn('[FleetFuelAudit] Aviso ao sincronizar precos licitados no Supabase:', err);
+  // Sincroniza diretamente com a tabela institutions.notes no Supabase (Fonte Única da Verdade)
+  try {
+    let currentNotesObj: Record<string, any> = {};
+    const { data: instData } = await supabase.from('institutions').select('notes').eq('id', targetInst).maybeSingle();
+    if (instData?.notes) {
+      try { currentNotesObj = JSON.parse(instData.notes); } catch {}
     }
+    currentNotesObj.fuel_bidded_prices = updatedPrices;
+
+    let { error } = await supabase.from('institutions').update({
+      notes: JSON.stringify(currentNotesObj)
+    }).eq('id', targetInst);
+
+    if (error) {
+      await supabaseAnon.from('institutions').update({
+        notes: JSON.stringify(currentNotesObj)
+      }).eq('id', targetInst);
+    }
+  } catch (err) {
+    console.warn('[FleetFuelAudit] Aviso ao sincronizar precos licitados no Supabase:', err);
   }
 
   return updatedPrices;

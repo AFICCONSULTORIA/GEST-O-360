@@ -80,6 +80,7 @@ import {
   createFleetFuelStation,
   updateFleetFuelStation,
   deleteFleetFuelStation,
+  clearAllFleetFuelStations,
   syncLocalDriversAndStationsToSupabase
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
@@ -90,6 +91,7 @@ import {
   CONTRACTUAL_BIDDED_PRICES, 
   issueFuelAuthorization,
   getBiddedFuelPrices,
+  getBiddedFuelPricesFromSupabase,
   saveBiddedFuelPrices,
   BiddedPricesMap,
   validateAndCompleteFuelOrder,
@@ -262,18 +264,22 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     try {
       const instId = currentUser?.institution_id || 'inst_1';
 
-      const [vehList, ordList, drvList, staList, bclassList] = await Promise.all([
+      const [vehList, ordList, drvList, staList, bclassList, bPrices] = await Promise.all([
         getFleetVehicles(undefined, instId),
         getFuelSupplyOrders({ institutionId: instId }),
         getFleetDrivers({ institutionId: instId }),
         getFleetFuelStations({ institutionId: instId }),
-        getFleetBudgetClassifications(instId)
+        getFleetBudgetClassifications(instId),
+        getBiddedFuelPricesFromSupabase(instId)
       ]);
       setVehicles(vehList);
       setOrders(ordList);
       setDrivers(drvList);
       setStations(staList);
       setBudgetClassifications(bclassList);
+      if (bPrices) {
+        setBiddedPrices(bPrices);
+      }
 
       // Detectar em tempo real se alguma ordem foi abastecida via celular na bomba
       ordList.forEach(ord => {
@@ -565,15 +571,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   };
 
   const handleDeleteStation = async (station: FleetFuelStation) => {
-    if (!confirm(`Deseja realmente remover o posto conveniado ${station.name}?`)) {
+    if (!confirm(`Deseja realmente remover o posto conveniado ${station.name}?\n\nEle será excluído definitivamente do banco de dados e do sistema.`)) {
       return;
     }
     try {
-      await deleteFleetFuelStation(station.id);
+      await deleteFleetFuelStation(station.id, station.name, station.cnpj);
+      setStations(prev => prev.filter(s => s.id !== station.id && s.name !== station.name));
       showToast(`Posto ${station.name} removido com sucesso!`, 'success');
       loadData();
     } catch (err) {
       showToast('Erro ao remover posto credenciado.', 'error');
+    }
+  };
+
+  const handleClearAllStations = async () => {
+    const confirmMsg =
+      "ATENÇÃO: Deseja realmente excluir TODOS os postos credenciados cadastrados?\n\n" +
+      "• Todos os postos no banco de dados e no sistema serão excluídos definitivamente.\n" +
+      "• O cadastro ficará completamente zerado para você cadastrar apenas os postos desejados.\n\n" +
+      "Deseja confirmar a exclusão total de postos?";
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await clearAllFleetFuelStations(currentUser?.institution_id || 'inst_1');
+      setStations([]);
+      showToast(res.message, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao limpar postos.', 'error');
     }
   };
 
@@ -2352,6 +2378,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 <CloudUpload size={14} className="text-amber-600 dark:text-amber-400" />
                 Sincronizar Nuvem
               </button>
+              {stations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllStations}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl cursor-pointer shrink-0 border border-rose-300 dark:border-rose-800 transition shadow-sm"
+                  title="Excluir todos os postos credenciados e zerar o banco de dados"
+                >
+                  <Trash2 size={14} className="text-rose-600 dark:text-rose-400" />
+                  Limpar Todos
+                </button>
+              )}
               <button
                 onClick={handleOpenNewStation}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"

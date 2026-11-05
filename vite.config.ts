@@ -23,6 +23,8 @@ export default defineConfig(({mode}) => {
           'pwa-maskable-512x512.png'
         ],
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
           maximumFileSizeToCacheInBytes: 15 * 1024 * 1024 // 15MB
         },
         manifest: {
