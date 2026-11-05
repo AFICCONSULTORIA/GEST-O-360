@@ -1357,15 +1357,120 @@ export async function ensureDriverExistsInSupabase(driver: {
 }
 
 const TOMBSTONE_MARKER = '__EXCLUIDO__';
+const STORAGE_KEY_STATIONS_BLACKLIST = 'gestao360_stations_deleted_blacklist';
+const STORAGE_KEY_DRIVERS_BLACKLIST = 'gestao360_drivers_deleted_blacklist';
+
+function getDeletedStationBlacklist(): Set<string> {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_STATIONS_BLACKLIST) : null;
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set();
+}
+
+function addStationToBlacklist(id?: string, name?: string, cnpj?: string) {
+  try {
+    if (typeof window === 'undefined') return;
+    const set = getDeletedStationBlacklist();
+    if (id) set.add(id.toLowerCase());
+    if (name) set.add(name.toLowerCase().trim());
+    if (cnpj) {
+      set.add(cnpj.trim());
+      set.add(cnpj.replace(/\D/g, ''));
+    }
+    localStorage.setItem(STORAGE_KEY_STATIONS_BLACKLIST, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+function removeStationFromBlacklist(id?: string, name?: string, cnpj?: string) {
+  try {
+    if (typeof window === 'undefined') return;
+    const set = getDeletedStationBlacklist();
+    if (id) set.delete(id.toLowerCase());
+    if (name) set.delete(name.toLowerCase().trim());
+    if (cnpj) {
+      set.delete(cnpj.trim());
+      set.delete(cnpj.replace(/\D/g, ''));
+    }
+    localStorage.setItem(STORAGE_KEY_STATIONS_BLACKLIST, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+function isStationBlacklisted(s?: Partial<FleetFuelStation> | null): boolean {
+  if (!s) return false;
+  const set = getDeletedStationBlacklist();
+  if (s.id && set.has(s.id.toLowerCase())) return true;
+  if (s.name && set.has(s.name.toLowerCase().trim())) return true;
+  if (s.cnpj) {
+    if (set.has(s.cnpj.trim())) return true;
+    if (set.has(s.cnpj.replace(/\D/g, ''))) return true;
+  }
+  return false;
+}
+
+function getDeletedDriverBlacklist(): Set<string> {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_DRIVERS_BLACKLIST) : null;
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set();
+}
+
+function addDriverToBlacklist(id?: string, cpf?: string, name?: string) {
+  try {
+    if (typeof window === 'undefined') return;
+    const set = getDeletedDriverBlacklist();
+    if (id) set.add(id.toLowerCase());
+    if (cpf) {
+      set.add(cpf.trim());
+      set.add(cpf.replace(/\D/g, ''));
+    }
+    if (name) set.add(name.toLowerCase().trim());
+    localStorage.setItem(STORAGE_KEY_DRIVERS_BLACKLIST, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+function removeDriverFromBlacklist(id?: string, cpf?: string) {
+  try {
+    if (typeof window === 'undefined') return;
+    const set = getDeletedDriverBlacklist();
+    if (id) set.delete(id.toLowerCase());
+    if (cpf) {
+      set.delete(cpf.trim());
+      set.delete(cpf.replace(/\D/g, ''));
+    }
+    localStorage.setItem(STORAGE_KEY_DRIVERS_BLACKLIST, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+function isDriverBlacklisted(d?: Partial<FleetDriver> | null): boolean {
+  if (!d) return false;
+  const set = getDeletedDriverBlacklist();
+  if (d.id && set.has(d.id.toLowerCase())) return true;
+  if (d.cpf) {
+    if (set.has(d.cpf.trim())) return true;
+    if (set.has(d.cpf.replace(/\D/g, ''))) return true;
+  }
+  if (d.full_name && set.has(d.full_name.toLowerCase().trim())) return true;
+  return false;
+}
 
 function isDriverTombstoned(d?: Partial<FleetDriver> | null): boolean {
   if (!d) return true;
-  return d.department === TOMBSTONE_MARKER || d.cnh_number === TOMBSTONE_MARKER;
+  if (d.department === TOMBSTONE_MARKER || d.cnh_number === TOMBSTONE_MARKER) return true;
+  if (d.status === 'inativo') return true;
+  if (typeof d.full_name === 'string' && (d.full_name.includes(TOMBSTONE_MARKER) || d.full_name.startsWith('[EXCLUIDO]'))) return true;
+  if (isDriverBlacklisted(d)) return true;
+  return false;
 }
 
 function isStationTombstoned(s?: Partial<FleetFuelStation> | null): boolean {
   if (!s) return true;
-  return s.address === TOMBSTONE_MARKER || s.phone === TOMBSTONE_MARKER;
+  if (s.address === TOMBSTONE_MARKER || s.phone === TOMBSTONE_MARKER || s.city === TOMBSTONE_MARKER) return true;
+  if (s.status === 'inativo') return true;
+  if (typeof s.name === 'string' && (s.name.includes(TOMBSTONE_MARKER) || s.name.startsWith('[EXCLUIDO]'))) return true;
+  if (isStationBlacklisted(s)) return true;
+  return false;
 }
 
 export async function getFleetDrivers(filters?: {
@@ -1503,6 +1608,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
       } else {
         list.unshift(data as FleetDriver);
       }
+      removeDriverFromBlacklist(driverId, rawCpf);
       saveLocalDrivers(list);
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
@@ -1522,6 +1628,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
 
   const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   list.unshift(newDriver);
+  removeDriverFromBlacklist(driverId, rawCpf);
   saveLocalDrivers(list);
   if (typeof window !== 'undefined') {
     try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
@@ -1591,7 +1698,28 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
     updated_at: new Date().toISOString()
   };
 
-  // 1. Marcar como excluído no Supabase por ID
+  // 1. Registra no blacklist persistente imediatamente
+  addDriverToBlacklist(id, rawCpf || undefined);
+
+  // 2. DELETE direto no Supabase por ID
+  try {
+    if (isValidUUID(id)) {
+      await supabase.from('fleet_drivers').delete().eq('id', id);
+      await supabaseAnon.from('fleet_drivers').delete().eq('id', id);
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao deletar motorista por ID no Supabase:', err);
+  }
+
+  // 3. DELETE direto no Supabase por CPF
+  if (rawCpf) {
+    try {
+      await supabase.from('fleet_drivers').delete().eq('cpf', rawCpf);
+      await supabaseAnon.from('fleet_drivers').delete().eq('cpf', rawCpf);
+    } catch {}
+  }
+
+  // 4. Marcar Tombstone no Supabase por ID caso DELETE seja restrito por FK
   try {
     if (isValidUUID(id)) {
       let { error } = await supabase.from('fleet_drivers').update(tombstonePayload).eq('id', id);
@@ -1602,10 +1730,10 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
       }
     }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao excluir motorista por ID no Supabase:', err);
+    console.warn('[FleetFuel] Erro ao marcar tombstone em motorista por ID no Supabase:', err);
   }
 
-  // 2. Marcar como excluído no Supabase por CPF (tanto formatado quanto apenas dígitos)
+  // 5. Marcar Tombstone no Supabase por CPF
   if (rawCpf || digitsCpf) {
     try {
       const filters: string[] = [];
@@ -1620,7 +1748,7 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
     }
   }
 
-  // 3. Remover do cache local
+  // 6. Remover do cache local
   const list = getLocalDrivers();
   const filtered = list.filter(d => {
     if (isDriverTombstoned(d)) return false;
@@ -1640,6 +1768,21 @@ export async function clearAllFleetDrivers(_institutionId?: string): Promise<{ s
     updated_at: new Date().toISOString()
   };
 
+  // Blacklist todos os motoristas locais atuais
+  const currentLocal = getLocalDrivers();
+  for (const d of currentLocal) {
+    addDriverToBlacklist(d.id, d.cpf, d.full_name);
+  }
+
+  // 1. DELETE direto de todos os motoristas no Supabase
+  try {
+    await supabase.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAnon.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao deletar motoristas no Supabase:', err);
+  }
+
+  // 2. Tombstone como contingência
   try {
     await supabase.from('fleet_drivers').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabaseAnon.from('fleet_drivers').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
@@ -1702,6 +1845,11 @@ export async function getFleetFuelStations(filters?: {
 
   // Se a consulta remota ao Supabase respondeu, ela é a Fonte Única da Verdade!
   if (remoteList !== null) {
+    // Se o usuário limpou todos os postos deliberadamente e a nuvem está vazia, respeita vazio
+    if (isCleared && remoteList.length === 0) {
+      saveLocalStations([]);
+      return [];
+    }
     saveLocalStations(remoteList);
     let result = remoteList;
     if (filters?.search) {
@@ -1765,6 +1913,7 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
       error = retry.error;
     }
     if (!error && data) {
+      removeStationFromBlacklist(stationId, cleanName, cnpj || undefined);
       const list = getLocalStations().filter(s => !isStationTombstoned(s));
       const existingIdx = list.findIndex(s => s.id === stationId);
       if (existingIdx !== -1) {
@@ -1846,37 +1995,50 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
   const digitsCnpj = cleanCnpj ? cleanCnpj.replace(/\D/g, '') : null;
   const tombstonePayload = {
     address: TOMBSTONE_MARKER,
+    phone: TOMBSTONE_MARKER,
     status: 'inativo',
     updated_at: new Date().toISOString()
   };
 
-  // 1. Marcar como excluído por ID no Supabase
+  // 1. Registra no blacklist persistente imediatamente
+  addStationToBlacklist(id, cleanName || undefined, cleanCnpj || undefined);
+
+  // 2. DELETE direto no Supabase por ID
+  try {
+    if (isValidUUID(id)) {
+      await supabase.from('fleet_fuel_stations').delete().eq('id', id);
+      await supabaseAnon.from('fleet_fuel_stations').delete().eq('id', id);
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao deletar posto por ID no Supabase:', err);
+  }
+
+  // 3. DELETE direto no Supabase por Nome
+  if (cleanName) {
+    try {
+      await supabase.from('fleet_fuel_stations').delete().eq('name', cleanName);
+      await supabaseAnon.from('fleet_fuel_stations').delete().eq('name', cleanName);
+    } catch {}
+  }
+
+  // 4. Marca Tombstone caso o DELETE não seja permitido por integridade referencial
   try {
     if (isValidUUID(id)) {
       await supabase.from('fleet_fuel_stations').update(tombstonePayload).eq('id', id);
       await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).eq('id', id);
     }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao excluir posto por ID no Supabase:', err);
+    console.warn('[FleetFuel] Erro ao marcar tombstone em posto por ID no Supabase:', err);
   }
 
-  // 2. Marcar como excluído por Nome ou CNPJ no Supabase
-  if (cleanName || cleanCnpj) {
+  if (cleanName) {
     try {
-      const filters: string[] = [];
-      if (cleanName) filters.push(`name.ilike.${cleanName}`);
-      if (cleanCnpj) filters.push(`cnpj.eq.${cleanCnpj}`);
-      if (digitsCnpj && digitsCnpj !== cleanCnpj) filters.push(`cnpj.eq.${digitsCnpj}`);
-      if (filters.length > 0) {
-        await supabase.from('fleet_fuel_stations').update(tombstonePayload).or(filters.join(','));
-        await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).or(filters.join(','));
-      }
-    } catch (err) {
-      console.warn('[FleetFuel] Erro ao excluir posto por Nome/CNPJ no Supabase:', err);
-    }
+      await supabase.from('fleet_fuel_stations').update(tombstonePayload).eq('name', cleanName);
+      await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).eq('name', cleanName);
+    } catch {}
   }
 
-  // 3. Atualizar cache local
+  // 5. Atualizar cache local
   const list = getLocalStations();
   const filtered = list.filter(s => {
     if (isStationTombstoned(s)) return false;
@@ -1893,10 +2055,26 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
 export async function clearAllFleetFuelStations(_institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
   const tombstonePayload = {
     address: TOMBSTONE_MARKER,
+    phone: TOMBSTONE_MARKER,
     status: 'inativo',
     updated_at: new Date().toISOString()
   };
 
+  // Blacklist todos os postos locais atuais
+  const currentLocal = getLocalStations();
+  for (const s of currentLocal) {
+    addStationToBlacklist(s.id, s.name, s.cnpj);
+  }
+
+  // 1. DELETE direto de todos os postos no Supabase
+  try {
+    await supabase.from('fleet_fuel_stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAnon.from('fleet_fuel_stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao deletar postos no Supabase:', err);
+  }
+
+  // 2. Tombstone como contingência
   try {
     await supabase.from('fleet_fuel_stations').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
     await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
@@ -1950,6 +2128,7 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
         const recordsToInsert = [];
 
         for (const d of localDrivers) {
+          if (isDriverTombstoned(d)) continue;
           const cleanCpf = (d.cpf || '').replace(/\D/g, '');
           const validId = isValidUUID(d.id) ? d.id : generateValidUUID();
           const updatedDriver: FleetDriver = { ...d, id: validId };
@@ -1999,7 +2178,11 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
     try {
       const localStations = getLocalStations().filter(s => !isStationTombstoned(s));
       if (localStations.length > 0) {
-        const { data: remoteStations } = await supabase.from('fleet_fuel_stations').select('id, name');
+        let { data: remoteStations, error: fetchErr } = await supabase.from('fleet_fuel_stations').select('id, name');
+        if (fetchErr && isRlsError(fetchErr)) {
+          const anonFetch = await supabaseAnon.from('fleet_fuel_stations').select('id, name');
+          remoteStations = anonFetch.data;
+        }
         const remoteNames = new Set((remoteStations || []).map(r => r.name?.toLowerCase().trim()));
         const remoteIds = new Set((remoteStations || []).map(r => r.id));
 
@@ -2007,6 +2190,7 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
         const stationsToInsert = [];
 
         for (const s of localStations) {
+          if (isStationTombstoned(s)) continue;
           const validId = isValidUUID(s.id) ? s.id : generateValidUUID();
           const updatedStation: FleetFuelStation = { ...s, id: validId };
           updatedLocalStations.push(updatedStation);

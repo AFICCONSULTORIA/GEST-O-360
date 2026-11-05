@@ -489,10 +489,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       return;
     }
     try {
-      await deleteFleetDriver(driver.id, driver.cpf);
       setDrivers(prev => prev.filter(d => d.id !== driver.id && (!driver.cpf || d.cpf !== driver.cpf)));
+      await deleteFleetDriver(driver.id, driver.cpf);
       showToast(`Motorista ${driver.full_name} removido definitivamente com sucesso!`, 'success');
-      loadData();
+      loadData(true);
     } catch (err) {
       showToast('Erro ao remover motorista.', 'error');
     }
@@ -508,10 +508,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!confirm(confirmMsg)) return;
 
     try {
-      const res = await clearAllFleetDrivers(currentUser?.institution_id || 'inst_1');
       setDrivers([]);
+      const res = await clearAllFleetDrivers(currentUser?.institution_id || 'inst_1');
       showToast(res.message, 'success');
-      loadData();
+      loadData(true);
     } catch (err) {
       showToast('Erro ao limpar motoristas.', 'error');
     }
@@ -575,10 +575,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       return;
     }
     try {
-      await deleteFleetFuelStation(station.id, station.name, station.cnpj);
       setStations(prev => prev.filter(s => s.id !== station.id && s.name !== station.name));
+      await deleteFleetFuelStation(station.id, station.name, station.cnpj);
       showToast(`Posto ${station.name} removido com sucesso!`, 'success');
-      loadData();
+      loadData(true);
     } catch (err) {
       showToast('Erro ao remover posto credenciado.', 'error');
     }
@@ -594,10 +594,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!confirm(confirmMsg)) return;
 
     try {
-      const res = await clearAllFleetFuelStations(currentUser?.institution_id || 'inst_1');
       setStations([]);
+      const res = await clearAllFleetFuelStations(currentUser?.institution_id || 'inst_1');
       showToast(res.message, 'success');
-      loadData();
+      loadData(true);
     } catch (err) {
       showToast('Erro ao limpar postos.', 'error');
     }
