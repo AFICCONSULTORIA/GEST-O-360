@@ -8,7 +8,7 @@
 */
 
 import { supabase } from '../supabase';
-import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
 export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'cancelado';
@@ -455,6 +455,20 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     throw new Error(`Erro de comunicação com o Supabase ao emitir ordem: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  // 6.1 Garante que o condutor informado seja cadastrado automaticamente no Supabase (fleet_drivers)
+  if (newOrder.driver_name) {
+    try {
+      await ensureDriverExistsInSupabase({
+        full_name: newOrder.driver_name,
+        cpf: newOrder.driver_document,
+        department: vehicle.department,
+        institution_id: newOrder.institution_id
+      });
+    } catch (errDrv) {
+      console.warn('[FleetFuelAudit] Aviso ao auto-salvar motorista da ordem:', errDrv);
+    }
+  }
+
   // Se o odômetro digitado manualmente for superior ao anterior, atualiza o veículo
   if (current_odometer > previous_odometer) {
     try {
@@ -619,6 +633,19 @@ export async function validateAndCompleteFuelOrder(
     }).eq('id', updatedOrder.id);
   } catch (err) {
     console.warn('[FleetFuelAudit] Erro ao atualizar ordem no Supabase:', err);
+  }
+
+  // 7.1 Garante que o motorista que realizou o abastecimento esteja cadastrado no Supabase
+  if (completionData.driver_name) {
+    try {
+      await ensureDriverExistsInSupabase({
+        full_name: completionData.driver_name,
+        department: vehicle?.department,
+        institution_id: order.institution_id
+      });
+    } catch (errDrv) {
+      console.warn('[FleetFuelAudit] Aviso ao auto-salvar motorista no abastecimento:', errDrv);
+    }
   }
 
   // 8. Atualizar cache de ordens

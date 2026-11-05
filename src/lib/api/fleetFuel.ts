@@ -1235,11 +1235,140 @@ export function generateValidUUID(): string {
   });
 }
 
+/**
+ * Sanitiza qualquer formato de data (DD/MM/YYYY, YYYY-MM-DD, serial Excel ou timestamp)
+ * para o formato estrito ISO 'YYYY-MM-DD' aceito pelo tipo DATE do PostgreSQL/Supabase.
+ */
+export function sanitizeDateToISO(dateVal?: string | number | null): string | null {
+  if (!dateVal) return null;
+  const str = String(dateVal).trim();
+  if (!str) return null;
+
+  // 1. Já está no formato ISO 'YYYY-MM-DD'
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  // 2. Formato brasileiro 'DD/MM/YYYY' ou 'DD-MM-YYYY'
+  const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // 3. Formato 'YYYY/MM/DD'
+  const revMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+  if (revMatch) {
+    const year = revMatch[1];
+    const month = revMatch[2].padStart(2, '0');
+    const day = revMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 4. Serial numérico do Excel (ex: 31278)
+  const num = Number(str);
+  if (!isNaN(num) && num > 1000 && num < 60000) {
+    try {
+      const date = new Date(Math.round((num - 25569) * 86400 * 1000));
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+    } catch {}
+  }
+
+  // 5. Tentativa genérica com Date.parse
+  try {
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      return d.toISOString().split('T')[0];
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Garante que um condutor/motorista esteja salvo de forma 100% automática no Supabase (fleet_drivers).
+ * Usado na emissão de ordem, baixa pelo QR Code e formulários, para que o motorista nunca precise
+ * de sincronização manual para existir no banco remoto.
+ */
+export async function ensureDriverExistsInSupabase(driver: {
+  full_name: string;
+  cpf?: string;
+  department?: string;
+  institution_id?: string;
+}): Promise<FleetDriver | null> {
+  const name = driver.full_name?.trim();
+  if (!name || name.length < 2) return null;
+
+  const rawCpf = driver.cpf || '';
+  const cleanCpf = rawCpf.replace(/\D/g, '');
+  const formattedCpf = cleanCpf.length === 11 
+    ? `${cleanCpf.slice(0,3)}.${cleanCpf.slice(3,6)}.${cleanCpf.slice(6,9)}-${cleanCpf.slice(9,11)}`
+    : (rawCpf.trim() || '000.000.000-00');
+  const institutionId = driver.institution_id || 'inst_1';
+  const department = driver.department?.trim() || 'Frota Municipal';
+
+  try {
+    // 1. Verifica se já existe por CPF ou Nome
+    let query = supabase.from('fleet_drivers').select('*');
+    if (cleanCpf.length === 11) {
+      query = query.or(`cpf.eq.${formattedCpf},full_name.ilike.${name}`);
+    } else {
+      query = query.ilike('full_name', name);
+    }
+
+    const { data: existing } = await query.limit(1).maybeSingle();
+    if (existing) {
+      return existing as FleetDriver;
+    }
+
+    // 2. Se não existir, cadastra automaticamente no Supabase
+    const newId = generateValidUUID();
+    const newRecord = {
+      id: newId,
+      institution_id: institutionId,
+      full_name: name,
+      cpf: formattedCpf,
+      department: department,
+      status: 'ativo'
+    };
+
+    const { data: created, error } = await supabase
+      .from('fleet_drivers')
+      .insert([newRecord])
+      .select()
+      .single();
+
+    if (!error && created) {
+      console.log(`[FleetFuel] Motorista auto-salvo no Supabase com sucesso: ${name}`);
+      const list = getLocalDrivers();
+      const existsIdx = list.findIndex(d => d.id === created.id || d.cpf === created.cpf);
+      if (existsIdx !== -1) {
+        list[existsIdx] = created as FleetDriver;
+      } else {
+        list.unshift(created as FleetDriver);
+      }
+      saveLocalDrivers(list);
+      return created as FleetDriver;
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Aviso ao auto-salvar motorista:', err);
+  }
+
+  return null;
+}
+
 export async function getFleetDrivers(filters?: {
   institutionId?: string;
   search?: string;
   department?: string;
 }): Promise<FleetDriver[]> {
+  const localList = getLocalDrivers();
+  let remoteList: FleetDriver[] = [];
+
   try {
     let query = supabase.from('fleet_drivers').select('*');
     if (filters?.institutionId && filters.institutionId !== 'all') {
@@ -1250,29 +1379,73 @@ export async function getFleetDrivers(filters?: {
     }
     const { data, error } = await query.order('full_name', { ascending: true });
     if (!error && data) {
-      if (data.length > 0) {
-        saveLocalDrivers(data as FleetDriver[]);
-        return data as FleetDriver[];
-      }
+      remoteList = data as FleetDriver[];
+    } else if (error) {
+      console.warn('[FleetFuel] Erro ao consultar motoristas no Supabase:', error);
     }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao consultar motoristas no Supabase:', err);
+    console.warn('[FleetFuel] Exceção ao consultar motoristas no Supabase:', err);
   }
 
-  let list = getLocalDrivers();
+  // Two-Way Smart Merge: auto-sincroniza silenciosamente qualquer motorista local no Supabase
+  const remoteCpfs = new Set(remoteList.map(r => (r.cpf || '').replace(/\D/g, '')));
+  const remoteIds = new Set(remoteList.map(r => r.id));
+  const missingFromRemote: FleetDriver[] = [];
+
+  for (const loc of localList) {
+    const cleanCpf = (loc.cpf || '').replace(/\D/g, '');
+    if (!remoteIds.has(loc.id) && (!cleanCpf || !remoteCpfs.has(cleanCpf))) {
+      missingFromRemote.push(loc);
+    }
+  }
+
+  if (missingFromRemote.length > 0) {
+    const toUpload = missingFromRemote.map(d => ({
+      id: isValidUUID(d.id) ? d.id : generateValidUUID(),
+      institution_id: d.institution_id || filters?.institutionId || 'inst_1',
+      full_name: d.full_name.trim(),
+      cpf: d.cpf.trim(),
+      birth_date: sanitizeDateToISO(d.birth_date),
+      department: d.department?.trim() || 'Geral',
+      cnh_number: d.cnh_number && d.cnh_number.trim() !== '' ? d.cnh_number.trim() : null,
+      cnh_category: d.cnh_category && d.cnh_category.trim() !== '' ? d.cnh_category.trim() : 'B',
+      status: (d.status === 'inativo' || d.status === 'afastado') ? d.status : 'ativo'
+    }));
+
+    try {
+      const { data: uploaded, error: upErr } = await supabase.from('fleet_drivers').upsert(toUpload, { onConflict: 'id' }).select();
+      if (!upErr && uploaded) {
+        remoteList = [...remoteList, ...(uploaded as FleetDriver[])];
+      }
+    } catch (errUp) {
+      console.warn('[FleetFuel] Erro ao auto-sincronizar motoristas locais no Supabase:', errUp);
+    }
+  }
+
+  // Cria mapa unificado final e atualiza cache local
+  const mergedMap = new Map<string, FleetDriver>();
+  remoteList.forEach(d => mergedMap.set(d.id, d));
+  missingFromRemote.forEach(d => {
+    if (!mergedMap.has(d.id)) mergedMap.set(d.id, d);
+  });
+
+  const finalList = Array.from(mergedMap.values());
+  saveLocalDrivers(finalList);
+
+  let result = finalList;
   if (filters?.department && filters.department !== 'all') {
-    list = list.filter(d => d.department === filters.department);
+    result = result.filter(d => d.department === filters.department);
   }
   if (filters?.search) {
     const q = filters.search.toLowerCase().trim();
-    list = list.filter(d => d.full_name.toLowerCase().includes(q) || d.cpf.includes(q));
+    result = result.filter(d => d.full_name.toLowerCase().includes(q) || d.cpf.includes(q));
   }
-  return list.sort((a, b) => a.full_name.localeCompare(b.full_name));
+  return result.sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
 export async function createFleetDriver(payload: NewDriverPayload): Promise<FleetDriver> {
   const driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
-  const birthDate = payload.birth_date && payload.birth_date.trim() !== '' ? payload.birth_date.trim() : null;
+  const birthDate = sanitizeDateToISO(payload.birth_date);
   const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
   const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : null;
 
@@ -1285,7 +1458,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     department: payload.department?.trim() || 'Geral',
     cnh_number: cnhNumber || undefined,
     cnh_category: cnhCat || undefined,
-    status: payload.status || 'ativo',
+    status: (payload.status === 'inativo' || payload.status === 'afastado') ? payload.status : 'ativo',
     created_at: new Date().toISOString()
   };
 
@@ -1298,7 +1471,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     department: payload.department?.trim() || 'Geral',
     cnh_number: cnhNumber,
     cnh_category: cnhCat,
-    status: payload.status || 'ativo'
+    status: (payload.status === 'inativo' || payload.status === 'afastado') ? payload.status : 'ativo'
   };
 
   try {
@@ -1324,6 +1497,11 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     }
     throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
+
+  const list = getLocalDrivers();
+  list.unshift(newDriver);
+  saveLocalDrivers(list);
+  return newDriver;
 }
 
 export async function updateFleetDriver(id: string, updates: Partial<FleetDriver>): Promise<FleetDriver> {
@@ -1393,6 +1571,9 @@ export async function getFleetFuelStations(filters?: {
   institutionId?: string;
   search?: string;
 }): Promise<FleetFuelStation[]> {
+  const localList = getLocalStations();
+  let remoteList: FleetFuelStation[] = [];
+
   try {
     let query = supabase.from('fleet_fuel_stations').select('*');
     if (filters?.institutionId && filters.institutionId !== 'all') {
@@ -1400,21 +1581,63 @@ export async function getFleetFuelStations(filters?: {
     }
     const { data, error } = await query.order('name', { ascending: true });
     if (!error && data) {
-      if (data.length > 0) {
-        saveLocalStations(data as FleetFuelStation[]);
-        return data as FleetFuelStation[];
-      }
+      remoteList = data as FleetFuelStation[];
+    } else if (error) {
+      console.warn('[FleetFuel] Erro ao consultar postos no Supabase:', error);
     }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao consultar postos no Supabase:', err);
+    console.warn('[FleetFuel] Exceção ao consultar postos no Supabase:', err);
   }
 
-  let list = getLocalStations();
+  // Two-Way Smart Merge: auto-sincroniza postos locais no Supabase
+  const remoteNames = new Set(remoteList.map(r => r.name?.toLowerCase().trim()));
+  const remoteIds = new Set(remoteList.map(r => r.id));
+  const missingFromRemote: FleetFuelStation[] = [];
+
+  for (const loc of localList) {
+    const nameKey = (loc.name || '').toLowerCase().trim();
+    if (!remoteIds.has(loc.id) && (!nameKey || !remoteNames.has(nameKey))) {
+      missingFromRemote.push(loc);
+    }
+  }
+
+  if (missingFromRemote.length > 0) {
+    const toUpload = missingFromRemote.map(s => ({
+      id: isValidUUID(s.id) ? s.id : generateValidUUID(),
+      institution_id: s.institution_id || filters?.institutionId || 'inst_1',
+      name: s.name.trim(),
+      cnpj: s.cnpj && s.cnpj.trim() !== '' ? s.cnpj.trim() : null,
+      address: s.address && s.address.trim() !== '' ? s.address.trim() : null,
+      city: s.city && s.city.trim() !== '' ? s.city.trim() : null,
+      phone: s.phone && s.phone.trim() !== '' ? s.phone.trim() : null,
+      status: s.status || 'ativo'
+    }));
+
+    try {
+      const { data: uploaded, error: upErr } = await supabase.from('fleet_fuel_stations').upsert(toUpload, { onConflict: 'id' }).select();
+      if (!upErr && uploaded) {
+        remoteList = [...remoteList, ...(uploaded as FleetFuelStation[])];
+      }
+    } catch (errUp) {
+      console.warn('[FleetFuel] Erro ao auto-sincronizar postos locais no Supabase:', errUp);
+    }
+  }
+
+  const mergedMap = new Map<string, FleetFuelStation>();
+  remoteList.forEach(s => mergedMap.set(s.id, s));
+  missingFromRemote.forEach(s => {
+    if (!mergedMap.has(s.id)) mergedMap.set(s.id, s);
+  });
+
+  const finalList = Array.from(mergedMap.values());
+  saveLocalStations(finalList);
+
+  let result = finalList;
   if (filters?.search) {
     const q = filters.search.toLowerCase().trim();
-    list = list.filter(s => s.name.toLowerCase().includes(q) || (s.cnpj && s.cnpj.includes(q)));
+    result = result.filter(s => s.name.toLowerCase().includes(q) || (s.cnpj && s.cnpj.includes(q)));
   }
-  return list.sort((a, b) => a.name.localeCompare(b.name));
+  return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function createFleetFuelStation(payload: NewStationPayload): Promise<FleetFuelStation> {
@@ -1839,7 +2062,7 @@ export async function createDriversBatch(
 ): Promise<{ count: number; saved: FleetDriver[] }> {
   const newDrivers: FleetDriver[] = driversList.map((payload) => {
     const driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
-    const birthDate = payload.birth_date && payload.birth_date.trim() !== '' ? payload.birth_date.trim() : null;
+    const birthDate = sanitizeDateToISO(payload.birth_date);
     const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
     const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : 'B';
 
@@ -1852,7 +2075,7 @@ export async function createDriversBatch(
       department: payload.department?.trim() || 'Geral',
       cnh_number: cnhNumber || undefined,
       cnh_category: cnhCat,
-      status: payload.status || 'ativo',
+      status: (payload.status === 'inativo' || payload.status === 'afastado') ? payload.status : 'ativo',
       created_at: new Date().toISOString()
     };
   });
@@ -1862,11 +2085,11 @@ export async function createDriversBatch(
     institution_id: d.institution_id,
     full_name: d.full_name,
     cpf: d.cpf,
-    birth_date: d.birth_date || null,
-    department: d.department,
+    birth_date: sanitizeDateToISO(d.birth_date),
+    department: d.department || 'Geral',
     cnh_number: d.cnh_number || null,
-    cnh_category: d.cnh_category || null,
-    status: d.status
+    cnh_category: d.cnh_category || 'B',
+    status: (d.status === 'inativo' || d.status === 'afastado') ? d.status : 'ativo'
   }));
 
   try {
@@ -1878,9 +2101,16 @@ export async function createDriversBatch(
       const combined = Array.from(savedMap.values());
       saveLocalDrivers(combined);
       return { count: data.length, saved: data as FleetDriver[] };
+    } else if (error) {
+      console.error('[FleetFuel] Erro ao gravar lote de motoristas no Supabase:', error);
+      throw new Error(`Falha ao registrar lote no Supabase: ${error.message}`);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Erro ao gravar lote de motoristas no Supabase:', err);
+  } catch (err: unknown) {
+    console.error('[FleetFuel] Exceção ao gravar lote de motoristas no Supabase:', err);
+    if (err instanceof Error && err.message.includes('Supabase:')) {
+      throw err;
+    }
+    throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const list = getLocalDrivers();
