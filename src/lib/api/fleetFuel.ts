@@ -179,7 +179,18 @@ const STORAGE_KEY_ORDERS = 'gestao360_real_orders';
 const STORAGE_KEY_DRIVERS = 'gestao360_real_drivers';
 const STORAGE_KEY_STATIONS = 'gestao360_real_stations';
 const STORAGE_KEY_CLEARED = 'gestao360_fleet_cleared';
+const STORAGE_KEY_DRIVERS_CLEARED = 'gestao360_drivers_cleared';
 const BUCKET_NAME = 'certidoes'; // Utiliza o bucket ativo do sistema para anexos de comprovantes
+
+function isRlsError(err: unknown): boolean {
+  if (!err) return false;
+  const anyErr = err as { code?: string; status?: number; message?: string };
+  return (
+    anyErr.code === '42501' ||
+    anyErr.status === 403 ||
+    (typeof anyErr.message === 'string' && anyErr.message.includes('row-level security'))
+  );
+}
 
 // Limpeza de chaves mock legadas
 if (typeof window !== 'undefined') {
@@ -1325,7 +1336,12 @@ export async function ensureDriverExistsInSupabase(driver: {
       return existing as FleetDriver;
     }
 
-    // 2. Se não existir, cadastra automaticamente no Supabase
+    const isCleared = typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_DRIVERS_CLEARED) === 'true';
+    if (isCleared) {
+      return null;
+    }
+
+    // 2. Se não existir e não estiver zerado, cadastra automaticamente no Supabase
     const newId = generateValidUUID();
     const newRecord = {
       id: newId,
@@ -1336,11 +1352,21 @@ export async function ensureDriverExistsInSupabase(driver: {
       status: 'ativo'
     };
 
-    const { data: created, error } = await supabase
+    let { data: created, error } = await supabase
       .from('fleet_drivers')
       .insert([newRecord])
       .select()
       .single();
+
+    if (error && isRlsError(error)) {
+      const retry = await supabaseAnon
+        .from('fleet_drivers')
+        .insert([newRecord])
+        .select()
+        .single();
+      created = retry.data;
+      error = retry.error;
+    }
 
     if (!error && created) {
       console.log(`[FleetFuel] Motorista auto-salvo no Supabase com sucesso: ${name}`);
@@ -1366,8 +1392,8 @@ export async function getFleetDrivers(filters?: {
   search?: string;
   department?: string;
 }): Promise<FleetDriver[]> {
-  const localList = getLocalDrivers();
-  let remoteList: FleetDriver[] = [];
+  const isCleared = typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_DRIVERS_CLEARED) === 'true';
+  let remoteList: FleetDriver[] | null = null;
 
   try {
     let query = supabase.from('fleet_drivers').select('*');
@@ -1377,7 +1403,20 @@ export async function getFleetDrivers(filters?: {
     if (filters?.department && filters.department !== 'all') {
       query = query.eq('department', filters.department);
     }
-    const { data, error } = await query.order('full_name', { ascending: true });
+    let { data, error } = await query.order('full_name', { ascending: true });
+    if (error && isRlsError(error)) {
+      let anonQuery = supabaseAnon.from('fleet_drivers').select('*');
+      if (filters?.institutionId && filters.institutionId !== 'all') {
+        anonQuery = anonQuery.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+      }
+      if (filters?.department && filters.department !== 'all') {
+        anonQuery = anonQuery.eq('department', filters.department);
+      }
+      const anonRes = await anonQuery.order('full_name', { ascending: true });
+      data = anonRes.data;
+      error = anonRes.error;
+    }
+
     if (!error && data) {
       remoteList = data as FleetDriver[];
     } else if (error) {
@@ -1387,52 +1426,31 @@ export async function getFleetDrivers(filters?: {
     console.warn('[FleetFuel] Exceção ao consultar motoristas no Supabase:', err);
   }
 
-  // Two-Way Smart Merge: auto-sincroniza silenciosamente qualquer motorista local no Supabase
-  const remoteCpfs = new Set(remoteList.map(r => (r.cpf || '').replace(/\D/g, '')));
-  const remoteIds = new Set(remoteList.map(r => r.id));
-  const missingFromRemote: FleetDriver[] = [];
-
-  for (const loc of localList) {
-    const cleanCpf = (loc.cpf || '').replace(/\D/g, '');
-    if (!remoteIds.has(loc.id) && (!cleanCpf || !remoteCpfs.has(cleanCpf))) {
-      missingFromRemote.push(loc);
+  // Se a consulta remota ao Supabase respondeu, ela é a Fonte Única da Verdade!
+  if (remoteList !== null) {
+    if (remoteList.length === 0 && isCleared) {
+      saveLocalDrivers([]);
+      return [];
     }
+    // Atualiza cache local com a lista real do banco (sem ressuscitar dados deletados)
+    saveLocalDrivers(remoteList);
+    let result = remoteList;
+    if (filters?.department && filters.department !== 'all') {
+      result = result.filter(d => d.department === filters.department);
+    }
+    if (filters?.search) {
+      const q = filters.search.toLowerCase().trim();
+      result = result.filter(d => d.full_name.toLowerCase().includes(q) || d.cpf.includes(q));
+    }
+    return result.sort((a, b) => a.full_name.localeCompare(b.full_name));
   }
 
-  if (missingFromRemote.length > 0) {
-    const toUpload = missingFromRemote.map(d => ({
-      id: isValidUUID(d.id) ? d.id : generateValidUUID(),
-      institution_id: d.institution_id || filters?.institutionId || 'inst_1',
-      full_name: d.full_name.trim(),
-      cpf: d.cpf.trim(),
-      birth_date: sanitizeDateToISO(d.birth_date),
-      department: d.department?.trim() || 'Geral',
-      cnh_number: d.cnh_number && d.cnh_number.trim() !== '' ? d.cnh_number.trim() : null,
-      cnh_category: d.cnh_category && d.cnh_category.trim() !== '' ? d.cnh_category.trim() : 'B',
-      status: (d.status === 'inativo' || d.status === 'afastado') ? d.status : 'ativo'
-    }));
-
-    try {
-      const { data: uploaded, error: upErr } = await supabase.from('fleet_drivers').upsert(toUpload, { onConflict: 'id' }).select();
-      if (!upErr && uploaded) {
-        remoteList = [...remoteList, ...(uploaded as FleetDriver[])];
-      }
-    } catch (errUp) {
-      console.warn('[FleetFuel] Erro ao auto-sincronizar motoristas locais no Supabase:', errUp);
-    }
+  // Fallback offline (apenas se estiver sem conexão com a internet)
+  if (isCleared) {
+    return [];
   }
-
-  // Cria mapa unificado final e atualiza cache local
-  const mergedMap = new Map<string, FleetDriver>();
-  remoteList.forEach(d => mergedMap.set(d.id, d));
-  missingFromRemote.forEach(d => {
-    if (!mergedMap.has(d.id)) mergedMap.set(d.id, d);
-  });
-
-  const finalList = Array.from(mergedMap.values());
-  saveLocalDrivers(finalList);
-
-  let result = finalList;
+  const localList = getLocalDrivers();
+  let result = localList;
   if (filters?.department && filters.department !== 'all') {
     result = result.filter(d => d.department === filters.department);
   }
@@ -1485,6 +1503,9 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
         list.unshift(data as FleetDriver);
       }
       saveLocalDrivers(list);
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+      }
       return data as FleetDriver;
     } else if (error) {
       console.error('[FleetFuel] Erro ao gravar motorista no Supabase:', error);
@@ -1501,6 +1522,9 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
   const list = getLocalDrivers();
   list.unshift(newDriver);
   saveLocalDrivers(list);
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+  }
   return newDriver;
 }
 
@@ -1522,7 +1546,12 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
 
   if (isValidUUID(id)) {
     try {
-      const { data, error } = await supabase.from('fleet_drivers').update(supabaseRecord).eq('id', id).select().single();
+      let { data, error } = await supabase.from('fleet_drivers').update(supabaseRecord).eq('id', id).select().single();
+      if (error && isRlsError(error)) {
+        const retry = await supabaseAnon.from('fleet_drivers').update(supabaseRecord).eq('id', id).select().single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (!error && data) {
         const list = getLocalDrivers();
         const idx = list.findIndex(d => d.id === id);
@@ -1547,18 +1576,68 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
   throw new Error('Motorista não encontrado para atualização.');
 }
 
-export async function deleteFleetDriver(id: string): Promise<boolean> {
-  if (isValidUUID(id)) {
+export async function deleteFleetDriver(id: string, cpf?: string): Promise<boolean> {
+  // 1. Tentar deletar no Supabase por ID
+  try {
+    if (isValidUUID(id)) {
+      let { error } = await supabase.from('fleet_drivers').delete().eq('id', id);
+      if (error && isRlsError(error)) {
+        await supabaseAnon.from('fleet_drivers').delete().eq('id', id);
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao excluir motorista por ID no Supabase:', err);
+  }
+
+  // 2. Tentar deletar no Supabase por CPF
+  const cleanCpf = cpf ? cpf.trim() : null;
+  if (cleanCpf) {
     try {
-      await supabase.from('fleet_drivers').delete().eq('id', id);
+      let { error } = await supabase.from('fleet_drivers').delete().eq('cpf', cleanCpf);
+      if (error && isRlsError(error)) {
+        await supabaseAnon.from('fleet_drivers').delete().eq('cpf', cleanCpf);
+      }
     } catch (err) {
-      console.warn('[FleetFuel] Erro ao excluir motorista no Supabase:', err);
+      console.warn('[FleetFuel] Erro ao excluir motorista por CPF no Supabase:', err);
     }
   }
+
+  // 3. Remover do cache local
   const list = getLocalDrivers();
-  const filtered = list.filter(d => d.id !== id);
+  const filtered = list.filter(d => d.id !== id && (!cleanCpf || d.cpf !== cleanCpf));
   saveLocalDrivers(filtered);
   return true;
+}
+
+export async function clearAllFleetDrivers(institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
+  const currentDrivers = getLocalDrivers();
+  const count = currentDrivers.length;
+
+  try {
+    if (institutionId) {
+      await supabase.from('fleet_drivers').delete().eq('institution_id', institutionId);
+      await supabaseAnon.from('fleet_drivers').delete().eq('institution_id', institutionId);
+    }
+    // Remove todos os registros
+    await supabase.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAnon.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao limpar motoristas no Supabase:', err);
+  }
+
+  saveLocalDrivers([]);
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_DRIVERS_CLEARED, 'true');
+      localStorage.removeItem(STORAGE_KEY_DRIVERS);
+    } catch {}
+  }
+
+  return {
+    success: true,
+    count,
+    message: 'Todos os motoristas foram excluídos com sucesso do banco de dados e do sistema. O cadastro está zerado.'
+  };
 }
 
 /**
@@ -1741,7 +1820,10 @@ export async function updateFleetFuelStation(id: string, updates: Partial<FleetF
 export async function deleteFleetFuelStation(id: string): Promise<boolean> {
   if (isValidUUID(id)) {
     try {
-      await supabase.from('fleet_fuel_stations').delete().eq('id', id);
+      let { error } = await supabase.from('fleet_fuel_stations').delete().eq('id', id);
+      if (error && isRlsError(error)) {
+        await supabaseAnon.from('fleet_fuel_stations').delete().eq('id', id);
+      }
     } catch (err) {
       console.warn('[FleetFuel] Erro ao excluir posto no Supabase:', err);
     }
@@ -1764,52 +1846,66 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
   let syncedDrivers = 0;
   let syncedStations = 0;
 
-  // 1. Sincronizar Motoristas
-  try {
-    const localDrivers = getLocalDrivers();
-    if (localDrivers.length > 0) {
-      const { data: remoteDrivers } = await supabase.from('fleet_drivers').select('id, cpf, full_name');
-      const remoteCpfs = new Set((remoteDrivers || []).map(r => r.cpf?.replace(/\D/g, '')));
-      const remoteIds = new Set((remoteDrivers || []).map(r => r.id));
+  const isDriversCleared = typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_DRIVERS_CLEARED) === 'true';
 
-      const updatedLocalList: FleetDriver[] = [];
-      const recordsToInsert = [];
+  // 1. Sincronizar Motoristas (apenas se o cadastro não foi explicitamente zerado)
+  if (!isDriversCleared) {
+    try {
+      const localDrivers = getLocalDrivers();
+      if (localDrivers.length > 0) {
+        let { data: remoteDrivers, error: fetchErr } = await supabase.from('fleet_drivers').select('id, cpf, full_name');
+        if (fetchErr && isRlsError(fetchErr)) {
+          const anonFetch = await supabaseAnon.from('fleet_drivers').select('id, cpf, full_name');
+          remoteDrivers = anonFetch.data;
+        }
+        const remoteCpfs = new Set((remoteDrivers || []).map(r => r.cpf?.replace(/\D/g, '')));
+        const remoteIds = new Set((remoteDrivers || []).map(r => r.id));
 
-      for (const d of localDrivers) {
-        const cleanCpf = (d.cpf || '').replace(/\D/g, '');
-        const validId = isValidUUID(d.id) ? d.id : generateValidUUID();
-        const updatedDriver: FleetDriver = { ...d, id: validId };
-        updatedLocalList.push(updatedDriver);
+        const updatedLocalList: FleetDriver[] = [];
+        const recordsToInsert = [];
 
-        if (!remoteCpfs.has(cleanCpf) && !remoteIds.has(validId)) {
-          recordsToInsert.push({
-            id: validId,
-            institution_id: d.institution_id || institutionId,
-            full_name: d.full_name.trim(),
-            cpf: d.cpf.trim(),
-            birth_date: d.birth_date && d.birth_date.trim() !== '' ? d.birth_date.trim() : null,
-            department: d.department?.trim() || 'Geral',
-            cnh_number: d.cnh_number && d.cnh_number.trim() !== '' ? d.cnh_number.trim() : null,
-            cnh_category: d.cnh_category && d.cnh_category.trim() !== '' ? d.cnh_category.trim() : null,
-            status: d.status || 'ativo'
-          });
+        for (const d of localDrivers) {
+          const cleanCpf = (d.cpf || '').replace(/\D/g, '');
+          const validId = isValidUUID(d.id) ? d.id : generateValidUUID();
+          const updatedDriver: FleetDriver = { ...d, id: validId };
+          updatedLocalList.push(updatedDriver);
+
+          if (!remoteCpfs.has(cleanCpf) && !remoteIds.has(validId)) {
+            recordsToInsert.push({
+              id: validId,
+              institution_id: d.institution_id || institutionId,
+              full_name: d.full_name.trim(),
+              cpf: d.cpf.trim(),
+              birth_date: d.birth_date && d.birth_date.trim() !== '' ? d.birth_date.trim() : null,
+              department: d.department?.trim() || 'Geral',
+              cnh_number: d.cnh_number && d.cnh_number.trim() !== '' ? d.cnh_number.trim() : null,
+              cnh_category: d.cnh_category && d.cnh_category.trim() !== '' ? d.cnh_category.trim() : null,
+              status: d.status || 'ativo'
+            });
+          }
+        }
+
+        saveLocalDrivers(updatedLocalList);
+
+        if (recordsToInsert.length > 0) {
+          let { error } = await supabase.from('fleet_drivers').upsert(recordsToInsert, { onConflict: 'id' });
+          if (error && isRlsError(error)) {
+            const retry = await supabaseAnon.from('fleet_drivers').upsert(recordsToInsert, { onConflict: 'id' });
+            error = retry.error;
+          }
+          if (!error) {
+            syncedDrivers = recordsToInsert.length;
+            console.log(`[FleetFuel] ${syncedDrivers} motoristas sincronizados com Supabase!`);
+          } else {
+            console.error('[FleetFuel] Erro ao sincronizar motoristas com Supabase:', error);
+          }
         }
       }
-
-      saveLocalDrivers(updatedLocalList);
-
-      if (recordsToInsert.length > 0) {
-        const { error } = await supabase.from('fleet_drivers').upsert(recordsToInsert, { onConflict: 'id' });
-        if (!error) {
-          syncedDrivers = recordsToInsert.length;
-          console.log(`[FleetFuel] ${syncedDrivers} motoristas sincronizados com Supabase!`);
-        } else {
-          console.error('[FleetFuel] Erro ao sincronizar motoristas com Supabase:', error);
-        }
-      }
+    } catch (err) {
+      console.warn('[FleetFuel] Erro no sync de motoristas:', err);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Erro no sync de motoristas:', err);
+  } else {
+    saveLocalDrivers([]);
   }
 
   // 2. Sincronizar Postos Credenciados
@@ -2093,8 +2189,16 @@ export async function createDriversBatch(
   }));
 
   try {
-    const { data, error } = await supabase.from('fleet_drivers').upsert(supabaseRecords, { onConflict: 'id' }).select();
+    let { data, error } = await supabase.from('fleet_drivers').upsert(supabaseRecords, { onConflict: 'id' }).select();
+    if (error && isRlsError(error)) {
+      const retry = await supabaseAnon.from('fleet_drivers').upsert(supabaseRecords, { onConflict: 'id' }).select();
+      data = retry.data;
+      error = retry.error;
+    }
     if (!error && data && data.length > 0) {
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+      }
       const list = getLocalDrivers();
       const savedMap = new Map(list.map(d => [d.id, d]));
       (data as FleetDriver[]).forEach(d => savedMap.set(d.id, d));

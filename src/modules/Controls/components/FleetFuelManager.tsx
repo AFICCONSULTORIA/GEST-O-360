@@ -75,6 +75,7 @@ import {
   createFleetDriver,
   updateFleetDriver,
   deleteFleetDriver,
+  clearAllFleetDrivers,
   getFleetFuelStations,
   createFleetFuelStation,
   updateFleetFuelStation,
@@ -485,15 +486,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   };
 
   const handleDeleteDriver = async (driver: FleetDriver) => {
-    if (!confirm(`Deseja realmente remover o condutor ${driver.full_name} (CPF: ${driver.cpf})?`)) {
+    if (!confirm(`Deseja realmente remover o condutor ${driver.full_name} (CPF: ${driver.cpf})?\n\nEle será excluído definitivamente do banco de dados e do sistema.`)) {
       return;
     }
     try {
-      await deleteFleetDriver(driver.id);
-      showToast(`Motorista ${driver.full_name} removido com sucesso!`, 'success');
+      await deleteFleetDriver(driver.id, driver.cpf);
+      setDrivers(prev => prev.filter(d => d.id !== driver.id && (!driver.cpf || d.cpf !== driver.cpf)));
+      showToast(`Motorista ${driver.full_name} removido definitivamente com sucesso!`, 'success');
       loadData();
     } catch (err) {
       showToast('Erro ao remover motorista.', 'error');
+    }
+  };
+
+  const handleClearAllDrivers = async () => {
+    const confirmMsg =
+      "ATENÇÃO: Deseja realmente excluir TODOS os motoristas cadastrados?\n\n" +
+      "• Todos os motoristas no banco de dados e no sistema serão excluídos definitivamente.\n" +
+      "• O cadastro ficará completamente zerado para você cadastrar apenas os motoristas desejados.\n\n" +
+      "Deseja confirmar a exclusão total de motoristas?";
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+      const res = await clearAllFleetDrivers(currentUser?.institution_id || 'inst_1');
+      setDrivers([]);
+      showToast(res.message, 'success');
+      loadData();
+    } catch (err) {
+      showToast('Erro ao limpar motoristas.', 'error');
     }
   };
 
@@ -2176,6 +2197,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 <CloudUpload size={14} className="text-amber-600 dark:text-amber-400" />
                 Sincronizar Nuvem
               </button>
+              {drivers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllDrivers}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl cursor-pointer shrink-0 border border-rose-300 dark:border-rose-800 transition shadow-sm"
+                  title="Excluir todos os motoristas cadastrados e zerar o banco de dados"
+                >
+                  <Trash2 size={14} className="text-rose-600 dark:text-rose-400" />
+                  Limpar Todos
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsDriverBatchModalOpen(true)}
