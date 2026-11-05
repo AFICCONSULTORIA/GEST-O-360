@@ -1344,7 +1344,7 @@ export async function ensureDriverExistsInSupabase(driver: {
     }
 
     const { data: existing } = await query.limit(1).maybeSingle();
-    if (existing) {
+    if (existing && existing.department !== '__EXCLUIDO__') {
       return existing as FleetDriver;
     }
     // Não auto-cria condutores fantasmas no banco para não ressuscitar registros excluídos
@@ -1354,6 +1354,18 @@ export async function ensureDriverExistsInSupabase(driver: {
   }
 
   return null;
+}
+
+const TOMBSTONE_MARKER = '__EXCLUIDO__';
+
+function isDriverTombstoned(d?: Partial<FleetDriver> | null): boolean {
+  if (!d) return true;
+  return d.department === TOMBSTONE_MARKER || d.cnh_number === TOMBSTONE_MARKER;
+}
+
+function isStationTombstoned(s?: Partial<FleetFuelStation> | null): boolean {
+  if (!s) return true;
+  return s.address === TOMBSTONE_MARKER || s.phone === TOMBSTONE_MARKER;
 }
 
 export async function getFleetDrivers(filters?: {
@@ -1387,7 +1399,7 @@ export async function getFleetDrivers(filters?: {
     }
 
     if (!error && data) {
-      remoteList = data as FleetDriver[];
+      remoteList = (data as FleetDriver[]).filter(d => !isDriverTombstoned(d));
     } else if (error) {
       console.warn('[FleetFuel] Erro ao consultar motoristas no Supabase:', error);
     }
@@ -1413,7 +1425,7 @@ export async function getFleetDrivers(filters?: {
   if (isCleared) {
     return [];
   }
-  const localList = getLocalDrivers();
+  const localList = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   let result = localList;
   if (filters?.department && filters.department !== 'all') {
     result = result.filter(d => d.department === filters.department);
@@ -1426,7 +1438,27 @@ export async function getFleetDrivers(filters?: {
 }
 
 export async function createFleetDriver(payload: NewDriverPayload): Promise<FleetDriver> {
-  const driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+  let driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+  const rawCpf = payload.cpf.trim();
+  const digitsCpf = rawCpf.replace(/\D/g, '');
+
+  // Se já existir registro no Supabase com o mesmo CPF (mesmo que excluído/tombstone), reutiliza o UUID para reativar sem duplicar
+  try {
+    const cpfFilters: string[] = [];
+    if (rawCpf) cpfFilters.push(`cpf.eq.${rawCpf}`);
+    if (digitsCpf && digitsCpf !== rawCpf) cpfFilters.push(`cpf.eq.${digitsCpf}`);
+    if (cpfFilters.length > 0) {
+      let { data: existing, error: exErr } = await supabase.from('fleet_drivers').select('id').or(cpfFilters.join(',')).limit(1).maybeSingle();
+      if (exErr && isRlsError(exErr)) {
+        const anonEx = await supabaseAnon.from('fleet_drivers').select('id').or(cpfFilters.join(',')).limit(1).maybeSingle();
+        existing = anonEx.data;
+      }
+      if (existing?.id) {
+        driverId = existing.id;
+      }
+    }
+  } catch {}
+
   const birthDate = sanitizeDateToISO(payload.birth_date);
   const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
   const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : null;
@@ -1435,7 +1467,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     id: driverId,
     institution_id: payload.institution_id || 'inst_1',
     full_name: payload.full_name.trim(),
-    cpf: payload.cpf.trim(),
+    cpf: rawCpf,
     birth_date: birthDate || undefined,
     department: payload.department?.trim() || 'Geral',
     cnh_number: cnhNumber || undefined,
@@ -1448,7 +1480,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     id: driverId,
     institution_id: payload.institution_id || 'inst_1',
     full_name: payload.full_name.trim(),
-    cpf: payload.cpf.trim(),
+    cpf: rawCpf,
     birth_date: birthDate,
     department: payload.department?.trim() || 'Geral',
     cnh_number: cnhNumber,
@@ -1457,9 +1489,14 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
   };
 
   try {
-    const { data, error } = await supabase.from('fleet_drivers').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
+    let { data, error } = await supabase.from('fleet_drivers').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
+    if (error && isRlsError(error)) {
+      const retry = await supabaseAnon.from('fleet_drivers').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
     if (!error && data) {
-      const list = getLocalDrivers();
+      const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
       const existingIdx = list.findIndex(d => d.id === driverId || d.cpf === newDriver.cpf);
       if (existingIdx !== -1) {
         list[existingIdx] = data as FleetDriver;
@@ -1483,7 +1520,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const list = getLocalDrivers();
+  const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   list.unshift(newDriver);
   saveLocalDrivers(list);
   if (typeof window !== 'undefined') {
@@ -1497,7 +1534,7 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
   const cnhNumber = updates.cnh_number && updates.cnh_number.trim() !== '' ? updates.cnh_number.trim() : null;
   const cnhCat = updates.cnh_category && updates.cnh_category.trim() !== '' ? updates.cnh_category.trim() : null;
 
-  const supabaseRecord: Record<string, any> = {
+  const supabaseRecord: Record<string, unknown> = {
     updated_at: new Date().toISOString()
   };
   if (updates.full_name) supabaseRecord.full_name = updates.full_name.trim();
@@ -1517,7 +1554,7 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
         error = retry.error;
       }
       if (!error && data) {
-        const list = getLocalDrivers();
+        const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
         const idx = list.findIndex(d => d.id === id);
         if (idx !== -1) {
           list[idx] = { ...list[idx], ...data };
@@ -1530,7 +1567,7 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
     }
   }
 
-  const list = getLocalDrivers();
+  const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   const idx = list.findIndex(d => d.id === id);
   if (idx !== -1) {
     list[idx] = { ...list[idx], ...updates, updated_at: new Date().toISOString() };
@@ -1540,33 +1577,43 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
   throw new Error('Motorista não encontrado para atualização.');
 }
 
+/**
+ * Exclusão permanente com Tombstone Anti-Ressurreição (`department = '__EXCLUIDO__'`).
+ * Neutraliza qualquer aba antiga em cache (celular/outro navegador) que possua rotina legada de sync,
+ * impedindo que o registro seja reenviado ao Supabase por clientes desatualizados.
+ */
 export async function deleteFleetDriver(id: string, cpf?: string): Promise<boolean> {
   const rawCpf = cpf ? cpf.trim() : null;
   const digitsCpf = rawCpf ? rawCpf.replace(/\D/g, '') : null;
+  const tombstonePayload = {
+    department: TOMBSTONE_MARKER,
+    status: 'inativo',
+    updated_at: new Date().toISOString()
+  };
 
-  // 1. Tentar deletar no Supabase por ID
+  // 1. Marcar como excluído no Supabase por ID
   try {
     if (isValidUUID(id)) {
-      let { error } = await supabase.from('fleet_drivers').delete().eq('id', id);
+      let { error } = await supabase.from('fleet_drivers').update(tombstonePayload).eq('id', id);
       if (error && isRlsError(error)) {
-        await supabaseAnon.from('fleet_drivers').delete().eq('id', id);
+        await supabaseAnon.from('fleet_drivers').update(tombstonePayload).eq('id', id);
+      } else {
+        await supabaseAnon.from('fleet_drivers').update(tombstonePayload).eq('id', id);
       }
     }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao excluir motorista por ID no Supabase:', err);
   }
 
-  // 2. Tentar deletar no Supabase por CPF (tanto formatado quanto apenas dígitos)
+  // 2. Marcar como excluído no Supabase por CPF (tanto formatado quanto apenas dígitos)
   if (rawCpf || digitsCpf) {
     try {
       const filters: string[] = [];
       if (rawCpf) filters.push(`cpf.eq.${rawCpf}`);
       if (digitsCpf && digitsCpf !== rawCpf) filters.push(`cpf.eq.${digitsCpf}`);
       if (filters.length > 0) {
-        let { error } = await supabase.from('fleet_drivers').delete().or(filters.join(','));
-        if (error && isRlsError(error)) {
-          await supabaseAnon.from('fleet_drivers').delete().or(filters.join(','));
-        }
+        await supabase.from('fleet_drivers').update(tombstonePayload).or(filters.join(','));
+        await supabaseAnon.from('fleet_drivers').update(tombstonePayload).or(filters.join(','));
       }
     } catch (err) {
       console.warn('[FleetFuel] Erro ao excluir motorista por CPF no Supabase:', err);
@@ -1576,6 +1623,7 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
   // 3. Remover do cache local
   const list = getLocalDrivers();
   const filtered = list.filter(d => {
+    if (isDriverTombstoned(d)) return false;
     if (d.id === id) return false;
     if (rawCpf && d.cpf === rawCpf) return false;
     if (digitsCpf && d.cpf && d.cpf.replace(/\D/g, '') === digitsCpf) return false;
@@ -1585,10 +1633,16 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
   return true;
 }
 
-export async function clearAllFleetDrivers(institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
+export async function clearAllFleetDrivers(_institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
+  const tombstonePayload = {
+    department: TOMBSTONE_MARKER,
+    status: 'inativo',
+    updated_at: new Date().toISOString()
+  };
+
   try {
-    await supabase.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabaseAnon.from('fleet_drivers').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('fleet_drivers').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAnon.from('fleet_drivers').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
   } catch (err) {
     console.warn('[FleetFuel] Erro ao limpar motoristas no Supabase:', err);
   }
@@ -1618,6 +1672,7 @@ export async function getFleetFuelStations(filters?: {
   institutionId?: string;
   search?: string;
 }): Promise<FleetFuelStation[]> {
+  const isCleared = typeof window !== 'undefined' && localStorage.getItem('gestao360_stations_cleared') === 'true';
   let remoteList: FleetFuelStation[] | null = null;
 
   try {
@@ -1637,7 +1692,7 @@ export async function getFleetFuelStations(filters?: {
     }
 
     if (!error && data) {
-      remoteList = data as FleetFuelStation[];
+      remoteList = (data as FleetFuelStation[]).filter(s => !isStationTombstoned(s));
     } else if (error) {
       console.warn('[FleetFuel] Erro ao consultar postos no Supabase:', error);
     }
@@ -1657,7 +1712,10 @@ export async function getFleetFuelStations(filters?: {
   }
 
   // Fallback offline
-  const localList = getLocalStations();
+  if (isCleared) {
+    return [];
+  }
+  const localList = getLocalStations().filter(s => !isStationTombstoned(s));
   let result = localList;
   if (filters?.search) {
     const q = filters.search.toLowerCase().trim();
@@ -1667,28 +1725,31 @@ export async function getFleetFuelStations(filters?: {
 }
 
 export async function createFleetFuelStation(payload: NewStationPayload): Promise<FleetFuelStation> {
-  const stationId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+  let stationId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+  const cleanName = payload.name.trim();
   const cnpj = payload.cnpj && payload.cnpj.trim() !== '' ? payload.cnpj.trim() : null;
-  const address = payload.address && payload.address.trim() !== '' ? payload.address.trim() : null;
+  const address = payload.address && payload.address.trim() !== '' ? payload.address.trim() : 'Endereço não informado';
   const city = payload.city && payload.city.trim() !== '' ? payload.city.trim() : null;
   const phone = payload.phone && payload.phone.trim() !== '' ? payload.phone.trim() : null;
 
-  const newStation: FleetFuelStation = {
-    id: stationId,
-    institution_id: payload.institution_id || 'inst_1',
-    name: payload.name.trim(),
-    cnpj: cnpj || undefined,
-    address: address || undefined,
-    city: city || undefined,
-    phone: phone || undefined,
-    status: payload.status || 'ativo',
-    created_at: new Date().toISOString()
-  };
+  // Se já existir posto no Supabase com o mesmo Nome ou CNPJ (mesmo tombstoned), reutiliza o UUID para reativar
+  try {
+    const stFilters: string[] = [`name.ilike.${cleanName}`];
+    if (cnpj) stFilters.push(`cnpj.eq.${cnpj}`);
+    let { data: existing, error: exErr } = await supabase.from('fleet_fuel_stations').select('id').or(stFilters.join(',')).limit(1).maybeSingle();
+    if (exErr && isRlsError(exErr)) {
+      const anonEx = await supabaseAnon.from('fleet_fuel_stations').select('id').or(stFilters.join(',')).limit(1).maybeSingle();
+      existing = anonEx.data;
+    }
+    if (existing?.id) {
+      stationId = existing.id;
+    }
+  } catch {}
 
   const supabaseRecord = {
     id: stationId,
     institution_id: payload.institution_id || 'inst_1',
-    name: payload.name.trim(),
+    name: cleanName,
     cnpj: cnpj,
     address: address,
     city: city,
@@ -1697,9 +1758,14 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
   };
 
   try {
-    const { data, error } = await supabase.from('fleet_fuel_stations').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
+    let { data, error } = await supabase.from('fleet_fuel_stations').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
+    if (error && isRlsError(error)) {
+      const retry = await supabaseAnon.from('fleet_fuel_stations').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
     if (!error && data) {
-      const list = getLocalStations();
+      const list = getLocalStations().filter(s => !isStationTombstoned(s));
       const existingIdx = list.findIndex(s => s.id === stationId);
       if (existingIdx !== -1) {
         list[existingIdx] = data as FleetFuelStation;
@@ -1707,6 +1773,9 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
         list.unshift(data as FleetFuelStation);
       }
       saveLocalStations(list);
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem('gestao360_stations_cleared'); } catch {}
+      }
       return data as FleetFuelStation;
     } else if (error) {
       console.error('[FleetFuel] Erro ao gravar posto no Supabase:', error);
@@ -1719,15 +1788,17 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
     }
     throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
+
+  throw new Error('Não foi possível registrar o posto no Supabase.');
 }
 
 export async function updateFleetFuelStation(id: string, updates: Partial<FleetFuelStation>): Promise<FleetFuelStation> {
   const cnpj = updates.cnpj !== undefined ? (updates.cnpj && updates.cnpj.trim() !== '' ? updates.cnpj.trim() : null) : undefined;
-  const address = updates.address !== undefined ? (updates.address && updates.address.trim() !== '' ? updates.address.trim() : null) : undefined;
+  const address = updates.address !== undefined ? (updates.address && updates.address.trim() !== '' ? updates.address.trim() : 'Endereço não informado') : undefined;
   const city = updates.city !== undefined ? (updates.city && updates.city.trim() !== '' ? updates.city.trim() : null) : undefined;
   const phone = updates.phone !== undefined ? (updates.phone && updates.phone.trim() !== '' ? updates.phone.trim() : null) : undefined;
 
-  const supabaseRecord: Record<string, any> = {
+  const supabaseRecord: Record<string, unknown> = {
     updated_at: new Date().toISOString()
   };
   if (updates.name) supabaseRecord.name = updates.name.trim();
@@ -1739,9 +1810,14 @@ export async function updateFleetFuelStation(id: string, updates: Partial<FleetF
 
   if (isValidUUID(id)) {
     try {
-      const { data, error } = await supabase.from('fleet_fuel_stations').update(supabaseRecord).eq('id', id).select().single();
+      let { data, error } = await supabase.from('fleet_fuel_stations').update(supabaseRecord).eq('id', id).select().single();
+      if (error && isRlsError(error)) {
+        const retry = await supabaseAnon.from('fleet_fuel_stations').update(supabaseRecord).eq('id', id).select().single();
+        data = retry.data;
+        error = retry.error;
+      }
       if (!error && data) {
-        const list = getLocalStations();
+        const list = getLocalStations().filter(s => !isStationTombstoned(s));
         const idx = list.findIndex(s => s.id === id);
         if (idx !== -1) {
           list[idx] = { ...list[idx], ...data };
@@ -1754,7 +1830,7 @@ export async function updateFleetFuelStation(id: string, updates: Partial<FleetF
     }
   }
 
-  const list = getLocalStations();
+  const list = getLocalStations().filter(s => !isStationTombstoned(s));
   const idx = list.findIndex(s => s.id === id);
   if (idx !== -1) {
     list[idx] = { ...list[idx], ...updates, updated_at: new Date().toISOString() };
@@ -1768,20 +1844,23 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
   const cleanName = name ? name.trim() : null;
   const cleanCnpj = cnpj ? cnpj.trim() : null;
   const digitsCnpj = cleanCnpj ? cleanCnpj.replace(/\D/g, '') : null;
+  const tombstonePayload = {
+    address: TOMBSTONE_MARKER,
+    status: 'inativo',
+    updated_at: new Date().toISOString()
+  };
 
-  // 1. Tentar deletar por ID no Supabase
+  // 1. Marcar como excluído por ID no Supabase
   try {
     if (isValidUUID(id)) {
-      let { error } = await supabase.from('fleet_fuel_stations').delete().eq('id', id);
-      if (error && isRlsError(error)) {
-        await supabaseAnon.from('fleet_fuel_stations').delete().eq('id', id);
-      }
+      await supabase.from('fleet_fuel_stations').update(tombstonePayload).eq('id', id);
+      await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).eq('id', id);
     }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao excluir posto por ID no Supabase:', err);
   }
 
-  // 2. Tentar deletar por Nome ou CNPJ no Supabase (garante limpeza completa mesmo se id for local)
+  // 2. Marcar como excluído por Nome ou CNPJ no Supabase
   if (cleanName || cleanCnpj) {
     try {
       const filters: string[] = [];
@@ -1789,10 +1868,8 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
       if (cleanCnpj) filters.push(`cnpj.eq.${cleanCnpj}`);
       if (digitsCnpj && digitsCnpj !== cleanCnpj) filters.push(`cnpj.eq.${digitsCnpj}`);
       if (filters.length > 0) {
-        let { error } = await supabase.from('fleet_fuel_stations').delete().or(filters.join(','));
-        if (error && isRlsError(error)) {
-          await supabaseAnon.from('fleet_fuel_stations').delete().or(filters.join(','));
-        }
+        await supabase.from('fleet_fuel_stations').update(tombstonePayload).or(filters.join(','));
+        await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).or(filters.join(','));
       }
     } catch (err) {
       console.warn('[FleetFuel] Erro ao excluir posto por Nome/CNPJ no Supabase:', err);
@@ -1802,6 +1879,7 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
   // 3. Atualizar cache local
   const list = getLocalStations();
   const filtered = list.filter(s => {
+    if (isStationTombstoned(s)) return false;
     if (s.id === id) return false;
     if (cleanName && s.name.toLowerCase().trim() === cleanName.toLowerCase()) return false;
     if (cleanCnpj && s.cnpj === cleanCnpj) return false;
@@ -1812,10 +1890,16 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
   return true;
 }
 
-export async function clearAllFleetFuelStations(institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
+export async function clearAllFleetFuelStations(_institutionId?: string): Promise<{ success: boolean; count: number; message: string }> {
+  const tombstonePayload = {
+    address: TOMBSTONE_MARKER,
+    status: 'inativo',
+    updated_at: new Date().toISOString()
+  };
+
   try {
-    await supabase.from('fleet_fuel_stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabaseAnon.from('fleet_fuel_stations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('fleet_fuel_stations').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).neq('id', '00000000-0000-0000-0000-000000000000');
   } catch (err) {
     console.warn('[FleetFuel] Erro ao limpar postos no Supabase:', err);
   }
@@ -1852,7 +1936,7 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
   // 1. Sincronizar Motoristas (apenas se o cadastro não foi explicitamente zerado)
   if (!isDriversCleared) {
     try {
-      const localDrivers = getLocalDrivers();
+      const localDrivers = getLocalDrivers().filter(d => !isDriverTombstoned(d));
       if (localDrivers.length > 0) {
         let { data: remoteDrivers, error: fetchErr } = await supabase.from('fleet_drivers').select('id, cpf, full_name');
         if (fetchErr && isRlsError(fetchErr)) {
@@ -1913,7 +1997,7 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
   const isStationsCleared = typeof window !== 'undefined' && localStorage.getItem('gestao360_stations_cleared') === 'true';
   if (!isStationsCleared) {
     try {
-      const localStations = getLocalStations();
+      const localStations = getLocalStations().filter(s => !isStationTombstoned(s));
       if (localStations.length > 0) {
         const { data: remoteStations } = await supabase.from('fleet_fuel_stations').select('id, name');
         const remoteNames = new Set((remoteStations || []).map(r => r.name?.toLowerCase().trim()));
@@ -2166,8 +2250,28 @@ export async function createDriversBatch(
   driversList: NewDriverPayload[],
   institutionId: string = 'inst_1'
 ): Promise<{ count: number; saved: FleetDriver[] }> {
+  // Mapeia CPFs já existentes no banco (inclusive excluídos/tombstone) para reutilizar o mesmo UUID e reativá-los sem duplicar
+  const existingCpfMap = new Map<string, string>();
+  try {
+    let { data: existingRows, error: exErr } = await supabase.from('fleet_drivers').select('id, cpf');
+    if (exErr && isRlsError(exErr)) {
+      const anonEx = await supabaseAnon.from('fleet_drivers').select('id, cpf');
+      existingRows = anonEx.data;
+    }
+    (existingRows || []).forEach(r => {
+      if (r.cpf && r.id) {
+        existingCpfMap.set(r.cpf.trim(), r.id);
+        const clean = r.cpf.replace(/\D/g, '');
+        if (clean) existingCpfMap.set(clean, r.id);
+      }
+    });
+  } catch {}
+
   const newDrivers: FleetDriver[] = driversList.map((payload) => {
-    const driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+    const rawCpf = payload.cpf.trim();
+    const digitsCpf = rawCpf.replace(/\D/g, '');
+    const matchedId = existingCpfMap.get(rawCpf) || (digitsCpf ? existingCpfMap.get(digitsCpf) : undefined);
+    const driverId = isValidUUID(payload.id) ? payload.id! : (matchedId || generateValidUUID());
     const birthDate = sanitizeDateToISO(payload.birth_date);
     const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
     const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : 'B';
@@ -2176,7 +2280,7 @@ export async function createDriversBatch(
       id: driverId,
       institution_id: payload.institution_id || institutionId,
       full_name: payload.full_name.trim(),
-      cpf: payload.cpf.trim(),
+      cpf: rawCpf,
       birth_date: birthDate || undefined,
       department: payload.department?.trim() || 'Geral',
       cnh_number: cnhNumber || undefined,
@@ -2209,7 +2313,7 @@ export async function createDriversBatch(
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
       }
-      const list = getLocalDrivers();
+      const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
       const savedMap = new Map(list.map(d => [d.id, d]));
       (data as FleetDriver[]).forEach(d => savedMap.set(d.id, d));
       const combined = Array.from(savedMap.values());
@@ -2227,7 +2331,7 @@ export async function createDriversBatch(
     throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  const list = getLocalDrivers();
+  const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   const combined = [...newDrivers, ...list];
   saveLocalDrivers(combined);
   return { count: newDrivers.length, saved: newDrivers };

@@ -21,7 +21,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
  * bloqueios de RLS quando a sessão autenticada não possui claims de tenant.
  */
 export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: 'gestao360-public-anon-client'
+  },
   global: {
     fetch: (url, options) => {
       return fetch(url, { ...options, cache: 'no-store' });
