@@ -192,11 +192,17 @@ function isRlsError(err: unknown): boolean {
   );
 }
 
-// Limpeza de chaves mock legadas
+// Limpeza de chaves mock legadas e expurgo definitivo do cache antigo de motoristas
+const STORAGE_KEY_DRIVERS_PURGE = 'gestao360_drivers_purged_v1';
 if (typeof window !== 'undefined') {
   try {
     localStorage.removeItem('gestao360_fleet_vehicles');
     localStorage.removeItem('gestao360_fuel_supply_orders');
+    if (!localStorage.getItem(STORAGE_KEY_DRIVERS_PURGE)) {
+      localStorage.removeItem(STORAGE_KEY_DRIVERS);
+      localStorage.setItem(STORAGE_KEY_DRIVERS_PURGE, 'true');
+      localStorage.setItem(STORAGE_KEY_DRIVERS_CLEARED, 'true');
+    }
   } catch {}
 }
 
