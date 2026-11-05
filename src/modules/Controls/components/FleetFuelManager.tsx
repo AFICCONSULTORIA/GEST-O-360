@@ -258,6 +258,22 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   const [syncingPatrimonio, setSyncingPatrimonio] = useState(false);
   const prevStatusesRef = React.useRef<Record<string, string>>({});
+  const prevPhotosRef = React.useRef<Record<string, boolean>>({});
+
+  const openAttachmentViewer = (order: FuelSupplyOrder, preferredTab?: 'pump' | 'odometer' | 'receipt') => {
+    if (preferredTab) {
+      setSelectedAttachmentPhoto(preferredTab);
+    } else if (order.pump_photo_url) {
+      setSelectedAttachmentPhoto('pump');
+    } else if (order.odometer_photo_url) {
+      setSelectedAttachmentPhoto('odometer');
+    } else if (order.receipt_photo_url || order.receipt_attachment_url) {
+      setSelectedAttachmentPhoto('receipt');
+    } else {
+      setSelectedAttachmentPhoto('pump');
+    }
+    setViewingAttachmentOrder(order);
+  };
 
   // Carregar dados reais (Veículos, Ordens, Motoristas e Postos)
   const loadData = async (isSilent: boolean = false) => {
@@ -282,14 +298,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         setBiddedPrices(bPrices);
       }
 
-      // Detectar em tempo real se alguma ordem foi abastecida via celular na bomba
+      // Detectar em tempo real se alguma ordem foi abastecida ou recebeu fotos via celular na bomba
       ordList.forEach(ord => {
         const prevStatus = prevStatusesRef.current[ord.id] || prevStatusesRef.current[ord.order_number];
-        if (
+        const prevHadPhotos = prevPhotosRef.current[ord.id];
+        const nowHasPhotos = Boolean(ord.pump_photo_url || ord.odometer_photo_url);
+
+        const statusJustCompleted =
           prevStatus &&
           (prevStatus === 'autorizado_pendente' || prevStatus === 'aguardando_abastecimento' || prevStatus === 'autorizado') &&
-          (ord.status === 'abastecido' || ord.status === 'auditado')
-        ) {
+          (ord.status === 'abastecido' || ord.status === 'auditado' || ord.status === 'glosado');
+
+        const photosJustArrived = prevHadPhotos === false && nowHasPhotos;
+
+        if (statusJustCompleted || photosJustArrived) {
           playFuelAlertChime();
           sendDesktopNotification(
             '⛽ Abastecimento Confirmado na Bomba!',
@@ -299,6 +321,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         }
         prevStatusesRef.current[ord.id] = ord.status;
         prevStatusesRef.current[ord.order_number] = ord.status;
+        prevPhotosRef.current[ord.id] = nowHasPhotos;
+      });
+
+      setViewingAttachmentOrder(prev => {
+        if (!prev) return null;
+        return ordList.find(o => o.id === prev.id || o.order_number === prev.order_number) || prev;
       });
     } catch (err) {
       console.error('Erro ao carregar dados de frotas:', err);
@@ -1663,42 +1691,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               </button>
                             )}
 
-                            {/* Vincular Nota Fiscal Faturada (Controle Interno) */}
-                            {order.status !== 'autorizado_pendente' && (
+                            {(order.status === 'abastecido' || order.status === 'auditado' || order.status === 'glosado' || order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url) && (
                               <button
-                                onClick={() => {
-                                  setInvoiceLinkOrder(order);
-                                  setInvoiceLinkNumber(order.invoice_number || '');
-                                  setIsLinkInvoiceModalOpen(true);
-                                }}
-                                title={order.invoice_number ? `Nota Fiscal Vinculada: ${order.invoice_number} (clique para alterar)` : "Vincular Nota Fiscal enviada pelo posto"}
-                                className={`px-2 py-1 text-[10px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 ${
-                                  order.invoice_number
-                                    ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200'
-                                    : 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200 hover:bg-amber-200'
-                                }`}
+                                onClick={() => openAttachmentViewer(order)}
+                                title="Ver Fotos do Abastecimento (Bomba e Odômetro)"
+                                className="px-2 py-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 text-[11px] font-bold"
                               >
-                                <Receipt size={12} />
-                                <span>{order.invoice_number ? `NF: ${order.invoice_number}` : '+ Vincular NF'}</span>
-                              </button>
-                            )}
-
-                            {(order.status === 'abastecido' || order.status === 'auditado' || order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url || order.invoice_attachment_url) && (
-                              <button
-                                onClick={() => setViewingAttachmentOrder(order)}
-                                title="Ver Comprovantes (Foto da Bomba, Odômetro, Canhoto)"
-                                className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
-                              >
-                                <Eye size={15} />
+                                <Eye size={14} />
                                 {order.pump_photo_url && (
-                                  <Camera size={13} className="text-amber-500" title="Foto da Bomba Anexada" />
+                                  <Camera size={13} className="text-amber-500" title="Foto da Bomba Recebida" />
                                 )}
                                 {order.odometer_photo_url && (
-                                  <Gauge size={13} className="text-blue-500" title="Foto do Odômetro Anexada" />
+                                  <Gauge size={13} className="text-blue-500" title="Foto do Odômetro Recebida" />
                                 )}
                                 {(order.receipt_photo_url || order.receipt_attachment_url) && (
                                   <FileCheck size={13} className="text-emerald-500" title="Canhoto Anexado" />
                                 )}
+                                <span>Fotos</span>
                               </button>
                             )}
 
@@ -1727,8 +1736,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 p-4 rounded-2xl flex items-start gap-3">
             <AlertCircle size={20} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="text-xs text-amber-800 dark:text-amber-300">
-              <strong className="block font-bold mb-0.5">Rotina Obrigatória de Liquidação de Despesa (Lei 4.320/64)</strong>
-              Todas as ordens autorizadas devem ter o canhoto físico assinado pelo condutor e frentista digitalizado, conferência de KM e inserção da Nota Fiscal para validação pelo Controle Interno.
+              <strong className="block font-bold mb-0.5">Conferência de Abastecimento na Bomba (Lei 4.320/64)</strong>
+              As ordens abastecidas recebem diretamente via QR Code as fotos do visor da bomba e do painel/odômetro do veículo para auditoria do Controle Interno, sem necessidade de anexar Nota Fiscal nesta etapa.
             </div>
           </div>
 
@@ -1923,13 +1932,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                           {/* Consumo */}
                           <td className="px-4 py-3.5">
-                            {order.calculated_consumption ? (
+                            {(order.calculated_consumption || order.calculated_km_per_liter) ? (
                               <div>
                                 <span className="font-black text-xs text-neutral-900 dark:text-white">
-                                  {order.calculated_consumption.toFixed(2)} km/l
+                                  {Number(order.calculated_consumption ?? order.calculated_km_per_liter ?? 0).toFixed(2)} km/l
                                 </span>
                                 <span className="text-[10px] text-neutral-400 block">
-                                  Ref.: {v?.expected_consumption.toFixed(2)}
+                                  Ref.: {v?.expected_consumption?.toFixed(2) || '—'}
                                 </span>
                               </div>
                             ) : (
@@ -1942,9 +1951,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {order.pump_photo_url && (
                                 <button
-                                  onClick={() => setViewingAttachmentOrder(order)}
-                                  className="p-1 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:scale-105 transition-transform flex items-center gap-0.5"
-                                  title="Foto da Bomba Anexada"
+                                  onClick={() => openAttachmentViewer(order, 'pump')}
+                                  className="p-1 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:scale-105 transition-transform flex items-center gap-0.5 cursor-pointer"
+                                  title="Ver Foto da Bomba"
                                 >
                                   <Camera size={14} />
                                 </button>
@@ -1952,9 +1961,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                               {order.odometer_photo_url && (
                                 <button
-                                  onClick={() => setViewingAttachmentOrder(order)}
-                                  className="p-1 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 hover:scale-105 transition-transform flex items-center gap-0.5"
-                                  title="Foto do Odômetro Anexada"
+                                  onClick={() => openAttachmentViewer(order, 'odometer')}
+                                  className="p-1 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 hover:scale-105 transition-transform flex items-center gap-0.5 cursor-pointer"
+                                  title="Ver Foto do Odômetro"
                                 >
                                   <Gauge size={14} />
                                 </button>
@@ -1962,9 +1971,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                               {(order.receipt_attachment_url || order.receipt_photo_url) ? (
                                 <button
-                                  onClick={() => setViewingAttachmentOrder(order)}
-                                  className="p-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:scale-105 transition-transform"
-                                  title="Canhoto Assinado Anexado"
+                                  onClick={() => openAttachmentViewer(order, 'receipt')}
+                                  className="p-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:scale-105 transition-transform cursor-pointer"
+                                  title="Ver Canhoto Assinado"
                                 >
                                   <FileCheck size={14} />
                                 </button>
@@ -1976,18 +1985,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 )
                               )}
 
-                              {order.invoice_number ? (
-                                <span 
-                                  className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400"
-                                  title={`NF: ${order.invoice_number}`}
-                                >
-                                  NF
-                                </span>
-                              ) : null}
-
                               {(order.pump_photo_url || order.odometer_photo_url || order.receipt_attachment_url || order.receipt_photo_url) ? (
                                 <button
-                                  onClick={() => setViewingAttachmentOrder(order)}
+                                  onClick={() => openAttachmentViewer(order)}
                                   className="text-blue-600 hover:text-blue-800 text-[11px] font-bold underline ml-0.5 cursor-pointer"
                                 >
                                   Ver Fotos
@@ -3464,61 +3464,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   );
                 })()}
 
-                {/* Nota Fiscal e Chave de Acesso (Opcional - Controle Interno) */}
-                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-200 dark:border-neutral-700 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-                      <Receipt size={14} className="text-neutral-500" />
-                      Nota Fiscal / Fatura (Opcional no momento)
-                    </span>
-                    <span className="text-[10px] text-neutral-400">
-                      As NFs podem ser vinculadas posteriormente pelo Controle Interno
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                        Número da NF-e / Fatura (se já disponível)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: NF-e 004821 (ou vincular depois)"
-                        value={executionForm.invoice_number}
-                        onChange={e => setExecutionForm({ ...executionForm, invoice_number: e.target.value })}
-                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                        Chave de Acesso da NF-e (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        maxLength={44}
-                        placeholder="Ex: 51260403849201000155550010000048211928374821"
-                        value={executionForm.invoice_key}
-                        onChange={e => setExecutionForm({ ...executionForm, invoice_key: e.target.value })}
-                        className="w-full px-3 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* SEÇÃO DE UPLOAD DOS COMPROVANTES OBRIGATÓRIOS (NUMERAÇÃO 1 A 4 CORRETA E DESIGN MODERNO) */}
+                {/* SEÇÃO DE UPLOAD DAS FOTOS DO ABASTECIMENTO (SEM NECESSIDADE DE ANEXAR NOTA FISCAL) */}
                 <div className="space-y-3 pt-2">
                   <div className="flex justify-between items-center">
                     <h4 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
                       <Camera size={14} className="text-emerald-600" />
-                      Anexos Comprobatórios de Auditoria (Visor da Bomba, Painel, Canhoto e NF-e)
+                      Fotos Comprobatórias do Abastecimento (Visor da Bomba e Painel/Odômetro)
                     </h4>
                     <span className="text-[10px] text-neutral-400 font-semibold">
-                      Formatos: PNG, JPG ou PDF
+                      Sem exigência de NF-e
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {/* Anexo 1: Foto do Visor da Bomba */}
                     <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
                       <div>
@@ -3551,9 +3509,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           accept="image/*"
                           onChange={e => {
                             const file = e.target.files?.[0];
+                            e.target.value = '';
                             if (file) handleFileUpload(selectedOrderForAction.id, file, 'pump');
                           }}
-                          className="hidden"
+                          className="sr-only"
                         />
                         <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm">
                           <Upload size={12} />
@@ -3594,9 +3553,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           accept="image/*"
                           onChange={e => {
                             const file = e.target.files?.[0];
+                            e.target.value = '';
                             if (file) handleFileUpload(selectedOrderForAction.id, file, 'odometer');
                           }}
-                          className="hidden"
+                          className="sr-only"
                         />
                         <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm">
                           <Upload size={12} />
@@ -3605,11 +3565,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </label>
                     </div>
 
-                    {/* Anexo 3: Canhoto Físico Assinado */}
+                    {/* Anexo 3: Canhoto Físico Assinado (Opcional) */}
                     <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
                       <div>
                         <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
-                          3. Canhoto Assinado *
+                          3. Canhoto Assinado (Opcional)
                         </span>
                         {executionForm.receipt_attachment_url ? (
                           <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
@@ -3626,7 +3586,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
                             <FileCheck size={22} className="text-neutral-400 mb-1" />
                             <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">Canhoto 2 Vias</span>
-                            <span className="text-[9px] text-neutral-400">Assinaturas preenchidas</span>
+                            <span className="text-[9px] text-neutral-400">Opcional se via QR Code</span>
                           </div>
                         )}
                       </div>
@@ -3637,56 +3597,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           accept="image/*,application/pdf"
                           onChange={e => {
                             const file = e.target.files?.[0];
+                            e.target.value = '';
                             if (file) handleFileUpload(selectedOrderForAction.id, file, 'receipt');
                           }}
-                          className="hidden"
-                        />
-                        <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm">
-                          <Upload size={12} />
-                          {executionForm.receipt_attachment_url ? 'Substituir Canhoto' : 'Selecionar Canhoto'}
-                        </span>
-                      </label>
-                    </div>
-
-                    {/* Anexo 4: Cupom / Nota Fiscal */}
-                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
-                      <div>
-                        <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
-                          4. Cupom / NF-e
-                        </span>
-                        {executionForm.invoice_attachment_url ? (
-                          <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
-                            <img
-                              src={executionForm.invoice_attachment_url}
-                              alt="Nota Fiscal"
-                              className="w-full h-24 object-cover"
-                            />
-                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
-                              Trocar NF
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
-                            <FileText size={22} className="text-neutral-400 mb-1" />
-                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">Nota Fiscal / Cupom</span>
-                            <span className="text-[9px] text-neutral-400">Opcional no momento</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <label className="mt-2.5 block cursor-pointer">
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          onChange={e => {
-                            const file = e.target.files?.[0];
-                            if (file) handleFileUpload(selectedOrderForAction.id, file, 'invoice');
-                          }}
-                          className="hidden"
+                          className="sr-only"
                         />
                         <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-100 hover:bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 transition-colors border border-neutral-300 dark:border-neutral-700">
                           <Upload size={12} />
-                          {executionForm.invoice_attachment_url ? 'Substituir NF' : 'Anexar NF-e'}
+                          {executionForm.receipt_attachment_url ? 'Substituir Canhoto' : 'Selecionar Canhoto'}
                         </span>
                       </label>
                     </div>
@@ -4140,40 +4058,40 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                 {/* COLUNA DIREITA: FOTOS E COMPROVANTES EM ALTA RESOLUÇÃO */}
                 <div className="lg:col-span-7 space-y-3">
-                  {/* Abas das Fotos */}
+                  {/* Abas das Fotos (Sem Nota Fiscal) */}
                   <div className="flex items-center gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
                     <button
                       type="button"
                       onClick={() => setSelectedAttachmentPhoto('pump')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         selectedAttachmentPhoto === 'pump'
                           ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
                           : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
                       }`}
                     >
                       <Fuel size={13} />
-                      <span>1. Visor Bomba</span>
+                      <span>1. Visor da Bomba</span>
                       {viewingAttachmentOrder.pump_photo_url && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setSelectedAttachmentPhoto('odometer')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         selectedAttachmentPhoto === 'odometer'
                           ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
                           : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
                       }`}
                     >
                       <Gauge size={13} />
-                      <span>2. Painel/KM</span>
+                      <span>2. Painel / KM</span>
                       {viewingAttachmentOrder.odometer_photo_url && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setSelectedAttachmentPhoto('receipt')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                         selectedAttachmentPhoto === 'receipt'
                           ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
                           : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
@@ -4182,20 +4100,6 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <FileCheck size={13} />
                       <span>3. Canhoto</span>
                       {(viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedAttachmentPhoto('invoice')}
-                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                        selectedAttachmentPhoto === 'invoice'
-                          ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
-                          : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
-                      }`}
-                    >
-                      <FileText size={13} />
-                      <span>4. NF-e</span>
-                      {viewingAttachmentOrder.invoice_attachment_url && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
                     </button>
                   </div>
 
@@ -4207,16 +4111,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                       if (selectedAttachmentPhoto === 'pump') {
                         activeUrl = viewingAttachmentOrder.pump_photo_url || '';
-                        photoLabel = 'Foto do Visor da Bomba (Litros e Valor Gravados)';
+                        photoLabel = 'Foto do Visor da Bomba (Litros e Valor Registrados)';
                       } else if (selectedAttachmentPhoto === 'odometer') {
                         activeUrl = viewingAttachmentOrder.odometer_photo_url || '';
                         photoLabel = 'Foto do Painel do Veículo (Odômetro Atual)';
-                      } else if (selectedAttachmentPhoto === 'receipt') {
+                      } else {
                         activeUrl = viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url || '';
                         photoLabel = 'Foto do Canhoto Físico Oficial Assinado';
-                      } else {
-                        activeUrl = viewingAttachmentOrder.invoice_attachment_url || '';
-                        photoLabel = 'Nota Fiscal / Cupom Eletrônico Vinculado';
                       }
 
                       if (!activeUrl) {
@@ -4251,13 +4152,53 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       );
                     })()}
                   </div>
+
+                  {/* Miniaturas Rápidas Lado a Lado */}
+                  {(viewingAttachmentOrder.pump_photo_url || viewingAttachmentOrder.odometer_photo_url) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {viewingAttachmentOrder.pump_photo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAttachmentPhoto('pump')}
+                          className={`p-1.5 rounded-xl border text-left transition-all flex items-center gap-2 cursor-pointer ${
+                            selectedAttachmentPhoto === 'pump'
+                              ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/30'
+                              : 'border-neutral-200 dark:border-neutral-800 hover:border-amber-400'
+                          }`}
+                        >
+                          <img src={viewingAttachmentOrder.pump_photo_url} alt="Bomba" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-black uppercase text-amber-600 block">Visor da Bomba</span>
+                            <span className="text-[10px] text-neutral-500 truncate block">Clique para ampliar</span>
+                          </div>
+                        </button>
+                      )}
+                      {viewingAttachmentOrder.odometer_photo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAttachmentPhoto('odometer')}
+                          className={`p-1.5 rounded-xl border text-left transition-all flex items-center gap-2 cursor-pointer ${
+                            selectedAttachmentPhoto === 'odometer'
+                              ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/30'
+                              : 'border-neutral-200 dark:border-neutral-800 hover:border-blue-400'
+                          }`}
+                        >
+                          <img src={viewingAttachmentOrder.odometer_photo_url} alt="Odômetro" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-black uppercase text-blue-600 block">Painel / Odômetro</span>
+                            <span className="text-[10px] text-neutral-500 truncate block">Clique para ampliar</span>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
 
               </div>
 
               <div className="flex justify-between items-center mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800">
                 <div className="text-xs text-neutral-500">
-                  Nota Fiscal: <strong>{viewingAttachmentOrder.invoice_number || 'Sem número'}</strong>
+                  Comprovação por fotos na bomba e painel • <strong>Sem exigência de Nota Fiscal</strong>
                 </div>
                 <button
                   onClick={() => setViewingAttachmentOrder(null)}

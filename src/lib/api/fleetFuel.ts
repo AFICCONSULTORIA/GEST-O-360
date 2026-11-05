@@ -1132,61 +1132,77 @@ export async function uploadReceiptAttachment(
   file: File,
   type: 'receipt' | 'odometer' | 'invoice' | 'pump'
 ): Promise<string> {
-  const ext = file.name.split('.').pop() || 'jpg';
+  const fieldMap: Record<string, string> = {
+    receipt: 'receipt_attachment_url',
+    odometer: 'odometer_photo_url',
+    invoice: 'invoice_attachment_url',
+    pump: 'pump_photo_url'
+  };
+  const targetField = fieldMap[type] || 'pump_photo_url';
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
   const cleanFileName = `canhotos/${orderId}_${type}_${Date.now()}.${ext}`;
+  const contentType = file.type || (ext === 'pdf' ? 'application/pdf' : 'image/jpeg');
 
-  try {
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(cleanFileName, file, { upsert: true });
+  const persistUrlToOrder = async (finalUrl: string) => {
+    const dbUpdate: Record<string, string> = { [targetField]: finalUrl };
+    if (type === 'receipt') {
+      dbUpdate.receipt_photo_url = finalUrl;
+    }
 
-    if (!uploadError && uploadData) {
-      const { data: publicUrlData } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(cleanFileName);
+    try {
+      const res = await supabase.from('fuel_supply_orders').update(dbUpdate).eq('id', orderId).select();
+      if (res.error || !res.data || res.data.length === 0) {
+        await supabaseAnon.from('fuel_supply_orders').update(dbUpdate).eq('id', orderId);
+      }
+    } catch {
+      try {
+        await supabaseAnon.from('fuel_supply_orders').update(dbUpdate).eq('id', orderId);
+      } catch {}
+    }
 
-      const publicUrl = publicUrlData.publicUrl;
+    const orders = getLocalRealOrders();
+    const idx = orders.findIndex(o => o.id === orderId);
+    if (idx !== -1) {
+      (orders[idx] as any)[targetField] = finalUrl;
+      if (type === 'receipt') {
+        orders[idx].receipt_photo_url = finalUrl;
+      }
+      saveLocalRealOrders(orders);
+    }
+  };
 
-      const fieldMap: Record<string, string> = {
-        receipt: 'receipt_attachment_url',
-        odometer: 'odometer_photo_url',
-        invoice: 'invoice_attachment_url',
-        pump: 'pump_photo_url'
-      };
+  for (const targetBucket of ['fleet-fuel-receipts', BUCKET_NAME]) {
+    try {
+      let uploadRes = await supabase.storage
+        .from(targetBucket)
+        .upload(cleanFileName, file, { contentType, upsert: true });
 
-      await supabase.from('fuel_supply_orders').update({
-        [fieldMap[type]]: publicUrl
-      }).eq('id', orderId);
-
-      const orders = getLocalRealOrders();
-      const idx = orders.findIndex(o => o.id === orderId);
-      if (idx !== -1) {
-        (orders[idx] as any)[fieldMap[type]] = publicUrl;
-        saveLocalRealOrders(orders);
+      if (uploadRes.error) {
+        uploadRes = await supabaseAnon.storage
+          .from(targetBucket)
+          .upload(cleanFileName, file, { contentType, upsert: true });
       }
 
-      return publicUrl;
+      if (!uploadRes.error && uploadRes.data) {
+        const { data: publicUrlData } = supabaseAnon.storage
+          .from(targetBucket)
+          .getPublicUrl(cleanFileName);
+
+        const publicUrl = publicUrlData.publicUrl;
+        await persistUrlToOrder(publicUrl);
+        return publicUrl;
+      }
+    } catch (err) {
+      console.warn(`[FleetFuel] Aviso no upload para ${targetBucket}:`, err);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Fallback para DataURL:', err);
   }
 
-  // Fallback DataURL
+  // Fallback DataURL persistido também no Supabase
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const dataUrl = reader.result as string;
-      const fieldMap: Record<string, string> = {
-        receipt: 'receipt_attachment_url',
-        odometer: 'odometer_photo_url',
-        invoice: 'invoice_attachment_url'
-      };
-      const orders = getLocalRealOrders();
-      const idx = orders.findIndex(o => o.id === orderId);
-      if (idx !== -1) {
-        (orders[idx] as any)[fieldMap[type]] = dataUrl;
-        saveLocalRealOrders(orders);
-      }
+      await persistUrlToOrder(dataUrl);
       resolve(dataUrl);
     };
     reader.onerror = reject;

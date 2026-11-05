@@ -297,13 +297,15 @@ export function calculateRealtimeMetrics(
 ): ConsumptionAuditCalculation {
   const delta_km = currentOdometer - previousOdometer;
   const effective_liters = liters > 0 ? liters : 1;
-  const calculated_km_per_liter = Number((delta_km / effective_liters).toFixed(2));
+  const raw_km_per_liter = Number((delta_km / effective_liters).toFixed(2));
+  const calculated_km_per_liter = Math.min(Math.max(raw_km_per_liter, -9999.99), 9999.99);
 
   let deviation_percent = 0;
   if (expectedConsumption > 0) {
-    deviation_percent = Number(
+    const raw_dev = Number(
       (((calculated_km_per_liter - expectedConsumption) / expectedConsumption) * 100).toFixed(2)
     );
+    deviation_percent = Math.min(Math.max(raw_dev, -999.99), 999.99);
   }
 
   let anomaly_level: AnomalyLevel = 'none';
@@ -572,11 +574,21 @@ export async function validateAndCompleteFuelOrder(
 
   if (!order) {
     try {
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from('fuel_supply_orders')
         .select('*, vehicle:fleet_vehicles(*)')
         .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-        .single();
+        .maybeSingle();
+
+      if (error || !data) {
+        const anonRes = await supabaseAnon
+          .from('fuel_supply_orders')
+          .select('*, vehicle:fleet_vehicles(*)')
+          .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+          .maybeSingle();
+        if (anonRes.data) data = anonRes.data;
+      }
+
       if (data) {
         order = data as TwoWayFuelOrder;
       }
@@ -592,19 +604,36 @@ export async function validateAndCompleteFuelOrder(
     throw new Error(`Esta autorização já foi liquidada anteriormente em ${new Date(order.supplied_at || order.created_at).toLocaleString('pt-BR')}.`);
   }
 
-  // 2. Buscar veículo
+  // 2. Buscar veículo (com fallback para supabaseAnon e fallback seguro para nunca perder as fotos)
   let vehicles = getLocalVehicles();
   let vehicle = vehicles.find(v => v.id === order!.vehicle_id) || order.vehicle;
 
-  if (!vehicle) {
+  if (!vehicle && order.vehicle_id) {
     try {
-      const { data } = await supabase.from('fleet_vehicles').select('*').eq('id', order.vehicle_id).single();
+      let { data, error } = await supabase.from('fleet_vehicles').select('*').eq('id', order.vehicle_id).maybeSingle();
+      if (error || !data) {
+        const anonVeh = await supabaseAnon.from('fleet_vehicles').select('*').eq('id', order.vehicle_id).maybeSingle();
+        if (anonVeh.data) data = anonVeh.data;
+      }
       if (data) vehicle = data as FleetVehicle;
     } catch { }
   }
 
   if (!vehicle) {
-    throw new Error('Veículo oficial vinculado à autorização não foi encontrado.');
+    vehicle = {
+      id: order.vehicle_id,
+      institution_id: order.institution_id || 'inst_1',
+      plate: completionData.vehicle_plate?.trim().toUpperCase() || 'FROTA',
+      model: 'Veículo Oficial',
+      department: 'Administração',
+      fuel_type: order.fuel_type,
+      tank_capacity: Math.max(Number(order.liters_authorized) || 200, 200),
+      metric_type: 'km',
+      expected_consumption: 8,
+      current_odometer: order.previous_odometer || 0,
+      status: 'ativo',
+      created_at: new Date().toISOString()
+    };
   }
 
   const suppliedLiters = completionData.liters_supplied && completionData.liters_supplied > 0
@@ -616,15 +645,12 @@ export async function validateAndCompleteFuelOrder(
     order.previous_odometer,
     completionData.current_odometer,
     suppliedLiters,
-    vehicle.expected_consumption,
-    vehicle.tank_capacity
+    vehicle.expected_consumption || 8,
+    vehicle.tank_capacity || 200
   );
 
-  // 4. Determina status de liquidação
-  let finalStatus: TwoWayOrderStatus = 'abastecido';
-  if (audit.anomaly_level === 'bloqueio_critico') {
-    finalStatus = 'glosado'; // Bloqueado para liquidação contábil
-  }
+  // 4. Determina status de confirmação na bomba (sempre 'abastecido', preservando anomalia para auditoria do gestor)
+  const finalStatus: TwoWayOrderStatus = 'abastecido';
 
   // 5. Atualiza a ordem
   const updatedDriverName = completionData.driver_name?.trim() || order.driver_name;
@@ -632,18 +658,25 @@ export async function validateAndCompleteFuelOrder(
     vehicle.plate = completionData.vehicle_plate.trim().toUpperCase();
   }
 
+  const clampedKmPerL = Math.min(Math.max(Number(audit.calculated_km_per_liter || 0), -9999.99), 9999.99);
+  const clampedDev = Math.min(Math.max(Number(audit.deviation_percent || 0), -999.99), 999.99);
+  const finalTotalValue = order.supply_mode === 'encher_tanque' || order.is_full_tank_order
+    ? Number((suppliedLiters * Number(order.bidded_unit_price || 0)).toFixed(2))
+    : Number((suppliedLiters * Number(order.bidded_unit_price || 0)).toFixed(2)) || order.total_authorized_value;
+
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     vehicle,
     driver_name: updatedDriverName,
     liters_supplied: suppliedLiters,
     current_odometer: completionData.current_odometer,
-    calculated_km_per_liter: audit.calculated_km_per_liter,
-    deviation_percent: audit.deviation_percent,
+    calculated_km_per_liter: clampedKmPerL,
+    deviation_percent: clampedDev,
     receipt_photo_url: completionData.receipt_photo_url || order.receipt_photo_url,
+    receipt_attachment_url: completionData.receipt_photo_url || order.receipt_attachment_url || order.receipt_photo_url,
     odometer_photo_url: completionData.odometer_photo_url || order.odometer_photo_url,
     pump_photo_url: completionData.pump_photo_url || order.pump_photo_url,
-    total_authorized_value: order.supply_mode === 'encher_tanque' ? Number((suppliedLiters * order.bidded_unit_price).toFixed(2)) : order.total_authorized_value,
+    total_authorized_value: finalTotalValue,
     invoice_coupon_number: completionData.invoice_coupon_number?.trim() || order.invoice_coupon_number,
     anomaly_level: audit.anomaly_level,
     anomaly_reason: audit.anomaly_reason,
@@ -652,17 +685,26 @@ export async function validateAndCompleteFuelOrder(
     supplied_at: completionData.supplied_at || new Date().toISOString()
   };
 
-  // 6. Se NÃO houve bloqueio crítico, atualiza o odômetro do veículo na frota
-  if (audit.anomaly_level !== 'bloqueio_critico') {
+  // 6. Se o odômetro avançou, atualiza o odômetro do veículo na frota
+  if (completionData.current_odometer >= order.previous_odometer && vehicle.id) {
     vehicle.current_odometer = completionData.current_odometer;
     try {
-      await supabase
+      const vehUpdate = await supabase
         .from('fleet_vehicles')
         .update({
           current_odometer: completionData.current_odometer,
           plate: vehicle.plate
         })
         .eq('id', vehicle.id);
+      if (vehUpdate.error) {
+        await supabaseAnon
+          .from('fleet_vehicles')
+          .update({
+            current_odometer: completionData.current_odometer,
+            plate: vehicle.plate
+          })
+          .eq('id', vehicle.id);
+      }
     } catch (err) {
       console.warn('[FleetFuelAudit] Aviso ao atualizar KM do veículo no Supabase:', err);
     }
@@ -675,13 +717,15 @@ export async function validateAndCompleteFuelOrder(
     }
   }
 
-  // 7. Persistir a atualização da ordem no Supabase (resiliente contra RLS e queda de sessão)
+  // 7. Persistir a atualização da ordem no Supabase (resiliente contra RLS, overflow numérico e queda de sessão)
   const updatePayload: Record<string, any> = {
     driver_name: updatedOrder.driver_name,
     liters_supplied: updatedOrder.liters_supplied,
     current_odometer: updatedOrder.current_odometer,
-    calculated_km_per_liter: updatedOrder.calculated_km_per_liter,
-    deviation_percent: updatedOrder.deviation_percent,
+    calculated_km_per_liter: clampedKmPerL,
+    calculated_consumption: clampedKmPerL,
+    deviation_percent: clampedDev,
+    is_anomaly: audit.anomaly_level !== 'none',
     receipt_photo_url: updatedOrder.receipt_photo_url || updatedOrder.receipt_attachment_url || null,
     receipt_attachment_url: updatedOrder.receipt_attachment_url || updatedOrder.receipt_photo_url || null,
     odometer_photo_url: updatedOrder.odometer_photo_url || null,
@@ -689,13 +733,15 @@ export async function validateAndCompleteFuelOrder(
     total_authorized_value: updatedOrder.total_authorized_value,
     total_value: updatedOrder.total_authorized_value,
     unit_price: order.bidded_unit_price,
-    invoice_coupon_number: updatedOrder.invoice_coupon_number,
     anomaly_level: updatedOrder.anomaly_level,
-    anomaly_reason: updatedOrder.anomaly_reason,
-    audit_justification: updatedOrder.audit_justification,
+    anomaly_reason: updatedOrder.anomaly_reason || null,
+    audit_justification: updatedOrder.audit_justification || null,
     status: updatedOrder.status,
     supplied_at: updatedOrder.supplied_at
   };
+
+  let persistedRemotely = false;
+  let lastDbError: any = null;
 
   try {
     let { data: updateRes, error: updateErr } = await supabase
@@ -704,8 +750,10 @@ export async function validateAndCompleteFuelOrder(
       .eq('id', updatedOrder.id)
       .select();
 
-    if (updateErr) {
-      console.warn('[FleetFuelAudit] Aviso ao atualizar com supabase padrão, tentando com supabaseAnon:', updateErr);
+    if (updateErr || !updateRes || updateRes.length === 0) {
+      if (updateErr) {
+        console.warn('[FleetFuelAudit] Aviso ao atualizar com supabase padrão, tentando com supabaseAnon:', updateErr);
+      }
       const retryAnon = await supabaseAnon
         .from('fuel_supply_orders')
         .update(updatePayload)
@@ -716,14 +764,50 @@ export async function validateAndCompleteFuelOrder(
     }
 
     if (!updateErr && (!updateRes || updateRes.length === 0)) {
-      // Se id não casou (ex: chave local vs remota), tenta por order_number
-      await supabaseAnon
+      const byNum = await supabaseAnon
         .from('fuel_supply_orders')
         .update(updatePayload)
-        .eq('order_number', updatedOrder.order_number);
+        .eq('order_number', updatedOrder.order_number)
+        .select();
+      updateErr = byNum.error;
+      updateRes = byNum.data;
+    }
+
+    if (!updateErr && updateRes && updateRes.length > 0) {
+      persistedRemotely = true;
+    } else if (updateErr) {
+      lastDbError = updateErr;
+      // Fallback mínimo garantido caso alguma coluna secundária falhe na validação do banco
+      const minimalPayload: Record<string, any> = {
+        driver_name: updatedOrder.driver_name,
+        liters_supplied: updatedOrder.liters_supplied,
+        current_odometer: updatedOrder.current_odometer,
+        pump_photo_url: updatedOrder.pump_photo_url || null,
+        odometer_photo_url: updatedOrder.odometer_photo_url || null,
+        receipt_photo_url: updatedOrder.receipt_photo_url || null,
+        receipt_attachment_url: updatedOrder.receipt_attachment_url || null,
+        status: 'abastecido',
+        supplied_at: updatedOrder.supplied_at
+      };
+      const minRes = await supabaseAnon
+        .from('fuel_supply_orders')
+        .update(minimalPayload)
+        .or(`id.eq.${updatedOrder.id},order_number.eq.${updatedOrder.order_number}`)
+        .select();
+      if (!minRes.error && minRes.data && minRes.data.length > 0) {
+        persistedRemotely = true;
+        lastDbError = null;
+      } else if (minRes.error) {
+        lastDbError = minRes.error;
+      }
     }
   } catch (err) {
+    lastDbError = err;
     console.warn('[FleetFuelAudit] Erro ao atualizar ordem no Supabase:', err);
+  }
+
+  if (!persistedRemotely && lastDbError) {
+    throw new Error(`Falha ao gravar as fotos da bomba no servidor: ${lastDbError?.message || 'Verifique a conexão de internet.'}`);
   }
 
   // 7.1 Garante que o motorista que realizou o abastecimento esteja cadastrado no Supabase
@@ -860,16 +944,24 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
 
   let networkFailed = false;
 
-  // 1. CONSULTA DIRETA NO SUPABASE (Fonte Única da Verdade)
+  // 1. CONSULTA DIRETA NO SUPABASE (Fonte Única da Verdade, com fallback para supabaseAnon)
   try {
-    let query = supabase.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
-    if (isUUID) {
-      query = query.or(`id.eq.${clean},order_number.ilike.${clean}`);
-    } else {
-      query = query.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
-    }
+    const runOrderQuery = (client: any) => {
+      let q = client.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
+      if (isUUID) {
+        q = q.or(`id.eq.${clean},order_number.ilike.${clean}`);
+      } else {
+        q = q.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+      }
+      return q.order('created_at', { ascending: false }).limit(1).maybeSingle();
+    };
 
-    const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
+    let { data, error } = await runOrderQuery(supabase);
+    if (error) {
+      const retryAnon = await runOrderQuery(supabaseAnon);
+      data = retryAnon.data;
+      error = retryAnon.error;
+    }
 
     if (!error) {
       if (data) {
@@ -880,14 +972,22 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
         return data as TwoWayFuelOrder;
       } else {
         // Se a busca com join retornou vazio, tenta busca direta simples sem join
-        let simpleQuery = supabase.from('fuel_supply_orders').select('*');
-        if (isUUID) {
-          simpleQuery = simpleQuery.eq('id', clean);
-        } else {
-          simpleQuery = simpleQuery.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
-        }
+        const runSimpleQuery = (client: any) => {
+          let sq = client.from('fuel_supply_orders').select('*');
+          if (isUUID) {
+            sq = sq.eq('id', clean);
+          } else {
+            sq = sq.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+          }
+          return sq.order('created_at', { ascending: false }).limit(1).maybeSingle();
+        };
 
-        const { data: rawOrder, error: simpleErr } = await simpleQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
+        let { data: rawOrder, error: simpleErr } = await runSimpleQuery(supabase);
+        if (simpleErr) {
+          const retrySimple = await runSimpleQuery(supabaseAnon);
+          rawOrder = retrySimple.data;
+          simpleErr = retrySimple.error;
+        }
 
         if (!simpleErr) {
           if (rawOrder) {
@@ -898,7 +998,11 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
             const orderObj = rawOrder as TwoWayFuelOrder;
             if (orderObj.vehicle_id) {
               try {
-                const { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
+                let { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
+                if (!vData) {
+                  const anonV = await supabaseAnon.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
+                  vData = anonV.data;
+                }
                 if (vData) orderObj.vehicle = vData as FleetVehicle;
               } catch { }
             }
@@ -997,14 +1101,13 @@ export async function auditFuelAuthorization(
  * reduzindo fotos pesadas de celulares (5MB-10MB) para ~150KB, garantindo uploads ultra-rápidos
  * mesmo em conexões móveis 3G/4G no posto de combustível.
  */
-async function compressFuelPhoto(file: File): Promise<File> {
-  if (typeof window === 'undefined' || !file.type.startsWith('image/')) return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const MAX_DIM = 1280;
-    let width = bitmap.width;
-    let height = bitmap.height;
+export async function compressFuelPhoto(file: File): Promise<File> {
+  if (typeof window === 'undefined' || file.type === 'application/pdf') return file;
+  const MAX_DIM = 1280;
 
+  const drawSourceToJpeg = (source: CanvasImageSource, origW: number, origH: number): Promise<File> => {
+    let width = origW;
+    let height = origH;
     if (width > MAX_DIM || height > MAX_DIM) {
       if (width > height) {
         height = Math.round(height * (MAX_DIM / width));
@@ -1014,22 +1117,56 @@ async function compressFuelPhoto(file: File): Promise<File> {
         height = MAX_DIM;
       }
     }
-
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext('2d');
-    ctx?.drawImage(bitmap, 0, 0, width, height);
-
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(source, 0, 0, width, height);
+    }
     return new Promise((resolve) => {
       canvas.toBlob((blob) => {
         if (blob) {
-          const compressed = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' });
-          resolve(compressed);
+          const cleanBase = (file.name || 'foto_abastecimento').replace(/\.[^/.]+$/, '');
+          resolve(new File([blob], `${cleanBase}.jpg`, { type: 'image/jpeg' }));
         } else {
           resolve(file);
         }
-      }, 'image/jpeg', 0.82);
+      }, 'image/jpeg', 0.80);
+    });
+  };
+
+  try {
+    if (typeof createImageBitmap === 'function') {
+      const bitmap = await createImageBitmap(file);
+      const out = await drawSourceToJpeg(bitmap, bitmap.width, bitmap.height);
+      try { bitmap.close(); } catch {}
+      return out;
+    }
+  } catch {
+    // Fallback para Image + ObjectURL (Safari iOS / WebViews Android)
+  }
+
+  try {
+    return await new Promise<File>((resolve) => {
+      const objUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = async () => {
+        URL.revokeObjectURL(objUrl);
+        try {
+          const out = await drawSourceToJpeg(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
+          resolve(out);
+        } catch {
+          resolve(file);
+        }
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objUrl);
+        resolve(file);
+      };
+      img.src = objUrl;
     });
   } catch {
     return file;
@@ -1038,49 +1175,47 @@ async function compressFuelPhoto(file: File): Promise<File> {
 
 /**
  * Upload de comprovante físico (canhoto assinado, foto da bomba ou foto do odômetro)
- * Suporta fallback resiliente entre cliente autenticado, cliente anon e Base64 compactado.
+ * Suporta fallback resiliente entre cliente autenticado, cliente anon, bucket secundário e Base64 compactado.
  */
 export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | 'odometers' | 'pumps' | 'invoices'): Promise<string> {
   const processedFile = await compressFuelPhoto(file);
-  const fileExt = 'jpg';
+  const fileExt = processedFile.type === 'application/pdf' ? 'pdf' : 'jpg';
+  const contentType = processedFile.type || 'image/jpeg';
   const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
-  // 1. Tentar upload autenticado via Supabase Storage
-  try {
-    let uploadRes = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(fileName, processedFile, {
-        contentType: 'image/jpeg',
-        cacheControl: '3600',
-        upsert: true
-      });
-
-    // Se falhar (ex: token de sessão do gestor expirado ou sessão anônima do frentista), tenta com supabaseAnon
-    if (uploadRes.error) {
-      console.warn('[FleetFuelAudit] Aviso no upload com cliente padrão, tentando com supabaseAnon:', uploadRes.error);
-      uploadRes = await supabaseAnon.storage
-        .from(BUCKET_NAME)
+  // 1. Tentar upload via Supabase Storage (bucket principal e fallback)
+  for (const targetBucket of [BUCKET_NAME, 'certidoes']) {
+    try {
+      let uploadRes = await supabase.storage
+        .from(targetBucket)
         .upload(fileName, processedFile, {
-          contentType: 'image/jpeg',
+          contentType,
           cacheControl: '3600',
           upsert: true
         });
-    }
 
-    if (!uploadRes.error) {
-      const { data: publicUrlData } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(fileName);
-
-      if (publicUrlData?.publicUrl) {
-        console.log('[FleetFuelAudit] Foto salva com sucesso no Storage público:', publicUrlData.publicUrl);
-        return publicUrlData.publicUrl;
+      if (uploadRes.error) {
+        uploadRes = await supabaseAnon.storage
+          .from(targetBucket)
+          .upload(fileName, processedFile, {
+            contentType,
+            cacheControl: '3600',
+            upsert: true
+          });
       }
-    } else {
-      console.error('[FleetFuelAudit] Erro ao fazer upload de foto no Storage:', uploadRes.error);
+
+      if (!uploadRes.error) {
+        const { data: publicUrlData } = supabaseAnon.storage
+          .from(targetBucket)
+          .getPublicUrl(fileName);
+
+        if (publicUrlData?.publicUrl) {
+          return publicUrlData.publicUrl;
+        }
+      }
+    } catch (err) {
+      console.warn(`[FleetFuelAudit] Exceção no upload de foto no bucket ${targetBucket}:`, err);
     }
-  } catch (err) {
-    console.warn('[FleetFuelAudit] Exceção no upload de foto no Storage:', err);
   }
 
   // 2. Fallback seguro em Base64 compactado caso o Storage esteja inacessível
