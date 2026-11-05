@@ -139,6 +139,7 @@ export interface FleetDriver {
 }
 
 export interface NewDriverPayload {
+  id?: string;
   institution_id?: string;
   full_name: string;
   cpf: string;
@@ -163,6 +164,7 @@ export interface FleetFuelStation {
 }
 
 export interface NewStationPayload {
+  id?: string;
   institution_id?: string;
   name: string;
   cnpj?: string;
@@ -1215,6 +1217,24 @@ export async function clearAllFuelOrders(institutionId?: string, resetSequence: 
  * ====================================================================
  */
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isValidUUID(id?: string): boolean {
+  return !!id && UUID_REGEX.test(id);
+}
+
+export function generateValidUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    try {
+      return crypto.randomUUID();
+    } catch {}
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export async function getFleetDrivers(filters?: {
   institutionId?: string;
   search?: string;
@@ -1222,16 +1242,18 @@ export async function getFleetDrivers(filters?: {
 }): Promise<FleetDriver[]> {
   try {
     let query = supabase.from('fleet_drivers').select('*');
-    if (filters?.institutionId) {
-      query = query.eq('institution_id', filters.institutionId);
+    if (filters?.institutionId && filters.institutionId !== 'all') {
+      query = query.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
     }
     if (filters?.department && filters.department !== 'all') {
       query = query.eq('department', filters.department);
     }
     const { data, error } = await query.order('full_name', { ascending: true });
-    if (!error && data && data.length > 0) {
-      saveLocalDrivers(data as FleetDriver[]);
-      return data as FleetDriver[];
+    if (!error && data) {
+      if (data.length > 0) {
+        saveLocalDrivers(data as FleetDriver[]);
+        return data as FleetDriver[];
+      }
     }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao consultar motoristas no Supabase:', err);
@@ -1249,29 +1271,53 @@ export async function getFleetDrivers(filters?: {
 }
 
 export async function createFleetDriver(payload: NewDriverPayload): Promise<FleetDriver> {
+  const driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+  const birthDate = payload.birth_date && payload.birth_date.trim() !== '' ? payload.birth_date.trim() : null;
+  const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
+  const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : null;
+
   const newDriver: FleetDriver = {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `drv-${Date.now()}`,
+    id: driverId,
     institution_id: payload.institution_id || 'inst_1',
     full_name: payload.full_name.trim(),
     cpf: payload.cpf.trim(),
-    birth_date: payload.birth_date || undefined,
-    department: payload.department.trim(),
-    cnh_number: payload.cnh_number?.trim() || undefined,
-    cnh_category: payload.cnh_category?.trim() || undefined,
+    birth_date: birthDate || undefined,
+    department: payload.department?.trim() || 'Geral',
+    cnh_number: cnhNumber || undefined,
+    cnh_category: cnhCat || undefined,
     status: payload.status || 'ativo',
     created_at: new Date().toISOString()
   };
 
+  const supabaseRecord = {
+    id: driverId,
+    institution_id: payload.institution_id || 'inst_1',
+    full_name: payload.full_name.trim(),
+    cpf: payload.cpf.trim(),
+    birth_date: birthDate,
+    department: payload.department?.trim() || 'Geral',
+    cnh_number: cnhNumber,
+    cnh_category: cnhCat,
+    status: payload.status || 'ativo'
+  };
+
   try {
-    const { data, error } = await supabase.from('fleet_drivers').insert([newDriver]).select().single();
+    const { data, error } = await supabase.from('fleet_drivers').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
     if (!error && data) {
       const list = getLocalDrivers();
-      list.unshift(data as FleetDriver);
+      const existingIdx = list.findIndex(d => d.id === driverId || d.cpf === newDriver.cpf);
+      if (existingIdx !== -1) {
+        list[existingIdx] = data as FleetDriver;
+      } else {
+        list.unshift(data as FleetDriver);
+      }
       saveLocalDrivers(list);
       return data as FleetDriver;
+    } else if (error) {
+      console.error('[FleetFuel] Erro ao gravar motorista no Supabase:', error);
     }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao gravar motorista no Supabase:', err);
+    console.error('[FleetFuel] Exceção ao gravar motorista no Supabase:', err);
   }
 
   const list = getLocalDrivers();
@@ -1281,26 +1327,42 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
 }
 
 export async function updateFleetDriver(id: string, updates: Partial<FleetDriver>): Promise<FleetDriver> {
-  const updatedPayload = { ...updates, updated_at: new Date().toISOString() };
-  try {
-    const { data, error } = await supabase.from('fleet_drivers').update(updatedPayload).eq('id', id).select().single();
-    if (!error && data) {
-      const list = getLocalDrivers();
-      const idx = list.findIndex(d => d.id === id);
-      if (idx !== -1) {
-        list[idx] = { ...list[idx], ...data };
-        saveLocalDrivers(list);
+  const birthDate = updates.birth_date && updates.birth_date.trim() !== '' ? updates.birth_date.trim() : null;
+  const cnhNumber = updates.cnh_number && updates.cnh_number.trim() !== '' ? updates.cnh_number.trim() : null;
+  const cnhCat = updates.cnh_category && updates.cnh_category.trim() !== '' ? updates.cnh_category.trim() : null;
+
+  const supabaseRecord: Record<string, any> = {
+    updated_at: new Date().toISOString()
+  };
+  if (updates.full_name) supabaseRecord.full_name = updates.full_name.trim();
+  if (updates.cpf) supabaseRecord.cpf = updates.cpf.trim();
+  if (updates.birth_date !== undefined) supabaseRecord.birth_date = birthDate;
+  if (updates.department) supabaseRecord.department = updates.department.trim();
+  if (updates.cnh_number !== undefined) supabaseRecord.cnh_number = cnhNumber;
+  if (updates.cnh_category !== undefined) supabaseRecord.cnh_category = cnhCat;
+  if (updates.status) supabaseRecord.status = updates.status;
+
+  if (isValidUUID(id)) {
+    try {
+      const { data, error } = await supabase.from('fleet_drivers').update(supabaseRecord).eq('id', id).select().single();
+      if (!error && data) {
+        const list = getLocalDrivers();
+        const idx = list.findIndex(d => d.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...data };
+          saveLocalDrivers(list);
+        }
+        return data as FleetDriver;
       }
-      return data as FleetDriver;
+    } catch (err) {
+      console.warn('[FleetFuel] Erro ao atualizar motorista no Supabase:', err);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Erro ao atualizar motorista no Supabase:', err);
   }
 
   const list = getLocalDrivers();
   const idx = list.findIndex(d => d.id === id);
   if (idx !== -1) {
-    list[idx] = { ...list[idx], ...updatedPayload };
+    list[idx] = { ...list[idx], ...updates, updated_at: new Date().toISOString() };
     saveLocalDrivers(list);
     return list[idx];
   }
@@ -1308,10 +1370,12 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
 }
 
 export async function deleteFleetDriver(id: string): Promise<boolean> {
-  try {
-    await supabase.from('fleet_drivers').delete().eq('id', id);
-  } catch (err) {
-    console.warn('[FleetFuel] Erro ao excluir motorista no Supabase:', err);
+  if (isValidUUID(id)) {
+    try {
+      await supabase.from('fleet_drivers').delete().eq('id', id);
+    } catch (err) {
+      console.warn('[FleetFuel] Erro ao excluir motorista no Supabase:', err);
+    }
   }
   const list = getLocalDrivers();
   const filtered = list.filter(d => d.id !== id);
@@ -1331,13 +1395,15 @@ export async function getFleetFuelStations(filters?: {
 }): Promise<FleetFuelStation[]> {
   try {
     let query = supabase.from('fleet_fuel_stations').select('*');
-    if (filters?.institutionId) {
-      query = query.eq('institution_id', filters.institutionId);
+    if (filters?.institutionId && filters.institutionId !== 'all') {
+      query = query.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
     }
     const { data, error } = await query.order('name', { ascending: true });
-    if (!error && data && data.length > 0) {
-      saveLocalStations(data as FleetFuelStation[]);
-      return data as FleetFuelStation[];
+    if (!error && data) {
+      if (data.length > 0) {
+        saveLocalStations(data as FleetFuelStation[]);
+        return data as FleetFuelStation[];
+      }
     }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao consultar postos no Supabase:', err);
@@ -1352,28 +1418,52 @@ export async function getFleetFuelStations(filters?: {
 }
 
 export async function createFleetFuelStation(payload: NewStationPayload): Promise<FleetFuelStation> {
+  const stationId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+  const cnpj = payload.cnpj && payload.cnpj.trim() !== '' ? payload.cnpj.trim() : null;
+  const address = payload.address && payload.address.trim() !== '' ? payload.address.trim() : null;
+  const city = payload.city && payload.city.trim() !== '' ? payload.city.trim() : null;
+  const phone = payload.phone && payload.phone.trim() !== '' ? payload.phone.trim() : null;
+
   const newStation: FleetFuelStation = {
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `sta-${Date.now()}`,
+    id: stationId,
     institution_id: payload.institution_id || 'inst_1',
     name: payload.name.trim(),
-    cnpj: payload.cnpj?.trim() || undefined,
-    address: payload.address?.trim() || undefined,
-    city: payload.city?.trim() || undefined,
-    phone: payload.phone?.trim() || undefined,
+    cnpj: cnpj || undefined,
+    address: address || undefined,
+    city: city || undefined,
+    phone: phone || undefined,
     status: payload.status || 'ativo',
     created_at: new Date().toISOString()
   };
 
+  const supabaseRecord = {
+    id: stationId,
+    institution_id: payload.institution_id || 'inst_1',
+    name: payload.name.trim(),
+    cnpj: cnpj,
+    address: address,
+    city: city,
+    phone: phone,
+    status: payload.status || 'ativo'
+  };
+
   try {
-    const { data, error } = await supabase.from('fleet_fuel_stations').insert([newStation]).select().single();
+    const { data, error } = await supabase.from('fleet_fuel_stations').upsert([supabaseRecord], { onConflict: 'id' }).select().single();
     if (!error && data) {
       const list = getLocalStations();
-      list.unshift(data as FleetFuelStation);
+      const existingIdx = list.findIndex(s => s.id === stationId);
+      if (existingIdx !== -1) {
+        list[existingIdx] = data as FleetFuelStation;
+      } else {
+        list.unshift(data as FleetFuelStation);
+      }
       saveLocalStations(list);
       return data as FleetFuelStation;
+    } else if (error) {
+      console.error('[FleetFuel] Erro ao gravar posto no Supabase:', error);
     }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao gravar posto no Supabase:', err);
+    console.error('[FleetFuel] Exceção ao gravar posto no Supabase:', err);
   }
 
   const list = getLocalStations();
@@ -1383,26 +1473,42 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
 }
 
 export async function updateFleetFuelStation(id: string, updates: Partial<FleetFuelStation>): Promise<FleetFuelStation> {
-  const updatedPayload = { ...updates, updated_at: new Date().toISOString() };
-  try {
-    const { data, error } = await supabase.from('fleet_fuel_stations').update(updatedPayload).eq('id', id).select().single();
-    if (!error && data) {
-      const list = getLocalStations();
-      const idx = list.findIndex(s => s.id === id);
-      if (idx !== -1) {
-        list[idx] = { ...list[idx], ...data };
-        saveLocalStations(list);
+  const cnpj = updates.cnpj !== undefined ? (updates.cnpj && updates.cnpj.trim() !== '' ? updates.cnpj.trim() : null) : undefined;
+  const address = updates.address !== undefined ? (updates.address && updates.address.trim() !== '' ? updates.address.trim() : null) : undefined;
+  const city = updates.city !== undefined ? (updates.city && updates.city.trim() !== '' ? updates.city.trim() : null) : undefined;
+  const phone = updates.phone !== undefined ? (updates.phone && updates.phone.trim() !== '' ? updates.phone.trim() : null) : undefined;
+
+  const supabaseRecord: Record<string, any> = {
+    updated_at: new Date().toISOString()
+  };
+  if (updates.name) supabaseRecord.name = updates.name.trim();
+  if (cnpj !== undefined) supabaseRecord.cnpj = cnpj;
+  if (address !== undefined) supabaseRecord.address = address;
+  if (city !== undefined) supabaseRecord.city = city;
+  if (phone !== undefined) supabaseRecord.phone = phone;
+  if (updates.status) supabaseRecord.status = updates.status;
+
+  if (isValidUUID(id)) {
+    try {
+      const { data, error } = await supabase.from('fleet_fuel_stations').update(supabaseRecord).eq('id', id).select().single();
+      if (!error && data) {
+        const list = getLocalStations();
+        const idx = list.findIndex(s => s.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...data };
+          saveLocalStations(list);
+        }
+        return data as FleetFuelStation;
       }
-      return data as FleetFuelStation;
+    } catch (err) {
+      console.warn('[FleetFuel] Erro ao atualizar posto no Supabase:', err);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Erro ao atualizar posto no Supabase:', err);
   }
 
   const list = getLocalStations();
   const idx = list.findIndex(s => s.id === id);
   if (idx !== -1) {
-    list[idx] = { ...list[idx], ...updatedPayload };
+    list[idx] = { ...list[idx], ...updates, updated_at: new Date().toISOString() };
     saveLocalStations(list);
     return list[idx];
   }
@@ -1410,15 +1516,126 @@ export async function updateFleetFuelStation(id: string, updates: Partial<FleetF
 }
 
 export async function deleteFleetFuelStation(id: string): Promise<boolean> {
-  try {
-    await supabase.from('fleet_fuel_stations').delete().eq('id', id);
-  } catch (err) {
-    console.warn('[FleetFuel] Erro ao excluir posto no Supabase:', err);
+  if (isValidUUID(id)) {
+    try {
+      await supabase.from('fleet_fuel_stations').delete().eq('id', id);
+    } catch (err) {
+      console.warn('[FleetFuel] Erro ao excluir posto no Supabase:', err);
+    }
   }
   const list = getLocalStations();
   const filtered = list.filter(s => s.id !== id);
   saveLocalStations(filtered);
   return true;
+}
+
+/**
+ * Sincroniza motoristas e postos retidos no cache local do computador para o banco de dados Supabase
+ * Garante que registros criados anteriormente com IDs provisórios (drv- / sta-) sejam convertidos para UUID
+ * e fiquem disponíveis na nuvem para qualquer dispositivo (celular, outros computadores).
+ */
+export async function syncLocalDriversAndStationsToSupabase(institutionId: string = 'inst_1'): Promise<{
+  syncedDrivers: number;
+  syncedStations: number;
+}> {
+  let syncedDrivers = 0;
+  let syncedStations = 0;
+
+  // 1. Sincronizar Motoristas
+  try {
+    const localDrivers = getLocalDrivers();
+    if (localDrivers.length > 0) {
+      const { data: remoteDrivers } = await supabase.from('fleet_drivers').select('id, cpf, full_name');
+      const remoteCpfs = new Set((remoteDrivers || []).map(r => r.cpf?.replace(/\D/g, '')));
+      const remoteIds = new Set((remoteDrivers || []).map(r => r.id));
+
+      const updatedLocalList: FleetDriver[] = [];
+      const recordsToInsert = [];
+
+      for (const d of localDrivers) {
+        const cleanCpf = (d.cpf || '').replace(/\D/g, '');
+        const validId = isValidUUID(d.id) ? d.id : generateValidUUID();
+        const updatedDriver: FleetDriver = { ...d, id: validId };
+        updatedLocalList.push(updatedDriver);
+
+        if (!remoteCpfs.has(cleanCpf) && !remoteIds.has(validId)) {
+          recordsToInsert.push({
+            id: validId,
+            institution_id: d.institution_id || institutionId,
+            full_name: d.full_name.trim(),
+            cpf: d.cpf.trim(),
+            birth_date: d.birth_date && d.birth_date.trim() !== '' ? d.birth_date.trim() : null,
+            department: d.department?.trim() || 'Geral',
+            cnh_number: d.cnh_number && d.cnh_number.trim() !== '' ? d.cnh_number.trim() : null,
+            cnh_category: d.cnh_category && d.cnh_category.trim() !== '' ? d.cnh_category.trim() : null,
+            status: d.status || 'ativo'
+          });
+        }
+      }
+
+      saveLocalDrivers(updatedLocalList);
+
+      if (recordsToInsert.length > 0) {
+        const { error } = await supabase.from('fleet_drivers').upsert(recordsToInsert, { onConflict: 'id' });
+        if (!error) {
+          syncedDrivers = recordsToInsert.length;
+          console.log(`[FleetFuel] ${syncedDrivers} motoristas sincronizados com Supabase!`);
+        } else {
+          console.error('[FleetFuel] Erro ao sincronizar motoristas com Supabase:', error);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro no sync de motoristas:', err);
+  }
+
+  // 2. Sincronizar Postos Credenciados
+  try {
+    const localStations = getLocalStations();
+    if (localStations.length > 0) {
+      const { data: remoteStations } = await supabase.from('fleet_fuel_stations').select('id, name');
+      const remoteNames = new Set((remoteStations || []).map(r => r.name?.toLowerCase().trim()));
+      const remoteIds = new Set((remoteStations || []).map(r => r.id));
+
+      const updatedLocalStations: FleetFuelStation[] = [];
+      const stationsToInsert = [];
+
+      for (const s of localStations) {
+        const validId = isValidUUID(s.id) ? s.id : generateValidUUID();
+        const updatedStation: FleetFuelStation = { ...s, id: validId };
+        updatedLocalStations.push(updatedStation);
+
+        if (!remoteNames.has(s.name.toLowerCase().trim()) && !remoteIds.has(validId)) {
+          stationsToInsert.push({
+            id: validId,
+            institution_id: s.institution_id || institutionId,
+            name: s.name.trim(),
+            cnpj: s.cnpj && s.cnpj.trim() !== '' ? s.cnpj.trim() : null,
+            address: s.address && s.address.trim() !== '' ? s.address.trim() : null,
+            city: s.city && s.city.trim() !== '' ? s.city.trim() : null,
+            phone: s.phone && s.phone.trim() !== '' ? s.phone.trim() : null,
+            status: s.status || 'ativo'
+          });
+        }
+      }
+
+      saveLocalStations(updatedLocalStations);
+
+      if (stationsToInsert.length > 0) {
+        const { error } = await supabase.from('fleet_fuel_stations').upsert(stationsToInsert, { onConflict: 'id' });
+        if (!error) {
+          syncedStations = stationsToInsert.length;
+          console.log(`[FleetFuel] ${syncedStations} postos sincronizados com Supabase!`);
+        } else {
+          console.error('[FleetFuel] Erro ao sincronizar postos com Supabase:', error);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro no sync de postos:', err);
+  }
+
+  return { syncedDrivers, syncedStations };
 }
 
 /**
@@ -1620,24 +1837,45 @@ export async function createDriversBatch(
   driversList: NewDriverPayload[],
   institutionId: string = 'inst_1'
 ): Promise<{ count: number; saved: FleetDriver[] }> {
-  const newDrivers: FleetDriver[] = driversList.map((payload, idx) => ({
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `drv-batch-${Date.now()}-${idx}`,
-    institution_id: payload.institution_id || institutionId,
-    full_name: payload.full_name.trim(),
-    cpf: payload.cpf.trim(),
-    birth_date: payload.birth_date || undefined,
-    department: payload.department?.trim() || 'Geral',
-    cnh_number: payload.cnh_number?.trim() || undefined,
-    cnh_category: payload.cnh_category?.trim() || 'B',
-    status: payload.status || 'ativo',
-    created_at: new Date().toISOString()
+  const newDrivers: FleetDriver[] = driversList.map((payload) => {
+    const driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
+    const birthDate = payload.birth_date && payload.birth_date.trim() !== '' ? payload.birth_date.trim() : null;
+    const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
+    const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : 'B';
+
+    return {
+      id: driverId,
+      institution_id: payload.institution_id || institutionId,
+      full_name: payload.full_name.trim(),
+      cpf: payload.cpf.trim(),
+      birth_date: birthDate || undefined,
+      department: payload.department?.trim() || 'Geral',
+      cnh_number: cnhNumber || undefined,
+      cnh_category: cnhCat,
+      status: payload.status || 'ativo',
+      created_at: new Date().toISOString()
+    };
+  });
+
+  const supabaseRecords = newDrivers.map(d => ({
+    id: d.id,
+    institution_id: d.institution_id,
+    full_name: d.full_name,
+    cpf: d.cpf,
+    birth_date: d.birth_date || null,
+    department: d.department,
+    cnh_number: d.cnh_number || null,
+    cnh_category: d.cnh_category || null,
+    status: d.status
   }));
 
   try {
-    const { data, error } = await supabase.from('fleet_drivers').insert(newDrivers).select();
+    const { data, error } = await supabase.from('fleet_drivers').upsert(supabaseRecords, { onConflict: 'id' }).select();
     if (!error && data && data.length > 0) {
       const list = getLocalDrivers();
-      const combined = [...(data as FleetDriver[]), ...list];
+      const savedMap = new Map(list.map(d => [d.id, d]));
+      (data as FleetDriver[]).forEach(d => savedMap.set(d.id, d));
+      const combined = Array.from(savedMap.values());
       saveLocalDrivers(combined);
       return { count: data.length, saved: data as FleetDriver[] };
     }

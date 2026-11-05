@@ -77,7 +77,8 @@ import {
   getFleetFuelStations,
   createFleetFuelStation,
   updateFleetFuelStation,
-  deleteFleetFuelStation
+  deleteFleetFuelStation,
+  syncLocalDriversAndStationsToSupabase
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
 import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVoucherPDF';
@@ -258,6 +259,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!isSilent) setLoading(true);
     try {
       const instId = currentUser?.institution_id || 'inst_1';
+
+      // Sincroniza automaticamente motoristas e postos salvos localmente para o Supabase
+      try {
+        await syncLocalDriversAndStationsToSupabase(instId);
+      } catch (errSync) {
+        console.warn('[FleetFuelManager] Aviso na sincronização de motoristas/postos:', errSync);
+      }
+
       const [vehList, ordList, drvList, staList, bclassList] = await Promise.all([
         getFleetVehicles(undefined, instId),
         getFuelSupplyOrders({ institutionId: instId }),
