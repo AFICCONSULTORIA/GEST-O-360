@@ -57,3 +57,21 @@ export const maskCPF = (cpf: string): string => {
   return `***.${clean.substring(3, 6)}.${clean.substring(6, 9)}-**`;
 };
 
+/**
+ * Formata um valor numérico com separadores de milhar no padrão brasileiro (ex: 1.250, 125.430)
+ */
+export const formatThousands = (value: string | number | null | undefined): string => {
+  if (value === '' || value === null || value === undefined) return '';
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return '';
+  return Number(digits).toLocaleString('pt-BR');
+};
+
+/**
+ * Converte uma string formatada em milhar para número inteiro puro
+ */
+export const parseThousands = (value: string | number | null | undefined): number => {
+  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  const digits = String(value || '').replace(/\D/g, '');
+  return digits ? parseInt(digits, 10) : 0;
+};

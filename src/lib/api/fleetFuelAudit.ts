@@ -8,10 +8,10 @@
 */
 
 import { supabase } from '../supabase';
-import { FleetVehicle, FuelType, MetricType } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
-export type TwoWayOrderStatus = 'autorizado_pendente' | 'abastecido' | 'auditado' | 'glosado';
+export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado';
 
 /**
  * Tabela Referencial Padrão de Preços Licitados Contratuais Homologados
@@ -116,10 +116,16 @@ export interface TwoWayFuelOrder {
   deviation_percent?: number;
   receipt_photo_url?: string;
   odometer_photo_url?: string;
+  pump_photo_url?: string; // Foto do visor da bomba de combustível
   invoice_coupon_number?: string;
   anomaly_level: AnomalyLevel;
   anomaly_reason?: string;
   audit_justification?: string;
+  supply_mode: 'litragem_fixa' | 'encher_tanque';
+  authorized_by_name: string;
+  authorized_by_role: string;
+  budget_classification_id?: string;
+  budget_classification?: FleetBudgetClassification;
   status: TwoWayOrderStatus;
   created_at: string;
   supplied_at?: string;
@@ -133,6 +139,12 @@ export interface IssueOrderPayload {
   bidded_unit_price: number;
   liters_authorized: number;
   current_odometer?: number;
+  supply_mode?: 'litragem_fixa' | 'encher_tanque';
+  pump_photo_url?: string;
+  authorized_by_name?: string;
+  authorized_by_role?: string;
+  budget_classification_id?: string;
+  budget_classification?: FleetBudgetClassification;
   institution_id?: string;
 }
 
@@ -141,9 +153,12 @@ export interface OrderCompletionPayload {
   liters_supplied?: number;
   receipt_photo_url?: string;
   odometer_photo_url?: string;
+  pump_photo_url?: string;
   invoice_coupon_number?: string;
   audit_justification?: string;
   supplied_at?: string;
+  driver_name?: string;
+  vehicle_plate?: string;
 }
 
 export interface ConsumptionAuditCalculation {
@@ -297,8 +312,19 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     throw new Error('O preço licitado unitário deve ser válido.');
   }
 
-  // 3. Cálculos travados
-  const total_authorized_value = Number((payload.liters_authorized * payload.bidded_unit_price).toFixed(2));
+  // 3. Modo de Fornecimento & Cálculos travados
+  const resolvedBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;
+  const localBudgets = getLocalBudgetClassifications();
+  const resolvedBudget: FleetBudgetClassification | undefined = payload.budget_classification || 
+    localBudgets.find(b => b.id === resolvedBudgetId) || 
+    vehicle.budget_classification;
+
+  const supply_mode = payload.supply_mode || (vehicle.always_full_tank ? 'encher_tanque' : 'litragem_fixa');
+  const liters_authorized = supply_mode === 'encher_tanque'
+    ? vehicle.tank_capacity
+    : payload.liters_authorized;
+
+  const total_authorized_value = Number((liters_authorized * payload.bidded_unit_price).toFixed(2));
   const previous_odometer = Number(vehicle.current_odometer || 0);
   const current_odometer = payload.current_odometer && Number(payload.current_odometer) > 0
     ? Number(payload.current_odometer)
@@ -322,18 +348,24 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     driver_name: payload.driver_name.trim(),
     driver_document: payload.driver_document?.trim() || undefined,
     station_name: payload.station_name.trim(),
-    fuel_type: vehicle.fuel_type, // Pré-determinado de acordo com o veículo
+    fuel_type: vehicle.fuel_type,
     bidded_unit_price: payload.bidded_unit_price,
-    liters_authorized: payload.liters_authorized,
+    liters_authorized: liters_authorized,
     total_authorized_value: total_authorized_value,
     previous_odometer: previous_odometer,
     current_odometer: current_odometer,
-    calculated_km_per_liter: delta_km > 0 && payload.liters_authorized > 0
-      ? Number((delta_km / payload.liters_authorized).toFixed(2))
+    calculated_km_per_liter: delta_km > 0 && liters_authorized > 0
+      ? Number((delta_km / liters_authorized).toFixed(2))
       : undefined,
     deviation_percent: undefined,
     anomaly_level: 'none',
-    status: 'autorizado_pendente', // Via do Sistema congelada
+    supply_mode: supply_mode,
+    pump_photo_url: payload.pump_photo_url || undefined,
+    authorized_by_name: payload.authorized_by_name || 'Gestor de Frotas',
+    authorized_by_role: payload.authorized_by_role || 'Gestor de Frotas',
+    budget_classification_id: resolvedBudgetId,
+    budget_classification: resolvedBudget,
+    status: supply_mode === 'encher_tanque' ? 'aguardando_abastecimento' : 'autorizado_pendente',
     created_at: new Date().toISOString()
   };
 
@@ -355,7 +387,12 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
       current_odometer: newOrder.current_odometer,
       calculated_km_per_liter: newOrder.calculated_km_per_liter,
       anomaly_level: 'none',
-      status: 'autorizado_pendente',
+      supply_mode: newOrder.supply_mode,
+      pump_photo_url: newOrder.pump_photo_url,
+      authorized_by_name: newOrder.authorized_by_name,
+      authorized_by_role: newOrder.authorized_by_role,
+      budget_classification_id: newOrder.budget_classification_id,
+      status: newOrder.status,
       created_at: newOrder.created_at
     }]).select().single();
 
@@ -461,15 +498,23 @@ export async function validateAndCompleteFuelOrder(
   }
 
   // 5. Atualiza a ordem
+  const updatedDriverName = completionData.driver_name?.trim() || order.driver_name;
+  if (completionData.vehicle_plate && completionData.vehicle_plate.trim() && vehicle) {
+    vehicle.plate = completionData.vehicle_plate.trim().toUpperCase();
+  }
+
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     vehicle,
+    driver_name: updatedDriverName,
     liters_supplied: suppliedLiters,
     current_odometer: completionData.current_odometer,
     calculated_km_per_liter: audit.calculated_km_per_liter,
     deviation_percent: audit.deviation_percent,
     receipt_photo_url: completionData.receipt_photo_url || order.receipt_photo_url,
     odometer_photo_url: completionData.odometer_photo_url || order.odometer_photo_url,
+    pump_photo_url: completionData.pump_photo_url || order.pump_photo_url,
+    total_authorized_value: order.supply_mode === 'encher_tanque' ? Number((suppliedLiters * order.bidded_unit_price).toFixed(2)) : order.total_authorized_value,
     invoice_coupon_number: completionData.invoice_coupon_number?.trim() || order.invoice_coupon_number,
     anomaly_level: audit.anomaly_level,
     anomaly_reason: audit.anomaly_reason,
@@ -484,7 +529,10 @@ export async function validateAndCompleteFuelOrder(
     try {
       await supabase
         .from('fleet_vehicles')
-        .update({ current_odometer: completionData.current_odometer })
+        .update({ 
+          current_odometer: completionData.current_odometer,
+          plate: vehicle.plate
+        })
         .eq('id', vehicle.id);
     } catch (err) {
       console.warn('[FleetFuelAudit] Aviso ao atualizar KM do veículo no Supabase:', err);
@@ -501,12 +549,15 @@ export async function validateAndCompleteFuelOrder(
   // 7. Persistir a atualização da ordem no Supabase
   try {
     await supabase.from('fuel_supply_orders').update({
+      driver_name: updatedOrder.driver_name,
       liters_supplied: updatedOrder.liters_supplied,
       current_odometer: updatedOrder.current_odometer,
       calculated_km_per_liter: updatedOrder.calculated_km_per_liter,
       deviation_percent: updatedOrder.deviation_percent,
       receipt_photo_url: updatedOrder.receipt_photo_url,
       odometer_photo_url: updatedOrder.odometer_photo_url,
+      pump_photo_url: updatedOrder.pump_photo_url,
+      total_authorized_value: updatedOrder.total_authorized_value,
       invoice_coupon_number: updatedOrder.invoice_coupon_number,
       anomaly_level: updatedOrder.anomaly_level,
       anomaly_reason: updatedOrder.anomaly_reason,
@@ -523,6 +574,23 @@ export async function validateAndCompleteFuelOrder(
     orders[orderIndex] = updatedOrder;
   } else {
     orders.unshift(updatedOrder);
+  }
+  saveLocalOrders(orders);
+
+  // 9. Notificar gestor de frotas e outras abas em tempo real
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+        detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
+      }));
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('gestao360_fleet_channel');
+        bc.postMessage({ type: 'ORDER_COMPLETED', order: updatedOrder });
+        bc.close();
+      }
+    }
+  } catch (e) {
+    console.warn('[FleetFuelAudit] Erro no broadcast em tempo real:', e);
   }
   saveLocalOrders(orders);
 
@@ -611,7 +679,7 @@ export async function auditFuelAuthorization(
 /**
  * Upload de comprovante físico (canhoto assinado ou foto do odômetro)
  */
-export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | 'odometers'): Promise<string> {
+export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | 'odometers' | 'pumps' | 'invoices'): Promise<string> {
   const fileExt = file.name.split('.').pop() || 'jpg';
   const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 

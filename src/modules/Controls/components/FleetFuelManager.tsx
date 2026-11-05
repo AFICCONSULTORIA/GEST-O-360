@@ -50,12 +50,14 @@ import {
 } from 'lucide-react';
 import {
   FleetVehicle,
+  FleetBudgetClassification,
   FuelSupplyOrder,
   FuelType,
   MetricType,
   FleetDriver,
   FleetFuelStation,
   getFleetVehicles,
+  getFleetBudgetClassifications,
   getFuelSupplyOrders,
   createFuelOrder,
   registerFuelExecution,
@@ -79,6 +81,8 @@ import {
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
 import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVoucherPDF';
+import { DriverBatchImporter } from './DriverBatchImporter';
+import { BudgetClassificationsModal } from './BudgetClassificationsModal';
 import { 
   CONTRACTUAL_BIDDED_PRICES, 
   issueFuelAuthorization,
@@ -90,10 +94,11 @@ import {
   uploadFuelDocumentPhoto,
   linkInvoiceToFuelOrder
 } from '../../../lib/api/fleetFuelAudit';
-import { formatCPF } from '../../../lib/masks';
+import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
 import { showToast } from '../../../components/ui/Toast';
 import { AdminUser } from '../../../types';
+import { supabase } from '../../../lib/supabase';
 
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
@@ -108,6 +113,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [orders, setOrders] = useState<FuelSupplyOrder[]>([]);
   const [drivers, setDrivers] = useState<FleetDriver[]>([]);
   const [stations, setStations] = useState<FleetFuelStation[]>([]);
+  const [budgetClassifications, setBudgetClassifications] = useState<FleetBudgetClassification[]>([]);
+  const [isDriverBatchModalOpen, setIsDriverBatchModalOpen] = useState(false);
+  const [isBudgetClassificationsModalOpen, setIsBudgetClassificationsModalOpen] = useState(false);
+  const [attachmentViewMode, setAttachmentViewMode] = useState<'side_by_side' | 'grid'>('side_by_side');
+  const [selectedAttachmentPhoto, setSelectedAttachmentPhoto] = useState<'pump' | 'odometer' | 'receipt' | 'invoice'>('pump');
   const [loading, setLoading] = useState(true);
 
   // Filtros
@@ -150,6 +160,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     fuel_type: 'diesel_s10' as FuelType,
     liters_authorized: 50,
     current_odometer: 0,
+    budget_classification_id: '',
+    supply_mode: 'litragem_fixa' as 'litragem_fixa' | 'encher_tanque',
+    authorized_by_name: currentUser?.name || 'Gestor da Frota Municipal',
+    authorized_by_role: 'Secretário / Responsável pela Frota',
     is_full_tank_order: false,
     emergency_call_reason: ''
   });
@@ -163,6 +177,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     invoice_key: '',
     receipt_attachment_url: '',
     odometer_photo_url: '',
+    pump_photo_url: '',
     invoice_attachment_url: ''
   });
 
@@ -183,6 +198,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     metric_type: 'km' as MetricType,
     expected_consumption: 9.0,
     current_odometer: 0,
+    budget_classification_id: '',
+    always_full_tank: false,
     is_emergency_priority: false
   });
 
@@ -200,6 +217,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     expected_consumption: 9.0,
     current_odometer: 0,
     status: 'ativo' as 'ativo' | 'manutencao' | 'baixado' | 'inativo',
+    budget_classification_id: '',
+    always_full_tank: false,
     is_emergency_priority: false
   });
 
@@ -237,16 +256,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setLoading(true);
     try {
       const instId = currentUser?.institution_id || 'inst_1';
-      const [vehList, ordList, drvList, staList] = await Promise.all([
+      const [vehList, ordList, drvList, staList, bclassList] = await Promise.all([
         getFleetVehicles(undefined, instId),
         getFuelSupplyOrders({ institutionId: instId }),
         getFleetDrivers({ institutionId: instId }),
-        getFleetFuelStations({ institutionId: instId })
+        getFleetFuelStations({ institutionId: instId }),
+        getFleetBudgetClassifications(instId)
       ]);
       setVehicles(vehList);
       setOrders(ordList);
       setDrivers(drvList);
       setStations(staList);
+      setBudgetClassifications(bclassList);
     } catch (err) {
       console.error('Erro ao carregar dados de frotas:', err);
       showToast('Erro ao carregar dados do módulo de frotas.', 'error');
@@ -285,6 +306,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       expected_consumption: vehicle.expected_consumption,
       current_odometer: vehicle.current_odometer,
       status: vehicle.status,
+      budget_classification_id: vehicle.budget_classification_id || '',
+      always_full_tank: !!vehicle.always_full_tank,
       is_emergency_priority: !!vehicle.is_emergency_priority
     });
     setIsEditVehicleModalOpen(true);
@@ -306,6 +329,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         expected_consumption: Number(editVehicleForm.expected_consumption),
         current_odometer: Number(editVehicleForm.current_odometer),
         status: editVehicleForm.status,
+        budget_classification_id: editVehicleForm.budget_classification_id || undefined,
+        always_full_tank: Boolean(editVehicleForm.always_full_tank),
         is_emergency_priority: Boolean(editVehicleForm.is_emergency_priority)
       });
 
@@ -495,6 +520,55 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   useEffect(() => {
     loadData();
+
+    // 1. Escuta eventos locais na mesma aba / navegador
+    const handleLocalUpdate = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const orderNumber = customEvent.detail?.orderNumber || customEvent.detail?.order?.order_number;
+      showToast(`⛽ Abastecimento recebido! Ordem ${orderNumber ? `"${orderNumber}" ` : ''}confirmada na bomba pelo condutor.`, 'success');
+      loadData();
+    };
+
+    window.addEventListener('gestao360_fuel_order_updated', handleLocalUpdate);
+
+    // 2. BroadcastChannel para comunicação instantânea entre abas e janelas
+    let bc: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      bc = new BroadcastChannel('gestao360_fleet_channel');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'ORDER_COMPLETED') {
+          const ord = event.data?.order;
+          showToast(`⛽ Abastecimento recebido em tempo real! Ordem ${ord?.order_number || ''} abastecida na bomba com foto do visor.`, 'success');
+          loadData();
+        }
+      };
+    }
+
+    // 3. Supabase Realtime para notificações remotas do celular do motorista
+    const channel = supabase
+      .channel('fuel_supply_orders_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fuel_supply_orders' },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            loadData();
+          }
+        }
+      )
+      .subscribe();
+
+    // 4. Polling seguro a cada 20 segundos
+    const interval = setInterval(() => {
+      loadData();
+    }, 20000);
+
+    return () => {
+      window.removeEventListener('gestao360_fuel_order_updated', handleLocalUpdate);
+      if (bc) bc.close();
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, []);
 
   // Veículo selecionado na emissão de ordem
@@ -596,6 +670,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       invoice_key: order.invoice_key || '',
       receipt_attachment_url: order.receipt_attachment_url || '',
       odometer_photo_url: order.odometer_photo_url || '',
+      pump_photo_url: order.pump_photo_url || '',
       invoice_attachment_url: order.invoice_attachment_url || ''
     });
     setIsExecutionModalOpen(true);
@@ -725,7 +800,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         station_name: newOrderForm.station_name,
         bidded_unit_price: currentBiddedPrice,
         liters_authorized: Number(newOrderForm.liters_authorized),
-        current_odometer: Number(newOrderForm.current_odometer)
+        current_odometer: Number(newOrderForm.current_odometer),
+        supply_mode: newOrderForm.supply_mode,
+        authorized_by_name: newOrderForm.authorized_by_name,
+        authorized_by_role: newOrderForm.authorized_by_role,
+        budget_classification_id: newOrderForm.budget_classification_id || selectedVehicleForNewOrder?.budget_classification_id,
+        budget_classification: budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification
       });
 
       showToast(`Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`, 'success');
@@ -740,7 +820,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         liters_authorized: 50,
         current_odometer: 0,
         is_full_tank_order: false,
-        emergency_call_reason: ''
+        emergency_call_reason: '',
+        budget_classification_id: ''
       });
       loadData();
 
@@ -768,6 +849,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         liters_supplied: Number(executionForm.liters_supplied) || selectedOrderForAction.liters_authorized,
         receipt_photo_url: executionForm.receipt_attachment_url || undefined,
         odometer_photo_url: executionForm.odometer_photo_url || undefined,
+        pump_photo_url: executionForm.pump_photo_url || undefined,
         invoice_coupon_number: executionForm.invoice_number?.trim() || undefined,
         audit_justification: executionForm.invoice_key?.trim() || undefined
       });
@@ -835,7 +917,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         expected_consumption: Number(newVehicleForm.expected_consumption),
         current_odometer: Number(newVehicleForm.current_odometer),
         status: 'ativo',
-        is_emergency_priority: Boolean(newVehicleForm.is_emergency_priority)
+        budget_classification_id: newVehicleForm.budget_classification_id || undefined,
+        always_full_tank: Boolean(newVehicleForm.always_full_tank),
+        is_emergency_priority: Boolean(newVehicleForm.always_full_tank) ? true : Boolean(newVehicleForm.is_emergency_priority)
       });
 
       showToast('Veículo cadastrado na frota com sucesso!', 'success');
@@ -862,7 +946,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const handleFileUpload = async (
     orderId: string,
     file: File,
-    type: 'receipt' | 'odometer' | 'invoice'
+    type: 'receipt' | 'odometer' | 'invoice' | 'pump'
   ) => {
     try {
       showToast('Enviando comprovante...', 'info');
@@ -871,6 +955,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setExecutionForm(prev => {
         if (type === 'receipt') return { ...prev, receipt_attachment_url: url };
         if (type === 'odometer') return { ...prev, odometer_photo_url: url };
+        if (type === 'pump') return { ...prev, pump_photo_url: url };
         return { ...prev, invoice_attachment_url: url };
       });
       loadData();
@@ -1228,6 +1313,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             <span>Preços Licitados / Reequilíbrio</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => setIsBudgetClassificationsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
+            title="Gerenciar Fichas Orçamentárias, Centros de Custo e Créditos Especiais"
+          >
+            <Layers size={14} />
+            <span>Fichas Orçamentárias / Créditos</span>
+          </button>
+
           {activeTab === 'vehicles' ? (
             <button
               onClick={() => setIsNewVehicleModalOpen(true)}
@@ -1447,13 +1542,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               </button>
                             )}
 
-                            {(order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.invoice_attachment_url) && (
+                            {(order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url || order.invoice_attachment_url) && (
                               <button
                                 onClick={() => setViewingAttachmentOrder(order)}
-                                title="Ver Comprovantes (Canhoto & Painel)"
-                                className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                                title="Ver Comprovantes (Foto da Bomba, Odômetro, Canhoto)"
+                                className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                               >
                                 <Eye size={15} />
+                                {order.pump_photo_url && (
+                                  <Camera size={12} className="text-emerald-500" />
+                                )}
                               </button>
                             )}
 
@@ -2001,6 +2099,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 />
               </div>
               <button
+                type="button"
+                onClick={() => setIsDriverBatchModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl cursor-pointer shrink-0 border border-neutral-300 dark:border-neutral-700 transition"
+              >
+                <FileSpreadsheet size={14} className="text-emerald-600 dark:text-emerald-400" />
+                Importar Planilha (.xlsx)
+              </button>
+              <button
                 onClick={handleOpenNewDriver}
                 className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"
               >
@@ -2353,6 +2459,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                   vehicle_id: v.id,
                                   fuel_type: v.fuel_type,
                                   current_odometer: v.current_odometer || 0,
+                                  budget_classification_id: v.budget_classification_id || prev.budget_classification_id || '',
                                   is_full_tank_order: isEmergency ? true : prev.is_full_tank_order,
                                   liters_authorized: isEmergency ? v.tank_capacity : Math.min(prev.liters_authorized, v.tank_capacity),
                                   emergency_call_reason: isEmergency && !prev.emergency_call_reason ? `Plantão de Prontidão 24h - ${v.model}` : prev.emergency_call_reason
@@ -2408,12 +2515,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div className="text-right">
                             <span className="text-[10px] text-neutral-400 block font-bold uppercase">Último Odômetro no Sistema:</span>
                             <span className="font-mono font-bold text-neutral-700 dark:text-neutral-300">
-                              {selectedVehicleForNewOrder.current_odometer} km
+                              {formatThousands(selectedVehicleForNewOrder.current_odometer)} km
                             </span>
                           </div>
                         </div>
 
-                        {/* Campo para Digitação Manual do KM Atual do Painel */}
+                        {/* Campo para Digitação Manual do KM Atual do Painel Formatado em Milhar */}
                         <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
                           <label className="block text-xs font-black text-amber-950 dark:text-amber-200 mb-1 flex items-center gap-1.5">
                             <Gauge size={14} className="text-amber-600" />
@@ -2421,12 +2528,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           </label>
                           <div className="relative">
                             <input
-                              type="number"
-                              step="1"
-                              min="0"
-                              value={newOrderForm.current_odometer || ''}
-                              onChange={e => setNewOrderForm({ ...newOrderForm, current_odometer: parseFloat(e.target.value) || 0 })}
-                              placeholder={`Ex: ${selectedVehicleForNewOrder.current_odometer || 0}`}
+                              type="text"
+                              inputMode="numeric"
+                              value={newOrderForm.current_odometer ? formatThousands(newOrderForm.current_odometer) : ''}
+                              onChange={e => {
+                                const num = parseThousands(e.target.value);
+                                setNewOrderForm({ ...newOrderForm, current_odometer: num });
+                              }}
+                              placeholder={`Ex: ${formatThousands(selectedVehicleForNewOrder.current_odometer || 0)}`}
                               required
                               className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-xl text-sm font-black font-mono text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
                             />
@@ -2436,14 +2545,48 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           </div>
                           <div className="flex justify-between items-center mt-1 text-[11px]">
                             <span className="text-neutral-500">
-                              Informe a leitura visível no painel do veículo no momento da emissão.
+                              Formatação automática com separador de milhar. Digite a leitura do painel.
                             </span>
                             {newOrderForm.current_odometer > selectedVehicleForNewOrder.current_odometer && (
                               <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                                +{newOrderForm.current_odometer - selectedVehicleForNewOrder.current_odometer} km rodados
+                                +{formatThousands(newOrderForm.current_odometer - selectedVehicleForNewOrder.current_odometer)} km rodados
                               </span>
                             )}
                           </div>
+                        </div>
+
+                        {/* SELEÇÃO DA CLASSIFICAÇÃO ORÇAMENTÁRIA (CENTRO DE CUSTO / FICHA) */}
+                        <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="block text-xs font-black text-amber-950 dark:text-amber-200 flex items-center gap-1.5">
+                              <Layers size={14} className="text-amber-600" />
+                              Classificação Orçamentária (Centro de Custo / Ficha) *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setIsBudgetClassificationsModalOpen(true)}
+                              className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus size={11} />
+                              <span>Gerenciar / Crédito Especial</span>
+                            </button>
+                          </div>
+                          <select
+                            value={newOrderForm.budget_classification_id}
+                            onChange={e => setNewOrderForm({ ...newOrderForm, budget_classification_id: e.target.value })}
+                            required
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
+                          >
+                            <option value="">Selecione a dotação contábil para esta autorização...</option>
+                            {budgetClassifications.map(bc => (
+                              <option key={bc.id} value={bc.id}>
+                                [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[11px] text-neutral-500 mt-1">
+                            * Esta classificação oficial sairá impressa com destaque na 1ª e 2ª vias do canhoto de abastecimento.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -2633,6 +2776,91 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 {/* PASSO 3: LITRAGEM E PARÂMETROS LICITATÓRIOS TRAVADOS */}
                 {newOrderStep === 3 && (
                   <div className="space-y-4 animate-in fade-in duration-200">
+                    {/* SELETOR DE MODALIDADE DE ABASTECIMENTO */}
+                    <div className="p-3.5 bg-neutral-100/80 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700 space-y-2.5">
+                      <label className="block text-xs font-black uppercase tracking-wider text-neutral-800 dark:text-neutral-200">
+                        Modalidade de Abastecimento Autorizada *
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderForm(prev => ({
+                              ...prev,
+                              supply_mode: 'litragem_fixa',
+                              liters_authorized: prev.liters_authorized > (selectedVehicleForNewOrder?.tank_capacity || 100) ? 40 : (prev.liters_authorized || 40)
+                            }));
+                          }}
+                          className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                            newOrderForm.supply_mode === 'litragem_fixa'
+                              ? 'bg-white dark:bg-neutral-900 border-blue-500 shadow-sm ring-2 ring-blue-500/20'
+                              : 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <span className="text-xs font-bold text-neutral-900 dark:text-white flex items-center justify-between">
+                            <span>Litragem Fixa</span>
+                            {newOrderForm.supply_mode === 'litragem_fixa' && <span className="w-2 h-2 rounded-full bg-blue-500" />}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 leading-tight">
+                            Quantidade pré-autorizada na emissão (teto máximo)
+                          </span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewOrderForm(prev => ({
+                              ...prev,
+                              supply_mode: 'encher_tanque',
+                              liters_authorized: selectedVehicleForNewOrder?.tank_capacity || prev.liters_authorized
+                            }));
+                          }}
+                          className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all ${
+                            newOrderForm.supply_mode === 'encher_tanque'
+                              ? 'bg-emerald-50/70 dark:bg-emerald-950/40 border-emerald-500 shadow-sm ring-2 ring-emerald-500/20'
+                              : 'bg-neutral-50 dark:bg-neutral-800/40 border-neutral-200 dark:border-neutral-700 opacity-70 hover:opacity-100'
+                          }`}
+                        >
+                          <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                            <span>⛽ Completar Tanque (Top-Off)</span>
+                            {newOrderForm.supply_mode === 'encher_tanque' && <span className="w-2 h-2 rounded-full bg-emerald-500" />}
+                          </span>
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 leading-tight">
+                            Até o desarme da bomba (teto = capacidade física {selectedVehicleForNewOrder?.tank_capacity || 0}L)
+                          </span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* DADOS DO RESPONSÁVEL PELA AUTORIZAÇÃO */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-neutral-50 dark:bg-neutral-800/40 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                          Responsável pela Autorização (Gestor Emissor) *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newOrderForm.authorized_by_name}
+                          onChange={e => setNewOrderForm({ ...newOrderForm, authorized_by_name: e.target.value })}
+                          placeholder="Nome do Secretário / Gestor"
+                          className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                          Cargo / Matrícula Oficial *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={newOrderForm.authorized_by_role}
+                          onChange={e => setNewOrderForm({ ...newOrderForm, authorized_by_role: e.target.value })}
+                          placeholder="Ex: Secretário Municipal de Frotas / Matr. 1024"
+                          className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
                     {/* Litros Autorizados & Atalhos */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
@@ -2661,6 +2889,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           }`}
                         />
                       </div>
+
+                      {newOrderForm.supply_mode === 'encher_tanque' && (
+                        <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 flex items-start gap-2 text-emerald-800 dark:text-emerald-200 text-xs">
+                          <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                          <div>
+                            <strong>Modo Completar Tanque Homologado:</strong> O motorista está autorizado a abastecer até o desarme automático da bomba do posto. O valor final e a litragem real serão liquidados pelo fiscal após o lançamento do comprovante.
+                          </div>
+                        </div>
+                      )}
 
                       {/* Botões de Atalho de Litros */}
                       <div className="flex items-center gap-1.5 mt-2">
@@ -2700,12 +2937,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       )}
                     </div>
 
-                                        {/* Odômetro Atual Confirmado */}
+                                        {/* Classificação Orçamentária Confirmada para o Canhoto */}
+                    <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 rounded-xl border border-blue-200 dark:border-blue-800 text-xs flex justify-between items-center">
+                      <div>
+                        <span className="text-[10px] text-blue-700 dark:text-blue-400 block font-bold uppercase">
+                          Classificação Orçamentária Gravada no Canhoto:
+                        </span>
+                        <span className="font-bold text-neutral-900 dark:text-white text-xs">
+                          {(() => {
+                            const bc = budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification;
+                            if (!bc) return 'Administração Geral (Ficha 11 - Fonte 1.1.500.0)';
+                            return `[Ficha ${bc.invoice_sheet}] ${bc.department_local} — Fonte ${bc.funding_source} ${bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}`;
+                          })()}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setNewOrderStep(1)}
+                        className="text-[11px] font-bold text-blue-600 hover:underline cursor-pointer"
+                      >
+                        Alterar Ficha
+                      </button>
+                    </div>
+
+                    {/* Odômetro Atual Confirmado */}
                     <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-xs">
                       <div>
                         <span className="text-[10px] text-neutral-400 block font-bold uppercase">Odômetro do Painel Gravado:</span>
                         <span className="font-mono font-black text-sm text-neutral-900 dark:text-white">
-                          {newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0} km
+                          {formatThousands(newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0)} km
                         </span>
                       </div>
                       <button
@@ -2854,19 +3114,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       Odômetro Atual no Painel (KM) *
                     </label>
                     <input
-                      type="number"
-                      step="1"
-                      value={executionForm.current_odometer}
-                      onChange={e => setExecutionForm({ ...executionForm, current_odometer: parseFloat(e.target.value) || 0 })}
+                      type="text"
+                      inputMode="numeric"
+                      value={executionForm.current_odometer ? formatThousands(executionForm.current_odometer) : ''}
+                      onChange={e => setExecutionForm({ ...executionForm, current_odometer: parseThousands(e.target.value) })}
                       required
-                      className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-xs font-bold focus:outline-none focus:ring-2 ${
+                      className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 ${
                         executionForm.current_odometer <= selectedOrderForAction.previous_odometer
                           ? 'border-rose-500 text-rose-600 focus:ring-rose-500'
                           : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500'
                       }`}
                     />
                     <span className="text-[10px] text-neutral-400">
-                      Anterior: {selectedOrderForAction.previous_odometer}
+                      Anterior: {formatThousands(selectedOrderForAction.previous_odometer)} km
                     </span>
                   </div>
                 </div>
@@ -2909,7 +3169,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-black/5 dark:border-white/5">
                         <div>
                           <span className="text-[10px] opacity-70 block">Deslocamento:</span>
-                          <strong className="text-xs font-mono">+{deltaOdo} km</strong>
+                          <strong className="text-xs font-mono">+{formatThousands(deltaOdo)} km</strong>
                         </div>
                         <div>
                           <span className="text-[10px] opacity-70 block">Consumo Teórico:</span>
@@ -2997,104 +3257,189 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                 </div>
 
-                {/* SEÇÃO DE UPLOAD DOS 3 ANEXOS OBRIGATÓRIOS */}
+                {/* SEÇÃO DE UPLOAD DOS COMPROVANTES OBRIGATÓRIOS (NUMERAÇÃO 1 A 4 CORRETA E DESIGN MODERNO) */}
                 <div className="space-y-3 pt-2">
-                  <h4 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300">
-                    Anexos Comprobatórios (Canhoto, Bomba e Nota Fiscal)
-                  </h4>
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Camera size={14} className="text-emerald-600" />
+                      Anexos Comprobatórios de Auditoria (Visor da Bomba, Painel, Canhoto e NF-e)
+                    </h4>
+                    <span className="text-[10px] text-neutral-400 font-semibold">
+                      Formatos: PNG, JPG ou PDF
+                    </span>
+                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {/* Anexo 1: Canhoto Assinado */}
-                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center">
-                      <span className="block text-[11px] font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-                        1. Canhoto Assinado *
-                      </span>
-                      {executionForm.receipt_attachment_url ? (
-                        <div className="space-y-1">
-                          <img
-                            src={executionForm.receipt_attachment_url}
-                            alt="Canhoto"
-                            className="w-full h-20 object-cover rounded-lg border border-neutral-200 dark:border-neutral-700"
-                          />
-                          <span className="text-[10px] text-emerald-600 font-bold block">✓ Anexado</span>
-                        </div>
-                      ) : (
-                        <div className="h-20 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-lg flex flex-col items-center justify-center p-2 text-neutral-400">
-                          <Upload size={18} />
-                          <span className="text-[10px] mt-1">Carregar foto</span>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (file) handleFileUpload(selectedOrderForAction.id, file, 'receipt');
-                        }}
-                        className="mt-2 text-[10px] w-full file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-neutral-900 file:text-white dark:file:bg-white dark:file:text-neutral-950 cursor-pointer"
-                      />
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                    {/* Anexo 1: Foto do Visor da Bomba */}
+                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
+                      <div>
+                        <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
+                          1. Visor da Bomba *
+                        </span>
+                        {executionForm.pump_photo_url ? (
+                          <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
+                            <img
+                              src={executionForm.pump_photo_url}
+                              alt="Visor da Bomba"
+                              className="w-full h-24 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                              Trocar Foto
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
+                            <Fuel size={22} className="text-neutral-400 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">Litros e Valor (R$)</span>
+                            <span className="text-[9px] text-neutral-400">Visor digital da bomba</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <label className="mt-2.5 block cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(selectedOrderForAction.id, file, 'pump');
+                          }}
+                          className="hidden"
+                        />
+                        <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm">
+                          <Upload size={12} />
+                          {executionForm.pump_photo_url ? 'Substituir Foto' : 'Selecionar Foto'}
+                        </span>
+                      </label>
                     </div>
 
                     {/* Anexo 2: Foto do Painel / Odômetro */}
-                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center">
-                      <span className="block text-[11px] font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-                        2. Foto do Painel/Bomba
-                      </span>
-                      {executionForm.odometer_photo_url ? (
-                        <div className="space-y-1">
-                          <img
-                            src={executionForm.odometer_photo_url}
-                            alt="Painel"
-                            className="w-full h-20 object-cover rounded-lg border border-neutral-200 dark:border-neutral-700"
-                          />
-                          <span className="text-[10px] text-emerald-600 font-bold block">✓ Anexado</span>
-                        </div>
-                      ) : (
-                        <div className="h-20 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-lg flex flex-col items-center justify-center p-2 text-neutral-400">
-                          <Gauge size={18} />
-                          <span className="text-[10px] mt-1">Painel no ato</span>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (file) handleFileUpload(selectedOrderForAction.id, file, 'odometer');
-                        }}
-                        className="mt-2 text-[10px] w-full file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-neutral-900 file:text-white dark:file:bg-white dark:file:text-neutral-950 cursor-pointer"
-                      />
+                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
+                      <div>
+                        <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
+                          2. Painel / Odômetro *
+                        </span>
+                        {executionForm.odometer_photo_url ? (
+                          <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
+                            <img
+                              src={executionForm.odometer_photo_url}
+                              alt="Painel do Veículo"
+                              className="w-full h-24 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                              Trocar Foto
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
+                            <Gauge size={22} className="text-neutral-400 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">KM no Painel</span>
+                            <span className="text-[9px] text-neutral-400">Foto no ato do posto</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <label className="mt-2.5 block cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(selectedOrderForAction.id, file, 'odometer');
+                          }}
+                          className="hidden"
+                        />
+                        <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm">
+                          <Upload size={12} />
+                          {executionForm.odometer_photo_url ? 'Substituir Foto' : 'Selecionar Foto'}
+                        </span>
+                      </label>
                     </div>
 
-                    {/* Anexo 3: Cupom / Nota Fiscal */}
-                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center">
-                      <span className="block text-[11px] font-bold text-neutral-800 dark:text-neutral-200 mb-1">
-                        3. Cupom / NF-e
-                      </span>
-                      {executionForm.invoice_attachment_url ? (
-                        <div className="space-y-1">
-                          <img
-                            src={executionForm.invoice_attachment_url}
-                            alt="Nota Fiscal"
-                            className="w-full h-20 object-cover rounded-lg border border-neutral-200 dark:border-neutral-700"
-                          />
-                          <span className="text-[10px] text-emerald-600 font-bold block">✓ Anexado</span>
-                        </div>
-                      ) : (
-                        <div className="h-20 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-lg flex flex-col items-center justify-center p-2 text-neutral-400">
-                          <FileText size={18} />
-                          <span className="text-[10px] mt-1">PDF/Foto da NF</span>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        accept="image/*,application/pdf"
-                        onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (file) handleFileUpload(selectedOrderForAction.id, file, 'invoice');
-                        }}
-                        className="mt-2 text-[10px] w-full file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-[10px] file:font-semibold file:bg-neutral-900 file:text-white dark:file:bg-white dark:file:text-neutral-950 cursor-pointer"
-                      />
+                    {/* Anexo 3: Canhoto Físico Assinado */}
+                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
+                      <div>
+                        <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
+                          3. Canhoto Assinado *
+                        </span>
+                        {executionForm.receipt_attachment_url ? (
+                          <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
+                            <img
+                              src={executionForm.receipt_attachment_url}
+                              alt="Canhoto Assinado"
+                              className="w-full h-24 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                              Trocar Canhoto
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
+                            <FileCheck size={22} className="text-neutral-400 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">Canhoto 2 Vias</span>
+                            <span className="text-[9px] text-neutral-400">Assinaturas preenchidas</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <label className="mt-2.5 block cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(selectedOrderForAction.id, file, 'receipt');
+                          }}
+                          className="hidden"
+                        />
+                        <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-900 hover:bg-neutral-800 text-white dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-100 transition-colors shadow-sm">
+                          <Upload size={12} />
+                          {executionForm.receipt_attachment_url ? 'Substituir Canhoto' : 'Selecionar Canhoto'}
+                        </span>
+                      </label>
+                    </div>
+
+                    {/* Anexo 4: Cupom / Nota Fiscal */}
+                    <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
+                      <div>
+                        <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
+                          4. Cupom / NF-e
+                        </span>
+                        {executionForm.invoice_attachment_url ? (
+                          <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
+                            <img
+                              src={executionForm.invoice_attachment_url}
+                              alt="Nota Fiscal"
+                              className="w-full h-24 object-cover"
+                            />
+                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                              Trocar NF
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
+                            <FileText size={22} className="text-neutral-400 mb-1" />
+                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">Nota Fiscal / Cupom</span>
+                            <span className="text-[9px] text-neutral-400">Opcional no momento</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <label className="mt-2.5 block cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileUpload(selectedOrderForAction.id, file, 'invoice');
+                          }}
+                          className="hidden"
+                        />
+                        <span className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl text-[11px] font-bold bg-neutral-100 hover:bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200 dark:hover:bg-neutral-700 transition-colors border border-neutral-300 dark:border-neutral-700">
+                          <Upload size={12} />
+                          {executionForm.invoice_attachment_url ? 'Substituir NF' : 'Anexar NF-e'}
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -3362,6 +3707,56 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                 </div>
 
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Classificação Orçamentária (Centro de Custo / Ficha) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsBudgetClassificationsModalOpen(true)}
+                      className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      + Gerenciar Fichas
+                    </button>
+                  </div>
+                  <select
+                    value={newVehicleForm.budget_classification_id}
+                    onChange={e => setNewVehicleForm({ ...newVehicleForm, budget_classification_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Selecione a dotação contábil padrão...</option>
+                    {budgetClassifications.map(bc => (
+                      <option key={bc.id} value={bc.id}>
+                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-neutral-400 mt-0.5">
+                    Vincula os empenhos e autorizações de combustível à ficha e fonte contábil oficial
+                  </p>
+                </div>
+
+                {/* MODALIDADE PREFERENCIAL: ENCHER O TANQUE (TOP-OFF) */}
+                <div className="p-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newVehicleForm.always_full_tank}
+                      onChange={e => setNewVehicleForm({ ...newVehicleForm, always_full_tank: e.target.checked })}
+                      className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                        ⛽ Regime Obrigatório de Tanque Cheio (Top-Off Contínuo)
+                      </span>
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5 leading-tight">
+                        Autoriza automaticamente o veículo a completar o tanque até o desarme da bomba em todas as ordens.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
                 {/* PRIORIDADE DE PRONTIDÃO 24H (AMBULÂNCIA / ÔNIBUS) */}
                 <div className="p-3 rounded-2xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/50 dark:bg-rose-950/20">
                   <label className="flex items-start gap-2.5 cursor-pointer">
@@ -3428,90 +3823,187 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                {/* 1. Canhoto Assinado */}
-                <div className="space-y-2">
-                  <h5 className="font-bold text-xs text-neutral-700 dark:text-neutral-300 uppercase">
-                    1. Canhoto Físico Assinado
-                  </h5>
-                  {(viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url) ? (
-                    <a
-                      href={viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block group overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-700 relative"
-                    >
-                      <img
-                        src={viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url}
-                        alt="Canhoto"
-                        className="w-full h-56 object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                        Ampliar Imagem ↗
-                      </div>
-                    </a>
-                  ) : (
-                    <div className="h-56 bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center text-neutral-400 text-xs">
-                      Não anexado
+{/* VISUALIZADOR SIDE-BY-SIDE (AUDITORIA MATEMÁTICA X COMPROVANTES REAIS) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mt-4">
+                
+                {/* COLUNA ESQUERDA: DADOS DECLARADOS E AUDITORIA MATEMÁTICA */}
+                <div className="lg:col-span-5 space-y-4 bg-neutral-50 dark:bg-neutral-950 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 text-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-200 dark:border-neutral-800">
+                    <span className="font-black text-neutral-900 dark:text-white uppercase tracking-wider text-[11px]">
+                      Conferência de Auditoria
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      {viewingAttachmentOrder.status.toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <span className="text-neutral-400 block text-[10px] font-bold uppercase">Veículo / Placa</span>
+                      <strong className="text-neutral-900 dark:text-white font-mono text-sm">
+                        {viewingAttachmentOrder.vehicle?.plate || 'SEM PLACA'} {viewingAttachmentOrder.vehicle?.prefix_code ? `(${viewingAttachmentOrder.vehicle.prefix_code})` : ''}
+                      </strong>
+                      <span className="text-neutral-500 block text-[11px]">{viewingAttachmentOrder.vehicle?.model} • {viewingAttachmentOrder.vehicle?.department}</span>
                     </div>
-                  )}
+
+                    <div>
+                      <span className="text-neutral-400 block text-[10px] font-bold uppercase">Motorista / Condutor</span>
+                      <strong className="text-neutral-900 dark:text-white font-semibold">
+                        {viewingAttachmentOrder.driver_name} {viewingAttachmentOrder.driver_document ? `(${viewingAttachmentOrder.driver_document})` : ''}
+                      </strong>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                      <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                        <span className="text-neutral-400 block text-[10px] font-bold">Odômetro Anterior:</span>
+                        <strong className="font-mono text-xs">{viewingAttachmentOrder.previous_odometer} km</strong>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                        <span className="text-neutral-400 block text-[10px] font-bold">Odômetro Atual Lido:</span>
+                        <strong className="font-mono text-xs text-blue-600 dark:text-blue-400">{viewingAttachmentOrder.current_odometer || '—'} km</strong>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                        <span className="text-neutral-400 block text-[10px] font-bold">Litragem Faturada:</span>
+                        <strong className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
+                          {Number(viewingAttachmentOrder.liters_supplied || viewingAttachmentOrder.liters_authorized).toFixed(2)} L
+                        </strong>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                        <span className="text-neutral-400 block text-[10px] font-bold">Consumo Apurado:</span>
+                        <strong className="font-mono text-xs">
+                          {viewingAttachmentOrder.calculated_km_per_liter || viewingAttachmentOrder.calculated_consumption || '—'} km/l
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px]">
+                      <span className="text-amber-800 dark:text-amber-300 font-bold block mb-1">Dotação Orçamentária:</span>
+                      <span className="text-neutral-700 dark:text-neutral-300">
+                        Ficha: <strong>{viewingAttachmentOrder.budget_classification?.invoice_sheet || viewingAttachmentOrder.vehicle?.budget_classification?.invoice_sheet || '11'}</strong> • 
+                        Fonte: <strong>{viewingAttachmentOrder.budget_classification?.funding_source || viewingAttachmentOrder.vehicle?.budget_classification?.funding_source || '1.1.500.0'}</strong>
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* 2. Painel / Odômetro */}
-                <div className="space-y-2">
-                  <h5 className="font-bold text-xs text-neutral-700 dark:text-neutral-300 uppercase">
-                    2. Painel / Bomba
-                  </h5>
-                  {viewingAttachmentOrder.odometer_photo_url ? (
-                    <a
-                      href={viewingAttachmentOrder.odometer_photo_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block group overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-700 relative"
+                {/* COLUNA DIREITA: FOTOS E COMPROVANTES EM ALTA RESOLUÇÃO */}
+                <div className="lg:col-span-7 space-y-3">
+                  {/* Abas das Fotos */}
+                  <div className="flex items-center gap-1.5 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAttachmentPhoto('pump')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        selectedAttachmentPhoto === 'pump'
+                          ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
+                          : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                      }`}
                     >
-                      <img
-                        src={viewingAttachmentOrder.odometer_photo_url}
-                        alt="Painel"
-                        className="w-full h-56 object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                        Ampliar Imagem ↗
-                      </div>
-                    </a>
-                  ) : (
-                    <div className="h-56 bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center text-neutral-400 text-xs">
-                      Não anexado
-                    </div>
-                  )}
+                      <Fuel size={13} />
+                      <span>1. Visor Bomba</span>
+                      {viewingAttachmentOrder.pump_photo_url && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAttachmentPhoto('odometer')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        selectedAttachmentPhoto === 'odometer'
+                          ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
+                          : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                      }`}
+                    >
+                      <Gauge size={13} />
+                      <span>2. Painel/KM</span>
+                      {viewingAttachmentOrder.odometer_photo_url && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAttachmentPhoto('receipt')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        selectedAttachmentPhoto === 'receipt'
+                          ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
+                          : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                      }`}
+                    >
+                      <FileCheck size={13} />
+                      <span>3. Canhoto</span>
+                      {(viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url) && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedAttachmentPhoto('invoice')}
+                      className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                        selectedAttachmentPhoto === 'invoice'
+                          ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
+                          : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                      }`}
+                    >
+                      <FileText size={13} />
+                      <span>4. NF-e</span>
+                      {viewingAttachmentOrder.invoice_attachment_url && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+                    </button>
+                  </div>
+
+                  {/* Foto Ativa em Destaque */}
+                  <div className="border border-neutral-200 dark:border-neutral-700 rounded-2xl overflow-hidden bg-neutral-950 flex flex-col items-center justify-center min-h-[320px] max-h-[420px] relative">
+                    {(() => {
+                      let activeUrl = '';
+                      let photoLabel = '';
+
+                      if (selectedAttachmentPhoto === 'pump') {
+                        activeUrl = viewingAttachmentOrder.pump_photo_url || '';
+                        photoLabel = 'Foto do Visor da Bomba (Litros e Valor Gravados)';
+                      } else if (selectedAttachmentPhoto === 'odometer') {
+                        activeUrl = viewingAttachmentOrder.odometer_photo_url || '';
+                        photoLabel = 'Foto do Painel do Veículo (Odômetro Atual)';
+                      } else if (selectedAttachmentPhoto === 'receipt') {
+                        activeUrl = viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url || '';
+                        photoLabel = 'Foto do Canhoto Físico Oficial Assinado';
+                      } else {
+                        activeUrl = viewingAttachmentOrder.invoice_attachment_url || '';
+                        photoLabel = 'Nota Fiscal / Cupom Eletrônico Vinculado';
+                      }
+
+                      if (!activeUrl) {
+                        return (
+                          <div className="p-8 text-center text-neutral-400 space-y-2">
+                            <Camera size={36} className="mx-auto opacity-40" />
+                            <p className="text-xs font-semibold">{photoLabel}</p>
+                            <span className="text-[11px] text-neutral-500 block">Nenhuma imagem anexada nesta categoria</span>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="w-full h-full relative group">
+                          <img
+                            src={activeUrl}
+                            alt={photoLabel}
+                            className="w-full h-[360px] object-contain bg-black/60"
+                          />
+                          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-3 flex justify-between items-center text-white">
+                            <span className="text-xs font-bold truncate max-w-sm">{photoLabel}</span>
+                            <a
+                              href={activeUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3 py-1 rounded-lg bg-white/20 hover:bg-white/30 text-xs font-bold backdrop-blur-sm transition-all"
+                            >
+                              Ver em Tela Cheia ↗
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
 
-                {/* 3. Nota Fiscal */}
-                <div className="space-y-2">
-                  <h5 className="font-bold text-xs text-neutral-700 dark:text-neutral-300 uppercase">
-                    3. Nota Fiscal / Cupom
-                  </h5>
-                  {viewingAttachmentOrder.invoice_attachment_url ? (
-                    <a
-                      href={viewingAttachmentOrder.invoice_attachment_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block group overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-700 relative"
-                    >
-                      <img
-                        src={viewingAttachmentOrder.invoice_attachment_url}
-                        alt="Nota Fiscal"
-                        className="w-full h-56 object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold">
-                        Ampliar Imagem ↗
-                      </div>
-                    </a>
-                  ) : (
-                    <div className="h-56 bg-neutral-100 dark:bg-neutral-800 rounded-2xl flex items-center justify-center text-neutral-400 text-xs">
-                      Não anexado
-                    </div>
-                  )}
-                </div>
               </div>
 
               <div className="flex justify-between items-center mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800">
@@ -3708,6 +4200,53 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <option value="inativo">Inativo</option>
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                      Classificação Orçamentária (Centro de Custo / Ficha)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsBudgetClassificationsModalOpen(true)}
+                      className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      + Gerenciar Fichas
+                    </button>
+                  </div>
+                  <select
+                    value={editVehicleForm.budget_classification_id}
+                    onChange={e => setEditVehicleForm({ ...editVehicleForm, budget_classification_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option value="">Selecione a dotação contábil...</option>
+                    {budgetClassifications.map(bc => (
+                      <option key={bc.id} value={bc.id}>
+                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* MODALIDADE PREFERENCIAL: ENCHER O TANQUE (TOP-OFF) */}
+                <div className="p-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20">
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editVehicleForm.always_full_tank}
+                      onChange={e => setEditVehicleForm({ ...editVehicleForm, always_full_tank: e.target.checked })}
+                      className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                    />
+                    <div>
+                      <span className="text-xs font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                        ⛽ Regime Obrigatório de Tanque Cheio (Top-Off Contínuo)
+                      </span>
+                      <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5 leading-tight">
+                        Autoriza automaticamente o veículo a completar o tanque até o desarme da bomba.
+                      </p>
+                    </div>
+                  </label>
                 </div>
 
                 {/* PRIORIDADE DE PRONTIDÃO 24H (AMBULÂNCIA / ÔNIBUS) */}
@@ -4360,6 +4899,28 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           </div>
         )}
       </AnimatePresence>
+
+      {/* IMPORTADOR EM LOTE DE MOTORISTAS (.XLSX / .CSV) */}
+      <DriverBatchImporter
+        isOpen={isDriverBatchModalOpen}
+        onClose={() => setIsDriverBatchModalOpen(false)}
+        onSuccess={(count) => {
+          showToast(`${count} motoristas importados com sucesso!`, 'success');
+          loadData();
+        }}
+        institutionId={currentUser?.institution_id}
+      />
+
+      {/* CRUD DE CLASSIFICAÇÕES ORÇAMENTÁRIAS, CENTROS DE CUSTO E CRÉDITOS ESPECIAIS */}
+      <BudgetClassificationsModal
+        isOpen={isBudgetClassificationsModalOpen}
+        onClose={() => setIsBudgetClassificationsModalOpen(false)}
+        onUpdated={(updatedList) => {
+          setBudgetClassifications(updatedList);
+          loadData();
+        }}
+        institutionId={currentUser?.institution_id}
+      />
     </div>
   );
 };

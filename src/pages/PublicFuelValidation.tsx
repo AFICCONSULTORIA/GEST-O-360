@@ -2,24 +2,24 @@
  * Portal Público e Mobile de Validação de Abastecimento de Frotas
  * Arquivo: src/pages/PublicFuelValidation.tsx
  * Sistema GESTÃO 360 - Acessível via leitura de QR Code no Canhoto
- * Permite ao Fiscal/Frentista conferir dados contratuais e registrar baixa com foto
+ * Interface simples e mobile-first para o motorista no ato do abastecimento na bomba
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Fuel, ShieldCheck, AlertTriangle, CheckCircle2, XCircle, Search, 
-  Camera, Upload, FileText, ArrowLeft, Building2, Sun, Moon, Gauge, 
-  Car, Clock, AlertCircle, Ban, Check, RefreshCw
+  Fuel, Camera, CheckCircle2, AlertTriangle, ArrowLeft, RefreshCw, 
+  Car, User, Gauge, ShieldCheck, Check, RotateCcw, AlertCircle,
+  Building2, Sun, Moon, Search
 } from 'lucide-react';
 import { 
   TwoWayFuelOrder, 
   getFuelAuthorizationByNumber, 
   validateAndCompleteFuelOrder, 
-  calculateRealtimeMetrics, 
   uploadFuelDocumentPhoto,
   ConsumptionAuditCalculation 
 } from '../lib/api/fleetFuelAudit';
 import { formatFuelLabel } from '../modules/Controls/components/FuelAuthorizationVoucherPDF';
+import { formatThousands, parseThousands } from '../lib/masks';
 import { Institution } from '../types';
 import { showToast } from '../components/ui/Toast';
 
@@ -37,22 +37,23 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
   const [searchCode, setSearchCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<TwoWayFuelOrder | null>(null);
-  const [searched, setSearched] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Formulário de Baixa na Bomba
-  const [currentOdometerInput, setCurrentOdometerInput] = useState<string>('');
-  const [litersSuppliedInput, setLitersSuppliedInput] = useState<string>('');
-  const [couponNumberInput, setCouponNumberInput] = useState<string>('');
-  const [justificationInput, setJustificationInput] = useState<string>('');
-  const [odometerPhoto, setOdometerPhoto] = useState<File | null>(null);
-  const [receiptPhoto, setReceiptPhoto] = useState<File | null>(null);
-  const [odometerPreview, setOdometerPreview] = useState<string | null>(null);
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  // Campos do Formulário do Motorista
+  const [driverName, setDriverName] = useState('');
+  const [vehiclePlate, setVehiclePlate] = useState('');
+  const [currentKmFormatted, setCurrentKmFormatted] = useState('');
+  const [litersSupplied, setLitersSupplied] = useState<string>('');
+  
+  // Foto da Bomba (Câmera ao vivo sem salvar no telefone)
+  const [pumpPhoto, setPumpPhoto] = useState<File | null>(null);
+  const [pumpPhotoPreview, setPumpPhotoPreview] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [successResult, setSuccessResult] = useState<{ order: TwoWayFuelOrder; audit: ConsumptionAuditCalculation } | null>(null);
 
-  // Leitura automática da URL ao carregar
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Leitura automática da URL ao carregar via QR Code (?order=AUT-2026-XXXX)
   useEffect(() => {
     let searchStr = window.location.search;
     if (!searchStr && window.location.hash.includes('?')) {
@@ -83,24 +84,27 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     if (!codeToSearch.trim()) return;
     setLoading(true);
     setErrorMsg(null);
-    setSearched(true);
     setSuccessResult(null);
 
     try {
       const result = await getFuelAuthorizationByNumber(codeToSearch);
       if (result) {
         setOrder(result);
-        setLitersSuppliedInput(String(result.liters_authorized));
-        if (result.current_odometer) {
-          setCurrentOdometerInput(String(result.current_odometer));
+        setDriverName(result.driver_name || '');
+        setVehiclePlate(result.vehicle?.plate || '');
+        setLitersSupplied(String(result.liters_authorized));
+        if (result.current_odometer && result.current_odometer > 0) {
+          setCurrentKmFormatted(formatThousands(result.current_odometer));
+        } else {
+          setCurrentKmFormatted('');
         }
       } else {
         setOrder(null);
-        setErrorMsg(`A autorização "${codeToSearch}" não foi encontrada no banco de dados do município.`);
+        setErrorMsg(`Autorização nº "${codeToSearch}" não foi encontrada no sistema.`);
       }
     } catch (err: unknown) {
       console.error('Erro ao consultar autorização:', err);
-      const message = err instanceof Error ? err.message : 'Falha na consulta ao servidor.';
+      const message = err instanceof Error ? err.message : 'Falha na conexão com o servidor municipal.';
       setErrorMsg(message);
       setOrder(null);
     } finally {
@@ -108,171 +112,198 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     }
   };
 
-  // Cálculo em tempo real conforme o frentista/fiscal digita o KM atual
-  const realtimeAudit: ConsumptionAuditCalculation | null = React.useMemo(() => {
-    if (!order) return null;
-    const currentKm = parseFloat(currentOdometerInput);
-    const liters = parseFloat(litersSuppliedInput) || order.liters_authorized;
-    const previousKm = order.previous_odometer;
-    const expectedCons = order.vehicle?.expected_consumption || 10;
-    const tankCap = order.vehicle?.tank_capacity || 80;
+  // Captura direta da foto da bomba via câmera
+  const handleCapturePumpPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    if (isNaN(currentKm) || currentKm <= 0) return null;
-
-    return calculateRealtimeMetrics(previousKm, currentKm, liters, expectedCons, tankCap);
-  }, [order, currentOdometerInput, litersSuppliedInput]);
-
-  // Upload e preview das fotos
-  const handleOdometerFile = (file: File) => {
-    setOdometerPhoto(file);
-    const reader = new FileReader();
-    reader.onload = () => setOdometerPreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  const handleReceiptFile = (file: File) => {
-    setReceiptPhoto(file);
-    const reader = new FileReader();
-    reader.onload = () => setReceiptPreview(reader.result as string);
-    reader.readAsDataURL(file);
-  };
-
-  // Concluir baixa
-  const handleCompleteOrder = async () => {
-    if (!order) return;
-    const currentKm = parseFloat(currentOdometerInput);
-    if (isNaN(currentKm) || currentKm <= 0) {
-      showToast('Por favor, informe o odômetro atual do painel do veículo.', 'error');
+    if (!file.type.startsWith('image/')) {
+      showToast('Por favor, fotografe diretamente a bomba de combustível.', 'error');
       return;
     }
 
-    const liters = parseFloat(litersSuppliedInput) || order.liters_authorized;
+    setPumpPhoto(file);
 
-    // Se estiver em alerta amarelo e não tiver justificativa
-    if (realtimeAudit?.anomaly_level === 'alerta_amarelo' && !justificationInput.trim()) {
-      showToast('O consumo apresentou desvio moderado. É obrigatório registrar a justificativa operacional.', 'warning');
+    // Carrega em memória temporária (FileReader) para preview seguro sem salvar no telefone
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPumpPhotoPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRetakePhoto = () => {
+    setPumpPhoto(null);
+    setPumpPhotoPreview(null);
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
+      cameraInputRef.current.click();
+    }
+  };
+
+  // Envio final para o Gestor de Frotas
+  const handleSubmitSupply = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!order) return;
+
+    // 1. Validação da Foto da Bomba
+    if (!pumpPhoto && !order.pump_photo_url) {
+      showToast('A foto da bomba de combustível é obrigatória!', 'warning');
+      if (cameraInputRef.current) {
+        cameraInputRef.current.click();
+      }
+      return;
+    }
+
+    // 2. Validação da Quilometragem
+    const kmNumber = parseThousands(currentKmFormatted);
+    if (isNaN(kmNumber) || kmNumber <= 0) {
+      showToast('Informe a quilometragem atual do odômetro no painel.', 'error');
+      return;
+    }
+
+    if (kmNumber < order.previous_odometer) {
+      showToast(`O odômetro atual (${formatThousands(kmNumber)} km) não pode ser inferior ao odômetro anterior (${formatThousands(order.previous_odometer)} km).`, 'error');
+      return;
+    }
+
+    // 3. Validação dos Litros
+    const litersNumber = parseFloat(litersSupplied.replace(',', '.'));
+    if (isNaN(litersNumber) || litersNumber <= 0) {
+      showToast('Informe a quantidade de litros abastecidos.', 'error');
+      return;
+    }
+
+    if (order.vehicle?.tank_capacity && litersNumber > order.vehicle.tank_capacity) {
+      showToast(`A litragem informada (${litersNumber}L) excede a capacidade do tanque (${order.vehicle.tank_capacity}L).`, 'error');
+      return;
+    }
+
+    // 4. Validação do Nome do Motorista e Placa
+    if (!driverName.trim()) {
+      showToast('Informe o nome do motorista.', 'error');
       return;
     }
 
     setSubmitting(true);
     try {
-      let odometerPhotoUrl = order.odometer_photo_url;
-      let receiptPhotoUrl = order.receipt_photo_url;
-
-      if (odometerPhoto) {
-        odometerPhotoUrl = await uploadFuelDocumentPhoto(odometerPhoto, 'odometers');
-      }
-      if (receiptPhoto) {
-        receiptPhotoUrl = await uploadFuelDocumentPhoto(receiptPhoto, 'receipts');
+      let uploadedPumpUrl = order.pump_photo_url;
+      if (pumpPhoto) {
+        uploadedPumpUrl = await uploadFuelDocumentPhoto(pumpPhoto, 'pumps');
       }
 
       const result = await validateAndCompleteFuelOrder(order.id, {
-        current_odometer: currentKm,
-        liters_supplied: liters,
-        invoice_coupon_number: couponNumberInput,
-        odometer_photo_url: odometerPhotoUrl,
-        receipt_photo_url: receiptPhotoUrl,
-        audit_justification: justificationInput.trim() || undefined
+        current_odometer: kmNumber,
+        liters_supplied: litersNumber,
+        pump_photo_url: uploadedPumpUrl,
+        driver_name: driverName.trim(),
+        vehicle_plate: vehiclePlate.trim().toUpperCase()
       });
 
       setOrder(result.order);
       setSuccessResult(result);
-      showToast('Abastecimento registrado com sucesso!', 'success');
+      showToast('Abastecimento registrado com sucesso! O gestor de frotas foi notificado.', 'success');
     } catch (err: unknown) {
-      console.error('Erro ao registrar baixa:', err);
-      const message = err instanceof Error ? err.message : 'Falha ao processar a validação.';
+      console.error('Erro ao registrar abastecimento:', err);
+      const message = err instanceof Error ? err.message : 'Falha ao transmitir os dados.';
       showToast(message, 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const institutionName = currentInstitution?.name || 'Prefeitura Municipal de Torixoréu';
+  const institutionName = currentInstitution?.name || 'Prefeitura Municipal';
 
   return (
-    <div className={`min-h-screen ${darkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-neutral-50 text-neutral-900'} font-sans flex flex-col transition-colors duration-200`}>
-      {/* CABEÇALHO */}
-      <header className="sticky top-0 z-30 backdrop-blur-md bg-white/90 dark:bg-neutral-900/90 border-b border-neutral-200 dark:border-neutral-800 shadow-sm px-4 py-3">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a 
-              href="/"
-              className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-              title="Voltar ao Início"
-            >
-              <ArrowLeft size={18} />
-            </a>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 dark:bg-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                <Fuel size={20} />
-              </div>
-              <div>
-                <h1 className="text-sm font-black tracking-tight leading-tight">
-                  Validador de Combustível
-                </h1>
-                <p className="text-[10px] text-neutral-500 font-medium">
-                  {institutionName} • Gestão 360
-                </p>
-              </div>
+    <div className={`min-h-screen ${darkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-slate-50 text-slate-900'} font-sans flex flex-col transition-colors duration-200`}>
+      {/* CABEÇALHO COMPACTO E RESPONSIVO */}
+      <header className="sticky top-0 z-30 backdrop-blur-md bg-white/95 dark:bg-neutral-900/95 border-b border-slate-200 dark:border-neutral-800 shadow-sm px-4 py-3">
+        <div className="max-w-lg mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm shadow-amber-500/20 font-black">
+              <Fuel size={20} />
+            </div>
+            <div>
+              <h1 className="text-xs font-black tracking-tight leading-tight uppercase text-slate-900 dark:text-white">
+                Abastecimento na Bomba
+              </h1>
+              <p className="text-[10px] text-slate-500 dark:text-neutral-400 font-medium">
+                {institutionName} • Gestão de Frotas
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {setDarkMode && (
               <button
+                type="button"
                 onClick={() => setDarkMode(!darkMode)}
-                className="p-2 rounded-xl text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                title={darkMode ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+                className="p-2 rounded-xl text-slate-500 dark:text-neutral-400 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors"
+                title="Alternar tema"
               >
-                {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+                {darkMode ? <Sun size={17} /> : <Moon size={17} />}
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* CONTEÚDO PRINCIPAL */}
-      <main className="flex-1 max-w-4xl mx-auto w-full p-4 sm:p-6 space-y-6">
-        {/* BARRA DE PESQUISA / SCANNER */}
-        <section className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
-          <label className="block text-xs font-black text-neutral-700 dark:text-neutral-300 uppercase tracking-wider mb-2">
-            Consultar Autorização de Combustível
-          </label>
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSearch(searchCode);
-            }}
-            className="flex flex-col sm:flex-row gap-2"
-          >
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" size={18} />
+      {/* ÁREA PRINCIPAL MOBILE */}
+      <main className="flex-1 max-w-lg mx-auto w-full p-4 space-y-4">
+        {/* PESQUISA OU IDENTIFICAÇÃO MANUAL CASO NECESSÁRIO */}
+        {!order && !loading && (
+          <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-slate-200 dark:border-neutral-800 shadow-sm space-y-3">
+            <div className="flex items-center gap-2 text-slate-700 dark:text-neutral-200">
+              <Search size={18} className="text-amber-500" />
+              <h2 className="text-xs font-black uppercase tracking-wider">
+                Consultar Autorização Digital
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-neutral-400">
+              Aponte a câmera para o QR Code do canhoto ou digite o número da autorização:
+            </p>
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSearch(searchCode);
+              }}
+              className="flex gap-2"
+            >
               <input
                 type="text"
-                placeholder="Ex: AUT-2026-0001 ou código da ordem..."
+                placeholder="Ex: AUT-2026-0001"
                 value={searchCode}
                 onChange={(e) => setSearchCode(e.target.value.toUpperCase())}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase"
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-sm font-mono font-bold uppercase focus:ring-2 focus:ring-amber-500 focus:outline-none"
               />
-            </div>
-            <button
-              type="submit"
-              disabled={loading || !searchCode.trim()}
-              className="flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-            >
-              {loading ? <RefreshCw className="animate-spin" size={16} /> : <Search size={16} />}
-              Localizar
-            </button>
-          </form>
-        </section>
+              <button
+                type="submit"
+                disabled={loading || !searchCode.trim()}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs uppercase rounded-xl transition-all disabled:opacity-50 cursor-pointer shadow-sm"
+              >
+                Localizar
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* LOADING INDICATOR */}
+        {loading && (
+          <div className="p-8 text-center bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-800 shadow-sm space-y-2">
+            <RefreshCw className="animate-spin text-amber-500 mx-auto" size={28} />
+            <p className="text-xs font-bold text-slate-600 dark:text-neutral-300">
+              Carregando dados da autorização oficial...
+            </p>
+          </div>
+        )}
 
         {/* FEEDBACK DE ERRO */}
         {errorMsg && (
           <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-start gap-3">
-            <XCircle className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" size={20} />
-            <div>
+            <AlertCircle className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" size={20} />
+            <div className="flex-1">
               <h3 className="text-xs font-black text-rose-800 dark:text-rose-300">
-                Autorização Não Localizada
+                Não Foi Possível Validar
               </h3>
               <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5">
                 {errorMsg}
@@ -281,405 +312,340 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
           </div>
         )}
 
-        {/* SUCESSO APÓS BAIXA */}
+        {/* SUCESSO APÓS BAIXA ENVIADA AO GESTOR */}
         {successResult && (
-          <div className="p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 space-y-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="text-emerald-600 dark:text-emerald-400" size={24} />
-              <h2 className="text-base font-black">
-                {successResult.audit.anomaly_level === 'bloqueio_critico'
-                  ? 'Abastecimento Registrado com Bloqueio de Auditoria'
-                  : 'Fornecimento Concluído com Sucesso!'}
-              </h2>
+          <div className="p-5 rounded-3xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-emerald-950 dark:text-emerald-100 shadow-sm space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-500/20">
+                <CheckCircle2 size={28} />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 block">
+                  Confirmação em Tempo Real
+                </span>
+                <h2 className="text-base font-black leading-tight">
+                  Abastecimento Transmitido!
+                </h2>
+              </div>
             </div>
-            <p className="text-xs leading-relaxed">
-              A baixa da autorização <span className="font-mono font-bold">{successResult.order.order_number}</span> foi registrada com segurança no sistema central de frotas.
+
+            <p className="text-xs text-emerald-800 dark:text-emerald-200 leading-relaxed">
+              Os dados e a foto da bomba da ordem <span className="font-mono font-bold">{successResult.order.order_number}</span> foram recebidos pelo Gestor de Frotas e liquidados com carimbo de autenticidade.
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 text-xs">
-              <div className="bg-white/80 dark:bg-neutral-900/80 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900">
-                <span className="text-[10px] text-neutral-500 block font-bold">KM Percorrido</span>
-                <span className="text-sm font-black font-mono">{successResult.audit.delta_km} km</span>
-              </div>
-              <div className="bg-white/80 dark:bg-neutral-900/80 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900">
-                <span className="text-[10px] text-neutral-500 block font-bold">Consumo Apurado</span>
-                <span className="text-sm font-black font-mono">{successResult.audit.calculated_km_per_liter} km/l</span>
-              </div>
-              <div className="bg-white/80 dark:bg-neutral-900/80 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900">
-                <span className="text-[10px] text-neutral-500 block font-bold">Desvio da Média</span>
-                <span className={`text-sm font-black font-mono ${successResult.audit.deviation_percent < -15 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                  {successResult.audit.deviation_percent}%
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="bg-white/80 dark:bg-neutral-900/80 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                <span className="text-[10px] text-slate-500 block font-bold">KM do Painel</span>
+                <span className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                  {formatThousands(successResult.order.current_odometer || 0)} km
                 </span>
               </div>
-              <div className="bg-white/80 dark:bg-neutral-900/80 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-900">
-                <span className="text-[10px] text-neutral-500 block font-bold">Status Atual</span>
-                <span className="text-sm font-black uppercase">{successResult.order.status}</span>
+              <div className="bg-white/80 dark:bg-neutral-900/80 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                <span className="text-[10px] text-slate-500 block font-bold">Litros Registrados</span>
+                <span className="text-sm font-black font-mono text-slate-900 dark:text-white">
+                  {successResult.order.liters_supplied} L
+                </span>
               </div>
+              <div className="bg-white/80 dark:bg-neutral-900/80 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-800 col-span-2">
+                <span className="text-[10px] text-slate-500 block font-bold">Motorista / Condutor</span>
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  {successResult.order.driver_name}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <a
+                href="/"
+                className="w-full inline-flex items-center justify-center gap-2 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase rounded-xl transition-all shadow-sm"
+              >
+                <Check size={16} /> Concluir e Sair
+              </a>
             </div>
           </div>
         )}
 
-        {/* DETALHES DA ORDEM ENCONTRADA */}
-        {order && (
-          <div className="space-y-6">
-            {/* CARD PRINCIPAL DE AUTORIZAÇÃO */}
-            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm overflow-hidden">
-              {/* STATUS BANNER */}
+        {/* QUANDO A ORDEM FOI ENCONTRADA */}
+        {order && !successResult && (
+          <div className="space-y-4">
+            {/* CARTÃO RESUMO DA AUTORIZAÇÃO */}
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-slate-200 dark:border-neutral-800 shadow-sm overflow-hidden">
+              {/* STATUS BAR */}
               <div className={`p-4 flex items-center justify-between ${
-                order.status === 'autorizado_pendente' 
-                  ? 'bg-amber-500 text-white' 
-                  : order.status === 'abastecido' || order.status === 'auditado'
+                order.status === 'abastecido' || order.status === 'auditado'
                   ? 'bg-emerald-600 text-white'
-                  : 'bg-rose-600 text-white'
+                  : 'bg-amber-500 text-white'
               }`}>
                 <div className="flex items-center gap-2">
-                  {order.status === 'autorizado_pendente' ? (
-                    <Clock size={20} className="animate-pulse" />
-                  ) : order.status === 'abastecido' || order.status === 'auditado' ? (
-                    <CheckCircle2 size={20} />
+                  {order.status === 'abastecido' || order.status === 'auditado' ? (
+                    <CheckCircle2 size={18} />
                   ) : (
-                    <Ban size={20} />
+                    <Fuel size={18} />
                   )}
                   <div>
-                    <span className="text-xs font-black uppercase tracking-wider block">
-                      {order.status === 'autorizado_pendente'
-                        ? '🟢 AUTORIZAÇÃO VÁLIDA • PENDENTE DE ABASTECIMENTO'
-                        : order.status === 'abastecido'
-                        ? '🟡 JÁ FORNECIDO / LIQUIDADO NA BOMBA'
-                        : order.status === 'auditado'
-                        ? '🟢 AUDITADO E CONFORME PELO CONTROLE INTERNO'
-                        : '🔴 AUTORIZAÇÃO GLOSADA / BLOQUEADA'}
+                    <span className="text-[10px] font-black uppercase tracking-wider block leading-tight">
+                      {order.status === 'abastecido' || order.status === 'auditado'
+                        ? 'Abastecimento Concluído'
+                        : order.supply_mode === 'encher_tanque'
+                        ? 'Autorização Top-Off (Encher Tanque)'
+                        : 'Autorização Válida para Abastecimento'}
                     </span>
-                    <span className="text-[11px] opacity-90 font-mono">
-                      Ordem nº {order.order_number}
+                    <span className="text-xs font-mono font-bold">
+                      {order.order_number}
                     </span>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-[10px] font-bold block opacity-90">Posto Credenciado</span>
-                  <span className="text-xs font-black">{order.station_name}</span>
+                  <span className="text-[9px] font-bold block uppercase opacity-85">Combustível</span>
+                  <span className="text-xs font-black">
+                    {formatFuelLabel(order.fuel_type)}
+                  </span>
                 </div>
               </div>
 
-              {/* DADOS CONTRATUAIS TRAVADOS */}
-              <div className="p-6 space-y-6">
+              {/* POSTO E PREÇO CONTRATUAL */}
+              <div className="p-4 bg-slate-50/70 dark:bg-neutral-800/40 border-b border-slate-100 dark:border-neutral-800/80 flex items-center justify-between text-xs">
                 <div>
-                  <h3 className="text-xs font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-3">
-                    1. Dados Oficiais do Veículo e Condutor
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-                      <span className="text-[10px] text-neutral-500 block font-bold uppercase">Placa / Prefixo</span>
-                      <span className="text-sm font-black font-mono text-neutral-900 dark:text-white">
-                        {order.vehicle?.plate || 'SEM PLACA'} {order.vehicle?.prefix_code ? `(${order.vehicle.prefix_code})` : ''}
-                      </span>
+                  <span className="text-[10px] text-slate-500 block font-bold">Posto Credenciado:</span>
+                  <span className="font-bold text-slate-800 dark:text-neutral-200">{order.station_name}</span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 block font-bold">Preço Contratual:</span>
+                  <span className="font-mono font-black text-slate-900 dark:text-white">R$ {Number(order.bidded_unit_price).toFixed(3)}/L</span>
+                </div>
+              </div>
+
+              {/* SE JÁ ESTIVER ABASTECIDO ANTERIORMENTE */}
+              {(order.status === 'abastecido' || order.status === 'auditado') ? (
+                <div className="p-6 text-center space-y-4">
+                  <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 size={32} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      Esta autorização já foi fornecida
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-neutral-400 mt-1">
+                      O lançamento na bomba já foi confirmado em {order.supplied_at ? new Date(order.supplied_at).toLocaleString('pt-BR') : 'data anterior'}.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 text-left bg-slate-50 dark:bg-neutral-800/60 p-4 rounded-2xl text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-bold">Motorista</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{order.driver_name}</span>
                     </div>
-                    <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-                      <span className="text-[10px] text-neutral-500 block font-bold uppercase">Marca / Modelo</span>
-                      <span className="text-sm font-bold text-neutral-900 dark:text-white">
-                        {order.vehicle?.model || 'Veículo Municipal'}
-                      </span>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-bold">Placa</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">{order.vehicle?.plate}</span>
                     </div>
-                    <div className="bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-                      <span className="text-[10px] text-neutral-500 block font-bold uppercase">Motorista Oficial</span>
-                      <span className="text-sm font-bold text-neutral-900 dark:text-white">
-                        {order.driver_name} {order.driver_document ? `(${order.driver_document})` : ''}
-                      </span>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-bold">Odômetro Registrado</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">{formatThousands(order.current_odometer || 0)} km</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 block font-bold">Litros Fornecidos</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">{order.liters_supplied} L</span>
                     </div>
                   </div>
-                </div>
 
-                {/* QUADRO FINANCEIRO E VOLUMÉTRICO TRAVADO */}
-                <div>
-                  <h3 className="text-xs font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-wider mb-3">
-                    2. Parâmetros Contratuais Licitação Homologada (Preenchimento Travado)
-                  </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-center">
-                    <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 p-3 rounded-2xl">
-                      <span className="text-[9px] text-blue-600 dark:text-blue-400 font-bold block uppercase">Combustível</span>
-                      <span className="text-xs font-black text-blue-900 dark:text-blue-200">
-                        {formatFuelLabel(order.fuel_type)}
+                  {order.pump_photo_url && (
+                    <div className="space-y-1.5 text-left">
+                      <span className="text-[11px] font-black uppercase text-slate-500 block">
+                        Foto da Bomba Comprovada:
                       </span>
+                      <img 
+                        src={order.pump_photo_url} 
+                        alt="Comprovante Bomba" 
+                        className="w-full h-48 object-cover rounded-2xl border border-slate-200 dark:border-neutral-700 shadow-inner"
+                      />
                     </div>
-                    <div className="bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 p-3 rounded-2xl">
-                      <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-bold block uppercase">Litragem Aut.</span>
-                      <span className="text-sm font-black font-mono text-emerald-900 dark:text-emerald-200">
-                        {Number(order.liters_authorized).toFixed(2)} L
-                      </span>
-                    </div>
-                    <div className="bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-800 p-3 rounded-2xl">
-                      <span className="text-[9px] text-neutral-500 font-bold block uppercase">Preço Licitado</span>
-                      <span className="text-sm font-black font-mono text-neutral-900 dark:text-white">
-                        R$ {Number(order.bidded_unit_price).toFixed(3)}
-                      </span>
-                    </div>
-                    <div className="bg-emerald-100/70 dark:bg-emerald-900/40 border border-emerald-300 dark:border-emerald-700 p-3 rounded-2xl">
-                      <span className="text-[9px] text-emerald-700 dark:text-emerald-300 font-bold block uppercase">Total Travado</span>
-                      <span className="text-sm font-black font-mono text-emerald-800 dark:text-emerald-100">
-                        R$ {Number(order.total_authorized_value).toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-800 p-3 rounded-2xl col-span-2 sm:col-span-1">
-                      <span className="text-[9px] text-neutral-500 font-bold block uppercase">KM Anterior</span>
-                      <span className="text-sm font-black font-mono text-neutral-900 dark:text-white">
-                        {Number(order.previous_odometer).toLocaleString('pt-BR')} km
-                      </span>
-                    </div>
+                  )}
+                </div>
+              ) : (
+                /* FORMULÁRIO DO MOTORISTA NA BOMBA */
+                <form onSubmit={handleSubmitSupply} className="p-5 space-y-5">
+                  {/* INSTRUÇÃO RÁPIDA */}
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-2.5">
+                    <ShieldCheck className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
+                    <p className="text-xs text-amber-900 dark:text-amber-200 leading-snug">
+                      Tire a foto da bomba no ato do abastecimento e confirme o odômetro atual. Os dados serão transmitidos instantaneamente para a fiscalização da Prefeitura.
+                    </p>
                   </div>
-                </div>
 
-                {/* FORMULÁRIO DE CONFIRMAÇÃO NA BOMBA (SE PENDENTE) */}
-                {order.status === 'autorizado_pendente' && (
-                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6 space-y-4">
-                    <div className="flex items-center gap-2">
-                      <Gauge className="text-emerald-600 dark:text-emerald-400" size={20} />
-                      <h3 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider">
-                        3. Lançamento Presencial no Ato do Abastecimento
-                      </h3>
-                    </div>
+                  {/* 1. FOTO DA BOMBA DE COMBUSTÍVEL (CÂMERA DIRETA) */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200">
+                      1. Foto da Bomba de Combustível *
+                    </label>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                          Odômetro Atual no Painel (KM) *
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          placeholder={`Maior que ${order.previous_odometer} km`}
-                          value={currentOdometerInput}
-                          onChange={(e) => setCurrentOdometerInput(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    {/* Input nativo com capture="environment" que força a abertura da câmera no smartphone e não galeria */}
+                    <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handleCapturePumpPhoto}
+                    />
+
+                    {pumpPhotoPreview ? (
+                      <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-500 dark:border-emerald-600 bg-black shadow-md">
+                        <img
+                          src={pumpPhotoPreview}
+                          alt="Foto da Bomba"
+                          className="w-full h-56 object-cover"
                         />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                          Litros Abastecidos (L) *
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={litersSuppliedInput}
-                          onChange={(e) => setLitersSuppliedInput(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                        <span className="text-[10px] text-neutral-500 block mt-0.5">
-                          Máx autorizado: {order.liters_authorized}L
-                        </span>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                          Nº do Cupom Fiscal / NFC-e
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Ex: Cupom 12489..."
-                          value={couponNumberInput}
-                          onChange={(e) => setCouponNumberInput(e.target.value)}
-                          className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                        />
-                      </div>
-                    </div>
-
-                    {/* SEMÁFORO ANTIFRAUDE EM TEMPO REAL */}
-                    {realtimeAudit && (
-                      <div className={`p-4 rounded-2xl border transition-all ${
-                        realtimeAudit.anomaly_level === 'bloqueio_critico'
-                          ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
-                          : realtimeAudit.anomaly_level === 'alerta_amarelo'
-                          ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200'
-                          : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                      }`}>
-                        <div className="flex items-start gap-2.5">
-                          {realtimeAudit.anomaly_level === 'bloqueio_critico' ? (
-                            <Ban className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" size={20} />
-                          ) : realtimeAudit.anomaly_level === 'alerta_amarelo' ? (
-                            <AlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={20} />
-                          ) : (
-                            <CheckCircle2 className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" size={20} />
-                          )}
-                          <div className="flex-1 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-black uppercase tracking-wider">
-                                {realtimeAudit.anomaly_level === 'bloqueio_critico'
-                                  ? '🔴 BLOQUEIO CRÍTICO DE AUDITORIA'
-                                  : realtimeAudit.anomaly_level === 'alerta_amarelo'
-                                  ? '🟡 ALERTA DE CONSUMO MODERADO'
-                                  : '🟢 CONSUMO CONFORME E DENTRO DA META'}
-                              </span>
-                              <span className="text-xs font-mono font-bold">
-                                {realtimeAudit.calculated_km_per_liter} km/l (Meta: {realtimeAudit.expected_consumption} km/l)
-                              </span>
-                            </div>
-                            <p className="text-xs">
-                              {realtimeAudit.anomaly_reason || `Distância percorrida de ${realtimeAudit.delta_km} km com variação aceitável de ${realtimeAudit.deviation_percent}%.`}
-                            </p>
-                          </div>
+                        <div className="absolute top-2 right-2 flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={handleRetakePhoto}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/75 hover:bg-black text-white text-xs font-bold rounded-xl backdrop-blur-md shadow cursor-pointer transition-colors"
+                          >
+                            <RotateCcw size={14} /> Tirar Outra
+                          </button>
                         </div>
-
-                        {/* Justificativa caso amarelo */}
-                        {realtimeAudit.anomaly_level === 'alerta_amarelo' && (
-                          <div className="mt-3 pt-3 border-t border-amber-200 dark:border-amber-800">
-                            <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 mb-1">
-                              Justificativa Operacional do Fiscal (Obrigatória):
-                            </label>
-                            <input
-                              type="text"
-                              placeholder="Ex: Trecho rural de serra com barro / transporte de carga pesada..."
-                              value={justificationInput}
-                              onChange={(e) => setJustificationInput(e.target.value)}
-                              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 text-xs font-medium text-neutral-900 dark:text-white"
-                            />
-                          </div>
-                        )}
+                        <div className="absolute bottom-2 left-2 bg-emerald-600/90 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1">
+                          <Check size={12} /> Foto Registrada na Bomba
+                        </div>
                       </div>
-                    )}
-
-                    {/* COMPROVAÇÃO COM FOTOS (CÂMERA DO SMARTPHONE) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                      {/* FOTO DO PAINEL */}
-                      <div className="border border-dashed border-neutral-300 dark:border-neutral-700 rounded-2xl p-4 text-center hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                        <Camera className="mx-auto text-neutral-400 mb-2" size={24} />
-                        <span className="text-xs font-bold block text-neutral-700 dark:text-neutral-300">
-                          Foto do Odômetro no Painel
-                        </span>
-                        <span className="text-[10px] text-neutral-500 block mb-3">
-                          Tire uma foto nítida do KM atual
-                        </span>
-                        {odometerPreview ? (
-                          <div className="relative inline-block">
-                            <img src={odometerPreview} alt="Preview Painel" className="h-28 rounded-lg object-cover mx-auto" />
-                            <button
-                              type="button"
-                              onClick={() => { setOdometerPhoto(null); setOdometerPreview(null); }}
-                              className="absolute top-1 right-1 bg-rose-600 text-white rounded-full p-1 text-[10px]"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-800 dark:bg-neutral-700 text-white text-xs font-bold rounded-xl cursor-pointer hover:bg-neutral-900">
-                            <Camera size={14} />
-                            Capturar Foto do Painel
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              className="hidden"
-                              onChange={(e) => e.target.files?.[0] && handleOdometerFile(e.target.files[0])}
-                            />
-                          </label>
-                        )}
-                      </div>
-
-                      {/* FOTO DO CANHOTO ASSINADO */}
-                      <div className="border border-dashed border-neutral-300 dark:border-neutral-700 rounded-2xl p-4 text-center hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition-colors">
-                        <FileText className="mx-auto text-neutral-400 mb-2" size={24} />
-                        <span className="text-xs font-bold block text-neutral-700 dark:text-neutral-300">
-                          Foto do Canhoto Assinado
-                        </span>
-                        <span className="text-[10px] text-neutral-500 block mb-3">
-                          Foto do papel físico assinado por ambos
-                        </span>
-                        {receiptPreview ? (
-                          <div className="relative inline-block">
-                            <img src={receiptPreview} alt="Preview Canhoto" className="h-28 rounded-lg object-cover mx-auto" />
-                            <button
-                              type="button"
-                              onClick={() => { setReceiptPhoto(null); setReceiptPreview(null); }}
-                              className="absolute top-1 right-1 bg-rose-600 text-white rounded-full p-1 text-[10px]"
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        ) : (
-                          <label className="inline-flex items-center gap-2 px-4 py-2 bg-neutral-800 dark:bg-neutral-700 text-white text-xs font-bold rounded-xl cursor-pointer hover:bg-neutral-900">
-                            <Upload size={14} />
-                            Fotografar Canhoto Assinado
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              className="hidden"
-                              onChange={(e) => e.target.files?.[0] && handleReceiptFile(e.target.files[0])}
-                            />
-                          </label>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* BOTÃO FINAL DE CONFIRMAÇÃO */}
-                    <div className="pt-4">
+                    ) : (
                       <button
                         type="button"
-                        onClick={handleCompleteOrder}
-                        disabled={submitting || !currentOdometerInput}
-                        className={`w-full flex items-center justify-center gap-2 py-3.5 px-6 rounded-2xl text-white font-black text-xs uppercase tracking-wider shadow-lg transition-all cursor-pointer ${
-                          realtimeAudit?.anomaly_level === 'bloqueio_critico'
-                            ? 'bg-rose-600 hover:bg-rose-700'
-                            : 'bg-emerald-600 hover:bg-emerald-700'
-                        } disabled:opacity-50`}
+                        onClick={() => cameraInputRef.current?.click()}
+                        className="w-full py-8 px-4 border-2 border-dashed border-amber-400 dark:border-amber-600 hover:border-amber-500 rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 text-center flex flex-col items-center justify-center gap-2.5 transition-all hover:bg-amber-100/50 active:scale-[0.98] cursor-pointer group"
                       >
-                        {submitting ? (
-                          <RefreshCw className="animate-spin" size={18} />
-                        ) : (
-                          <Check size={18} />
-                        )}
-                        {realtimeAudit?.anomaly_level === 'bloqueio_critico'
-                          ? 'Confirmar Baixa com Bloqueio de Pagamento (Glosa)'
-                          : 'Confirmar Fornecimento & Registrar Baixa Digital'}
+                        <div className="w-14 h-14 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform">
+                          <Camera size={28} />
+                        </div>
+                        <div>
+                          <span className="text-sm font-black uppercase text-amber-900 dark:text-amber-200 block">
+                            Abrir Câmera e Fotografar Bomba
+                          </span>
+                          <span className="text-[11px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5">
+                            Mostre no visor a litragem e o valor total
+                          </span>
+                        </div>
                       </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* VISUALIZAÇÃO SE JÁ FORNECIDO / FINALIZADO */}
-                {order.status !== 'autorizado_pendente' && (
-                  <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6 space-y-4">
-                    <h3 className="text-xs font-black text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
-                      Dados do Fornecimento Concluído
-                    </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                      <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
-                        <span className="text-[10px] text-neutral-500 block font-bold">KM Registrado</span>
-                        <span className="text-sm font-black font-mono">{order.current_odometer} km</span>
-                      </div>
-                      <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
-                        <span className="text-[10px] text-neutral-500 block font-bold">Consumo Apurado</span>
-                        <span className="text-sm font-black font-mono">{order.calculated_km_per_liter || '-'} km/l</span>
-                      </div>
-                      <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
-                        <span className="text-[10px] text-neutral-500 block font-bold">Litragem Fornecida</span>
-                        <span className="text-sm font-black font-mono">{order.liters_supplied} L</span>
-                      </div>
-                      <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
-                        <span className="text-[10px] text-neutral-500 block font-bold">Cupom Fiscal</span>
-                        <span className="text-sm font-black font-mono">{order.invoice_coupon_number || 'Sem cupom'}</span>
-                      </div>
-                    </div>
-
-                    {/* Exibição de comprovantes se existirem */}
-                    {(order.odometer_photo_url || order.receipt_photo_url) && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                        {order.odometer_photo_url && (
-                          <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-center">
-                            <span className="text-[10px] font-bold text-neutral-500 block mb-2">Comprovante do Odômetro</span>
-                            <img src={order.odometer_photo_url} alt="Odômetro" className="h-40 rounded-lg object-cover mx-auto" />
-                          </div>
-                        )}
-                        {order.receipt_photo_url && (
-                          <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-center">
-                            <span className="text-[10px] font-bold text-neutral-500 block mb-2">Canhoto Assinado</span>
-                            <img src={order.receipt_photo_url} alt="Canhoto" className="h-40 rounded-lg object-cover mx-auto" />
-                          </div>
-                        )}
-                      </div>
                     )}
                   </div>
-                )}
-              </div>
+
+                  {/* 2. QUILOMETRAGEM (ODÔMETRO ATUAL DO PAINEL) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Gauge size={14} className="text-amber-500" />
+                        2. Quilometragem Atual (Painel) *
+                      </label>
+                      <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md">
+                        Último: {formatThousands(order.previous_odometer)} km
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Ex: 45.280"
+                        value={currentKmFormatted}
+                        onChange={(e) => {
+                          const num = parseThousands(e.target.value);
+                          if (!isNaN(num)) {
+                            setCurrentKmFormatted(formatThousands(num));
+                          } else {
+                            setCurrentKmFormatted('');
+                          }
+                        }}
+                        className="w-full pl-4 pr-12 py-3 rounded-2xl border-2 border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-base font-mono font-black text-slate-900 dark:text-white focus:outline-none focus:border-amber-500 focus:bg-white dark:focus:bg-neutral-900 transition-colors"
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 font-mono">
+                        KM
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 3. PLACA DO VEÍCULO E NOME DO MOTORISTA */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    {/* PLACA */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Car size={14} className="text-amber-500" />
+                        3. Placa do Veículo
+                      </label>
+                      <input
+                        type="text"
+                        value={vehiclePlate}
+                        onChange={(e) => setVehiclePlate(e.target.value.toUpperCase())}
+                        placeholder="Ex: CAR-2026"
+                        className="w-full px-4 py-2.5 rounded-2xl border-2 border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-sm font-mono font-bold uppercase text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* LITRAGEM FORNECIDA */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
+                        <Fuel size={14} className="text-amber-500" />
+                        Litros Abastecidos *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={litersSupplied}
+                          onChange={(e) => setLitersSupplied(e.target.value)}
+                          placeholder="Ex: 50.00"
+                          className="w-full pl-4 pr-10 py-2.5 rounded-2xl border-2 border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 font-mono">
+                          L
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* NOME DO MOTORISTA */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
+                      <User size={14} className="text-amber-500" />
+                      4. Nome do Motorista / Condutor *
+                    </label>
+                    <input
+                      type="text"
+                      value={driverName}
+                      onChange={(e) => setDriverName(e.target.value)}
+                      placeholder="Nome completo do condutor"
+                      className="w-full px-4 py-2.5 rounded-2xl border-2 border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* BOTÃO PRINCIPAL DE ENVIO */}
+                  <div className="pt-3">
+                    <button
+                      type="submit"
+                      disabled={submitting || !pumpPhotoPreview || !currentKmFormatted.trim()}
+                      className="w-full flex items-center justify-center gap-2.5 py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white font-black text-sm uppercase tracking-wider shadow-lg shadow-emerald-600/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {submitting ? (
+                        <>
+                          <RefreshCw className="animate-spin" size={20} />
+                          <span>Transmitindo ao Gestor de Frotas...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check size={20} />
+                          <span>Confirmar e Enviar ao Gestor</span>
+                        </>
+                      )}
+                    </button>
+                    {!pumpPhotoPreview && (
+                      <p className="text-[11px] text-center text-amber-600 dark:text-amber-400 font-bold mt-2">
+                        * Tire a foto da bomba para habilitar o envio
+                      </p>
+                    )}
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         )}
@@ -687,4 +653,3 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     </div>
   );
 };
-

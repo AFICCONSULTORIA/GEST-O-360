@@ -8,7 +8,18 @@ import { supabase } from '../supabase';
 
 export type FuelType = 'gasolina' | 'etanol' | 'diesel_s10' | 'diesel_s500' | 'arla32';
 export type MetricType = 'km' | 'horimetro';
-export type FuelOrderStatus = 'autorizado_pendente' | 'autorizado' | 'abastecido' | 'auditado' | 'glosado' | 'liquidado';
+export type FuelOrderStatus = 'autorizado_pendente' | 'autorizado' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'liquidado';
+
+export interface FleetBudgetClassification {
+  id: string;
+  institution_id: string;
+  department_local: string; // Ex: 'Gabinete', 'Transporte Escolar', 'PSF', 'TFD'
+  invoice_sheet: string;    // Ficha orçamentária (ex: '11', '57', '152')
+  funding_source: string;   // Fonte de recursos (ex: '1.1.500.0', '2.1.500.1001000')
+  budget_code?: string;     // Código da dotação (ex: '18', '20', '28')
+  is_active?: boolean;
+  created_at?: string;
+}
 
 export interface FleetVehicle {
   id: string;
@@ -20,10 +31,13 @@ export interface FleetVehicle {
   fuel_type: FuelType;
   tank_capacity: number; // Litros
   metric_type: MetricType; // 'km' ou 'horimetro'
-  expected_consumption: number; // km/l ou l/h de referência
+  expected_consumption: number; // km/l de referência
   current_odometer: number;
   status: 'ativo' | 'manutencao' | 'baixado' | 'inativo';
   is_emergency_priority?: boolean; // Prioridade de Prontidão (Ambulâncias, Ônibus Escolar, Resgate)
+  budget_classification_id?: string;
+  budget_classification?: FleetBudgetClassification;
+  always_full_tank?: boolean; // Sempre autorizar no regime de encher o tanque (Top-Off)
   created_at: string;
 }
 
@@ -41,11 +55,17 @@ export interface FuelSupplyOrder {
   liters_supplied?: number;
   current_odometer: number;
   previous_odometer: number;
-  calculated_consumption?: number; // km/l ou l/h apurado
+  calculated_consumption?: number; // km/l apurado
   unit_price?: number;
   total_value?: number;
   invoice_number?: string;
   invoice_key?: string; // 44 dígitos da NF-e / NFC-e
+
+  // Modalidade de Fornecimento
+  supply_mode?: 'litragem_fixa' | 'encher_tanque';
+  authorized_by_name?: string;
+  authorized_by_role?: string;
+  budget_classification?: FleetBudgetClassification;
 
   // Prontidão e Urgência (Tanque Cheio)
   is_full_tank_order?: boolean; // Regime de Prontidão Operacional
@@ -55,7 +75,8 @@ export interface FuelSupplyOrder {
   // Comprovação documental
   receipt_attachment_url?: string; // Foto/scan do canhoto assinado
   receipt_photo_url?: string; // Foto do canhoto físico assinado
-  odometer_photo_url?: string; // Foto do painel/bomba
+  odometer_photo_url?: string; // Foto do painel do veículo
+  pump_photo_url?: string; // Foto do visor da bomba (litros e valor)
   invoice_attachment_url?: string; // Foto/PDF da nota fiscal
   invoice_coupon_number?: string;
 
@@ -84,6 +105,9 @@ export interface NewFuelOrderPayload {
   station_name: string;
   fuel_type: FuelType;
   liters_authorized: number;
+  supply_mode?: 'litragem_fixa' | 'encher_tanque';
+  authorized_by_name?: string;
+  authorized_by_role?: string;
   institution_id?: string;
   is_full_tank_order?: boolean;
   emergency_call_reason?: string;
@@ -896,7 +920,7 @@ export async function registerFuelExecution(
 export async function uploadReceiptAttachment(
   orderId: string,
   file: File,
-  type: 'receipt' | 'odometer' | 'invoice'
+  type: 'receipt' | 'odometer' | 'invoice' | 'pump'
 ): Promise<string> {
   const ext = file.name.split('.').pop() || 'jpg';
   const cleanFileName = `canhotos/${orderId}_${type}_${Date.now()}.${ext}`;
@@ -916,7 +940,8 @@ export async function uploadReceiptAttachment(
       const fieldMap: Record<string, string> = {
         receipt: 'receipt_attachment_url',
         odometer: 'odometer_photo_url',
-        invoice: 'invoice_attachment_url'
+        invoice: 'invoice_attachment_url',
+        pump: 'pump_photo_url'
       };
 
       await supabase.from('fuel_supply_orders').update({
@@ -1241,4 +1266,235 @@ export async function deleteFleetFuelStation(id: string): Promise<boolean> {
   saveLocalStations(filtered);
   return true;
 }
+
+/**
+ * ====================================================================
+ * CLASSIFICAÇÃO ORÇAMENTÁRIA PADRÃO E SERVIÇOS
+ * ====================================================================
+ */
+export const DEFAULT_BUDGET_CLASSIFICATIONS: Omit<FleetBudgetClassification, 'id' | 'institution_id'>[] = [
+  { department_local: 'Gabinete', invoice_sheet: '11', funding_source: '1.1.500.0', budget_code: '18' },
+  { department_local: 'Administração', invoice_sheet: '24', funding_source: '1.1.500.0', budget_code: '34' },
+  { department_local: 'Secretaria de Educação', invoice_sheet: '47', funding_source: '2.1.500.1001000', budget_code: '19' },
+  { department_local: 'Ens. Fundamental', invoice_sheet: '56', funding_source: '2.1.500.1001000', budget_code: '30' },
+  { department_local: 'Transporte Escolar', invoice_sheet: '57', funding_source: '2.1.500.1001000', budget_code: '20' },
+  { department_local: 'Transporte Escolar', invoice_sheet: '58', funding_source: '2.1.571.0', budget_code: '20' },
+  { department_local: 'QSE', invoice_sheet: '61', funding_source: '2.1.550.0', budget_code: '20' },
+  { department_local: 'PNATE', invoice_sheet: '64', funding_source: '2.1.553.0', budget_code: undefined },
+  { department_local: 'Educação Infantil', invoice_sheet: '72', funding_source: '2.1.500.1001000', budget_code: '20' },
+  { department_local: 'Secretaria de Viação', invoice_sheet: '106', funding_source: '1.1.500.0', budget_code: '22' },
+  { department_local: 'Secretaria de Viação - CIDE', invoice_sheet: '107', funding_source: '1.1.750.0', budget_code: '22' },
+  { department_local: 'FMT', invoice_sheet: '112', funding_source: '1.1.759.700', budget_code: '21' },
+  { department_local: 'PSF', invoice_sheet: '152', funding_source: '3.1.500.1002000', budget_code: '28' },
+  { department_local: 'PSF', invoice_sheet: '153', funding_source: '3.1.600.0', budget_code: '28' },
+  { department_local: 'PSF', invoice_sheet: '154', funding_source: '3.1.621.0', budget_code: '28' },
+  { department_local: 'TFD', invoice_sheet: '198', funding_source: '3.1.500.1002000', budget_code: '23' },
+  { department_local: 'TFD', invoice_sheet: '199', funding_source: '3.1.600.0', budget_code: '23' },
+  { department_local: 'TFD', invoice_sheet: '203', funding_source: '3.1.621.0', budget_code: '23' },
+  { department_local: 'MAC', invoice_sheet: '211', funding_source: '3.1.500.1002000', budget_code: '24' },
+  { department_local: 'MAC', invoice_sheet: '212', funding_source: '3.1.600.0', budget_code: '24' },
+  { department_local: 'MAC', invoice_sheet: '213', funding_source: '3.1.621.0', budget_code: '24' },
+  { department_local: 'Vigilância Sanitária', invoice_sheet: '223', funding_source: '3.1.600.0', budget_code: '29' },
+  { department_local: 'Secretaria de Saúde', invoice_sheet: '231', funding_source: '3.1.500.1002000', budget_code: '25' },
+  { department_local: 'Secret. de Agricultura', invoice_sheet: '241', funding_source: '1.1.500.0', budget_code: '30' },
+  { department_local: 'Secret. de Assistência', invoice_sheet: '276', funding_source: '4.1.500.0', budget_code: '26' },
+  { department_local: 'Conselho Tutelar', invoice_sheet: '281', funding_source: '4.1.500.0', budget_code: '42' },
+  { department_local: 'Meio Ambiente', invoice_sheet: '234', funding_source: '1.1.500.0', budget_code: undefined },
+  { department_local: 'Secret. Serv Públicos', invoice_sheet: '335', funding_source: '1.1.500.0', budget_code: '41' },
+  { department_local: 'Serviços de Limpeza', invoice_sheet: '339', funding_source: '1.1.500.0', budget_code: '27' },
+  { department_local: 'Manut. Serv. Publicos', invoice_sheet: '345', funding_source: '1.1.500.0', budget_code: '35' },
+  { department_local: 'Saet', invoice_sheet: '350', funding_source: '1.1.500.0', budget_code: '40' }
+];
+
+const STORAGE_KEY_BUDGET = 'gestao360_fleet_budget_classifications';
+
+export function getLocalBudgetClassifications(): FleetBudgetClassification[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_BUDGET);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return DEFAULT_BUDGET_CLASSIFICATIONS.map((item, idx) => ({
+    id: `bc-${idx + 1}`,
+    institution_id: 'default',
+    ...item,
+    is_active: true,
+    created_at: new Date().toISOString()
+  }));
+}
+
+function saveLocalBudgetClassifications(list: FleetBudgetClassification[]) {
+  try {
+    localStorage.setItem(STORAGE_KEY_BUDGET, JSON.stringify(list));
+  } catch {}
+}
+
+
+export interface NewBudgetClassificationPayload {
+  institution_id?: string;
+  department_local: string;
+  invoice_sheet: string;
+  funding_source: string;
+  budget_code?: string;
+  is_active?: boolean;
+}
+
+export async function createFleetBudgetClassification(
+  payload: NewBudgetClassificationPayload,
+  institutionId: string = 'inst_1'
+): Promise<FleetBudgetClassification> {
+  const newItem: FleetBudgetClassification = {
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `bc-${Date.now()}`,
+    institution_id: payload.institution_id || institutionId,
+    department_local: payload.department_local.trim(),
+    invoice_sheet: payload.invoice_sheet.trim(),
+    funding_source: payload.funding_source.trim(),
+    budget_code: payload.budget_code?.trim() || undefined,
+    is_active: payload.is_active ?? true,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('fleet_budget_classifications')
+      .insert([newItem])
+      .select()
+      .single();
+
+    if (!error && data) {
+      const list = getLocalBudgetClassifications();
+      saveLocalBudgetClassifications([data as FleetBudgetClassification, ...list]);
+      return data as FleetBudgetClassification;
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao criar classificação no Supabase:', err);
+  }
+
+  const list = getLocalBudgetClassifications();
+  saveLocalBudgetClassifications([newItem, ...list]);
+  return newItem;
+}
+
+export async function updateFleetBudgetClassification(
+  id: string,
+  payload: Partial<NewBudgetClassificationPayload>
+): Promise<FleetBudgetClassification> {
+  const list = getLocalBudgetClassifications();
+  const existingIdx = list.findIndex(item => item.id === id);
+  const existing = existingIdx !== -1 ? list[existingIdx] : null;
+
+  const updated: FleetBudgetClassification = {
+    id,
+    institution_id: existing?.institution_id || 'default',
+    department_local: payload.department_local !== undefined ? payload.department_local.trim() : (existing?.department_local || ''),
+    invoice_sheet: payload.invoice_sheet !== undefined ? payload.invoice_sheet.trim() : (existing?.invoice_sheet || ''),
+    funding_source: payload.funding_source !== undefined ? payload.funding_source.trim() : (existing?.funding_source || ''),
+    budget_code: payload.budget_code !== undefined ? (payload.budget_code.trim() || undefined) : existing?.budget_code,
+    is_active: payload.is_active !== undefined ? payload.is_active : (existing?.is_active ?? true),
+    created_at: existing?.created_at || new Date().toISOString()
+  };
+
+  try {
+    const { data, error } = await supabase
+      .from('fleet_budget_classifications')
+      .update({
+        department_local: updated.department_local,
+        invoice_sheet: updated.invoice_sheet,
+        funding_source: updated.funding_source,
+        budget_code: updated.budget_code,
+        is_active: updated.is_active
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (!error && data) {
+      if (existingIdx !== -1) {
+        list[existingIdx] = data as FleetBudgetClassification;
+      } else {
+        list.unshift(data as FleetBudgetClassification);
+      }
+      saveLocalBudgetClassifications(list);
+      return data as FleetBudgetClassification;
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao atualizar classificação no Supabase:', err);
+  }
+
+  if (existingIdx !== -1) {
+    list[existingIdx] = updated;
+  } else {
+    list.unshift(updated);
+  }
+  saveLocalBudgetClassifications(list);
+  return updated;
+}
+
+export async function deleteFleetBudgetClassification(id: string): Promise<boolean> {
+  try {
+    await supabase.from('fleet_budget_classifications').delete().eq('id', id);
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao deletar classificação no Supabase:', err);
+  }
+
+  const list = getLocalBudgetClassifications();
+  const filtered = list.filter(item => item.id !== id);
+  saveLocalBudgetClassifications(filtered);
+  return true;
+}
+
+export async function getFleetBudgetClassifications(institutionId?: string): Promise<FleetBudgetClassification[]> {
+  try {
+    let query = supabase.from('fleet_budget_classifications').select('*').order('department_local', { ascending: true });
+    if (institutionId) {
+      query = query.or(`institution_id.eq.${institutionId},institution_id.eq.default`);
+    }
+    const { data, error } = await query;
+    if (!error && data && data.length > 0) {
+      saveLocalBudgetClassifications(data as FleetBudgetClassification[]);
+      return data as FleetBudgetClassification[];
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao buscar classificações orçamentárias:', err);
+  }
+  return getLocalBudgetClassifications();
+}
+
+/**
+ * IMPORTAÇÃO EM LOTE DE MOTORISTAS (.XLSX / .CSV)
+ */
+export async function createDriversBatch(
+  driversList: NewDriverPayload[],
+  institutionId: string = 'inst_1'
+): Promise<{ count: number; saved: FleetDriver[] }> {
+  const newDrivers: FleetDriver[] = driversList.map((payload, idx) => ({
+    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `drv-batch-${Date.now()}-${idx}`,
+    institution_id: payload.institution_id || institutionId,
+    full_name: payload.full_name.trim(),
+    cpf: payload.cpf.trim(),
+    birth_date: payload.birth_date || undefined,
+    department: payload.department?.trim() || 'Geral',
+    cnh_number: payload.cnh_number?.trim() || undefined,
+    cnh_category: payload.cnh_category?.trim() || 'B',
+    status: payload.status || 'ativo',
+    created_at: new Date().toISOString()
+  }));
+
+  try {
+    const { data, error } = await supabase.from('fleet_drivers').insert(newDrivers).select();
+    if (!error && data && data.length > 0) {
+      const list = getLocalDrivers();
+      const combined = [...(data as FleetDriver[]), ...list];
+      saveLocalDrivers(combined);
+      return { count: data.length, saved: data as FleetDriver[] };
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao gravar lote de motoristas no Supabase:', err);
+  }
+
+  const list = getLocalDrivers();
+  const combined = [...newDrivers, ...list];
+  saveLocalDrivers(combined);
+  return { count: newDrivers.length, saved: newDrivers };
+}
+
 
