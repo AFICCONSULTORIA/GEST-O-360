@@ -452,34 +452,58 @@ export async function syncVehiclesFromPatrimonio(institutionId: string = 'inst_1
  * 1. getFleetVehicles: Consulta veículos reais ativos
  */
 export async function getFleetVehicles(department?: string, institutionId: string = 'inst_1'): Promise<FleetVehicle[]> {
+  const isCleared = typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_CLEARED) === 'true';
+  let remoteList: FleetVehicle[] | null = null;
+
   try {
     let query = supabase.from('fleet_vehicles').select('*');
-    if (institutionId) {
-      query = query.eq('institution_id', institutionId);
+    if (institutionId && institutionId !== 'all') {
+      query = query.or(`institution_id.eq.${institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
     }
     if (department && department !== 'all') {
       query = query.eq('department', department);
     }
-    const { data, error } = await query.order('plate', { ascending: true });
+    let { data, error } = await query.order('plate', { ascending: true });
+    if (error && isRlsError(error)) {
+      let anonQuery = supabaseAnon.from('fleet_vehicles').select('*');
+      if (institutionId && institutionId !== 'all') {
+        anonQuery = anonQuery.or(`institution_id.eq.${institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+      }
+      if (department && department !== 'all') {
+        anonQuery = anonQuery.eq('department', department);
+      }
+      const anonRes = await anonQuery.order('plate', { ascending: true });
+      data = anonRes.data;
+      error = anonRes.error;
+    }
 
-    if (!error && data && data.length > 0) {
-      saveLocalRealVehicles(data as FleetVehicle[]);
-      return data as FleetVehicle[];
+    if (!error && data) {
+      remoteList = data as FleetVehicle[];
+    } else if (error) {
+      console.warn('[FleetFuel] Falha ao consultar fleet_vehicles no Supabase:', error);
     }
   } catch (err) {
-    console.warn('[FleetFuel] Falha ao consultar fleet_vehicles no Supabase:', err);
+    console.warn('[FleetFuel] Exceção ao consultar fleet_vehicles no Supabase:', err);
   }
 
-  // Se o usuário limpou a frota deliberadamente, respeita a lista vazia ou atual
-  const isCleared = typeof window !== 'undefined' && localStorage.getItem(STORAGE_KEY_CLEARED) === 'true';
-  const localList = getLocalRealVehicles();
-  if (isCleared) {
-    if (department && department !== 'all') {
-      return localList.filter(v => v.department === department);
+  if (remoteList !== null) {
+    if (isCleared && remoteList.length === 0) {
+      saveLocalRealVehicles([]);
+      return [];
     }
-    return localList;
+    saveLocalRealVehicles(remoteList);
+    let result = remoteList;
+    if (department && department !== 'all') {
+      result = result.filter(v => v.department === department);
+    }
+    return result;
   }
 
+  // Fallback offline
+  if (isCleared) {
+    return [];
+  }
+  const localList = getLocalRealVehicles();
   if (localList.length > 0) {
     if (department && department !== 'all') {
       return localList.filter(v => v.department === department);
@@ -496,30 +520,78 @@ export async function getFleetVehicles(department?: string, institutionId: strin
 }
 
 /**
- * Cadastrar novo veículo real na frota
+ * Cadastrar novo veículo real na frota com sanitização estrita de UUIDs e tratamento de RLS
  */
 export async function createFleetVehicle(vehicleData: Omit<FleetVehicle, 'id' | 'created_at'>): Promise<FleetVehicle> {
+  const validId = generateValidUUID();
+  const rawPlate = vehicleData.plate.toUpperCase().trim();
+  const validBudgetId = isValidUUID(vehicleData.budget_classification_id) ? vehicleData.budget_classification_id : null;
+
   const newVehicle: FleetVehicle = {
     ...vehicleData,
-    id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `veh-${Date.now()}`,
+    id: validId,
+    plate: rawPlate,
+    budget_classification_id: validBudgetId || undefined,
     created_at: new Date().toISOString()
   };
 
+  const supabaseRecord = {
+    id: validId,
+    institution_id: vehicleData.institution_id || 'inst_1',
+    plate: rawPlate,
+    prefix_code: vehicleData.prefix_code && vehicleData.prefix_code.trim() !== '' ? vehicleData.prefix_code.toUpperCase().trim() : null,
+    model: vehicleData.model.trim(),
+    department: vehicleData.department ? vehicleData.department.trim() : 'Geral',
+    fuel_type: vehicleData.fuel_type,
+    tank_capacity: Number(vehicleData.tank_capacity) || 50,
+    metric_type: vehicleData.metric_type || 'km',
+    expected_consumption: Number(vehicleData.expected_consumption) || 8.0,
+    current_odometer: Number(vehicleData.current_odometer || 0),
+    status: vehicleData.status || 'ativo',
+    is_emergency_priority: Boolean(vehicleData.is_emergency_priority),
+    budget_classification_id: validBudgetId,
+    always_full_tank: Boolean(vehicleData.always_full_tank)
+  };
+
   try {
-    const { data, error } = await supabase.from('fleet_vehicles').insert([newVehicle]).select().single();
+    let { data, error } = await supabase.from('fleet_vehicles').insert([supabaseRecord]).select().single();
+    if (error && isRlsError(error)) {
+      const retry = await supabaseAnon.from('fleet_vehicles').insert([supabaseRecord]).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
+
     if (!error && data) {
       const list = getLocalRealVehicles();
-      list.unshift(data as FleetVehicle);
+      const existingIdx = list.findIndex(v => v.id === validId || v.plate === rawPlate);
+      if (existingIdx !== -1) {
+        list[existingIdx] = data as FleetVehicle;
+      } else {
+        list.unshift(data as FleetVehicle);
+      }
       saveLocalRealVehicles(list);
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(STORAGE_KEY_CLEARED); } catch {}
+      }
       return data as FleetVehicle;
+    } else if (error) {
+      console.error('[FleetFuel] Erro ao gravar veículo no Supabase:', error);
+      throw new Error(`Falha ao registrar veículo no Supabase: ${error.message}`);
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Nota ao gravar veículo no Supabase, mantendo localmente:', err);
+  } catch (err: unknown) {
+    console.error('[FleetFuel] Exceção ao gravar veículo no Supabase:', err);
+    if (err instanceof Error && err.message.includes('Supabase:')) {
+      throw err;
+    }
+    throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
 
   const list = getLocalRealVehicles();
   list.unshift(newVehicle);
   saveLocalRealVehicles(list);
+  if (typeof window !== 'undefined') {
+    try { localStorage.removeItem(STORAGE_KEY_CLEARED); } catch {}
+  }
   return newVehicle;
 }
 
@@ -527,19 +599,53 @@ export async function createFleetVehicle(vehicleData: Omit<FleetVehicle, 'id' | 
  * Atualizar dados técnicos ou status do veículo no cadastro
  */
 export async function updateFleetVehicle(id: string, updates: Partial<FleetVehicle>): Promise<FleetVehicle> {
-  try {
-    const { data, error } = await supabase.from('fleet_vehicles').update(updates).eq('id', id).select().single();
-    if (!error && data) {
-      const list = getLocalRealVehicles();
-      const idx = list.findIndex(v => v.id === id);
-      if (idx !== -1) {
-        list[idx] = { ...list[idx], ...data };
-        saveLocalRealVehicles(list);
+  const validBudgetId = updates.budget_classification_id !== undefined
+    ? (isValidUUID(updates.budget_classification_id) ? updates.budget_classification_id : null)
+    : undefined;
+
+  const supabaseRecord: Record<string, unknown> = {};
+  if (updates.plate) supabaseRecord.plate = updates.plate.toUpperCase().trim();
+  if (updates.prefix_code !== undefined) {
+    supabaseRecord.prefix_code = updates.prefix_code && updates.prefix_code.trim() !== '' ? updates.prefix_code.toUpperCase().trim() : null;
+  }
+  if (updates.model) supabaseRecord.model = updates.model.trim();
+  if (updates.department) supabaseRecord.department = updates.department.trim();
+  if (updates.fuel_type) supabaseRecord.fuel_type = updates.fuel_type;
+  if (updates.tank_capacity !== undefined) supabaseRecord.tank_capacity = Number(updates.tank_capacity);
+  if (updates.metric_type) supabaseRecord.metric_type = updates.metric_type;
+  if (updates.expected_consumption !== undefined) supabaseRecord.expected_consumption = Number(updates.expected_consumption);
+  if (updates.current_odometer !== undefined) supabaseRecord.current_odometer = Number(updates.current_odometer);
+  if (updates.status) supabaseRecord.status = updates.status;
+  if (updates.is_emergency_priority !== undefined) supabaseRecord.is_emergency_priority = Boolean(updates.is_emergency_priority);
+  if (updates.always_full_tank !== undefined) supabaseRecord.always_full_tank = Boolean(updates.always_full_tank);
+  if (updates.budget_classification_id !== undefined) supabaseRecord.budget_classification_id = validBudgetId;
+
+  if (isValidUUID(id)) {
+    try {
+      let { data, error } = await supabase.from('fleet_vehicles').update(supabaseRecord).eq('id', id).select().single();
+      if (error && isRlsError(error)) {
+        const retry = await supabaseAnon.from('fleet_vehicles').update(supabaseRecord).eq('id', id).select().single();
+        data = retry.data;
+        error = retry.error;
       }
-      return data as FleetVehicle;
+      if (!error && data) {
+        const list = getLocalRealVehicles();
+        const idx = list.findIndex(v => v.id === id);
+        if (idx !== -1) {
+          list[idx] = { ...list[idx], ...data };
+          saveLocalRealVehicles(list);
+        }
+        return data as FleetVehicle;
+      } else if (error) {
+        console.error('[FleetFuel] Erro ao atualizar veículo no Supabase:', error);
+        throw new Error(`Falha ao atualizar veículo no Supabase: ${error.message}`);
+      }
+    } catch (err) {
+      console.warn('[FleetFuel] Erro ao atualizar veículo no Supabase:', err);
+      if (err instanceof Error && err.message.includes('Supabase:')) {
+        throw err;
+      }
     }
-  } catch (err) {
-    console.warn('[FleetFuel] Erro ao atualizar veículo no Supabase:', err);
   }
 
   const list = getLocalRealVehicles();
@@ -645,25 +751,41 @@ export async function getFuelSupplyOrders(filters?: {
   institutionId?: string;
 }): Promise<FuelSupplyOrder[]> {
   try {
-    let query = supabase.from('fuel_supply_orders').select(`
-      *,
-      vehicle:fleet_vehicles(*)
-    `);
+    const buildQuery = (client: any) => {
+      let q = client.from('fuel_supply_orders').select(`
+        *,
+        vehicle:fleet_vehicles(*)
+      `);
+      if (filters?.institutionId) {
+        q = q.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default,institution_id.is.null`);
+      }
+      if (filters?.status && filters.status !== 'all') {
+        q = q.eq('status', filters.status);
+      }
+      if (filters?.onlyAnomalies) {
+        q = q.eq('is_anomaly', true);
+      }
+      return q.order('created_at', { ascending: false });
+    };
 
-    if (filters?.institutionId) {
-      query = query.eq('institution_id', filters.institutionId);
-    }
-    if (filters?.status && filters.status !== 'all') {
-      query = query.eq('status', filters.status);
-    }
-    if (filters?.onlyAnomalies) {
-      query = query.eq('is_anomaly', true);
+    let { data, error } = await buildQuery(supabase);
+    if (error) {
+      console.warn('[FleetFuel] Erro com cliente padrão ao buscar ordens, tentando com supabaseAnon:', error);
+      const retryAnon = await buildQuery(supabaseAnon);
+      if (!retryAnon.error && retryAnon.data) {
+        data = retryAnon.data;
+        error = null;
+      }
     }
 
-    const { data, error } = await query.order('created_at', { ascending: false });
     if (!error && data) {
-      saveLocalRealOrders(data as FuelSupplyOrder[]);
-      return data as FuelSupplyOrder[];
+      const normalized = (data as FuelSupplyOrder[]).map(ord => ({
+        ...ord,
+        receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url,
+        receipt_photo_url: ord.receipt_photo_url || ord.receipt_attachment_url
+      }));
+      saveLocalRealOrders(normalized);
+      return normalized;
     }
   } catch (err) {
     console.warn('[FleetFuel] Falha ao consultar ordens no Supabase, usando cache real:', err);

@@ -103,6 +103,7 @@ import {
 import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
 import { showToast } from '../../../components/ui/Toast';
+import { playFuelAlertChime, sendDesktopNotification } from '../../../utils/soundAlert';
 import { AdminUser } from '../../../types';
 import { supabase } from '../../../lib/supabase';
 
@@ -289,7 +290,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           (prevStatus === 'autorizado_pendente' || prevStatus === 'aguardando_abastecimento' || prevStatus === 'autorizado') &&
           (ord.status === 'abastecido' || ord.status === 'auditado')
         ) {
-          showToast(`⛽ Abastecimento recebido na bomba! Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) finalizada pelo condutor.`, 'success');
+          playFuelAlertChime();
+          sendDesktopNotification(
+            '⛽ Abastecimento Confirmado na Bomba!',
+            `Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) abastecida com ${ord.liters_supplied || ''}L. Fotos recebidas.`
+          );
+          showToast(`⛽ Abastecimento recebido na bomba! Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) finalizada pelo condutor com fotos anexadas.`, 'success');
         }
         prevStatusesRef.current[ord.id] = ord.status;
         prevStatusesRef.current[ord.order_number] = ord.status;
@@ -344,7 +350,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!editingVehicle) return;
 
     try {
-      await updateFleetVehicle(editingVehicle.id, {
+      const updated = await updateFleetVehicle(editingVehicle.id, {
         plate: editVehicleForm.plate.toUpperCase().trim(),
         prefix_code: editVehicleForm.prefix_code.toUpperCase().trim() || undefined,
         model: editVehicleForm.model.trim(),
@@ -355,11 +361,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         expected_consumption: Number(editVehicleForm.expected_consumption),
         current_odometer: Number(editVehicleForm.current_odometer),
         status: editVehicleForm.status,
-        budget_classification_id: editVehicleForm.budget_classification_id || undefined,
+        budget_classification_id: editVehicleForm.budget_classification_id && editVehicleForm.budget_classification_id.trim() !== '' ? editVehicleForm.budget_classification_id : undefined,
         always_full_tank: Boolean(editVehicleForm.always_full_tank),
         is_emergency_priority: Boolean(editVehicleForm.is_emergency_priority)
       });
 
+      setVehicles(prev => prev.map(v => v.id === editingVehicle.id ? updated : v));
       showToast(`Veículo ${editVehicleForm.plate} atualizado com sucesso!`, 'success');
       setIsEditVehicleModalOpen(false);
       setEditingVehicle(null);
@@ -612,8 +619,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     const handleLocalUpdate = (e: Event) => {
       const customEvent = e as CustomEvent;
       const orderNumber = customEvent.detail?.orderNumber || customEvent.detail?.order?.order_number;
-      showToast(`⛽ Abastecimento recebido! Ordem ${orderNumber ? `"${orderNumber}" ` : ''}confirmada na bomba pelo condutor.`, 'success');
-      loadData();
+      playFuelAlertChime();
+      showToast(`⛽ Abastecimento recebido! Ordem ${orderNumber ? `"${orderNumber}" ` : ''}confirmada na bomba com fotos.`, 'success');
+      loadData(true);
     };
 
     window.addEventListener('gestao360_fuel_order_updated', handleLocalUpdate);
@@ -625,8 +633,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       bc.onmessage = (event) => {
         if (event.data?.type === 'ORDER_COMPLETED') {
           const ord = event.data?.order;
-          showToast(`⛽ Abastecimento recebido em tempo real! Ordem ${ord?.order_number || ''} abastecida na bomba com foto do visor.`, 'success');
-          loadData();
+          playFuelAlertChime();
+          sendDesktopNotification(
+            '⛽ Abastecimento Recebido na Bomba!',
+            `Ordem ${ord?.order_number || ''} abastecida com fotos do visor.`
+          );
+          showToast(`⛽ Abastecimento recebido em tempo real! Ordem ${ord?.order_number || ''} abastecida na bomba com fotos do visor e odômetro.`, 'success');
+          loadData(true);
         }
       };
     }
@@ -639,7 +652,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         { event: '*', schema: 'public', table: 'fuel_supply_orders' },
         (payload) => {
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-            loadData();
+            const updated = payload.new as any;
+            if (updated && (updated.status === 'abastecido' || updated.pump_photo_url)) {
+              playFuelAlertChime();
+              sendDesktopNotification(
+                '⛽ Abastecimento Confirmado na Bomba!',
+                `Ordem ${updated.order_number || ''} finalizada com sucesso. Fotos da bomba e odômetro recebidas.`
+              );
+              showToast(`⛽ Abastecimento confirmado na bomba! Ordem ${updated.order_number || ''} (${updated.liters_supplied ? `${updated.liters_supplied}L` : ''}) - Fotos do visor e odômetro recebidas!`, 'success');
+            }
+            loadData(true);
           }
         }
       )
@@ -992,8 +1014,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
 
     try {
-      await createFleetVehicle({
-        institution_id: currentUser?.institution_id || 'default',
+      const created = await createFleetVehicle({
+        institution_id: currentUser?.institution_id || 'inst_1',
         plate: newVehicleForm.plate.toUpperCase().trim(),
         prefix_code: newVehicleForm.prefix_code.toUpperCase().trim() || undefined,
         model: newVehicleForm.model.trim(),
@@ -1004,11 +1026,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         expected_consumption: Number(newVehicleForm.expected_consumption),
         current_odometer: Number(newVehicleForm.current_odometer),
         status: 'ativo',
-        budget_classification_id: newVehicleForm.budget_classification_id || undefined,
+        budget_classification_id: newVehicleForm.budget_classification_id && newVehicleForm.budget_classification_id.trim() !== '' ? newVehicleForm.budget_classification_id : undefined,
         always_full_tank: Boolean(newVehicleForm.always_full_tank),
         is_emergency_priority: Boolean(newVehicleForm.always_full_tank) ? true : Boolean(newVehicleForm.is_emergency_priority)
       });
 
+      setVehicles(prev => [created, ...prev.filter(v => v.id !== created.id)]);
       showToast('Veículo cadastrado na frota com sucesso!', 'success');
       setIsNewVehicleModalOpen(false);
       setNewVehicleForm({
@@ -1021,6 +1044,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         metric_type: 'km',
         expected_consumption: 9.0,
         current_odometer: 0,
+        budget_classification_id: '',
+        always_full_tank: false,
         is_emergency_priority: false
       });
       loadData();
@@ -1549,12 +1574,28 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                         {/* Litros Autorizados */}
                         <td className="px-4 py-3.5">
-                          <span className="text-neutral-900 dark:text-white font-bold">
-                            {order.liters_authorized.toFixed(2)} L
-                          </span>
-                          <span className="text-[10px] text-neutral-400 block">
-                            Tanque: {v?.tank_capacity.toFixed(0)} L
-                          </span>
+                          {order.supply_mode === 'encher_tanque' || order.is_full_tank_order ? (
+                            <div>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 dark:text-emerald-400">
+                                ⛽ Completar Tanque
+                              </span>
+                              <span className="text-[10px] text-neutral-400 block">
+                                Teto: {v?.tank_capacity.toFixed(0) || order.liters_authorized.toFixed(0)} L (Top-Off)
+                              </span>
+                              <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 block">
+                                Valor a apurar na bomba
+                              </span>
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="text-neutral-900 dark:text-white font-bold">
+                                {order.liters_authorized.toFixed(2)} L
+                              </span>
+                              <span className="text-[10px] text-neutral-400 block">
+                                Tanque: {v?.tank_capacity.toFixed(0)} L
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* Status */}
@@ -1646,11 +1687,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               <button
                                 onClick={() => setViewingAttachmentOrder(order)}
                                 title="Ver Comprovantes (Foto da Bomba, Odômetro, Canhoto)"
-                                className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5"
                               >
                                 <Eye size={15} />
                                 {order.pump_photo_url && (
-                                  <Camera size={12} className="text-emerald-500" />
+                                  <Camera size={13} className="text-amber-500" title="Foto da Bomba Anexada" />
+                                )}
+                                {order.odometer_photo_url && (
+                                  <Gauge size={13} className="text-blue-500" title="Foto do Odômetro Anexada" />
+                                )}
+                                {(order.receipt_photo_url || order.receipt_attachment_url) && (
+                                  <FileCheck size={13} className="text-emerald-500" title="Canhoto Anexado" />
                                 )}
                               </button>
                             )}
@@ -1848,13 +1895,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <td className="px-4 py-3.5">
                             <div className="flex items-center gap-1 text-neutral-900 dark:text-white font-bold">
                               <span>{order.liters_supplied ? `${order.liters_supplied.toFixed(2)} L` : 'Pendente'}</span>
-                              <span className="text-neutral-400 font-normal">/ {order.liters_authorized.toFixed(0)} L</span>
+                              <span className="text-neutral-400 font-normal">
+                                / {order.supply_mode === 'encher_tanque' || order.is_full_tank_order ? 'Top-Off' : `${order.liters_authorized.toFixed(0)} L`}
+                              </span>
                             </div>
-                            {order.total_value && (
+                            {order.total_value ? (
                               <div className="text-[10px] text-neutral-500 font-mono">
                                 Total: {order.total_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                               </div>
-                            )}
+                            ) : (order.supply_mode === 'encher_tanque' || order.is_full_tank_order) ? (
+                              <div className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                                Valor a apurar na bomba
+                              </div>
+                            ) : null}
                           </td>
 
                           {/* Odômetro */}
@@ -1886,8 +1939,28 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                           {/* Comprovantes */}
                           <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-1.5">
-                              {order.receipt_attachment_url ? (
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {order.pump_photo_url && (
+                                <button
+                                  onClick={() => setViewingAttachmentOrder(order)}
+                                  className="p-1 rounded bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 hover:scale-105 transition-transform flex items-center gap-0.5"
+                                  title="Foto da Bomba Anexada"
+                                >
+                                  <Camera size={14} />
+                                </button>
+                              )}
+
+                              {order.odometer_photo_url && (
+                                <button
+                                  onClick={() => setViewingAttachmentOrder(order)}
+                                  className="p-1 rounded bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300 hover:scale-105 transition-transform flex items-center gap-0.5"
+                                  title="Foto do Odômetro Anexada"
+                                >
+                                  <Gauge size={14} />
+                                </button>
+                              )}
+
+                              {(order.receipt_attachment_url || order.receipt_photo_url) ? (
                                 <button
                                   onClick={() => setViewingAttachmentOrder(order)}
                                   className="p-1 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 hover:scale-105 transition-transform"
@@ -1896,9 +1969,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                   <FileCheck size={14} />
                                 </button>
                               ) : (
-                                <span className="text-neutral-300 dark:text-neutral-700" title="Sem canhoto">
-                                  <FileText size={14} />
-                                </span>
+                                !order.pump_photo_url && !order.odometer_photo_url && (
+                                  <span className="text-neutral-300 dark:text-neutral-700" title="Sem fotos anexadas">
+                                    <FileText size={14} />
+                                  </span>
+                                )
                               )}
 
                               {order.invoice_number ? (
@@ -1910,12 +1985,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 </span>
                               ) : null}
 
-                              <button
-                                onClick={() => setViewingAttachmentOrder(order)}
-                                className="text-blue-600 hover:text-blue-800 text-[11px] font-bold underline ml-1 cursor-pointer"
-                              >
-                                Abrir
-                              </button>
+                              {(order.pump_photo_url || order.odometer_photo_url || order.receipt_attachment_url || order.receipt_photo_url) ? (
+                                <button
+                                  onClick={() => setViewingAttachmentOrder(order)}
+                                  className="text-blue-600 hover:text-blue-800 text-[11px] font-bold underline ml-0.5 cursor-pointer"
+                                >
+                                  Ver Fotos
+                                </button>
+                              ) : null}
                             </div>
                           </td>
 
@@ -3168,16 +3245,30 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             R$ {currentBiddedPrice.toFixed(3)}/L
                           </span>
                         </div>
-                        <div className="bg-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
-                          <span className="text-[9px] text-emerald-100 block font-bold uppercase">Total Travado</span>
-                          <span className="text-sm font-black font-mono block">
-                            R$ {currentTotalAuthorized.toFixed(2)}
-                          </span>
-                        </div>
+                        {newOrderForm.supply_mode === 'encher_tanque' ? (
+                          <div className="bg-emerald-700 text-white p-2.5 rounded-xl shadow-sm">
+                            <span className="text-[9px] text-emerald-100 block font-bold uppercase">Valor da Ordem</span>
+                            <span className="text-xs font-black block mt-0.5">
+                              A Apurar na Bomba
+                            </span>
+                            <span className="text-[8px] text-emerald-200 block leading-tight">
+                              (Regime Top-Off)
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="bg-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
+                            <span className="text-[9px] text-emerald-100 block font-bold uppercase">Total Travado</span>
+                            <span className="text-sm font-black font-mono block">
+                              R$ {currentTotalAuthorized.toFixed(2)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="text-[10px] text-emerald-700 dark:text-emerald-400 text-center font-medium leading-tight">
-                        * A ordem já sai 100% preenchida na emissão. O frentista e motorista assinam o canhoto e conferem apenas o odômetro.
+                        {newOrderForm.supply_mode === 'encher_tanque'
+                          ? '* No regime Top-Off, o valor final não é fixado na emissão e será calculado após o abastecimento conforme os litros reais fornecidos.'
+                          : '* A ordem já sai 100% preenchida na emissão. O frentista e motorista assinam o canhoto e conferem apenas o odômetro.'}
                       </div>
                     </div>
 

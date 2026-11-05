@@ -128,7 +128,8 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         setOrder(result);
         setDriverName(result.driver_name || '');
         setVehiclePlate(result.vehicle?.plate || '');
-        setLitersSupplied(String(result.liters_authorized));
+        const isTopOff = result.supply_mode === 'encher_tanque' || !!result.is_full_tank_order;
+        setLitersSupplied(isTopOff ? '' : String(result.liters_authorized));
         if (result.current_odometer && result.current_odometer > 0) {
           setCurrentKmFormatted(formatThousands(result.current_odometer));
         } else {
@@ -816,7 +817,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                           inputMode="decimal"
                           value={litersSupplied}
                           onChange={(e) => setLitersSupplied(e.target.value)}
-                          placeholder="Ex: 50.00"
+                          placeholder={order?.supply_mode === 'encher_tanque' || order?.is_full_tank_order ? 'Litros no visor da bomba' : 'Ex: 50.00'}
                           className="w-full pl-4 pr-10 py-2.5 rounded-2xl border-2 border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                         />
                         <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400 font-mono">

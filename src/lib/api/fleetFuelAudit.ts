@@ -37,7 +37,7 @@ export const DEFAULT_BIDDED_PRICES: BiddedPricesMap = {
 
 export const CONTRACTUAL_BIDDED_PRICES = DEFAULT_BIDDED_PRICES;
 
-const getPricesStorageKey = (institutionId?: string) => 
+const getPricesStorageKey = (institutionId?: string) =>
   `@gestao360:fuel_bidded_prices_${institutionId || 'default'}`;
 
 /**
@@ -68,11 +68,11 @@ export async function getBiddedFuelPricesFromSupabase(institutionId: string = 'i
         if (parsedNotes?.fuel_bidded_prices) {
           const remotePrices = { ...DEFAULT_BIDDED_PRICES, ...parsedNotes.fuel_bidded_prices };
           if (typeof window !== 'undefined') {
-            try { localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(remotePrices)); } catch {}
+            try { localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(remotePrices)); } catch { }
           }
           return remotePrices;
         }
-      } catch {}
+      } catch { }
     }
   } catch (err) {
     console.warn('[FleetFuelAudit] Aviso ao carregar precos licitados do Supabase:', err);
@@ -92,7 +92,7 @@ export function getBiddedFuelPrices(institutionId?: string): BiddedPricesMap {
       const parsed = JSON.parse(raw);
       return { ...DEFAULT_BIDDED_PRICES, ...parsed };
     }
-  } catch {}
+  } catch { }
   return DEFAULT_BIDDED_PRICES;
 }
 
@@ -124,14 +124,14 @@ export async function saveBiddedFuelPrices(
 
   try {
     localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(updatedPrices));
-  } catch {}
+  } catch { }
 
   // Sincroniza diretamente com a tabela institutions.notes no Supabase (Fonte Única da Verdade)
   try {
     let currentNotesObj: Record<string, any> = {};
     const { data: instData } = await supabase.from('institutions').select('notes').eq('id', targetInst).maybeSingle();
     if (instData?.notes) {
-      try { currentNotesObj = JSON.parse(instData.notes); } catch {}
+      try { currentNotesObj = JSON.parse(instData.notes); } catch { }
     }
     currentNotesObj.fuel_bidded_prices = updatedPrices;
 
@@ -177,6 +177,8 @@ export interface TwoWayFuelOrder {
   anomaly_reason?: string;
   audit_justification?: string;
   supply_mode: 'litragem_fixa' | 'encher_tanque';
+  is_full_tank_order?: boolean;
+  emergency_call_reason?: string;
   authorized_by_name: string;
   authorized_by_role: string;
   budget_classification_id?: string;
@@ -195,6 +197,8 @@ export interface IssueOrderPayload {
   liters_authorized: number;
   current_odometer?: number;
   supply_mode?: 'litragem_fixa' | 'encher_tanque';
+  is_full_tank_order?: boolean;
+  emergency_call_reason?: string;
   pump_photo_url?: string;
   authorized_by_name?: string;
   authorized_by_role?: string;
@@ -231,7 +235,7 @@ function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
@@ -249,7 +253,7 @@ function getLocalOrders(): TwoWayFuelOrder[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ORDERS);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { }
   return [];
 }
 
@@ -259,7 +263,7 @@ function getLocalOrders(): TwoWayFuelOrder[] {
 function saveLocalOrders(orders: TwoWayFuelOrder[]) {
   try {
     localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -269,14 +273,14 @@ function getLocalVehicles(): FleetVehicle[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_VEHICLES);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch { }
   return [];
 }
 
 function saveLocalVehicles(vehicles: FleetVehicle[]) {
   try {
     localStorage.setItem(STORAGE_KEY_VEHICLES, JSON.stringify(vehicles));
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -356,7 +360,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
       if (data) {
         vehicle = data as FleetVehicle;
       }
-    } catch {}
+    } catch { }
   }
 
   if (!vehicle) {
@@ -381,8 +385,8 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   // 3. Modo de Fornecimento & Cálculos travados
   const resolvedBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;
   const localBudgets = getLocalBudgetClassifications();
-  const resolvedBudget: FleetBudgetClassification | undefined = payload.budget_classification || 
-    localBudgets.find(b => b.id === resolvedBudgetId) || 
+  const resolvedBudget: FleetBudgetClassification | undefined = payload.budget_classification ||
+    localBudgets.find(b => b.id === resolvedBudgetId) ||
     vehicle.budget_classification;
 
   const supply_mode = payload.supply_mode || (vehicle.always_full_tank ? 'encher_tanque' : 'litragem_fixa');
@@ -425,6 +429,8 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     deviation_percent: undefined,
     anomaly_level: 'none',
     supply_mode: supply_mode,
+    is_full_tank_order: !!payload.is_full_tank_order || supply_mode === 'encher_tanque',
+    emergency_call_reason: payload.emergency_call_reason,
     pump_photo_url: payload.pump_photo_url || undefined,
     authorized_by_name: payload.authorized_by_name || 'Gestor de Frotas',
     authorized_by_role: payload.authorized_by_role || 'Gestor de Frotas',
@@ -531,7 +537,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
         .from('fleet_vehicles')
         .update({ current_odometer: current_odometer })
         .eq('id', vehicle.id);
-    } catch {}
+    } catch { }
 
     const localVehicles = getLocalVehicles();
     const vIdx = localVehicles.findIndex(v => v.id === vehicle.id);
@@ -572,7 +578,7 @@ export async function validateAndCompleteFuelOrder(
       if (data) {
         order = data as TwoWayFuelOrder;
       }
-    } catch {}
+    } catch { }
   }
 
   if (!order) {
@@ -592,15 +598,15 @@ export async function validateAndCompleteFuelOrder(
     try {
       const { data } = await supabase.from('fleet_vehicles').select('*').eq('id', order.vehicle_id).single();
       if (data) vehicle = data as FleetVehicle;
-    } catch {}
+    } catch { }
   }
 
   if (!vehicle) {
     throw new Error('Veículo oficial vinculado à autorização não foi encontrado.');
   }
 
-  const suppliedLiters = completionData.liters_supplied && completionData.liters_supplied > 0 
-    ? completionData.liters_supplied 
+  const suppliedLiters = completionData.liters_supplied && completionData.liters_supplied > 0
+    ? completionData.liters_supplied
     : order.liters_authorized;
 
   // 3. Execução dos cálculos e motor antifraude
@@ -650,7 +656,7 @@ export async function validateAndCompleteFuelOrder(
     try {
       await supabase
         .from('fleet_vehicles')
-        .update({ 
+        .update({
           current_odometer: completionData.current_odometer,
           plate: vehicle.plate
         })
@@ -667,25 +673,53 @@ export async function validateAndCompleteFuelOrder(
     }
   }
 
-  // 7. Persistir a atualização da ordem no Supabase
+  // 7. Persistir a atualização da ordem no Supabase (resiliente contra RLS e queda de sessão)
+  const updatePayload: Record<string, any> = {
+    driver_name: updatedOrder.driver_name,
+    liters_supplied: updatedOrder.liters_supplied,
+    current_odometer: updatedOrder.current_odometer,
+    calculated_km_per_liter: updatedOrder.calculated_km_per_liter,
+    deviation_percent: updatedOrder.deviation_percent,
+    receipt_photo_url: updatedOrder.receipt_photo_url || updatedOrder.receipt_attachment_url || null,
+    receipt_attachment_url: updatedOrder.receipt_attachment_url || updatedOrder.receipt_photo_url || null,
+    odometer_photo_url: updatedOrder.odometer_photo_url || null,
+    pump_photo_url: updatedOrder.pump_photo_url || null,
+    total_authorized_value: updatedOrder.total_authorized_value,
+    total_value: updatedOrder.total_authorized_value,
+    unit_price: order.bidded_unit_price,
+    invoice_coupon_number: updatedOrder.invoice_coupon_number,
+    anomaly_level: updatedOrder.anomaly_level,
+    anomaly_reason: updatedOrder.anomaly_reason,
+    audit_justification: updatedOrder.audit_justification,
+    status: updatedOrder.status,
+    supplied_at: updatedOrder.supplied_at
+  };
+
   try {
-    await supabase.from('fuel_supply_orders').update({
-      driver_name: updatedOrder.driver_name,
-      liters_supplied: updatedOrder.liters_supplied,
-      current_odometer: updatedOrder.current_odometer,
-      calculated_km_per_liter: updatedOrder.calculated_km_per_liter,
-      deviation_percent: updatedOrder.deviation_percent,
-      receipt_photo_url: updatedOrder.receipt_photo_url,
-      odometer_photo_url: updatedOrder.odometer_photo_url,
-      pump_photo_url: updatedOrder.pump_photo_url,
-      total_authorized_value: updatedOrder.total_authorized_value,
-      invoice_coupon_number: updatedOrder.invoice_coupon_number,
-      anomaly_level: updatedOrder.anomaly_level,
-      anomaly_reason: updatedOrder.anomaly_reason,
-      audit_justification: updatedOrder.audit_justification,
-      status: updatedOrder.status,
-      supplied_at: updatedOrder.supplied_at
-    }).eq('id', updatedOrder.id);
+    let { data: updateRes, error: updateErr } = await supabase
+      .from('fuel_supply_orders')
+      .update(updatePayload)
+      .eq('id', updatedOrder.id)
+      .select();
+
+    if (updateErr) {
+      console.warn('[FleetFuelAudit] Aviso ao atualizar com supabase padrão, tentando com supabaseAnon:', updateErr);
+      const retryAnon = await supabaseAnon
+        .from('fuel_supply_orders')
+        .update(updatePayload)
+        .eq('id', updatedOrder.id)
+        .select();
+      updateErr = retryAnon.error;
+      updateRes = retryAnon.data;
+    }
+
+    if (!updateErr && (!updateRes || updateRes.length === 0)) {
+      // Se id não casou (ex: chave local vs remota), tenta por order_number
+      await supabaseAnon
+        .from('fuel_supply_orders')
+        .update(updatePayload)
+        .eq('order_number', updatedOrder.order_number);
+    }
   } catch (err) {
     console.warn('[FleetFuelAudit] Erro ao atualizar ordem no Supabase:', err);
   }
@@ -800,7 +834,7 @@ function removeLocalOrderByIdentifier(clean: string) {
       return true;
     });
     saveLocalOrders(filtered);
-  } catch {}
+  } catch { }
 }
 
 /**
@@ -864,7 +898,7 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
               try {
                 const { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
                 if (vData) orderObj.vehicle = vData as FleetVehicle;
-              } catch {}
+              } catch { }
             }
             return orderObj;
           } else {
@@ -936,7 +970,7 @@ export async function auditFuelAuthorization(
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     status: newStatus,
-    audit_justification: order.audit_justification 
+    audit_justification: order.audit_justification
       ? `${order.audit_justification}\n\n${fullJustification}`
       : fullJustification
   };
@@ -1002,31 +1036,52 @@ async function compressFuelPhoto(file: File): Promise<File> {
 
 /**
  * Upload de comprovante físico (canhoto assinado, foto da bomba ou foto do odômetro)
+ * Suporta fallback resiliente entre cliente autenticado, cliente anon e Base64 compactado.
  */
 export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | 'odometers' | 'pumps' | 'invoices'): Promise<string> {
   const processedFile = await compressFuelPhoto(file);
-  const fileExt = processedFile.name.split('.').pop() || 'jpg';
+  const fileExt = 'jpg';
   const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
 
+  // 1. Tentar upload autenticado via Supabase Storage
   try {
-    const { error: uploadError } = await supabase.storage
+    let uploadRes = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(fileName, processedFile, { cacheControl: '3600', upsert: true });
+      .upload(fileName, processedFile, {
+        contentType: 'image/jpeg',
+        cacheControl: '3600',
+        upsert: true
+      });
 
-    if (!uploadError) {
+    // Se falhar (ex: token de sessão do gestor expirado ou sessão anônima do frentista), tenta com supabaseAnon
+    if (uploadRes.error) {
+      console.warn('[FleetFuelAudit] Aviso no upload com cliente padrão, tentando com supabaseAnon:', uploadRes.error);
+      uploadRes = await supabaseAnon.storage
+        .from(BUCKET_NAME)
+        .upload(fileName, processedFile, {
+          contentType: 'image/jpeg',
+          cacheControl: '3600',
+          upsert: true
+        });
+    }
+
+    if (!uploadRes.error) {
       const { data: publicUrlData } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(fileName);
 
       if (publicUrlData?.publicUrl) {
+        console.log('[FleetFuelAudit] Foto salva com sucesso no Storage público:', publicUrlData.publicUrl);
         return publicUrlData.publicUrl;
       }
+    } else {
+      console.error('[FleetFuelAudit] Erro ao fazer upload de foto no Storage:', uploadRes.error);
     }
   } catch (err) {
-    console.warn('[FleetFuelAudit] Falha no upload no bucket, utilizando Base64 seguro:', err);
+    console.warn('[FleetFuelAudit] Exceção no upload de foto no Storage:', err);
   }
 
-  // Fallback seguro em Base64
+  // 2. Fallback seguro em Base64 compactado caso o Storage esteja inacessível
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);

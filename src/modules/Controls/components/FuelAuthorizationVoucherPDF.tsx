@@ -9,6 +9,8 @@
 import React from 'react';
 import { TwoWayFuelOrder } from '../../../lib/api/fleetFuelAudit';
 import { FleetVehicle, getLocalBudgetClassifications } from '../../../lib/api/fleetFuel';
+import { BRASAO_BASE64 } from '../../../utils/brasaoBase64';
+import { generateQrSvgSync } from '../../../utils/qrCodeGenerator';
 
 export interface FuelVoucherOptions {
   municipioNome?: string;
@@ -46,11 +48,11 @@ export function gerarCanhotoDuasViasHtml(
     ? `SECRETARIA MUNICIPAL DE ${targetVehicle.department.toUpperCase()}`
     : (options.secretariaNome || 'DEPARTAMENTO DE GESTÃO DE FROTAS & CONTROLES');
   
-  const brasao = options.brasaoUrl || '/brasao-municipio.png';
+  const brasao = options.brasaoUrl || BRASAO_BASE64;
 
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://gestao360.gov.br';
   const validationUrl = `${origin}/validar-abastecimento?order=${encodeURIComponent(order.order_number)}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(validationUrl)}&color=0-0-0&bgcolor=255-255-255`;
+  const qrSvg = generateQrSvgSync(validationUrl, 82);
 
   const formatDate = (isoStr?: string) => {
     if (!isoStr) return new Date().toLocaleString('pt-BR');
@@ -80,7 +82,7 @@ export function gerarCanhotoDuasViasHtml(
   const fonteRecurso = budget?.funding_source || '1.1.500.0';
   const dotacaoCode = budget?.budget_code ? `Cód: ${budget.budget_code}` : '';
 
-  const isTopOff = order.supply_mode === 'encher_tanque';
+  const isTopOff = order.supply_mode === 'encher_tanque' || !!order.is_full_tank_order;
   const tankCapacity = Number(targetVehicle?.tank_capacity || 0);
 
   const gestorEmissor = order.authorized_by_name || 'Departamento de Frotas';
@@ -92,7 +94,7 @@ export function gerarCanhotoDuasViasHtml(
       <table class="header-table">
         <tr>
           <td style="width: 75px; text-align: center; vertical-align: middle;">
-            <img src="${brasao}" alt="Brasão Oficial" class="brasao-img" onerror="this.style.display='none'" />
+            <img src="${brasao}" alt="Brasão Oficial" class="brasao-img" />
           </td>
           <td style="vertical-align: middle; padding-left: 10px;">
             <div class="inst-mun">${municipio}</div>
@@ -156,10 +158,12 @@ export function gerarCanhotoDuasViasHtml(
           <div class="val-sub">Homologado p/ Veículo</div>
         </div>
         
-        <div class="value-card ${isTopOff ? 'highlight-green' : 'highlight-blue'}">
-          <div class="val-title">${isTopOff ? 'TETO MÁXIMO AUTORIZADO' : 'QUANTIDADE AUTORIZADA'}</div>
-          <div class="val-number">${Number(order.liters_authorized).toFixed(2)} L</div>
-          <div class="val-sub">Capacidade Tanque: ${tankCapacity.toFixed(0)}L</div>
+        <div class="value-card ${isTopOff ? 'highlight-amber' : 'highlight-blue'}">
+          <div class="val-title">${isTopOff ? 'REGIME DE LITRAGEM' : 'QUANTIDADE AUTORIZADA'}</div>
+          <div class="val-number" style="${isTopOff ? 'font-size: 8.5px; color: #92400e; padding-top: 2px;' : ''}">
+            ${isTopOff ? 'COMPLETAR TANQUE' : `${Number(order.liters_authorized).toFixed(2)} L`}
+          </div>
+          <div class="val-sub">${isTopOff ? `Até Desarme (Tanque: ${tankCapacity.toFixed(0)}L)` : `Capacidade Tanque: ${tankCapacity.toFixed(0)}L`}</div>
         </div>
 
         <div class="value-card">
@@ -168,10 +172,12 @@ export function gerarCanhotoDuasViasHtml(
           <div class="val-sub">Contratual Fixo</div>
         </div>
 
-        <div class="value-card highlight-green">
-          <div class="val-title">${isTopOff ? 'VALOR TETO (R$)' : 'TOTAL AUTORIZADO (R$)'}</div>
-          <div class="val-number font-mono">R$ ${Number(order.total_authorized_value).toFixed(2)}</div>
-          <div class="val-sub">${isTopOff ? 'Liquidado após abastecimento' : 'Trava Máxima Homologada'}</div>
+        <div class="value-card ${isTopOff ? 'highlight-amber' : 'highlight-green'}">
+          <div class="val-title">${isTopOff ? 'VALOR DA AUTORIZAÇÃO' : 'TOTAL AUTORIZADO (R$)'}</div>
+          <div class="val-number font-mono" style="${isTopOff ? 'font-size: 8.5px; color: #b45309; padding-top: 3px;' : ''}">
+            ${isTopOff ? 'A APURAR NA BOMBA' : `R$ ${Number(order.total_authorized_value).toFixed(2)}`}
+          </div>
+          <div class="val-sub">${isTopOff ? 'Regime Top-Off (Sem valor pré-fixado)' : 'Trava Máxima Homologada'}</div>
         </div>
 
         <div class="value-card">
@@ -184,9 +190,11 @@ export function gerarCanhotoDuasViasHtml(
       <!-- COMPROVAÇÃO DE FORNECIMENTO NO ATO DO ABASTECIMENTO COM QR CODE -->
       <table class="act-table">
         <tr>
-          <td style="width: 95px; text-align: center; vertical-align: middle; border-right: 1px dashed #cbd5e1; padding: 4px;">
-            <img src="${qrCodeUrl}" alt="QR Code Autenticidade" style="width: 78px; height: 78px; display: block; margin: 0 auto;" />
-            <div style="font-size: 7px; color: #64748b; margin-top: 2px; font-weight: bold;">VALIDAÇÃO DIGITAL</div>
+          <td style="width: 96px; text-align: center; vertical-align: middle; border-right: 1px dashed #cbd5e1; padding: 4px;">
+            <div style="width: 82px; height: 82px; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+              ${qrSvg}
+            </div>
+            <div style="font-size: 7px; color: #475569; margin-top: 2px; font-weight: 800; letter-spacing: 0.3px;">VALIDAÇÃO DIGITAL</div>
           </td>
           <td style="padding-left: 10px; vertical-align: middle;">
             <div style="font-size: 8.5px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 3px;">
@@ -240,35 +248,46 @@ export function gerarCanhotoDuasViasHtml(
       <style>
         @page {
           size: A4 portrait;
-          margin: 6mm 8mm 6mm 8mm;
+          margin: 4mm 6mm 4mm 6mm;
         }
         * {
           box-sizing: border-box;
           -webkit-print-color-adjust: exact;
           print-color-adjust: exact;
         }
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-          color: #0f172a;
+        html, body {
+          height: 100%;
           margin: 0;
           padding: 0;
           background: #ffffff;
-          font-size: 9px;
-          line-height: 1.2;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          color: #0f172a;
+          font-size: 9.5px;
+          line-height: 1.25;
         }
 
         .page-container {
           width: 100%;
+          height: 288mm;
+          max-height: 288mm;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          justify-content: space-between;
+          padding: 0;
+          box-sizing: border-box;
         }
 
         .voucher-box {
           border: 1.5px solid #0f172a;
           border-radius: 6px;
-          padding: 7px 9px;
+          padding: 8px 12px;
           background: #ffffff;
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          box-sizing: border-box;
+          page-break-inside: avoid;
         }
 
         .header-table {
@@ -279,35 +298,37 @@ export function gerarCanhotoDuasViasHtml(
           margin-bottom: 4px;
         }
         .brasao-img {
-          max-height: 55px;
-          max-width: 60px;
+          max-height: 52px;
+          max-width: 65px;
           object-fit: contain;
+          display: block;
+          margin: 0 auto;
         }
         .inst-mun {
-          font-size: 10.5px;
+          font-size: 11px;
           font-weight: 900;
           letter-spacing: 0.5px;
           color: #0f172a;
         }
         .inst-state {
-          font-size: 8px;
+          font-size: 8.5px;
           font-weight: 700;
           color: #475569;
         }
         .inst-sec {
-          font-size: 9px;
+          font-size: 9.5px;
           font-weight: 800;
           color: #1e3a8a;
           margin-top: 1px;
         }
         .inst-doc-title {
-          font-size: 9.5px;
+          font-size: 10.5px;
           font-weight: 900;
           color: #0f172a;
           margin-top: 2px;
         }
         .inst-subtitle {
-          font-size: 7px;
+          font-size: 7.5px;
           color: #64748b;
         }
 
@@ -325,7 +346,7 @@ export function gerarCanhotoDuasViasHtml(
         .order-num-box {
           background: #f1f5f9;
           border: 1px solid #cbd5e1;
-          padding: 2px 5px;
+          padding: 2px 6px;
           border-radius: 4px;
           text-align: right;
         }
@@ -336,13 +357,13 @@ export function gerarCanhotoDuasViasHtml(
           color: #64748b;
         }
         .order-num-val {
-          font-size: 11px;
+          font-size: 12.5px;
           font-weight: 900;
           font-family: monospace;
           color: #b91c1c;
         }
         .date-issue {
-          font-size: 7px;
+          font-size: 7.5px;
           color: #64748b;
           margin-top: 2px;
         }
@@ -352,7 +373,7 @@ export function gerarCanhotoDuasViasHtml(
           border: 1px solid #e2e8f0;
           padding: 3px 6px;
           border-radius: 4px;
-          font-size: 8px;
+          font-size: 8.5px;
           display: flex;
           align-items: center;
           gap: 12px;
@@ -362,7 +383,7 @@ export function gerarCanhotoDuasViasHtml(
           font-weight: 900;
           color: #1e3a8a;
           text-transform: uppercase;
-          font-size: 7.5px;
+          font-size: 8px;
         }
         .badge-ficha {
           background: #e2e8f0;
@@ -379,18 +400,18 @@ export function gerarCanhotoDuasViasHtml(
         }
         .data-table td {
           border: 1px solid #e2e8f0;
-          padding: 3px 6px;
+          padding: 4px 7px;
           background: #ffffff;
         }
         .data-label {
           display: block;
-          font-size: 6.5px;
+          font-size: 7px;
           font-weight: 800;
           color: #64748b;
           text-transform: uppercase;
         }
         .data-value {
-          font-size: 9px;
+          font-size: 9.5px;
           color: #0f172a;
         }
         .text-muted { color: #64748b; }
@@ -400,13 +421,13 @@ export function gerarCanhotoDuasViasHtml(
         .values-grid {
           display: grid;
           grid-template-columns: repeat(5, 1fr);
-          gap: 4px;
+          gap: 5px;
           margin-bottom: 4px;
         }
         .value-card {
           border: 1px solid #cbd5e1;
           border-radius: 4px;
-          padding: 3px 4px;
+          padding: 4px 5px;
           text-align: center;
           background: #ffffff;
         }
@@ -418,14 +439,18 @@ export function gerarCanhotoDuasViasHtml(
           background: #f0fdf4;
           border-color: #86efac;
         }
+        .value-card.highlight-amber {
+          background: #fffbeb;
+          border-color: #fde68a;
+        }
         .val-title {
-          font-size: 6.5px;
+          font-size: 7px;
           font-weight: 800;
           color: #475569;
           text-transform: uppercase;
         }
         .val-number {
-          font-size: 10px;
+          font-size: 11px;
           font-weight: 900;
           color: #0f172a;
           margin: 1px 0;
@@ -435,7 +460,7 @@ export function gerarCanhotoDuasViasHtml(
           color: #1e3a8a;
         }
         .val-sub {
-          font-size: 6.5px;
+          font-size: 7px;
           color: #64748b;
         }
 
@@ -454,19 +479,19 @@ export function gerarCanhotoDuasViasHtml(
         }
         .act-field-box {
           border: 1px solid #94a3b8;
-          padding: 3px 6px;
+          padding: 4px 6px;
           border-radius: 3px;
           background: #f8fafc;
         }
         .act-label {
           display: block;
-          font-size: 6.5px;
+          font-size: 7px;
           font-weight: 800;
           color: #1e293b;
         }
         .act-blank-val {
           display: block;
-          font-size: 9.5px;
+          font-size: 10.5px;
           font-weight: 900;
           color: #0f172a;
           font-family: monospace;
@@ -476,39 +501,39 @@ export function gerarCanhotoDuasViasHtml(
         .signatures-table {
           width: 100%;
           border-collapse: collapse;
-          margin-top: 6px;
-          margin-bottom: 3px;
+          margin-top: 8px;
+          margin-bottom: 4px;
         }
         .sig-line {
-          width: 85%;
-          border-bottom: 1px solid #0f172a;
-          margin: 0 auto 2px auto;
+          width: 80%;
+          border-bottom: 1.5px solid #0f172a;
+          margin: 0 auto 3px auto;
         }
         .sig-name {
-          font-size: 8px;
+          font-size: 9px;
           font-weight: 800;
           color: #0f172a;
         }
         .sig-role {
-          font-size: 7px;
+          font-size: 7.5px;
           color: #475569;
         }
 
         .legal-footer {
-          font-size: 6px;
+          font-size: 6.5px;
           color: #64748b;
           text-align: justify;
-          line-height: 1.1;
+          line-height: 1.15;
           border-top: 1px dashed #cbd5e1;
-          padding-top: 2px;
-          margin-top: 2px;
+          padding-top: 3px;
+          margin-top: 3px;
         }
 
         /* LINHA DE CORTE DESTACÁVEL ENTRE AS VIAS */
         .cut-divider {
           text-align: center;
           position: relative;
-          margin: 2px 0;
+          margin: 4px 0;
         }
         .cut-line {
           border-top: 1.5px dashed #94a3b8;
@@ -518,15 +543,32 @@ export function gerarCanhotoDuasViasHtml(
         .cut-badge {
           display: inline-block;
           background: #ffffff;
-          padding: 0 8px;
-          font-size: 7.5px;
+          padding: 0 10px;
+          font-size: 8px;
           font-weight: 800;
           color: #64748b;
           position: relative;
-          top: -6px;
+          top: -7px;
           letter-spacing: 0.5px;
         }
       </style>
+      <script>
+        window.addEventListener('load', function() {
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 120);
+            });
+          } else {
+            setTimeout(function() {
+              window.focus();
+              window.print();
+            }, 180);
+          }
+        });
+      </script>
     </head>
     <body>
       <div class="page-container">
@@ -562,7 +604,7 @@ export function imprimirCanhotoDuasVias(
   options: FuelVoucherOptions = {}
 ): void {
   const html = gerarCanhotoDuasViasHtml(order, vehicle, options);
-  const printWindow = window.open('', '_blank', 'width=950,height=850,top=40,left=40');
+  const printWindow = window.open('', '_blank', 'width=1000,height=900,top=30,left=30');
 
   if (!printWindow) {
     alert('Por favor, permita pop-ups no seu navegador para imprimir a Autorização em Duas Vias.');
@@ -574,9 +616,13 @@ export function imprimirCanhotoDuasVias(
   printWindow.document.close();
   printWindow.focus();
 
-  setTimeout(() => {
-    printWindow.print();
-  }, 350);
+  // Fallback para caso evento onload não dispare no documento filho
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 200);
+  };
 }
 
 /**

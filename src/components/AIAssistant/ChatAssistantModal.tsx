@@ -6,7 +6,8 @@ import {
   Headphones, Bot, User, AlertCircle,
   CheckCheck, Paperclip, Smile, MoreVertical, Minimize2,
   RefreshCw, CheckCircle2, Zap, ArrowRight, CornerDownLeft,
-  Terminal, HelpCircle, ChevronRight, BookOpen, Building2, Shield
+  Terminal, HelpCircle, ChevronRight, BookOpen, Building2, Shield,
+  Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -243,6 +244,27 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
   const [activeTicket, setActiveTicket] = useState<LiveChatTicket | null>(null);
   const [chatMode, setChatMode] = useState<'bot' | 'waiting_human' | 'human_active'>('bot');
   const [attendantName, setAttendantName] = useState<string | null>(null);
+
+  // Controle de visibilidade do Botão Flutuante (evitar obstruir navegação)
+  const [isFabHidden, setIsFabHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('gestao360_hide_ai_fab') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleFabHidden = (hidden: boolean) => {
+    setIsFabHidden(hidden);
+    try {
+      localStorage.setItem('gestao360_hide_ai_fab', String(hidden));
+    } catch (e) {
+      console.error(e);
+    }
+    if (hidden) {
+      showToast('Botão da IA recolhido na borda lateral para liberar a visão da tela.', 'info');
+    }
+  };
 
   const currentViewLabel = VIEW_LABEL_MAP[activeView] || 'Módulo Ativo';
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -730,32 +752,73 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
       {/* ========================================================
           BOTÃO FLUTUANTE (FAB) COM IDENTIDADE SEXTA-FEIRA
          ======================================================== */}
-      {!isOpen && (
+      {!isOpen && isFabHidden && (
+        <motion.button
+          initial={{ x: 30, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: 30, opacity: 0 }}
+          onClick={() => {
+            handleToggleFabHidden(false);
+            setIsOpen(true);
+          }}
+          title="Abrir Assistente Sexta-Feira IA (Clique para reabrir)"
+          className="fixed bottom-6 right-0 z-40 flex items-center gap-1.5 pl-3 pr-2 py-2 bg-gradient-to-l from-neutral-950 via-neutral-900 to-neutral-800 text-amber-400 border-l-2 border-y border-amber-500/50 rounded-l-2xl shadow-xl hover:pl-4 transition-all duration-300 cursor-pointer group select-none"
+        >
+          <Sparkles className="w-4 h-4 text-amber-400 group-hover:rotate-12 transition-transform" />
+          <span className="text-[11px] font-black tracking-wide">IA</span>
+        </motion.button>
+      )}
+
+      {!isOpen && !isFabHidden && (
         <motion.div
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0, opacity: 0 }}
           className="fixed bottom-6 right-6 z-50 flex items-center gap-3 select-none"
         >
-          {/* Tooltip convidativo */}
+          {/* Tooltip convidativo com ação de ocultar */}
           <div className="hidden md:flex items-center gap-2 bg-neutral-900/95 dark:bg-neutral-950/95 text-neutral-100 text-xs px-3.5 py-2 rounded-2xl border border-amber-500/30 shadow-2xl backdrop-blur-md">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
             <span className="font-bold text-amber-400">Sexta-Feira</span>
             <span className="text-neutral-400">• IA Operacional Gestão 360</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleFabHidden(true);
+              }}
+              title="Ocultar botão flutuante para desobstruir a tela"
+              className="ml-2 p-1 text-neutral-400 hover:text-amber-400 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          <button
-            onClick={() => setIsOpen(true)}
-            className="group relative flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-neutral-950 via-neutral-900 to-neutral-800 text-amber-400 border-2 border-amber-500/40 hover:border-amber-400 shadow-2xl shadow-amber-500/20 hover:shadow-amber-500/40 hover:scale-105 active:scale-95 transition-all duration-300"
-            title="Abrir Sexta-Feira IA"
-          >
-            <div className="absolute inset-0 rounded-2xl border border-amber-400/20 animate-pulse pointer-events-none" />
-            <Sparkles className="w-6 h-6 text-amber-400 group-hover:rotate-12 transition-transform duration-300" />
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 border-2 border-neutral-950" />
-            </span>
-          </button>
+          <div className="relative group">
+            <button
+              onClick={() => setIsOpen(true)}
+              className="relative flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-neutral-950 via-neutral-900 to-neutral-800 text-amber-400 border-2 border-amber-500/40 hover:border-amber-400 shadow-2xl shadow-amber-500/20 hover:shadow-amber-500/40 hover:scale-105 active:scale-95 transition-all duration-300 cursor-pointer"
+              title="Abrir Sexta-Feira IA"
+            >
+              <div className="absolute inset-0 rounded-2xl border border-amber-400/20 animate-pulse pointer-events-none" />
+              <Sparkles className="w-6 h-6 text-amber-400 group-hover:rotate-12 transition-transform duration-300" />
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-amber-500 border-2 border-neutral-950" />
+              </span>
+            </button>
+
+            {/* Mini botão de ocultar visível no hover e no mobile */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleFabHidden(true);
+              }}
+              title="Ocultar botão da IA (liberar espaço)"
+              className="absolute -top-1.5 -left-1.5 w-5 h-5 bg-neutral-900 text-neutral-400 hover:text-white rounded-full border border-neutral-700 shadow-lg flex items-center justify-center opacity-70 group-hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <EyeOff className="w-3 h-3" />
+            </button>
+          </div>
         </motion.div>
       )}
 
@@ -814,15 +877,26 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
                 <button
                   onClick={clearChatHistory}
                   title="Limpar histórico"
-                  className="p-2 hover:bg-neutral-800 hover:text-white rounded-xl transition text-neutral-400"
+                  className="p-2 hover:bg-neutral-800 hover:text-white rounded-xl transition text-neutral-400 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
 
                 <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    handleToggleFabHidden(true);
+                  }}
+                  title="Ocultar botão flutuante para desobstruir a tela"
+                  className="p-2 hover:bg-neutral-800 hover:text-amber-400 rounded-xl transition text-neutral-400 cursor-pointer"
+                >
+                  <EyeOff className="w-4 h-4" />
+                </button>
+
+                <button
                   onClick={() => setIsOpen(false)}
                   title="Fechar"
-                  className="p-2 hover:bg-neutral-800 hover:text-white rounded-xl transition text-neutral-400"
+                  className="p-2 hover:bg-neutral-800 hover:text-white rounded-xl transition text-neutral-400 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>

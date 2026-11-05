@@ -4,6 +4,8 @@
  */
 
 import { FuelSupplyOrder, FleetVehicle } from '../../../lib/api/fleetFuel';
+import { BRASAO_BASE64 } from '../../../utils/brasaoBase64';
+import { generateQrSvgSync } from '../../../utils/qrCodeGenerator';
 
 interface OrdemAbastecimentoOptions {
   municipioNome?: string;
@@ -52,10 +54,11 @@ export function gerarOrdemAbastecimentoHtml(
   const prefixFormatted = vehicle?.prefix_code || 'FROTA';
   const metricLabel = vehicle?.metric_type === 'horimetro' ? 'HORÍMETRO' : 'ODÔMETRO (KM)';
   const metricUnit = vehicle?.metric_type === 'horimetro' ? 'horas' : 'km';
+  const isTopOff = order.supply_mode === 'encher_tanque' || !!order.is_full_tank_order || !!vehicle?.is_emergency_priority;
 
-  // URL para autenticação via QR Code
+  // URL para autenticação via QR Code (Gerado 100% síncrono/offline em SVG)
   const verifyUrl = `${typeof window !== 'undefined' ? window.location.origin : 'https://gestao360.gov.br'}/valida-abastecimento/${order.id}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(verifyUrl)}&color=0-0-0&bgcolor=255-255-255`;
+  const qrSvg = generateQrSvgSync(verifyUrl, 82);
 
   return `
     <!DOCTYPE html>
@@ -415,6 +418,23 @@ export function gerarOrdemAbastecimentoHtml(
           font-style: italic;
         }
       </style>
+      <script>
+        window.addEventListener('load', function() {
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function() {
+              setTimeout(function() {
+                window.focus();
+                window.print();
+              }, 120);
+            });
+          } else {
+            setTimeout(function() {
+              window.focus();
+              window.print();
+            }, 180);
+          }
+        });
+      </script>
     </head>
     <body>
       <div class="order-container">
@@ -422,7 +442,7 @@ export function gerarOrdemAbastecimentoHtml(
         <table class="header-table">
           <tr>
             <td style="width: 80px;">
-              <img src="/brasao-municipio.png" alt="Brasão Oficial" class="header-logo" onerror="this.src='/icon.svg';" />
+              <img src="${BRASAO_BASE64}" alt="Brasão Oficial" class="header-logo" />
             </td>
             <td class="header-titles">
               <h1>${municipio}</h1>
@@ -537,9 +557,13 @@ export function gerarOrdemAbastecimentoHtml(
           </div>
 
           <div class="auth-item">
-            <div class="auth-item-title">Litragem Máxima Autorizada</div>
-            <div class="auth-item-val" style="color: #15803d;">${order.liters_authorized.toFixed(2)} L</div>
-            <div style="font-size: 8.5px; color: #15803d; font-weight: 700; margin-top: 2px;">PROIBIDO EXCEDER</div>
+            <div class="auth-item-title">${isTopOff ? 'Regime de Fornecimento' : 'Litragem Máxima Autorizada'}</div>
+            <div class="auth-item-val" style="color: #15803d; ${isTopOff ? 'font-size: 10px; font-weight: 900;' : ''}">
+              ${isTopOff ? 'COMPLETAR TANQUE (TOP-OFF)' : `${order.liters_authorized.toFixed(2)} L`}
+            </div>
+            <div style="font-size: 8.5px; color: ${isTopOff ? '#b45309' : '#15803d'}; font-weight: 700; margin-top: 2px;">
+              ${isTopOff ? 'VALOR A APURAR NA BOMBA' : 'PROIBIDO EXCEDER'}
+            </div>
           </div>
 
           <div class="auth-item">
@@ -552,7 +576,9 @@ export function gerarOrdemAbastecimentoHtml(
         <!-- 6. QR CODE E AUTENTICAÇÃO DIGITAL -->
         <div class="auth-footer">
           <div class="auth-qr-block">
-            <img src="${qrCodeUrl}" alt="QR Code de Validação" class="qr-img" />
+            <div style="width: 82px; height: 82px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px;">
+              ${qrSvg}
+            </div>
             <div class="auth-text">
               <div style="font-weight: 800; text-transform: uppercase; color: #0f172a; margin-bottom: 2px;">
                 Validação Digital e Controle em Tempo Real
@@ -591,17 +617,17 @@ export function gerarOrdemAbastecimentoHtml(
           <div class="canhoto-fill-grid">
             <div class="fill-box">
               <div class="fill-label">1. Litros Abastecidos</div>
-              <div class="fill-blank">${order.liters_supplied ? `${order.liters_supplied.toFixed(2)} L` : '___________ Litros'}</div>
+              <div class="fill-blank">${order.liters_supplied ? `${order.liters_supplied.toFixed(2)} L` : (isTopOff ? '_______ Litros (Registro da Bomba)' : '___________ Litros')}</div>
             </div>
 
             <div class="fill-box">
               <div class="fill-label">2. Preço Unitário (R$)</div>
-              <div class="fill-blank">${order.unit_price ? `R$ ${order.unit_price.toFixed(3)}` : 'R$ _________'}</div>
+              <div class="fill-blank">${order.unit_price ? `R$ ${order.unit_price.toFixed(3)}` : (order.bidded_unit_price ? `R$ ${Number(order.bidded_unit_price).toFixed(3)}` : 'R$ _________')}</div>
             </div>
 
             <div class="fill-box">
               <div class="fill-label">3. Valor Total (R$)</div>
-              <div class="fill-blank">${order.total_value ? `R$ ${order.total_value.toFixed(2)}` : 'R$ _________'}</div>
+              <div class="fill-blank">${order.total_value ? `R$ ${order.total_value.toFixed(2)}` : (isTopOff ? 'R$ _______ (Pós-Bomba)' : 'R$ _________')}</div>
             </div>
 
             <div class="fill-box">
@@ -649,7 +675,7 @@ export function imprimirOrdemAbastecimento(
   options: OrdemAbastecimentoOptions = {}
 ): void {
   const html = gerarOrdemAbastecimentoHtml(order, vehicle, options);
-  const printWindow = window.open('', '_blank', 'width=900,height=800,top=50,left=50');
+  const printWindow = window.open('', '_blank', 'width=1000,height=900,top=30,left=30');
 
   if (!printWindow) {
     alert('Por favor, permita pop-ups no seu navegador para imprimir a Ordem de Abastecimento.');
@@ -661,8 +687,11 @@ export function imprimirOrdemAbastecimento(
   printWindow.document.close();
   printWindow.focus();
 
-  // Aguarda carregamento de imagens (brasão e QR code) antes de disparar o print
-  setTimeout(() => {
-    printWindow.print();
-  }, 400);
+  // Fallback para caso evento onload não dispare no documento filho
+  printWindow.onload = () => {
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 200);
+  };
 }
