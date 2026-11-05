@@ -510,6 +510,21 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                       />
                     </div>
                   )}
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOrder(null);
+                        setSearchCode('');
+                        setErrorMsg(null);
+                        window.history.pushState({}, '', '/validar-abastecimento');
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 text-white font-bold text-xs uppercase rounded-xl transition-all shadow-sm cursor-pointer"
+                    >
+                      <RotateCcw size={15} /> Consultar Outra Autorização
+                    </button>
+                  </div>
                 </div>
               ) : (
                 /* FORMULÁRIO DO MOTORISTA NA BOMBA */

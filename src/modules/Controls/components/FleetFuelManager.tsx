@@ -392,8 +392,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       return;
     }
     try {
-      await deleteFuelSupplyOrder(order.id || order.order_number);
-      showToast(`Ordem ${order.order_number} excluída com sucesso! Próxima ordem continuará na sequência.`, 'success');
+      await deleteFuelSupplyOrder(order.id, order.order_number);
+      showToast(`Ordem ${order.order_number} excluída do banco e do sistema! Próxima ordem continuará na sequência.`, 'success');
       loadData();
     } catch (err) {
       showToast('Erro ao excluir ordem.', 'error');

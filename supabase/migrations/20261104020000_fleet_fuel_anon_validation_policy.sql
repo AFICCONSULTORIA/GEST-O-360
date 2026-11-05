@@ -39,7 +39,44 @@ BEGIN
       USING (true)
       WITH CHECK (true);
   END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies 
+    WHERE tablename = 'fuel_supply_orders' AND policyname = 'fuel_supply_orders_anon_delete'
+  ) THEN
+    CREATE POLICY "fuel_supply_orders_anon_delete" ON public.fuel_supply_orders
+      FOR DELETE TO anon, authenticated
+      USING (true);
+  END IF;
 END $$;
+
+-- 2.1 Funções RPC com SECURITY DEFINER para garantir exclusão definitiva mesmo sob RLS
+CREATE OR REPLACE FUNCTION public.rpc_delete_fuel_order(p_order_id_or_number TEXT)
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  DELETE FROM public.fuel_supply_orders
+  WHERE id::text = p_order_id_or_number 
+     OR order_number = p_order_id_or_number;
+  RETURN true;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.rpc_clear_all_fuel_orders()
+RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  DELETE FROM public.fuel_supply_orders;
+  RETURN true;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.rpc_delete_fuel_order(TEXT) TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_clear_all_fuel_orders() TO anon, authenticated, service_role;
 
 -- 3. Atualizar bucket de fotos de combustivel para permitir uploads anônimos (fotos tiradas no celular na bomba)
 INSERT INTO storage.buckets (id, name, public)

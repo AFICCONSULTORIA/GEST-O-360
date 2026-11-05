@@ -11,7 +11,7 @@ import { supabase } from '../supabase';
 import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
-export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado';
+export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'cancelado';
 
 /**
  * Tabela Referencial Padrão de Preços Licitados Contratuais Homologados
@@ -656,6 +656,9 @@ export async function syncLocalOrdersToSupabase(): Promise<void> {
     const remoteOrderNumbers = new Set((remoteOrders || []).map(r => r.order_number?.toLowerCase()));
 
     for (const ord of localOrders) {
+      if (ord.anomaly_reason === 'CANCELADO_EXCLUIDO' || ord.status === 'glosado' && ord.anomaly_reason === 'CANCELADO_EXCLUIDO') {
+        continue;
+      }
       if (ord.order_number && !remoteOrderNumbers.has(ord.order_number.toLowerCase())) {
         const orderRecord: Record<string, any> = {
           id: ord.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ord.id) ? ord.id : generateUUID(),
@@ -730,6 +733,9 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
   });
 
   if (foundLocal) {
+    if (foundLocal.anomaly_reason === 'CANCELADO_EXCLUIDO' || foundLocal.status === 'cancelado') {
+      return null;
+    }
     const vehicles = getLocalVehicles();
     const vehicle = vehicles.find(v => v.id === foundLocal!.vehicle_id);
     return { ...foundLocal, vehicle: foundLocal.vehicle || vehicle };
@@ -750,6 +756,9 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
     const { data, error } = await query.order('created_at', { ascending: false }).limit(1).maybeSingle();
 
     if (!error && data) {
+      if (data.anomaly_reason === 'CANCELADO_EXCLUIDO' || data.status === 'cancelado') {
+        return null;
+      }
       return data as TwoWayFuelOrder;
     }
   } catch (err) {
@@ -768,6 +777,9 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
     const { data: rawOrder, error: simpleErr } = await simpleQuery.order('created_at', { ascending: false }).limit(1).maybeSingle();
 
     if (!simpleErr && rawOrder) {
+      if (rawOrder.anomaly_reason === 'CANCELADO_EXCLUIDO' || rawOrder.status === 'cancelado') {
+        return null;
+      }
       const orderObj = rawOrder as TwoWayFuelOrder;
       if (orderObj.vehicle_id) {
         try {
