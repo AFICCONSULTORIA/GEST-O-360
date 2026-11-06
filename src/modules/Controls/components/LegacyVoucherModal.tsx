@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
-  FleetVehicle, FuelType, FleetDriver, FleetFuelStation
+  FleetVehicle, FuelType, FleetDriver, FleetFuelStation, FleetBudgetClassification
 } from '../../../lib/api/fleetFuel';
 import {
   BiddedPricesMap,
@@ -29,6 +29,7 @@ interface LegacyVoucherModalProps {
   drivers: FleetDriver[];
   stations: FleetFuelStation[];
   biddedPrices: BiddedPricesMap;
+  budgetClassifications?: FleetBudgetClassification[];
   onSuccess: () => void;
   institutionId?: string;
 }
@@ -65,6 +66,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   drivers,
   stations,
   biddedPrices,
+  budgetClassifications = [],
   onSuccess,
   institutionId = 'inst_1'
 }) => {
@@ -75,6 +77,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   const [selectedVehicle, setSelectedVehicle] = useState<FleetVehicle | null>(null);
   const [customOrderNumber, setCustomOrderNumber] = useState('');
   const [voucherNumber, setVoucherNumber] = useState('');
+  const [budgetClassificationId, setBudgetClassificationId] = useState('');
   const [suppliedAt, setSuppliedAt] = useState(() => {
     // Data de ontem às 10:00 como sugestão padrão
     const d = new Date();
@@ -131,6 +134,11 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
     setVehicleSearch(`${v.plate} - ${v.model}`);
     if (v.current_odometer && !odometerReading) {
       setOdometerReading(String(v.current_odometer));
+    }
+    if (v.budget_classification_id) {
+      setBudgetClassificationId(v.budget_classification_id);
+    } else if ((v.budget_classification as any)?.id) {
+      setBudgetClassificationId((v.budget_classification as any).id);
     }
   };
 
@@ -201,7 +209,8 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         unit_price: price,
         odometer_reading: odo,
         receipt_photo_url: uploadedReceiptUrl,
-        notes: notes.trim()
+        notes: notes.trim(),
+        budget_classification_id: budgetClassificationId || undefined
       });
 
       showToast('Canhoto antigo registrado com sucesso como abastecido!', 'success');
@@ -561,6 +570,33 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                   onChange={(e) => setVoucherNumber(e.target.value)}
                   className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                 />
+              </div>
+
+              {/* FICHA ORÇAMENTÁRIA / DOTAÇÃO DE DESPESA */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                    <FileText size={13} className="text-amber-500" />
+                    Ficha Orçamentária / Dotação de Despesa
+                  </label>
+                  <span className="text-[10px] text-neutral-400">
+                    {selectedVehicle?.budget_classification?.invoice_sheet 
+                      ? `Sugerida do veículo: Ficha ${selectedVehicle.budget_classification.invoice_sheet}` 
+                      : 'Classificação contábil'}
+                  </span>
+                </div>
+                <select
+                  value={budgetClassificationId}
+                  onChange={(e) => setBudgetClassificationId(e.target.value)}
+                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                >
+                  <option value="">-- Usar Ficha Padrão do Veículo / Secretaria --</option>
+                  {budgetClassifications.map(bc => (
+                    <option key={bc.id} value={bc.id}>
+                      [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* MOTORISTA E POSTO */}

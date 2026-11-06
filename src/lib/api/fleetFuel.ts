@@ -65,6 +65,7 @@ export interface FuelSupplyOrder {
   supply_mode?: 'litragem_fixa' | 'encher_tanque';
   authorized_by_name?: string;
   authorized_by_role?: string;
+  budget_classification_id?: string;
   budget_classification?: FleetBudgetClassification;
 
   // Prontidão e Urgência (Tanque Cheio)

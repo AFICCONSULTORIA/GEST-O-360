@@ -246,6 +246,8 @@ export interface OrderCompletionPayload {
   vehicle_plate?: string;
   custom_order_number?: string; // Permite alterar o número da autorização ao corrigir
   order_number?: string;
+  budget_classification_id?: string; // Permite alterar ou definir a Ficha Orçamentária
+  budget_classification?: FleetBudgetClassification;
 }
 
 export interface ConsumptionAuditCalculation {
@@ -695,6 +697,17 @@ export async function validateAndCompleteFuelOrder(
   const customOrderNumber = completionData.custom_order_number?.trim() || completionData.order_number?.trim();
   const finalOrderNumber = customOrderNumber || order.order_number;
 
+  // Resolução de Ficha Orçamentária se fornecida na conclusão/edição
+  let resolvedBudgetId = completionData.budget_classification_id !== undefined
+    ? (completionData.budget_classification_id || undefined)
+    : (order.budget_classification_id || vehicle.budget_classification_id);
+
+  let resolvedBudget = completionData.budget_classification;
+  if (!resolvedBudget && resolvedBudgetId) {
+    const localBudgets = getLocalBudgetClassifications();
+    resolvedBudget = localBudgets.find(b => b.id === resolvedBudgetId) || order.budget_classification || vehicle.budget_classification;
+  }
+
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     order_number: finalOrderNumber,
@@ -713,6 +726,8 @@ export async function validateAndCompleteFuelOrder(
     anomaly_level: audit.anomaly_level,
     anomaly_reason: audit.anomaly_reason,
     audit_justification: completionData.audit_justification || order.audit_justification,
+    budget_classification_id: resolvedBudgetId,
+    budget_classification: resolvedBudget,
     status: finalStatus,
     supplied_at: completionData.supplied_at || new Date().toISOString()
   };
@@ -770,7 +785,8 @@ export async function validateAndCompleteFuelOrder(
     anomaly_reason: updatedOrder.anomaly_reason || null,
     audit_justification: updatedOrder.audit_justification || null,
     status: updatedOrder.status,
-    supplied_at: updatedOrder.supplied_at
+    supplied_at: updatedOrder.supplied_at,
+    budget_classification_id: resolvedBudgetId || null
   };
 
   let persistedRemotely = false;
@@ -1587,5 +1603,84 @@ export function generateLegacyVouchersExcelTemplate(): void {
 
   XLSX.utils.book_append_sheet(wb, ws, 'Canhotos_Antigos');
   XLSX.writeFile(wb, 'modelo_importacao_canhotos_antigos.xlsx');
+}
+
+/**
+ * Permite alterar / corrigir a Ficha Orçamentária vinculada a uma ordem de abastecimento
+ * a qualquer momento depois (mesmo após autorizada, abastecida na bomba ou em auditoria).
+ */
+export async function updateFuelOrderBudgetClassification(
+  orderId: string,
+  budgetId: string,
+  _institutionId: string = 'inst_1'
+): Promise<TwoWayFuelOrder> {
+  const localBudgets = getLocalBudgetClassifications();
+  const targetBudget = localBudgets.find(b => b.id === budgetId);
+
+  // 1. Atualizar cache de ordens TwoWay
+  const orders = getLocalOrders();
+  const orderIdx = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  if (orderIdx === -1) {
+    throw new Error(`Ordem nº "${orderId}" não encontrada para atualização de dotação.`);
+  }
+
+  const updatedOrder: TwoWayFuelOrder = {
+    ...orders[orderIdx],
+    budget_classification_id: budgetId,
+    budget_classification: targetBudget || orders[orderIdx].budget_classification
+  };
+  orders[orderIdx] = updatedOrder;
+  saveLocalOrders(orders);
+
+  // Também atualiza o outro cache se existir
+  try {
+    const rawReal = localStorage.getItem('gestao360_real_orders');
+    if (rawReal) {
+      const realList = JSON.parse(rawReal) as TwoWayFuelOrder[];
+      const rIdx = realList.findIndex(o => o.id === orderId || o.order_number === orderId);
+      if (rIdx !== -1) {
+        realList[rIdx] = {
+          ...realList[rIdx],
+          budget_classification_id: budgetId,
+          budget_classification: targetBudget || realList[rIdx].budget_classification
+        };
+        localStorage.setItem('gestao360_real_orders', JSON.stringify(realList));
+      }
+    }
+  } catch {}
+
+  // 2. Persistir no Supabase remoto
+  try {
+    const updatePayload: Record<string, any> = { budget_classification_id: budgetId };
+    let { error } = await supabase
+      .from('fuel_supply_orders')
+      .update(updatePayload)
+      .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+
+    if (error) {
+      await supabaseAnon
+        .from('fuel_supply_orders')
+        .update(updatePayload)
+        .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+    }
+  } catch (dbErr) {
+    console.warn('[FleetFuelAudit] Aviso ao persistir ficha orçamentária no Supabase:', dbErr);
+  }
+
+  // 3. Notificar abas em tempo real
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+        detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
+      }));
+      if ('BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('gestao360_fleet_channel');
+        bc.postMessage({ type: 'ORDER_BUDGET_UPDATED', order: updatedOrder });
+        bc.close();
+      }
+    }
+  } catch {}
+
+  return updatedOrder;
 }
 

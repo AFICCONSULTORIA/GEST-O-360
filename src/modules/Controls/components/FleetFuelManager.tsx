@@ -99,7 +99,8 @@ import {
   calculateRealtimeMetrics,
   uploadFuelDocumentPhoto,
   linkInvoiceToFuelOrder,
-  syncLocalOrdersToSupabase
+  syncLocalOrdersToSupabase,
+  updateFuelOrderBudgetClassification
 } from '../../../lib/api/fleetFuelAudit';
 import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
@@ -193,8 +194,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     receipt_attachment_url: '',
     odometer_photo_url: '',
     pump_photo_url: '',
-    invoice_attachment_url: ''
+    invoice_attachment_url: '',
+    budget_classification_id: ''
   });
+
+  // Estado para Edição Rápida de Ficha Orçamentária da Ordem
+  const [orderForBudgetEdit, setOrderForBudgetEdit] = useState<FuelSupplyOrder | null>(null);
+  const [budgetEditId, setBudgetEditId] = useState('');
+  const [savingOrderBudget, setSavingOrderBudget] = useState(false);
+
+  // Estado para Edição de Ficha dentro do Visualizador de Detalhes / Fotos
+  const [isEditingViewerBudget, setIsEditingViewerBudget] = useState(false);
+  const [viewerBudgetId, setViewerBudgetId] = useState('');
+  const [savingViewerBudget, setSavingViewerBudget] = useState(false);
 
   // Formulário: Auditoria e Glosa
   const [auditForm, setAuditForm] = useState({
@@ -281,6 +293,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setSelectedAttachmentPhoto('pump');
     }
     setViewingAttachmentOrder(order);
+    const resolvedBudgetId = order.budget_classification_id || (order.budget_classification as any)?.id || order.vehicle?.budget_classification_id || '';
+    setViewerBudgetId(resolvedBudgetId);
+    setIsEditingViewerBudget(false);
   };
 
   // Carregar dados reais (Veículos, Ordens, Motoristas e Postos)
@@ -1017,7 +1032,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       receipt_attachment_url: order.receipt_attachment_url || '',
       odometer_photo_url: order.odometer_photo_url || '',
       pump_photo_url: order.pump_photo_url || '',
-      invoice_attachment_url: order.invoice_attachment_url || ''
+      invoice_attachment_url: order.invoice_attachment_url || '',
+      budget_classification_id: order.budget_classification_id || (order.budget_classification as any)?.id || v?.budget_classification_id || ''
     });
     setIsExecutionModalOpen(true);
   };
@@ -1200,7 +1216,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         pump_photo_url: executionForm.pump_photo_url || undefined,
         invoice_coupon_number: executionForm.invoice_number?.trim() || undefined,
         audit_justification: executionForm.invoice_key?.trim() || undefined,
-        custom_order_number: executionForm.custom_order_number?.trim() || undefined
+        custom_order_number: executionForm.custom_order_number?.trim() || undefined,
+        budget_classification_id: executionForm.budget_classification_id || undefined
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
@@ -1216,6 +1233,56 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       loadData();
     } catch (err: any) {
       showToast(err.message || 'Erro ao registrar baixa do odômetro.', 'error');
+    }
+  };
+
+  // Alterar / corrigir Ficha Orçamentária no modal de detalhes/fotos
+  const handleSaveViewerBudget = async () => {
+    if (!viewingAttachmentOrder || !viewerBudgetId) return;
+    setSavingViewerBudget(true);
+    try {
+      const updated = await updateFuelOrderBudgetClassification(
+        viewingAttachmentOrder.id,
+        viewerBudgetId,
+        currentUser?.institution_id || 'inst_1'
+      );
+      setViewingAttachmentOrder(updated as any);
+      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
+      setIsEditingViewerBudget(false);
+      const sheetName = updated.budget_classification?.invoice_sheet || viewerBudgetId;
+      showToast(`Ficha orçamentária atualizada com sucesso para Ficha ${sheetName}!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao atualizar dotação.', 'error');
+    } finally {
+      setSavingViewerBudget(false);
+    }
+  };
+
+  // Modal rápido de edição de Ficha Orçamentária
+  const handleOpenBudgetModal = (order: FuelSupplyOrder) => {
+    const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
+    setOrderForBudgetEdit(order);
+    setBudgetEditId(order.budget_classification_id || (order.budget_classification as any)?.id || v?.budget_classification_id || '');
+  };
+
+  const handleSaveOrderBudgetModal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!orderForBudgetEdit || !budgetEditId) return;
+    setSavingOrderBudget(true);
+    try {
+      const updated = await updateFuelOrderBudgetClassification(
+        orderForBudgetEdit.id,
+        budgetEditId,
+        currentUser?.institution_id || 'inst_1'
+      );
+      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
+      setOrderForBudgetEdit(null);
+      const sheetName = updated.budget_classification?.invoice_sheet || budgetEditId;
+      showToast(`Ficha orçamentária da ordem ${updated.order_number} atualizada para Ficha ${sheetName}!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao atualizar dotação da ordem.', 'error');
+    } finally {
+      setSavingOrderBudget(false);
     }
   };
 
@@ -1826,9 +1893,25 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           )}
                         </td>
 
-                        {/* Secretaria */}
-                        <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
-                          {v?.department || '-'}
+                        {/* Secretaria & Ficha Orçamentária */}
+                        <td className="px-4 py-3.5">
+                          <div className="text-neutral-700 dark:text-neutral-300 font-medium">
+                            {v?.department || '-'}
+                          </div>
+                          {(() => {
+                            const activeBc = order.budget_classification || budgetClassifications.find(b => b.id === order.budget_classification_id) || v?.budget_classification;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenBudgetModal(order)}
+                                title="Clique para editar / alterar a ficha orçamentária"
+                                className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer transition-colors"
+                              >
+                                <Layers size={10} className="text-amber-600" />
+                                <span>Ficha {activeBc?.invoice_sheet || '11'}</span>
+                              </button>
+                            );
+                          })()}
                         </td>
 
                         {/* Motorista */}
@@ -1949,6 +2032,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 <span>Editar</span>
                               </button>
                             )}
+
+                            <button
+                              onClick={() => handleOpenBudgetModal(order)}
+                              title="Editar / Alterar Ficha Orçamentária"
+                              className="flex items-center gap-1 px-2 py-1 text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/70 dark:border-amber-900/40 shadow-sm"
+                            >
+                              <Layers size={12} className="text-amber-600 dark:text-amber-400" />
+                              <span>Ficha</span>
+                            </button>
 
                             {(order.status === 'abastecido' || order.status === 'auditado' || order.status === 'glosado' || order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url) && (
                               <button
@@ -2357,6 +2449,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                   </button>
                                 </>
                               )}
+
+                              <button
+                                onClick={() => handleOpenBudgetModal(order)}
+                                title="Editar / Alterar Ficha Orçamentária vinculada"
+                                className="flex items-center gap-1 px-2 py-1 text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/70 dark:border-amber-900/40"
+                              >
+                                <Layers size={11} className="text-amber-600 dark:text-amber-400" />
+                                <span>Ficha</span>
+                              </button>
 
                               <button
                                 onClick={() => handleDeleteOrder(order)}
@@ -3672,6 +3773,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   />
                 </div>
 
+                {/* Ficha Orçamentária / Dotação de Despesa (Editável) */}
+                <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Layers size={14} className="text-amber-500" />
+                      Ficha Orçamentária / Dotação de Despesa
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsBudgetClassificationsModalOpen(true)}
+                      className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                    >
+                      + Gerenciar Fichas
+                    </button>
+                  </div>
+                  <select
+                    value={executionForm.budget_classification_id}
+                    onChange={e => setExecutionForm({ ...executionForm, budget_classification_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                  >
+                    <option value="">-- Usar Dotação Padrão do Veículo / Secretaria --</option>
+                    {budgetClassifications.map(bc => (
+                      <option key={bc.id} value={bc.id}>
+                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Litros e Odômetro */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
@@ -4391,12 +4521,67 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </div>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px]">
-                      <span className="text-amber-800 dark:text-amber-300 font-bold block mb-1">Dotação Orçamentária:</span>
-                      <span className="text-neutral-700 dark:text-neutral-300">
-                        Ficha: <strong>{viewingAttachmentOrder.budget_classification?.invoice_sheet || viewingAttachmentOrder.vehicle?.budget_classification?.invoice_sheet || '11'}</strong> • 
-                        Fonte: <strong>{viewingAttachmentOrder.budget_classification?.funding_source || viewingAttachmentOrder.vehicle?.budget_classification?.funding_source || '1.1.500.0'}</strong>
-                      </span>
+                    <div className="p-3 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-[11px] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-amber-800 dark:text-amber-300 font-bold block flex items-center gap-1.5">
+                          <Layers size={13} className="text-amber-600" />
+                          Dotação Orçamentária:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isEditingViewerBudget) {
+                              setViewerBudgetId(viewingAttachmentOrder.budget_classification_id || (viewingAttachmentOrder.budget_classification as any)?.id || viewingAttachmentOrder.vehicle?.budget_classification_id || '');
+                            }
+                            setIsEditingViewerBudget(!isEditingViewerBudget);
+                          }}
+                          className="px-2 py-0.5 rounded-md text-[10px] font-bold text-amber-700 dark:text-amber-300 hover:bg-amber-200/60 dark:hover:bg-amber-900/50 flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Edit2 size={11} />
+                          <span>{isEditingViewerBudget ? 'Cancelar' : 'Alterar Ficha'}</span>
+                        </button>
+                      </div>
+
+                      {isEditingViewerBudget ? (
+                        <div className="space-y-2 pt-1 border-t border-amber-200 dark:border-amber-800/60">
+                          <select
+                            value={viewerBudgetId}
+                            onChange={(e) => setViewerBudgetId(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                          >
+                            <option value="">-- Selecione a Nova Ficha Orçamentária --</option>
+                            {budgetClassifications.map(bc => (
+                              <option key={bc.id} value={bc.id}>
+                                [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingViewerBudget(false)}
+                              className="px-2.5 py-1 text-[11px] font-bold text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleSaveViewerBudget}
+                              disabled={savingViewerBudget || !viewerBudgetId}
+                              className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-sm disabled:opacity-50"
+                            >
+                              {savingViewerBudget ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
+                              <span>Salvar Ficha</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-neutral-700 dark:text-neutral-300 block">
+                          Ficha: <strong>{viewingAttachmentOrder.budget_classification?.invoice_sheet || viewingAttachmentOrder.vehicle?.budget_classification?.invoice_sheet || '11'}</strong> • 
+                          Fonte: <strong>{viewingAttachmentOrder.budget_classification?.funding_source || viewingAttachmentOrder.vehicle?.budget_classification?.funding_source || '1.1.500.0'}</strong> • 
+                          Local: <em>{viewingAttachmentOrder.budget_classification?.department_local || viewingAttachmentOrder.vehicle?.department || 'Geral'}</em>
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -5435,6 +5620,122 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         )}
       </AnimatePresence>
 
+      {/* MODAL 11: EDIÇÃO / REMANEJAMENTO RÁPIDO DE FICHA ORÇAMENTÁRIA DA ORDEM */}
+      <AnimatePresence>
+        {orderForBudgetEdit && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    <Layers size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-neutral-900 dark:text-white">
+                      Editar Ficha Orçamentária
+                    </h3>
+                    <p className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400">
+                      Ordem: {orderForBudgetEdit.order_number}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOrderForBudgetEdit(null)}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveOrderBudgetModal} className="mt-4 space-y-4">
+                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Veículo Oficial:</span>
+                    <strong className="text-neutral-900 dark:text-white font-mono">
+                      {orderForBudgetEdit.vehicle?.plate || 'SEM PLACA'} {orderForBudgetEdit.vehicle?.prefix_code ? `(${orderForBudgetEdit.vehicle.prefix_code})` : ''} - {orderForBudgetEdit.vehicle?.model}
+                    </strong>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Secretaria / Lotação:</span>
+                    <span className="font-semibold text-neutral-800 dark:text-neutral-200">
+                      {orderForBudgetEdit.vehicle?.department || '-'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-neutral-500">Condutor:</span>
+                    <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                      {orderForBudgetEdit.driver_name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1.5 border-t border-neutral-200 dark:border-neutral-700">
+                    <span className="text-neutral-500">Ficha Atual Vinculada:</span>
+                    <span className="font-bold text-amber-600 dark:text-amber-400">
+                      Ficha {orderForBudgetEdit.budget_classification?.invoice_sheet || orderForBudgetEdit.vehicle?.budget_classification?.invoice_sheet || '11'} (Fonte {orderForBudgetEdit.budget_classification?.funding_source || orderForBudgetEdit.vehicle?.budget_classification?.funding_source || '1.1.500.0'})
+                    </span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Layers size={13} className="text-amber-500" />
+                      Selecione a Nova Ficha / Dotação *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsBudgetClassificationsModalOpen(true)}
+                      className="text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                    >
+                      + Cadastrar Nova Ficha
+                    </button>
+                  </div>
+                  <select
+                    value={budgetEditId}
+                    onChange={(e) => setBudgetEditId(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">-- Selecione a Ficha Orçamentária --</option>
+                    {budgetClassifications.map(bc => (
+                      <option key={bc.id} value={bc.id}>
+                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-neutral-400 mt-1">
+                    Ao salvar, a despesa desta autorização será reclassificada contabilmente no centro de custo e fonte selecionados.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => setOrderForBudgetEdit(null)}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingOrderBudget || !budgetEditId}
+                    className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center gap-1.5 shadow-sm shadow-amber-600/20 disabled:opacity-50"
+                  >
+                    {savingOrderBudget ? <RefreshCw size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    <span>Salvar Nova Ficha</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* IMPORTADOR EM LOTE DE MOTORISTAS (.XLSX / .CSV) */}
       <DriverBatchImporter
         isOpen={isDriverBatchModalOpen}
@@ -5465,6 +5766,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         drivers={drivers}
         stations={stations}
         biddedPrices={biddedPrices}
+        budgetClassifications={budgetClassifications}
         onSuccess={() => {
           loadData();
         }}
