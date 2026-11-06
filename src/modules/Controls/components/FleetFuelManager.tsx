@@ -162,6 +162,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Formulário: Nova Ordem
   const [newOrderForm, setNewOrderForm] = useState({
+    custom_order_number: '',
     vehicle_id: '',
     driver_name: '',
     driver_document: '',
@@ -179,6 +180,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Formulário: Lançamento de Canhoto / Execução
   const [executionForm, setExecutionForm] = useState({
+    custom_order_number: '',
     liters_supplied: 0,
     current_odometer: 0,
     unit_price: 6.19,
@@ -800,6 +802,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
     setSelectedOrderForAction(order);
     setExecutionForm({
+      custom_order_number: order.order_number || '',
       liters_supplied: order.liters_supplied || order.liters_authorized,
       current_odometer: order.current_odometer && order.current_odometer > order.previous_odometer 
         ? order.current_odometer 
@@ -944,13 +947,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         authorized_by_name: newOrderForm.authorized_by_name,
         authorized_by_role: newOrderForm.authorized_by_role,
         budget_classification_id: newOrderForm.budget_classification_id || selectedVehicleForNewOrder?.budget_classification_id,
-        budget_classification: budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification
+        budget_classification: budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification,
+        custom_order_number: newOrderForm.custom_order_number?.trim() || undefined
       });
 
       showToast(`Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`, 'success');
       setIsNewOrderModalOpen(false);
       setNewOrderStep(1);
       setNewOrderForm({
+        custom_order_number: '',
         vehicle_id: '',
         driver_name: '',
         driver_document: '',
@@ -990,7 +995,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         odometer_photo_url: executionForm.odometer_photo_url || undefined,
         pump_photo_url: executionForm.pump_photo_url || undefined,
         invoice_coupon_number: executionForm.invoice_number?.trim() || undefined,
-        audit_justification: executionForm.invoice_key?.trim() || undefined
+        audit_justification: executionForm.invoice_key?.trim() || undefined,
+        custom_order_number: executionForm.custom_order_number?.trim() || undefined
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
@@ -3108,6 +3114,26 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </div>
                     </div>
 
+                    {/* NÚMERO PERSONALIZADO DA AUTORIZAÇÃO (SEGUIR TALÃO DE PAPEL) */}
+                    <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/40">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                          <FileText size={13} className="text-amber-600 dark:text-amber-400" />
+                          Número da Autorização / Requisição (Opcional - talão físico)
+                        </label>
+                        <span className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold">
+                          Deixe em branco para numeração automática
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={newOrderForm.custom_order_number}
+                        onChange={e => setNewOrderForm({ ...newOrderForm, custom_order_number: e.target.value.toUpperCase() })}
+                        placeholder="Ex: REQ-0412, 1024, AUT-2026-0005"
+                        className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-800 rounded-lg text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
                     {/* DADOS DO RESPONSÁVEL PELA AUTORIZAÇÃO */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-neutral-50 dark:bg-neutral-800/40 rounded-xl border border-neutral-200 dark:border-neutral-700">
                       <div>
@@ -3372,6 +3398,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <form onSubmit={handleSaveExecution} className="mt-4 space-y-4">
+                {/* Número da Autorização / Talão Físico (Editável) */}
+                <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <FileText size={14} className="text-emerald-500" />
+                      Número da Autorização / Talão em Papel
+                    </label>
+                    <span className="text-[10px] text-neutral-400">Pode alterar para seguir o talão físico</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={executionForm.custom_order_number}
+                    onChange={e => setExecutionForm({ ...executionForm, custom_order_number: e.target.value.toUpperCase() })}
+                    placeholder={selectedOrderForAction.order_number}
+                    className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
                 {/* Litros e Odômetro */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>

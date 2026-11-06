@@ -202,6 +202,7 @@ export interface LegacyVoucherPayload {
   station_name: string;
   fuel_type?: FuelType;
   voucher_number?: string; // Ex: "Canhoto 0412", "Talão 108"
+  custom_order_number?: string; // Número personalizado da autorização (ex: "0412" ou "AUT-2026-0412")
   supplied_at: string; // Data e hora em que o abastecimento ocorreu no passado
   liters_supplied: number;
   unit_price: number;
@@ -228,6 +229,7 @@ export interface IssueOrderPayload {
   budget_classification_id?: string;
   budget_classification?: FleetBudgetClassification;
   institution_id?: string;
+  custom_order_number?: string; // Número personalizado para seguir requisições em papel
 }
 
 export interface OrderCompletionPayload {
@@ -242,6 +244,8 @@ export interface OrderCompletionPayload {
   supplied_at?: string;
   driver_name?: string;
   vehicle_plate?: string;
+  custom_order_number?: string; // Permite alterar o número da autorização ao corrigir
+  order_number?: string;
 }
 
 export interface ConsumptionAuditCalculation {
@@ -428,11 +432,13 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
 
   const delta_km = current_odometer > previous_odometer ? current_odometer - previous_odometer : 0;
 
-  // 4. Sequencial "AUT-YYYY-XXXX" estritamente crescente e contínuo
-  // Mesmo que uma ordem anterior seja excluída, a numeração nunca retrocede ou gera duplicidade.
-  const currentYear = new Date().getFullYear();
-  const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
-  const orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  // 4. Sequencial "AUT-YYYY-XXXX" ou número personalizado para seguir requisição em papel
+  let orderNumber = payload.custom_order_number?.trim();
+  if (!orderNumber) {
+    const currentYear = new Date().getFullYear();
+    const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
+    orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  }
 
   const newOrder: TwoWayFuelOrder = {
     id: generateUUID(),
@@ -686,8 +692,12 @@ export async function validateAndCompleteFuelOrder(
     ? Number((suppliedLiters * Number(order.bidded_unit_price || 0)).toFixed(2))
     : Number((suppliedLiters * Number(order.bidded_unit_price || 0)).toFixed(2)) || order.total_authorized_value;
 
+  const customOrderNumber = completionData.custom_order_number?.trim() || completionData.order_number?.trim();
+  const finalOrderNumber = customOrderNumber || order.order_number;
+
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
+    order_number: finalOrderNumber,
     vehicle,
     driver_name: updatedDriverName,
     liters_supplied: suppliedLiters,
@@ -741,6 +751,7 @@ export async function validateAndCompleteFuelOrder(
 
   // 7. Persistir a atualização da ordem no Supabase (resiliente contra RLS, overflow numérico e queda de sessão)
   const updatePayload: Record<string, any> = {
+    order_number: updatedOrder.order_number,
     driver_name: updatedOrder.driver_name,
     liters_supplied: updatedOrder.liters_supplied,
     current_odometer: updatedOrder.current_odometer,
@@ -1364,8 +1375,11 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
   const shouldUpdateVehicleOdo = odoReading > previousOdometer;
 
   const currentYear = new Date(payload.supplied_at || new Date()).getFullYear() || new Date().getFullYear();
-  const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
-  const orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  let orderNumber = payload.custom_order_number?.trim();
+  if (!orderNumber) {
+    const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
+    orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  }
 
   const resolvedBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;
   const localBudgets = getLocalBudgetClassifications();
@@ -1528,7 +1542,9 @@ export function generateLegacyVouchersExcelTemplate(): void {
 
   const sampleData = [
     {
+      'Num_Autorizacao': '0412',
       'Placa': 'ABC-1D23',
+      'Combustivel': 'Diesel S-10',
       'Data_Abastecimento': '15/10/2026 14:30',
       'Km_Odometro': 85420,
       'Litros': 45.5,
@@ -1539,11 +1555,13 @@ export function generateLegacyVouchersExcelTemplate(): void {
       'Observacoes': 'Canhoto físico antigo'
     },
     {
+      'Num_Autorizacao': '0413',
       'Placa': 'XYZ-9E88',
+      'Combustivel': 'Gasolina Comum',
       'Data_Abastecimento': '16/10/2026 10:15',
       'Km_Odometro': 112340,
       'Litros': 50.0,
-      'Preco_Unitario': 6.35,
+      'Preco_Unitario': 6.29,
       'Motorista': 'Maria Santos',
       'Posto': 'Auto Posto Torixoréu',
       'Num_Canhoto': 'Canhoto 0188',
@@ -1554,7 +1572,9 @@ export function generateLegacyVouchersExcelTemplate(): void {
   const ws = XLSX.utils.json_to_sheet(sampleData);
 
   ws['!cols'] = [
+    { wch: 18 }, // Num_Autorizacao
     { wch: 14 }, // Placa
+    { wch: 18 }, // Combustivel
     { wch: 20 }, // Data_Abastecimento
     { wch: 14 }, // Km_Odometro
     { wch: 12 }, // Litros

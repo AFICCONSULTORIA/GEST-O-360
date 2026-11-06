@@ -11,6 +11,7 @@ import {
 } from '../../../lib/api/fleetFuel';
 import {
   BiddedPricesMap,
+  DEFAULT_BIDDED_PRICES,
   LegacyVoucherPayload,
   registerLegacyFuelOrder,
   registerLegacyFuelOrdersBatch,
@@ -33,8 +34,10 @@ interface LegacyVoucherModalProps {
 }
 
 interface ParsedSpreadsheetRow {
+  customOrderNumber?: string;
   plate: string;
   vehicleMatched?: FleetVehicle;
+  fuelType?: FuelType;
   dateStr: string;
   odometer: number;
   liters: number;
@@ -46,6 +49,14 @@ interface ParsedSpreadsheetRow {
   isValid: boolean;
   validationError?: string;
 }
+
+const FUEL_OPTIONS: { type: FuelType; label: string; shortLabel: string }[] = [
+  { type: 'diesel_s10', label: 'Diesel S-10 Especial', shortLabel: 'Diesel S-10' },
+  { type: 'diesel_s500', label: 'Diesel S-500 Comum', shortLabel: 'Diesel S-500' },
+  { type: 'gasolina', label: 'Gasolina Comum', shortLabel: 'Gasolina' },
+  { type: 'etanol', label: 'Etanol Hidratado', shortLabel: 'Etanol' },
+  { type: 'arla32', label: 'Arla 32 Redutor de Emissões', shortLabel: 'Arla 32' }
+];
 
 export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   isOpen,
@@ -62,6 +73,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   // FORMULÁRIO INDIVIDUAL
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState<FleetVehicle | null>(null);
+  const [customOrderNumber, setCustomOrderNumber] = useState('');
   const [voucherNumber, setVoucherNumber] = useState('');
   const [suppliedAt, setSuppliedAt] = useState(() => {
     // Data de ontem às 10:00 como sugestão padrão
@@ -75,7 +87,9 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   const [stationName, setStationName] = useState('');
   const [fuelType, setFuelType] = useState<FuelType>('diesel_s10');
   const [litersSupplied, setLitersSupplied] = useState<string>('');
-  const [unitPrice, setUnitPrice] = useState<string>('');
+  const [unitPrice, setUnitPrice] = useState<string>(() => {
+    return String(biddedPrices['diesel_s10']?.price || DEFAULT_BIDDED_PRICES['diesel_s10']?.price || 6.19);
+  });
   const [odometerReading, setOdometerReading] = useState<string>('');
   const [notes, setNotes] = useState('Abastecimento retroativo registrado a partir de canhoto de papel');
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
@@ -89,6 +103,11 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   const [batchProgress, setBatchProgress] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Sincroniza motoristas ordenados alfabeticamente
+  const sortedDrivers = useMemo(() => {
+    return [...drivers].sort((a, b) => a.full_name.localeCompare(b.full_name, 'pt-BR'));
+  }, [drivers]);
+
   // Inicializa posto padrão caso exista
   React.useEffect(() => {
     if (stations.length > 0 && !stationName) {
@@ -96,11 +115,18 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
     }
   }, [stations, stationName]);
 
+  // Ao selecionar tipo de combustível manualmente, puxa o preço da licitação
+  const handleFuelTypeChange = (newFuel: FuelType) => {
+    setFuelType(newFuel);
+    const defaultPrice = biddedPrices[newFuel]?.price || DEFAULT_BIDDED_PRICES[newFuel]?.price || 6.19;
+    setUnitPrice(String(defaultPrice));
+  };
+
   // Ao selecionar veículo no formulário individual
   const handleSelectVehicle = (v: FleetVehicle) => {
     setSelectedVehicle(v);
     setFuelType(v.fuel_type);
-    const defaultPrice = biddedPrices[v.fuel_type]?.price || 6.19;
+    const defaultPrice = biddedPrices[v.fuel_type]?.price || DEFAULT_BIDDED_PRICES[v.fuel_type]?.price || 6.19;
     setUnitPrice(String(defaultPrice));
     setVehicleSearch(`${v.plate} - ${v.model}`);
     if (v.current_odometer && !odometerReading) {
@@ -169,6 +195,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         station_name: stationName.trim() || 'Posto Credenciado',
         fuel_type: fuelType,
         voucher_number: voucherNumber.trim() || undefined,
+        custom_order_number: customOrderNumber.trim() || undefined,
         supplied_at: suppliedAt,
         liters_supplied: liters,
         unit_price: price,
@@ -230,9 +257,25 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         const rawLiters = String(r['Litros'] || r['LITROS'] || r['Qtd'] || r['Quantidade'] || 0);
         const liters = parseFloat(rawLiters.replace(',', '.')) || 0;
 
+        // Combustível
+        const rawFuel = String(r['Combustivel'] || r['Combustível'] || r['Tipo_Combustivel'] || r['TipoCombustivel'] || '').toLowerCase().trim();
+        let rowFuelType: FuelType | undefined = undefined;
+        if (rawFuel.includes('s500') || (rawFuel.includes('comum') && rawFuel.includes('diesel'))) rowFuelType = 'diesel_s500';
+        else if (rawFuel.includes('s10') || rawFuel.includes('diesel')) rowFuelType = 'diesel_s10';
+        else if (rawFuel.includes('gasolina')) rowFuelType = 'gasolina';
+        else if (rawFuel.includes('etanol') || rawFuel.includes('alcool') || rawFuel.includes('álcool')) rowFuelType = 'etanol';
+        else if (rawFuel.includes('arla')) rowFuelType = 'arla32';
+
+        const effectiveFuelType: FuelType = rowFuelType || (matchedVeh ? matchedVeh.fuel_type : 'diesel_s10');
+
         // Preço Unitário
         const rawPrice = String(r['Preco_Unitario'] || r['Preco'] || r['Valor_Unitario'] || r['Unitario'] || '');
-        const unitPrice = parseFloat(rawPrice.replace(',', '.')) || (matchedVeh ? biddedPrices[matchedVeh.fuel_type]?.price : 6.19) || 6.19;
+        const unitPrice = parseFloat(rawPrice.replace(',', '.')) || (biddedPrices[effectiveFuelType]?.price || 6.19);
+
+        // Número da Autorização Personalizado (para seguir a numeração das requisições em papel)
+        const customOrderNumber = String(
+          r['Num_Autorizacao'] || r['Numero_Autorizacao'] || r['Num_Ordem'] || r['Ordem'] || r['Autorizacao'] || ''
+        ).trim();
 
         // Motorista
         const driverName = String(r['Motorista'] || r['Condutor'] || r['MOTORISTA'] || 'Motorista Municipal').trim();
@@ -240,8 +283,8 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         // Posto
         const stationName = String(r['Posto'] || r['Posto_Credenciado'] || r['POSTO'] || (stations[0]?.name || 'Auto Posto Central')).trim();
 
-        // Canhoto
-        const voucherNumber = String(r['Num_Canhoto'] || r['Canhoto'] || r['Talao'] || r['Numero_Canhoto'] || `Canhoto Linha ${index + 1}`).trim();
+        // Canhoto / Talão
+        const voucherNumber = String(r['Num_Canhoto'] || r['Canhoto'] || r['Talao'] || r['Numero_Canhoto'] || '').trim();
 
         // Observações
         const notes = String(r['Observacoes'] || r['Obs'] || r['Notas'] || 'Importação em lote de talão antigo').trim();
@@ -261,8 +304,10 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         }
 
         return {
+          customOrderNumber: customOrderNumber || undefined,
           plate: plateRaw,
           vehicleMatched: matchedVeh,
+          fuelType: rowFuelType,
           dateStr: dateIso,
           odometer,
           liters,
@@ -303,8 +348,9 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         plate: row.vehicleMatched!.plate,
         driver_name: row.driverName,
         station_name: row.stationName,
-        fuel_type: row.vehicleMatched!.fuel_type,
+        fuel_type: row.fuelType || row.vehicleMatched!.fuel_type,
         voucher_number: row.voucherNumber,
+        custom_order_number: row.customOrderNumber,
         supplied_at: row.dateStr,
         liters_supplied: row.liters,
         unit_price: row.unitPrice,
@@ -463,8 +509,30 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                 )}
               </div>
 
-              {/* DATA RETROATIVA E NÚMERO DO CANHOTO */}
+              {/* NÚMERO DA AUTORIZAÇÃO E DATA RETROATIVA */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <FileText size={13} className="text-amber-500" />
+                      Número da Autorização / Requisição *
+                    </span>
+                    <span className="text-[10px] text-neutral-400 font-normal">
+                      (Nº do Talão de Papel)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 0452, REQ-0452 ou AUT-2026-0452"
+                    value={customOrderNumber}
+                    onChange={(e) => setCustomOrderNumber(e.target.value)}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <span className="text-[10px] text-neutral-400 mt-0.5 block">
+                    Deixe em branco para o sistema gerar automaticamente (AUT-2026-XXXX).
+                  </span>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
                     <Calendar size={13} className="text-amber-500" />
@@ -478,57 +546,119 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                     required
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
-                    <FileText size={13} className="text-amber-500" />
-                    Nº do Canhoto de Papel / Talão
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Talão nº 0412 / Canhoto 105"
-                    value={voucherNumber}
-                    onChange={(e) => setVoucherNumber(e.target.value)}
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
+              {/* NÚMERO DO TALÃO / BLOCO FÍSICO (OPCIONAL) */}
+              <div>
+                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
+                  <FileText size={13} className="text-amber-500" />
+                  Identificação Adicional / Bloco Físico (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ex: Bloco A - Folha 12 ou Cupom 9812"
+                  value={voucherNumber}
+                  onChange={(e) => setVoucherNumber(e.target.value)}
+                  className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
               </div>
 
               {/* MOTORISTA E POSTO */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
-                    <User size={13} className="text-amber-500" />
-                    Nome do Motorista / Condutor *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <User size={13} className="text-amber-500" />
+                      Nome do Motorista / Condutor *
+                    </label>
+                    <span className="text-[10px] text-neutral-400 font-semibold">
+                      {drivers.length} cadastrado{drivers.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  {/* Dropdown nativo com todos os motoristas cadastrados */}
+                  <select
+                    value={drivers.find(d => d.full_name.toLowerCase().trim() === driverName.toLowerCase().trim())?.id || ''}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      if (!selId) {
+                        setDriverName('');
+                        return;
+                      }
+                      const found = drivers.find(d => d.id === selId);
+                      if (found) {
+                        setDriverName(found.full_name);
+                      }
+                    }}
+                    className="w-full mb-1.5 px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">-- Selecione o Motorista na Lista --</option>
+                    {sortedDrivers.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.full_name} {d.cpf ? `• CPF: ${d.cpf}` : ''} ({d.department || 'Geral'})
+                      </option>
+                    ))}
+                  </select>
+
                   <input
                     type="text"
-                    placeholder="Nome completo do motorista"
+                    placeholder="Ou digite o nome caso não esteja na lista"
                     value={driverName}
                     onChange={(e) => setDriverName(e.target.value)}
                     list="legacy-drivers-list"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                     required
                   />
                   <datalist id="legacy-drivers-list">
-                    {drivers.map(d => (
-                      <option key={d.id} value={d.name}>{d.cnh_category ? `Categoria ${d.cnh_category}` : ''}</option>
+                    {sortedDrivers.map(d => (
+                      <option key={d.id} value={d.full_name}>
+                        {d.department ? `${d.department} • ` : ''}{d.cnh_category ? `CNH ${d.cnh_category}` : ''}
+                      </option>
                     ))}
                   </datalist>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1 flex items-center gap-1.5">
-                    <Fuel size={13} className="text-amber-500" />
-                    Posto Credenciado
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                      <Fuel size={13} className="text-amber-500" />
+                      Posto Credenciado
+                    </label>
+                    <span className="text-[10px] text-neutral-400 font-semibold">
+                      {stations.length} posto{stations.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <select
+                    value={stations.find(s => s.name.toLowerCase().trim() === stationName.toLowerCase().trim())?.id || ''}
+                    onChange={(e) => {
+                      const selId = e.target.value;
+                      if (!selId) {
+                        setStationName('');
+                        return;
+                      }
+                      const found = stations.find(s => s.id === selId);
+                      if (found) {
+                        setStationName(found.name);
+                      }
+                    }}
+                    className="w-full mb-1.5 px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="">-- Selecione o Posto Credenciado --</option>
+                    {stations.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} {s.cnpj ? `(${s.cnpj})` : ''}
+                      </option>
+                    ))}
+                  </select>
+
                   <input
                     type="text"
-                    placeholder="Nome do posto"
+                    placeholder="Ou digite o nome do posto caso não esteja na lista"
                     value={stationName}
                     onChange={(e) => setStationName(e.target.value)}
                     list="legacy-stations-list"
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                   <datalist id="legacy-stations-list">
                     {stations.map(s => (
@@ -536,6 +666,64 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                     ))}
                   </datalist>
                 </div>
+              </div>
+
+              {/* SELECIONADOR DO TIPO DE COMBUSTÍVEL E PREÇO LICITADO */}
+              <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                    <Fuel size={14} className="text-amber-500" />
+                    Tipo de Combustível *
+                  </label>
+                  <span className="text-[11px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                    Preço Licitado: R$ {parseFloat(unitPrice || '0').toFixed(3)}/L
+                  </span>
+                </div>
+
+                {/* Botões rápidos de seleção de combustível */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                  {FUEL_OPTIONS.map((f) => {
+                    const isSelected = fuelType === f.type;
+                    const bPrice = biddedPrices[f.type]?.price || DEFAULT_BIDDED_PRICES[f.type]?.price || 6.19;
+                    return (
+                      <button
+                        key={f.type}
+                        type="button"
+                        onClick={() => handleFuelTypeChange(f.type)}
+                        className={`py-2 px-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'bg-amber-500 border-amber-600 text-white shadow-sm shadow-amber-500/25 scale-[1.02]'
+                            : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-amber-300 dark:hover:border-neutral-600'
+                        }`}
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-tight block truncate">
+                          {f.shortLabel}
+                        </span>
+                        <span className={`text-[11px] font-mono font-black mt-1 ${
+                          isSelected ? 'text-amber-100' : 'text-emerald-600 dark:text-emerald-400'
+                        }`}>
+                          R$ {bPrice.toFixed(2)}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Select dropdown alternativo */}
+                <select
+                  value={fuelType}
+                  onChange={(e) => handleFuelTypeChange(e.target.value as FuelType)}
+                  className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                >
+                  {FUEL_OPTIONS.map(f => {
+                    const bPrice = biddedPrices[f.type]?.price || DEFAULT_BIDDED_PRICES[f.type]?.price || 6.19;
+                    return (
+                      <option key={f.type} value={f.type}>
+                        {f.label} — R$ {bPrice.toFixed(3)}/L
+                      </option>
+                    );
+                  })}
+                </select>
               </div>
 
               {/* LITROS, PREÇO UNITÁRIO E ODÔMETRO */}
@@ -760,6 +948,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                     <table className="w-full text-left text-xs">
                       <thead className="bg-neutral-100 dark:bg-neutral-800 text-[10px] font-black uppercase text-neutral-600 dark:text-neutral-400 sticky top-0">
                         <tr>
+                          <th className="p-2">Nº Autorização</th>
                           <th className="p-2">Placa</th>
                           <th className="p-2">Data</th>
                           <th className="p-2">Odômetro</th>
@@ -771,6 +960,9 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                       <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                         {parsedRows.slice(0, 50).map((row, idx) => (
                           <tr key={idx} className={row.isValid ? 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50' : 'bg-rose-50/50 dark:bg-rose-950/20'}>
+                            <td className="p-2 font-mono font-bold text-amber-600 dark:text-amber-400">
+                              {row.customOrderNumber || 'Automático'}
+                            </td>
                             <td className="p-2 font-mono font-bold text-neutral-900 dark:text-white">
                               {row.plate}
                             </td>

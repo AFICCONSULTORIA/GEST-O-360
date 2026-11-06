@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Fuel, Camera, CheckCircle2, RefreshCw,
   Car, User, Gauge, ShieldCheck, Check, RotateCcw, AlertCircle,
-  Sun, Moon, Search, X, Edit3
+  Sun, Moon, Search, X, Edit3, FileText
 } from 'lucide-react';
 import {
   TwoWayFuelOrder,
@@ -74,6 +74,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
   const [order, setOrder] = useState<TwoWayFuelOrder | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [customOrderNumber, setCustomOrderNumber] = useState('');
 
   // Campos do Formulário do Motorista
   const [driverName, setDriverName] = useState('');
@@ -192,6 +193,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       const result = await getFuelAuthorizationByNumber(clean);
       if (result) {
         setOrder(result);
+        setCustomOrderNumber(result.order_number || '');
         const isTopOff = result.supply_mode === 'encher_tanque' || !!result.is_full_tank_order;
         const defaultDriver = result.driver_name || '';
         const defaultPlate = result.vehicle?.plate || '';
@@ -358,6 +360,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
 
   const handleStartEditing = () => {
     if (!order) return;
+    setCustomOrderNumber(order.order_number || '');
     setDriverName(order.driver_name || '');
     setVehiclePlate(order.vehicle?.plate || '');
     setCurrentKmFormatted(order.current_odometer ? formatThousands(order.current_odometer) : '');
@@ -449,7 +452,8 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         pump_photo_url: uploadedPumpUrl,
         odometer_photo_url: uploadedOdometerUrl,
         driver_name: driverName.trim(),
-        vehicle_plate: vehiclePlate.trim().toUpperCase()
+        vehicle_plate: vehiclePlate.trim().toUpperCase(),
+        custom_order_number: customOrderNumber.trim() || undefined
       });
 
       setIsEditing(false);
@@ -771,9 +775,23 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                             ? 'Autorização Top-Off (Encher Tanque)'
                             : 'Autorização Válida para Abastecimento'}
                     </span>
-                    <span className="text-xs font-mono font-bold">
-                      {order.order_number}
-                    </span>
+                    {isEditing ? (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-bold opacity-85">Nº:</span>
+                        <input
+                          type="text"
+                          value={customOrderNumber}
+                          onChange={(e) => setCustomOrderNumber(e.target.value.toUpperCase())}
+                          placeholder={order.order_number}
+                          className="bg-white/20 text-white font-mono font-black text-xs px-2 py-0.5 rounded border border-white/40 focus:bg-white focus:text-blue-900 focus:outline-none w-36 uppercase tracking-wider"
+                          title="Alterar número da autorização para coincidir com o talão de papel"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-mono font-bold">
+                        {order.order_number}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -891,7 +909,8 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                 /* FORMULÁRIO DO MOTORISTA NA BOMBA (SEM EXIGÊNCIA DE NOTA FISCAL) */
                 <form onSubmit={handleSubmitSupply} className="p-5 space-y-5">
                   {isEditing ? (
-                    <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl flex items-center justify-between gap-2.5">
+                    <>
+                      <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl flex items-center justify-between gap-2.5">
                       <div className="flex items-center gap-2 text-xs text-blue-900 dark:text-blue-200">
                         <Edit3 size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />
                         <div>
@@ -907,6 +926,30 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                         Cancelar
                       </button>
                     </div>
+
+                    {/* NÚMERO DA AUTORIZAÇÃO / TALÃO DE PAPEL (EDITÁVEL) */}
+                    <div className="p-3.5 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/60 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-wider text-blue-950 dark:text-blue-200 flex items-center gap-1.5">
+                          <FileText size={15} className="text-blue-600 dark:text-blue-400" />
+                          Número da Autorização / Talão em Papel
+                        </label>
+                        <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-100 dark:bg-blue-900/60 px-2 py-0.5 rounded-full">
+                          Talão Físico
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={customOrderNumber}
+                        onChange={(e) => setCustomOrderNumber(e.target.value.toUpperCase())}
+                        placeholder={order.order_number}
+                        className="w-full px-3.5 py-2.5 rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-white dark:bg-neutral-900 text-sm font-mono font-black uppercase text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 transition-colors"
+                      />
+                      <p className="text-[11px] text-blue-800/80 dark:text-blue-300/80 leading-snug">
+                        Altere aqui caso precise manter a sequência original do talão de requisições de papel da prefeitura.
+                      </p>
+                    </div>
+                  </>
                   ) : (
                     <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-2.5">
                       <ShieldCheck className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
