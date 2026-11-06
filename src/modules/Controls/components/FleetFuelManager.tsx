@@ -46,8 +46,14 @@ import {
   DollarSign,
   Receipt,
   ArrowRight,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Camera,
-  CloudUpload
+  CloudUpload,
+  Bell,
+  BellRing,
+  CheckCheck
 } from 'lucide-react';
 import {
   FleetVehicle,
@@ -109,6 +115,48 @@ import { playFuelAlertChime, sendDesktopNotification } from '../../../utils/soun
 import { AdminUser } from '../../../types';
 import { supabase } from '../../../lib/supabase';
 
+export interface FleetNotification {
+  id: string;
+  orderId?: string;
+  orderNumber: string;
+  type: 'abastecimento' | 'alerta_auditoria' | 'bloqueio_tce' | 'ordem_emitida';
+  title: string;
+  message: string;
+  plate?: string;
+  vehicleModel?: string;
+  driverName?: string;
+  liters?: number;
+  timestamp: string;
+  read: boolean;
+  hasPhotos: boolean;
+  anomalyLevel?: 'none' | 'alerta_amarelo' | 'bloqueio_critico';
+  anomalyReason?: string;
+}
+
+function formatRelativeNotificationTime(dateIso: string): string {
+  try {
+    const d = new Date(dateIso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    if (diffMs < 0) return 'Agora';
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'Agora mesmo';
+    if (diffMin < 60) return `há ${diffMin} min`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24 && now.getDate() === d.getDate()) {
+      return `Hoje às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (yesterday.getDate() === d.getDate() && yesterday.getMonth() === d.getMonth()) {
+      return `Ontem às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    }
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return 'Recente';
+  }
+}
+
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
 }
@@ -123,11 +171,28 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [drivers, setDrivers] = useState<FleetDriver[]>([]);
   const [stations, setStations] = useState<FleetFuelStation[]>([]);
   const [budgetClassifications, setBudgetClassifications] = useState<FleetBudgetClassification[]>([]);
+  const sortedBudgetClassifications = useMemo(() => {
+    return [...budgetClassifications].sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0));
+  }, [budgetClassifications]);
   const [isDriverBatchModalOpen, setIsDriverBatchModalOpen] = useState(false);
   const [isBudgetClassificationsModalOpen, setIsBudgetClassificationsModalOpen] = useState(false);
   const [attachmentViewMode, setAttachmentViewMode] = useState<'side_by_side' | 'grid'>('side_by_side');
   const [selectedAttachmentPhoto, setSelectedAttachmentPhoto] = useState<'pump' | 'odometer' | 'receipt' | 'invoice'>('pump');
   const [loading, setLoading] = useState(true);
+
+  // Notificações e Campainha da Frota (inclui recebidas offline)
+  const [notifications, setNotifications] = useState<FleetNotification[]>(() => {
+    try {
+      const instId = currentUser?.institution_id || 'inst_1';
+      const raw = localStorage.getItem(`gestao360_fleet_notifications_${instId}`);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return [];
+  });
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'abastecimento' | 'alerta'>('all');
+  const [bellAnimate, setBellAnimate] = useState(false);
+  const notificationDropdownRef = React.useRef<HTMLDivElement>(null);
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -135,6 +200,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [statusFilter, setStatusFilter] = useState('all');
   const [driverSearchTerm, setDriverSearchTerm] = useState('');
   const [stationSearchTerm, setStationSearchTerm] = useState('');
+
+  // Ordenação por Número da Ordem ('none' | 'asc' | 'desc')
+  const [orderNumberSort, setOrderNumberSort] = useState<'none' | 'asc' | 'desc'>('none');
+
+  const toggleOrderNumberSort = () => {
+    setOrderNumberSort(prev => {
+      if (prev === 'none') return 'asc';
+      if (prev === 'asc') return 'desc';
+      return 'none';
+    });
+  };
 
   // Paginação (30 itens por página)
   const ITEMS_PER_PAGE = 30;
@@ -280,6 +356,221 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const prevStatusesRef = React.useRef<Record<string, string>>({});
   const prevPhotosRef = React.useRef<Record<string, boolean>>({});
 
+  // Fechar dropdown de notificações ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        notificationDropdownRef.current &&
+        !notificationDropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsNotificationOpen(false);
+      }
+    };
+    if (isNotificationOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isNotificationOpen]);
+
+  // Contagem de notificações não lidas
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.filter(n => !n.read).length;
+  }, [notifications]);
+
+  // Notificações filtradas para o dropdown
+  const filteredNotifications = useMemo(() => {
+    return notifications.filter(n => {
+      if (notificationFilter === 'unread') return !n.read;
+      if (notificationFilter === 'abastecimento') return n.type === 'abastecimento';
+      if (notificationFilter === 'alerta') return n.type === 'bloqueio_tce' || n.type === 'alerta_auditoria';
+      return true;
+    });
+  }, [notifications, notificationFilter]);
+
+  // Sincronizar e recuperar notificações (inclusive geradas enquanto o usuário esteve offline)
+  const syncNotificationsWithOrders = (ordList: FuelSupplyOrder[], vehList: FleetVehicle[], instId: string) => {
+    try {
+      const storageKey = `gestao360_fleet_notifications_${instId}`;
+      const lastVisitKey = `gestao360_fleet_last_visit_${instId}`;
+
+      let currentNotifs: FleetNotification[] = [];
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        try {
+          currentNotifs = JSON.parse(stored);
+        } catch {}
+      }
+
+      const rawLastVisit = localStorage.getItem(lastVisitKey);
+      // Se nunca visitou, consideramos as últimas 48 horas como janela de verificação
+      const lastVisitTime = rawLastVisit ? new Date(rawLastVisit).getTime() : Date.now() - 48 * 3600 * 1000;
+
+      const newNotifs: FleetNotification[] = [];
+
+      ordList.forEach(ord => {
+        const v = ord.vehicle || vehList.find(item => item.id === ord.vehicle_id);
+        const orderTime = ord.supplied_at ? new Date(ord.supplied_at).getTime() : new Date(ord.created_at).getTime();
+        const wasWhileOffline = orderTime > lastVisitTime;
+
+        // 1. Notificação de Abastecimento Realizado / Fotos
+        if (ord.status === 'abastecido' || ord.status === 'auditado' || ord.status === 'glosado' || ord.pump_photo_url || ord.odometer_photo_url) {
+          const notifId = `notif_supply_${ord.order_number}`;
+          const exists = currentNotifs.some(n => n.id === notifId || (n.orderNumber === ord.order_number && n.type === 'abastecimento'));
+          if (!exists) {
+            newNotifs.push({
+              id: notifId,
+              orderId: ord.id,
+              orderNumber: ord.order_number,
+              type: 'abastecimento',
+              title: `Abastecimento Confirmado`,
+              message: `${v?.plate || 'Sem Placa'} • ${v?.model || 'Veículo'} (${Number(ord.liters_supplied || ord.liters_authorized).toFixed(1)} L) por ${ord.driver_name}`,
+              plate: v?.plate,
+              vehicleModel: v?.model,
+              driverName: ord.driver_name,
+              liters: ord.liters_supplied || ord.liters_authorized,
+              timestamp: ord.supplied_at || ord.created_at || new Date().toISOString(),
+              read: !wasWhileOffline, // se ocorreu enquanto esteve offline, fica NÃO LIDA!
+              hasPhotos: Boolean(ord.pump_photo_url || ord.odometer_photo_url),
+              anomalyLevel: ord.anomaly_level,
+              anomalyReason: ord.anomaly_reason
+            });
+          }
+        }
+
+        // 2. Notificação de Alerta Antifraude / Bloqueio TCE
+        if (ord.anomaly_level === 'bloqueio_critico' || ord.anomaly_level === 'alerta_amarelo' || ord.is_anomaly) {
+          const isCritical = ord.anomaly_level === 'bloqueio_critico';
+          const notifId = `notif_anomaly_${ord.order_number}`;
+          const exists = currentNotifs.some(n => n.id === notifId || (n.orderNumber === ord.order_number && (n.type === 'bloqueio_tce' || n.type === 'alerta_auditoria')));
+          if (!exists) {
+            newNotifs.push({
+              id: notifId,
+              orderId: ord.id,
+              orderNumber: ord.order_number,
+              type: isCritical ? 'bloqueio_tce' : 'alerta_auditoria',
+              title: isCritical ? 'Bloqueio Crítico TCE' : 'Alerta de Consumo TCE',
+              message: ord.anomaly_reason || 'Inconsistência identificada na auditoria de odômetro ou consumo.',
+              plate: v?.plate,
+              vehicleModel: v?.model,
+              driverName: ord.driver_name,
+              liters: ord.liters_supplied || ord.liters_authorized,
+              timestamp: ord.supplied_at || ord.created_at || new Date().toISOString(),
+              read: !wasWhileOffline, // se ocorreu enquanto esteve offline, fica NÃO LIDA!
+              hasPhotos: Boolean(ord.pump_photo_url || ord.odometer_photo_url),
+              anomalyLevel: ord.anomaly_level,
+              anomalyReason: ord.anomaly_reason
+            });
+          }
+        }
+      });
+
+      const mergedMap = new Map<string, FleetNotification>();
+      newNotifs.forEach(n => mergedMap.set(n.id, n));
+      currentNotifs.forEach(n => {
+        if (!mergedMap.has(n.id)) mergedMap.set(n.id, n);
+      });
+
+      const mergedList = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+
+      const trimmed = mergedList.slice(0, 100);
+      localStorage.setItem(storageKey, JSON.stringify(trimmed));
+      setNotifications(trimmed);
+
+      // Atualiza lastVisit
+      localStorage.setItem(lastVisitKey, new Date().toISOString());
+    } catch (err) {
+      console.warn('[FleetFuelManager] Erro ao sincronizar notificações:', err);
+    }
+  };
+
+  const addRealtimeNotification = (ord: any) => {
+    if (!ord) return;
+    const v = ord.vehicle || vehicles.find(item => item.id === ord.vehicle_id);
+    const isCritical = ord.anomaly_level === 'bloqueio_critico';
+    const isAnomaly = ord.is_anomaly || isCritical || ord.anomaly_level === 'alerta_amarelo';
+    
+    const notif: FleetNotification = {
+      id: `notif_realtime_${ord.order_number || Date.now()}_${Date.now()}`,
+      orderId: ord.id,
+      orderNumber: ord.order_number || 'Ordem Digital',
+      type: isCritical ? 'bloqueio_tce' : isAnomaly ? 'alerta_auditoria' : 'abastecimento',
+      title: isCritical 
+        ? `Bloqueio Crítico TCE: ${ord.order_number || ''}` 
+        : isAnomaly 
+        ? `Alerta de Auditoria: ${ord.order_number || ''}` 
+        : `Abastecimento Confirmado na Bomba`,
+      message: `${v?.plate || 'Sem Placa'} • ${v?.model || 'Veículo Municipal'} (${Number(ord.liters_supplied || ord.liters_authorized || 0).toFixed(1)} L) por ${ord.driver_name || 'Condutor'}`,
+      plate: v?.plate,
+      vehicleModel: v?.model,
+      driverName: ord.driver_name,
+      liters: ord.liters_supplied || ord.liters_authorized,
+      timestamp: new Date().toISOString(),
+      read: false,
+      hasPhotos: Boolean(ord.pump_photo_url || ord.odometer_photo_url),
+      anomalyLevel: ord.anomaly_level,
+      anomalyReason: ord.anomaly_reason
+    };
+
+    setNotifications(prev => {
+      const updated = [notif, ...prev.filter(n => n.id !== notif.id)].slice(0, 100);
+      const instId = currentUser?.institution_id || 'inst_1';
+      try {
+        localStorage.setItem(`gestao360_fleet_notifications_${instId}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    setBellAnimate(true);
+    setTimeout(() => setBellAnimate(false), 2000);
+  };
+
+  const markAllNotificationsAsRead = () => {
+    setNotifications(prev => {
+      const updated = prev.map(n => ({ ...n, read: true }));
+      const instId = currentUser?.institution_id || 'inst_1';
+      try {
+        localStorage.setItem(`gestao360_fleet_notifications_${instId}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    showToast('Todas as notificações foram marcadas como lidas.', 'info');
+  };
+
+  const clearNotificationHistory = () => {
+    const instId = currentUser?.institution_id || 'inst_1';
+    setNotifications([]);
+    try {
+      localStorage.removeItem(`gestao360_fleet_notifications_${instId}`);
+    } catch {}
+    showToast('Histórico de notificações limpo.', 'info');
+  };
+
+  const handleNotificationClick = (notif: FleetNotification) => {
+    // 1. Marca como lida
+    setNotifications(prev => {
+      const updated = prev.map(n => n.id === notif.id ? { ...n, read: true } : n);
+      const instId = currentUser?.institution_id || 'inst_1';
+      try {
+        localStorage.setItem(`gestao360_fleet_notifications_${instId}`, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    // 2. Se a ordem existe, abre o visualizador de fotos e detalhes imediatamente!
+    const targetOrder = orders.find(o => o.order_number === notif.orderNumber || o.id === notif.orderId);
+    if (targetOrder) {
+      openAttachmentViewer(targetOrder);
+      setIsNotificationOpen(false);
+    } else {
+      setSearchTerm(notif.orderNumber);
+      setIsNotificationOpen(false);
+    }
+  };
+
   const openAttachmentViewer = (order: FuelSupplyOrder, preferredTab?: 'pump' | 'odometer' | 'receipt') => {
     if (preferredTab) {
       setSelectedAttachmentPhoto(preferredTab);
@@ -341,11 +632,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             `Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) abastecida com ${ord.liters_supplied || ''}L. Fotos recebidas.`
           );
           showToast(`⛽ Abastecimento recebido na bomba! Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) finalizada pelo condutor com fotos anexadas.`, 'success');
+          addRealtimeNotification(ord);
         }
         prevStatusesRef.current[ord.id] = ord.status;
         prevStatusesRef.current[ord.order_number] = ord.status;
         prevPhotosRef.current[ord.id] = nowHasPhotos;
       });
+
+      // Sincroniza e recupera notificações (inclusive ordens abastecidas enquanto offline)
+      syncNotificationsWithOrders(ordList, vehList, instId);
 
       setViewingAttachmentOrder(prev => {
         if (!prev) return null;
@@ -672,6 +967,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const orderNumber = customEvent.detail?.orderNumber || customEvent.detail?.order?.order_number;
       playFuelAlertChime();
       showToast(`⛽ Abastecimento recebido! Ordem ${orderNumber ? `"${orderNumber}" ` : ''}confirmada na bomba com fotos.`, 'success');
+      if (customEvent.detail?.order) {
+        addRealtimeNotification(customEvent.detail.order);
+      } else if (orderNumber) {
+        addRealtimeNotification({ order_number: orderNumber, status: 'abastecido' });
+      }
       loadData(true);
     };
 
@@ -690,6 +990,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             `Ordem ${ord?.order_number || ''} abastecida com fotos do visor.`
           );
           showToast(`⛽ Abastecimento recebido em tempo real! Ordem ${ord?.order_number || ''} abastecida na bomba com fotos do visor e odômetro.`, 'success');
+          if (ord) addRealtimeNotification(ord);
           loadData(true);
         }
       };
@@ -711,6 +1012,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 `Ordem ${updated.order_number || ''} finalizada com sucesso. Fotos da bomba e odômetro recebidas.`
               );
               showToast(`⛽ Abastecimento confirmado na bomba! Ordem ${updated.order_number || ''} (${updated.liters_supplied ? `${updated.liters_supplied}L` : ''}) - Fotos do visor e odômetro recebidas!`, 'success');
+              addRealtimeNotification(updated);
             }
             loadData(true);
           }
@@ -803,7 +1105,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     const raw = searchTerm.trim().toLowerCase();
     const searchTerms = raw.split(/\s+/).filter(Boolean);
 
-    return orders.filter(order => {
+    const result = orders.filter(order => {
       if (!order) return false;
       const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
 
@@ -862,7 +1164,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         );
       });
     });
-  }, [orders, vehicles, searchTerm, departmentFilter, statusFilter]);
+
+    if (orderNumberSort === 'asc') {
+      return [...result].sort((a, b) => 
+        (a.order_number || '').localeCompare(b.order_number || '', undefined, { numeric: true, sensitivity: 'base' })
+      );
+    } else if (orderNumberSort === 'desc') {
+      return [...result].sort((a, b) => 
+        (b.order_number || '').localeCompare(a.order_number || '', undefined, { numeric: true, sensitivity: 'base' })
+      );
+    }
+
+    return result;
+  }, [orders, vehicles, searchTerm, departmentFilter, statusFilter, orderNumberSort]);
 
   // Filtragem ampla de veículos para a aba de Veículos (utiliza a barra de pesquisa principal)
   const filteredVehiclesList = useMemo(() => {
@@ -910,7 +1224,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Reseta para página 1 ao alterar filtros de busca ou aba
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, departmentFilter, statusFilter, activeTab]);
+  }, [searchTerm, departmentFilter, statusFilter, activeTab, orderNumberSort]);
 
   // Paginação para Ordens (Aba 1 e Aba 3 - 30 itens por página)
   const totalPagesOrders = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE) || 1;
@@ -1250,7 +1564,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
       setIsEditingViewerBudget(false);
       const sheetName = updated.budget_classification?.invoice_sheet || viewerBudgetId;
-      showToast(`Ficha orçamentária atualizada com sucesso para Ficha ${sheetName}!`, 'success');
+      showToast(`Classificação orçamentária atualizada com sucesso para ${sheetName}!`, 'success');
     } catch (err: any) {
       showToast(err.message || 'Erro ao atualizar dotação.', 'error');
     } finally {
@@ -1278,7 +1592,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
       setOrderForBudgetEdit(null);
       const sheetName = updated.budget_classification?.invoice_sheet || budgetEditId;
-      showToast(`Ficha orçamentária da ordem ${updated.order_number} atualizada para Ficha ${sheetName}!`, 'success');
+      showToast(`Dotação da ordem ${updated.order_number} atualizada para ${sheetName}!`, 'success');
     } catch (err: any) {
       showToast(err.message || 'Erro ao atualizar dotação da ordem.', 'error');
     } finally {
@@ -1495,82 +1809,320 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           </div>
         </div>
 
-        {/* Abas */}
-        <div className="flex flex-wrap bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 w-full lg:w-auto">
-          <button
-            onClick={() => setActiveTab('orders')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-              activeTab === 'orders'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            <FileText size={15} />
-            <span>Ordens & Emissão</span>
-          </button>
+        {/* Abas de Navegação e Campainha de Notificações */}
+        <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
+          {/* Abas */}
+          <div className="flex flex-wrap bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'orders'
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <FileText size={15} />
+              <span>Ordens & Emissão</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('execution')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-              activeTab === 'execution'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            <Layers size={15} />
-            <span>Lançamento de Canhotos</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('execution')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'execution'
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <Layers size={15} />
+              <span>Lançamento de Canhotos</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer relative ${
-              activeTab === 'audit'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            <ShieldCheck size={15} />
-            <span>Auditoria & Semáforo</span>
-            {auditMetrics.anomalousCount > 0 && (
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-            )}
-          </button>
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer relative ${
+                activeTab === 'audit'
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <ShieldCheck size={15} />
+              <span>Auditoria & Semáforo</span>
+              {auditMetrics.anomalousCount > 0 && (
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+              )}
+            </button>
 
-          <button
-            onClick={() => setActiveTab('vehicles')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-              activeTab === 'vehicles'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            <Truck size={15} />
-            <span>Frota ({vehicles.length})</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('vehicles')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'vehicles'
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <Truck size={15} />
+              <span>Frota ({vehicles.length})</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('drivers')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-              activeTab === 'drivers'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            <Users size={15} />
-            <span>Motoristas ({drivers.length})</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('drivers')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'drivers'
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <Users size={15} />
+              <span>Motoristas ({drivers.length})</span>
+            </button>
 
-          <button
-            onClick={() => setActiveTab('stations')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-              activeTab === 'stations'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
-          >
-            <Store size={15} />
-            <span>Postos ({stations.length})</span>
-          </button>
+            <button
+              onClick={() => setActiveTab('stations')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'stations'
+                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+            >
+              <Store size={15} />
+              <span>Postos ({stations.length})</span>
+            </button>
+          </div>
+
+          {/* Campainha de Notificações com Histórico e Alertas Offline */}
+          <div className="relative" ref={notificationDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+              title="Central de Notificações de Frotas"
+              className={`relative p-2.5 rounded-2xl transition-all cursor-pointer border flex items-center justify-center ${
+                unreadNotificationsCount > 0
+                  ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800 shadow-sm shadow-amber-500/15'
+                  : 'bg-white hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-700/60 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+              }`}
+            >
+              {unreadNotificationsCount > 0 ? (
+                <BellRing size={20} className={bellAnimate ? 'animate-bounce text-amber-500' : 'text-amber-600 dark:text-amber-400'} />
+              ) : (
+                <Bell size={20} className="text-neutral-500 dark:text-neutral-400" />
+              )}
+
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-black text-white bg-rose-600 rounded-full shadow-md animate-pulse">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+
+            {/* Painel Dropdown de Notificações */}
+            <AnimatePresence>
+              {isNotificationOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute right-0 mt-2 w-84 sm:w-96 bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 z-50 overflow-hidden flex flex-col max-h-[85vh]"
+                >
+                  {/* Cabeçalho do Popover */}
+                  <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/70 dark:bg-neutral-800/40">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        <Bell size={16} />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tight flex items-center gap-1.5">
+                          Notificações da Frota
+                          {unreadNotificationsCount > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-black">
+                              {unreadNotificationsCount} novas
+                            </span>
+                          )}
+                        </h4>
+                        <p className="text-[10px] text-neutral-400">
+                          Histórico completo, incluindo eventos offline
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {unreadNotificationsCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={markAllNotificationsAsRead}
+                          title="Marcar todas como lidas"
+                          className="p-1.5 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                        >
+                          <CheckCheck size={16} />
+                        </button>
+                      )}
+                      {notifications.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={clearNotificationHistory}
+                          title="Limpar histórico"
+                          className="p-1.5 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Filtros Rápidos */}
+                  <div className="flex items-center gap-1 p-2 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-[11px] font-bold overflow-x-auto">
+                    <button
+                      type="button"
+                      onClick={() => setNotificationFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        notificationFilter === 'all'
+                          ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
+                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Todas ({notifications.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationFilter('unread')}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        notificationFilter === 'unread'
+                          ? 'bg-rose-600 text-white'
+                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Não lidas ({unreadNotificationsCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationFilter('abastecimento')}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        notificationFilter === 'abastecimento'
+                          ? 'bg-amber-600 text-white'
+                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Abastecimentos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNotificationFilter('alerta')}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        notificationFilter === 'alerta'
+                          ? 'bg-rose-600 text-white'
+                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Alertas TCE
+                    </button>
+                  </div>
+
+                  {/* Lista de Notificações */}
+                  <div className="overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[360px] p-1">
+                    {filteredNotifications.length === 0 ? (
+                      <div className="py-10 px-4 text-center text-neutral-400">
+                        <Bell size={28} className="mx-auto mb-2 opacity-40 text-neutral-400" />
+                        <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                          Nenhuma notificação encontrada
+                        </p>
+                        <p className="text-[10px] mt-0.5">
+                          {notificationFilter === 'unread' 
+                            ? 'Todas as notificações foram lidas!' 
+                            : 'Novos abastecimentos e fotos enviadas pela bomba aparecerão aqui.'}
+                        </p>
+                      </div>
+                    ) : (
+                      filteredNotifications.map(notif => {
+                        const isUnread = !notif.read;
+                        return (
+                          <div
+                            key={notif.id}
+                            onClick={() => handleNotificationClick(notif)}
+                            className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-3 relative group ${
+                              isUnread
+                                ? 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/70 dark:hover:bg-amber-950/50'
+                                : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60'
+                            }`}
+                          >
+                            {/* Ícone de Destaque */}
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                              notif.type === 'bloqueio_tce'
+                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                                : notif.type === 'alerta_auditoria'
+                                ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'
+                                : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                            }`}>
+                              {notif.type === 'bloqueio_tce' ? (
+                                <AlertTriangle size={15} />
+                              ) : notif.type === 'alerta_auditoria' ? (
+                                <AlertCircle size={15} />
+                              ) : (
+                                <Fuel size={15} />
+                              )}
+                            </div>
+
+                            {/* Conteúdo */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-mono text-[10px] font-black text-amber-600 dark:text-amber-400 truncate">
+                                  {notif.orderNumber}
+                                </span>
+                                <span className="text-[9px] text-neutral-400 whitespace-nowrap">
+                                  {formatRelativeNotificationTime(notif.timestamp)}
+                                </span>
+                              </div>
+
+                              <h5 className={`text-xs leading-snug truncate ${
+                                isUnread 
+                                ? 'font-black text-neutral-900 dark:text-white' 
+                                : 'font-semibold text-neutral-700 dark:text-neutral-300'
+                              }`}>
+                                {notif.title}
+                              </h5>
+
+                              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2 mt-0.5">
+                                {notif.message}
+                              </p>
+
+                              {/* Tags de Fotos / Detalhes */}
+                              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                                {notif.hasPhotos && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                    <Camera size={10} />
+                                    Fotos Recebidas
+                                  </span>
+                                )}
+                                {notif.plate && (
+                                  <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                                    {notif.plate}
+                                  </span>
+                                )}
+                                {notif.liters && (
+                                  <span className="text-[9px] font-bold text-neutral-400">
+                                    {Number(notif.liters).toFixed(1)} L
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Ponto indicador de não lida */}
+                            {isUnread && (
+                              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 mt-1.5 animate-pulse" />
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Rodapé Informativo */}
+                  <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/50 border-t border-neutral-100 dark:border-neutral-800 text-center text-[10px] text-neutral-400">
+                    Clique em qualquer notificação para abrir os comprovantes e fotos da ordem
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -1826,7 +2378,30 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             <table className="w-full text-left text-xs">
               <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
                 <tr>
-                  <th className="px-4 py-3.5">Número da Ordem</th>
+                  <th 
+                    className="px-4 py-3.5 cursor-pointer select-none group hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                    onClick={toggleOrderNumberSort}
+                    title="Clique para ordenar por Número da Ordem (Crescente / Decrescente)"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className={orderNumberSort !== 'none' ? 'text-amber-600 dark:text-amber-400 font-black' : ''}>
+                        Número da Ordem
+                      </span>
+                      {orderNumberSort === 'asc' ? (
+                        <span className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 font-black text-[9px] bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800 shadow-xs">
+                          <ArrowUp size={11} />
+                          <span>1 → 9</span>
+                        </span>
+                      ) : orderNumberSort === 'desc' ? (
+                        <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-black text-[9px] bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 shadow-xs">
+                          <ArrowDown size={11} />
+                          <span>9 → 1</span>
+                        </span>
+                      ) : (
+                        <ArrowUpDown size={11} className="text-neutral-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </div>
+                  </th>
                   <th className="px-4 py-3.5">Veículo / Placa</th>
                   <th className="px-4 py-3.5">Secretaria</th>
                   <th className="px-4 py-3.5">Condutor</th>
@@ -1854,9 +2429,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <tr key={order.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
                         {/* Número */}
                         <td className="px-4 py-3.5">
-                          <div className="font-mono font-bold text-neutral-900 dark:text-white">
+                          <button
+                            type="button"
+                            onClick={() => setSearchTerm(order.order_number)}
+                            title={`Filtrar apenas a ordem ${order.order_number} na pesquisa`}
+                            className="font-mono font-bold text-neutral-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 hover:underline cursor-pointer text-left transition-colors"
+                          >
                             {order.order_number}
-                          </div>
+                          </button>
                           {(order as any).is_legacy_voucher || order.supply_mode === 'canhoto_legado' ? (
                             <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" title={(order as any).notes || 'Canhoto físico antigo'}>
                               📑 {(order as any).voucher_number || 'Canhoto Antigo'}
@@ -1908,7 +2488,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer transition-colors"
                               >
                                 <Layers size={10} className="text-amber-600" />
-                                <span>Ficha {activeBc?.invoice_sheet || '11'}</span>
+                                <span>{activeBc?.invoice_sheet || '11'}</span>
                               </button>
                             );
                           })()}
@@ -2035,11 +2615,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                             <button
                               onClick={() => handleOpenBudgetModal(order)}
-                              title="Editar / Alterar Ficha Orçamentária"
+                              title="Editar / Alterar Dotação Orçamentária"
                               className="flex items-center gap-1 px-2 py-1 text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/70 dark:border-amber-900/40 shadow-sm"
                             >
                               <Layers size={12} className="text-amber-600 dark:text-amber-400" />
-                              <span>Ficha</span>
+                              <span>Dotação</span>
                             </button>
 
                             {(order.status === 'abastecido' || order.status === 'auditado' || order.status === 'glosado' || order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url) && (
@@ -2452,11 +3032,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                               <button
                                 onClick={() => handleOpenBudgetModal(order)}
-                                title="Editar / Alterar Ficha Orçamentária vinculada"
+                                title="Editar / Alterar Dotação Orçamentária vinculada"
                                 className="flex items-center gap-1 px-2 py-1 text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/70 dark:border-amber-900/40"
                               >
                                 <Layers size={11} className="text-amber-600 dark:text-amber-400" />
-                                <span>Ficha</span>
+                                <span>Dotação</span>
                               </button>
 
                               <button
@@ -3217,9 +3797,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
                           >
                             <option value="">Selecione a dotação contábil para esta autorização...</option>
-                            {budgetClassifications.map(bc => (
+                            {sortedBudgetClassifications.map(bc => (
                               <option key={bc.id} value={bc.id}>
-                                [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                                {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
                               </option>
                             ))}
                           </select>
@@ -3605,8 +4185,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         <span className="font-bold text-neutral-900 dark:text-white text-xs">
                           {(() => {
                             const bc = budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification;
-                            if (!bc) return 'Administração Geral (Ficha 11 - Fonte 1.1.500.0)';
-                            return `[Ficha ${bc.invoice_sheet}] ${bc.department_local} — Fonte ${bc.funding_source} ${bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}`;
+                            if (!bc) return 'Administração Geral (11 - Fonte 1.1.500.0)';
+                            return `${bc.invoice_sheet} • ${bc.department_local} — Fonte ${bc.funding_source} ${bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}`;
                           })()}
                         </span>
                       </div>
@@ -3794,9 +4374,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
                   >
                     <option value="">-- Usar Dotação Padrão do Veículo / Secretaria --</option>
-                    {budgetClassifications.map(bc => (
+                    {sortedBudgetClassifications.map(bc => (
                       <option key={bc.id} value={bc.id}>
-                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                        {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
                       </option>
                     ))}
                   </select>
@@ -4368,9 +4948,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Selecione a dotação contábil padrão...</option>
-                    {budgetClassifications.map(bc => (
+                    {sortedBudgetClassifications.map(bc => (
                       <option key={bc.id} value={bc.id}>
-                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                        {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
                       </option>
                     ))}
                   </select>
@@ -4549,10 +5129,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             onChange={(e) => setViewerBudgetId(e.target.value)}
                             className="w-full px-2.5 py-1.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
                           >
-                            <option value="">-- Selecione a Nova Ficha Orçamentária --</option>
-                            {budgetClassifications.map(bc => (
+                            <option value="">-- Selecione a Dotação Orçamentária --</option>
+                            {sortedBudgetClassifications.map(bc => (
                               <option key={bc.id} value={bc.id}>
-                                [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                                {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
                               </option>
                             ))}
                           </select>
@@ -4571,13 +5151,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-sm disabled:opacity-50"
                             >
                               {savingViewerBudget ? <RefreshCw size={12} className="animate-spin" /> : <CheckCircle2 size={12} />}
-                              <span>Salvar Ficha</span>
+                              <span>Salvar Dotação</span>
                             </button>
                           </div>
                         </div>
                       ) : (
                         <span className="text-neutral-700 dark:text-neutral-300 block">
-                          Ficha: <strong>{viewingAttachmentOrder.budget_classification?.invoice_sheet || viewingAttachmentOrder.vehicle?.budget_classification?.invoice_sheet || '11'}</strong> • 
+                          Dotação: <strong>{viewingAttachmentOrder.budget_classification?.invoice_sheet || viewingAttachmentOrder.vehicle?.budget_classification?.invoice_sheet || '11'}</strong> • 
                           Fonte: <strong>{viewingAttachmentOrder.budget_classification?.funding_source || viewingAttachmentOrder.vehicle?.budget_classification?.funding_source || '1.1.500.0'}</strong> • 
                           Local: <em>{viewingAttachmentOrder.budget_classification?.department_local || viewingAttachmentOrder.vehicle?.department || 'Geral'}</em>
                         </span>
@@ -4941,9 +5521,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   >
                     <option value="">Selecione a dotação contábil...</option>
-                    {budgetClassifications.map(bc => (
+                    {sortedBudgetClassifications.map(bc => (
                       <option key={bc.id} value={bc.id}>
-                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                        {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
                       </option>
                     ))}
                   </select>
@@ -5674,9 +6254,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </span>
                   </div>
                   <div className="flex justify-between items-center pt-1.5 border-t border-neutral-200 dark:border-neutral-700">
-                    <span className="text-neutral-500">Ficha Atual Vinculada:</span>
+                    <span className="text-neutral-500">Dotação Atual Vinculada:</span>
                     <span className="font-bold text-amber-600 dark:text-amber-400">
-                      Ficha {orderForBudgetEdit.budget_classification?.invoice_sheet || orderForBudgetEdit.vehicle?.budget_classification?.invoice_sheet || '11'} (Fonte {orderForBudgetEdit.budget_classification?.funding_source || orderForBudgetEdit.vehicle?.budget_classification?.funding_source || '1.1.500.0'})
+                      {orderForBudgetEdit.budget_classification?.invoice_sheet || orderForBudgetEdit.vehicle?.budget_classification?.invoice_sheet || '11'} (Fonte {orderForBudgetEdit.budget_classification?.funding_source || orderForBudgetEdit.vehicle?.budget_classification?.funding_source || '1.1.500.0'})
                     </span>
                   </div>
                 </div>
@@ -5685,7 +6265,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
                       <Layers size={13} className="text-amber-500" />
-                      Selecione a Nova Ficha / Dotação *
+                      Selecione a Nova Dotação Orçamentária *
                     </label>
                     <button
                       type="button"
@@ -5701,10 +6281,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     required
                     className="w-full px-3.5 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
                   >
-                    <option value="">-- Selecione a Ficha Orçamentária --</option>
-                    {budgetClassifications.map(bc => (
+                    <option value="">-- Selecione a Dotação Orçamentária --</option>
+                    {sortedBudgetClassifications.map(bc => (
                       <option key={bc.id} value={bc.id}>
-                        [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                        {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
                       </option>
                     ))}
                   </select>

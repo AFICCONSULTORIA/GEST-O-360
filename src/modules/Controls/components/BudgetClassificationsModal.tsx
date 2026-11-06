@@ -95,7 +95,7 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
       if (filterType === 'special') return isSpecialCredit;
       if (filterType === 'active') return item.is_active !== false;
       return true;
-    });
+    }).sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0));
   }, [classifications, searchTerm, filterType]);
 
   if (!isOpen) return null;
@@ -432,7 +432,7 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
                       <tr key={item.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/40 transition">
                         <td className="p-3">
                           <span className="inline-flex items-center px-2 py-0.5 rounded font-mono font-black text-xs bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
-                            Ficha {item.invoice_sheet}
+                            {item.invoice_sheet}
                           </span>
                         </td>
                         <td className="p-3 font-bold text-neutral-900 dark:text-white">

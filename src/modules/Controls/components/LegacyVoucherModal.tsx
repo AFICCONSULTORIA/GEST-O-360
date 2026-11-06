@@ -581,7 +581,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                   </label>
                   <span className="text-[10px] text-neutral-400">
                     {selectedVehicle?.budget_classification?.invoice_sheet 
-                      ? `Sugerida do veículo: Ficha ${selectedVehicle.budget_classification.invoice_sheet}` 
+                      ? `Sugerida do veículo: ${selectedVehicle.budget_classification.invoice_sheet}` 
                       : 'Classificação contábil'}
                   </span>
                 </div>
@@ -590,11 +590,13 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                   onChange={(e) => setBudgetClassificationId(e.target.value)}
                   className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
                 >
-                  <option value="">-- Usar Ficha Padrão do Veículo / Secretaria --</option>
-                  {budgetClassifications.map(bc => (
-                    <option key={bc.id} value={bc.id}>
-                      [Ficha {bc.invoice_sheet}] {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
-                    </option>
+                  <option value="">-- Usar Dotação Padrão do Veículo / Secretaria --</option>
+                  {[...budgetClassifications]
+                    .sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0))
+                    .map(bc => (
+                      <option key={bc.id} value={bc.id}>
+                        {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                      </option>
                   ))}
                 </select>
               </div>

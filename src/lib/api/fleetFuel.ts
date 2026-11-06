@@ -2403,10 +2403,10 @@ export const DEFAULT_BUDGET_CLASSIFICATIONS: Omit<FleetBudgetClassification, 'id
   { department_local: 'MAC', invoice_sheet: '213', funding_source: '3.1.621.0', budget_code: '24' },
   { department_local: 'Vigilância Sanitária', invoice_sheet: '223', funding_source: '3.1.600.0', budget_code: '29' },
   { department_local: 'Secretaria de Saúde', invoice_sheet: '231', funding_source: '3.1.500.1002000', budget_code: '25' },
+  { department_local: 'Meio Ambiente', invoice_sheet: '234', funding_source: '1.1.500.0', budget_code: undefined },
   { department_local: 'Secret. de Agricultura', invoice_sheet: '241', funding_source: '1.1.500.0', budget_code: '30' },
   { department_local: 'Secret. de Assistência', invoice_sheet: '276', funding_source: '4.1.500.0', budget_code: '26' },
   { department_local: 'Conselho Tutelar', invoice_sheet: '281', funding_source: '4.1.500.0', budget_code: '42' },
-  { department_local: 'Meio Ambiente', invoice_sheet: '234', funding_source: '1.1.500.0', budget_code: undefined },
   { department_local: 'Secret. Serv Públicos', invoice_sheet: '335', funding_source: '1.1.500.0', budget_code: '41' },
   { department_local: 'Serviços de Limpeza', invoice_sheet: '339', funding_source: '1.1.500.0', budget_code: '27' },
   { department_local: 'Manut. Serv. Publicos', invoice_sheet: '345', funding_source: '1.1.500.0', budget_code: '35' },
@@ -2418,15 +2418,22 @@ const STORAGE_KEY_BUDGET = 'gestao360_fleet_budget_classifications';
 export function getLocalBudgetClassifications(): FleetBudgetClassification[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_BUDGET);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0));
+      }
+    }
   } catch {}
-  return DEFAULT_BUDGET_CLASSIFICATIONS.map((item, idx) => ({
-    id: `bc-${idx + 1}`,
-    institution_id: 'default',
-    ...item,
-    is_active: true,
-    created_at: new Date().toISOString()
-  }));
+  return [...DEFAULT_BUDGET_CLASSIFICATIONS]
+    .sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0))
+    .map((item, idx) => ({
+      id: `bc-${idx + 1}`,
+      institution_id: 'default',
+      ...item,
+      is_active: true,
+      created_at: new Date().toISOString()
+    }));
 }
 
 function saveLocalBudgetClassifications(list: FleetBudgetClassification[]) {
@@ -2551,14 +2558,17 @@ export async function deleteFleetBudgetClassification(id: string): Promise<boole
 
 export async function getFleetBudgetClassifications(institutionId?: string): Promise<FleetBudgetClassification[]> {
   try {
-    let query = supabase.from('fleet_budget_classifications').select('*').order('department_local', { ascending: true });
+    let query = supabase.from('fleet_budget_classifications').select('*');
     if (institutionId) {
       query = query.or(`institution_id.eq.${institutionId},institution_id.eq.default`);
     }
     const { data, error } = await query;
     if (!error && data && data.length > 0) {
-      saveLocalBudgetClassifications(data as FleetBudgetClassification[]);
-      return data as FleetBudgetClassification[];
+      const sorted = (data as FleetBudgetClassification[]).sort(
+        (a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0)
+      );
+      saveLocalBudgetClassifications(sorted);
+      return sorted;
     }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao buscar classificações orçamentárias:', err);
