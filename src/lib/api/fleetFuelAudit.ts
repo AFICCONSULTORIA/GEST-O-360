@@ -8,6 +8,7 @@
 */
 
 import { supabase, supabaseAnon } from '../supabase';
+import * as XLSX from 'xlsx';
 import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
@@ -177,9 +178,12 @@ export interface TwoWayFuelOrder {
   anomaly_level: AnomalyLevel;
   anomaly_reason?: string;
   audit_justification?: string;
-  supply_mode: 'litragem_fixa' | 'encher_tanque';
+  supply_mode: 'litragem_fixa' | 'encher_tanque' | 'canhoto_legado';
   is_full_tank_order?: boolean;
   emergency_call_reason?: string;
+  is_legacy_voucher?: boolean;
+  voucher_number?: string;
+  notes?: string;
   authorized_by_name: string;
   authorized_by_role: string;
   budget_classification_id?: string;
@@ -187,6 +191,24 @@ export interface TwoWayFuelOrder {
   status: TwoWayOrderStatus;
   created_at: string;
   supplied_at?: string;
+}
+
+export interface LegacyVoucherPayload {
+  institution_id?: string;
+  vehicle_id?: string;
+  plate?: string;
+  driver_name: string;
+  driver_document?: string;
+  station_name: string;
+  fuel_type?: FuelType;
+  voucher_number?: string; // Ex: "Canhoto 0412", "Talão 108"
+  supplied_at: string; // Data e hora em que o abastecimento ocorreu no passado
+  liters_supplied: number;
+  unit_price: number;
+  odometer_reading: number; // KM / Horímetro anotado no papel
+  receipt_photo_url?: string; // Foto opcional do canhoto físico
+  notes?: string;
+  budget_classification_id?: string;
 }
 
 export interface IssueOrderPayload {
@@ -1262,5 +1284,288 @@ export async function linkInvoiceToFuelOrder(
   saveLocalOrders(orders);
 
   return updatedOrder;
+}
+
+/**
+ * Converte qualquer representação de data de planilha (número serial Excel, string BR ou ISO) em ISO String válido
+ */
+export function parseExcelDate(raw: any): string {
+  if (!raw) return new Date().toISOString();
+  if (typeof raw === 'number') {
+    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
+    return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+  }
+  if (raw instanceof Date) {
+    return isNaN(raw.getTime()) ? new Date().toISOString() : raw.toISOString();
+  }
+  const str = String(raw).trim();
+  const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+  if (brMatch) {
+    const day = Number(brMatch[1]);
+    const month = Number(brMatch[2]) - 1;
+    const year = Number(brMatch[3]);
+    const hours = Number(brMatch[4] || 12);
+    const minutes = Number(brMatch[5] || 0);
+    const seconds = Number(brMatch[6] || 0);
+    const d = new Date(year, month, day, hours, minutes, seconds);
+    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+  }
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+/**
+ * Lançamento individual de Canhoto Físico / Abastecimento Antigo (Transição Legada)
+ * Já entra com status 'abastecido', recalculando consumo histórico e atualizando o odômetro do veículo se aplicável.
+ */
+export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Promise<TwoWayFuelOrder> {
+  // 1. Localizar veículo por ID ou Placa
+  let vehicles = getLocalVehicles();
+  let vehicle: FleetVehicle | undefined;
+
+  if (payload.vehicle_id) {
+    vehicle = vehicles.find(v => v.id === payload.vehicle_id);
+  }
+
+  if (!vehicle && payload.plate) {
+    const cleanPlate = payload.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    vehicle = vehicles.find(v => v.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase() === cleanPlate);
+  }
+
+  if (!vehicle) {
+    try {
+      if (payload.vehicle_id) {
+        const { data } = await supabase.from('fleet_vehicles').select('*').eq('id', payload.vehicle_id).maybeSingle();
+        if (data) vehicle = data as FleetVehicle;
+      } else if (payload.plate) {
+        const cleanPlate = payload.plate.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+        const { data } = await supabase.from('fleet_vehicles').select('*').ilike('plate', `%${cleanPlate}%`).maybeSingle();
+        if (data) vehicle = data as FleetVehicle;
+      }
+    } catch { }
+  }
+
+  if (!vehicle) {
+    throw new Error(`Veículo ${payload.plate ? `de placa "${payload.plate}"` : ''} não foi localizado na frota municipal.`);
+  }
+
+  const litersSupplied = Number(payload.liters_supplied);
+  if (isNaN(litersSupplied) || litersSupplied <= 0) {
+    throw new Error('A litragem do canhoto deve ser superior a zero.');
+  }
+
+  const unitPrice = Number(payload.unit_price) > 0 ? Number(payload.unit_price) : 6.19;
+  const totalValue = Number((litersSupplied * unitPrice).toFixed(2));
+
+  const odoReading = Number(payload.odometer_reading) || 0;
+  const previousOdometer = Number(vehicle.current_odometer || 0);
+
+  // Se o odômetro do canhoto for maior que o atual do veículo, atualizamos o odômetro do veículo
+  const shouldUpdateVehicleOdo = odoReading > previousOdometer;
+
+  const currentYear = new Date(payload.supplied_at || new Date()).getFullYear() || new Date().getFullYear();
+  const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
+  const orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+
+  const resolvedBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;
+  const localBudgets = getLocalBudgetClassifications();
+  const resolvedBudget = localBudgets.find(b => b.id === resolvedBudgetId) || vehicle.budget_classification;
+
+  const deltaKm = odoReading > previousOdometer ? odoReading - previousOdometer : 0;
+  const calculatedKmPerLiter = deltaKm > 0 && litersSupplied > 0
+    ? Number((deltaKm / litersSupplied).toFixed(2))
+    : undefined;
+
+  const suppliedDate = payload.supplied_at ? parseExcelDate(payload.supplied_at) : new Date().toISOString();
+
+  const newOrder: TwoWayFuelOrder = {
+    id: generateUUID(),
+    institution_id: payload.institution_id || vehicle.institution_id || 'inst_1',
+    order_number: orderNumber,
+    vehicle_id: vehicle.id,
+    vehicle: vehicle,
+    driver_name: payload.driver_name?.trim() || 'Motorista Municipal',
+    driver_document: payload.driver_document?.trim() || undefined,
+    station_name: payload.station_name?.trim() || 'Posto Credenciado',
+    fuel_type: payload.fuel_type || vehicle.fuel_type,
+    bidded_unit_price: unitPrice,
+    liters_authorized: litersSupplied,
+    liters_supplied: litersSupplied,
+    total_authorized_value: totalValue,
+    previous_odometer: previousOdometer,
+    current_odometer: odoReading,
+    calculated_km_per_liter: calculatedKmPerLiter,
+    receipt_photo_url: payload.receipt_photo_url || undefined,
+    receipt_attachment_url: payload.receipt_photo_url || undefined,
+    anomaly_level: 'none',
+    supply_mode: 'canhoto_legado',
+    is_legacy_voucher: true,
+    voucher_number: payload.voucher_number?.trim() || undefined,
+    notes: payload.notes?.trim() || 'Lançamento retroativo de canhoto/talão físico antigo',
+    authorized_by_name: 'Gestor de Frotas',
+    authorized_by_role: 'Lançamento Legado',
+    budget_classification_id: resolvedBudgetId,
+    budget_classification: resolvedBudget,
+    status: 'abastecido',
+    created_at: suppliedDate,
+    supplied_at: suppliedDate
+  };
+
+  // 1. Persistir no Supabase
+  try {
+    await supabase.from('fleet_supply_orders').insert([{
+      id: newOrder.id,
+      institution_id: newOrder.institution_id,
+      order_number: newOrder.order_number,
+      vehicle_id: newOrder.vehicle_id,
+      driver_name: newOrder.driver_name,
+      driver_document: newOrder.driver_document,
+      station_name: newOrder.station_name,
+      fuel_type: newOrder.fuel_type,
+      bidded_unit_price: newOrder.bidded_unit_price,
+      liters_authorized: newOrder.liters_authorized,
+      liters_supplied: newOrder.liters_supplied,
+      total_authorized_value: newOrder.total_authorized_value,
+      previous_odometer: newOrder.previous_odometer,
+      current_odometer: newOrder.current_odometer,
+      calculated_km_per_liter: newOrder.calculated_km_per_liter,
+      anomaly_level: 'none',
+      supply_mode: newOrder.supply_mode,
+      receipt_photo_url: newOrder.receipt_photo_url,
+      authorized_by_name: newOrder.authorized_by_name,
+      authorized_by_role: newOrder.authorized_by_role,
+      status: 'abastecido',
+      created_at: newOrder.created_at,
+      supplied_at: newOrder.supplied_at
+    }]);
+
+    await supabase.from('fuel_supply_orders').insert([{
+      id: newOrder.id,
+      institution_id: newOrder.institution_id,
+      order_number: newOrder.order_number,
+      vehicle_id: newOrder.vehicle_id,
+      driver_name: newOrder.driver_name,
+      driver_document: newOrder.driver_document,
+      station_name: newOrder.station_name,
+      fuel_type: newOrder.fuel_type,
+      liters_authorized: newOrder.liters_authorized,
+      liters_supplied: newOrder.liters_supplied,
+      unit_price: newOrder.bidded_unit_price,
+      total_value: newOrder.total_authorized_value,
+      previous_odometer: newOrder.previous_odometer,
+      current_odometer: newOrder.current_odometer,
+      status: 'abastecido',
+      created_at: newOrder.created_at,
+      supplied_at: newOrder.supplied_at
+    }]);
+
+    if (shouldUpdateVehicleOdo) {
+      await supabase.from('fleet_vehicles').update({
+        current_odometer: odoReading
+      }).eq('id', vehicle.id);
+    }
+  } catch (errDb) {
+    console.warn('[FleetFuelAudit] Aviso ao persistir canhoto antigo no Supabase:', errDb);
+  }
+
+  // 2. Atualizar veículos locais se a KM evoluiu
+  if (shouldUpdateVehicleOdo) {
+    const localVehicles = getLocalVehicles();
+    const vIdx = localVehicles.findIndex(v => v.id === vehicle!.id);
+    if (vIdx !== -1) {
+      localVehicles[vIdx].current_odometer = odoReading;
+      saveLocalVehicles(localVehicles);
+    }
+  }
+
+  // 3. Atualizar lista de ordens local
+  const currentOrders = getLocalOrders();
+  currentOrders.unshift(newOrder);
+  saveLocalOrders(currentOrders);
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+        detail: { order: newOrder }
+      }));
+    }
+  } catch { }
+
+  return newOrder;
+}
+
+/**
+ * Importação em Lote de Canhotos Antigos (via Planilha Excel ou CSV)
+ */
+export async function registerLegacyFuelOrdersBatch(
+  payloads: LegacyVoucherPayload[]
+): Promise<{ successCount: number; errors: string[] }> {
+  const errors: string[] = [];
+  let successCount = 0;
+
+  // Ordena cronologicamente por data para que a evolução do odômetro ocorra na ordem natural
+  const sorted = [...payloads].sort((a, b) => new Date(a.supplied_at).getTime() - new Date(b.supplied_at).getTime());
+
+  for (let i = 0; i < sorted.length; i++) {
+    const item = sorted[i];
+    try {
+      await registerLegacyFuelOrder(item);
+      successCount++;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`Linha ${i + 1} (${item.plate || item.voucher_number || 'Sem identificação'}): ${msg}`);
+    }
+  }
+
+  return { successCount, errors };
+}
+
+/**
+ * Gera e realiza o download do arquivo modelo de planilha Excel (.xlsx) para importação de canhotos antigos
+ */
+export function generateLegacyVouchersExcelTemplate(): void {
+  const wb = XLSX.utils.book_new();
+
+  const sampleData = [
+    {
+      'Placa': 'ABC-1D23',
+      'Data_Abastecimento': '15/10/2026 14:30',
+      'Km_Odometro': 85420,
+      'Litros': 45.5,
+      'Preco_Unitario': 6.19,
+      'Motorista': 'João da Silva',
+      'Posto': 'Auto Posto Central',
+      'Num_Canhoto': 'Talão 0412',
+      'Observacoes': 'Canhoto físico antigo'
+    },
+    {
+      'Placa': 'XYZ-9E88',
+      'Data_Abastecimento': '16/10/2026 10:15',
+      'Km_Odometro': 112340,
+      'Litros': 50.0,
+      'Preco_Unitario': 6.35,
+      'Motorista': 'Maria Santos',
+      'Posto': 'Auto Posto Torixoréu',
+      'Num_Canhoto': 'Canhoto 0188',
+      'Observacoes': 'Saúde - Transporte de Pacientes'
+    }
+  ];
+
+  const ws = XLSX.utils.json_to_sheet(sampleData);
+
+  ws['!cols'] = [
+    { wch: 14 }, // Placa
+    { wch: 20 }, // Data_Abastecimento
+    { wch: 14 }, // Km_Odometro
+    { wch: 12 }, // Litros
+    { wch: 15 }, // Preco_Unitario
+    { wch: 24 }, // Motorista
+    { wch: 26 }, // Posto
+    { wch: 16 }, // Num_Canhoto
+    { wch: 30 }  // Observacoes
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Canhotos_Antigos');
+  XLSX.writeFile(wb, 'modelo_importacao_canhotos_antigos.xlsx');
 }
 

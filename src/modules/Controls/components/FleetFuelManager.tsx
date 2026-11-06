@@ -87,6 +87,7 @@ import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
 import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVoucherPDF';
 import { DriverBatchImporter } from './DriverBatchImporter';
 import { BudgetClassificationsModal } from './BudgetClassificationsModal';
+import { LegacyVoucherModal } from './LegacyVoucherModal';
 import { 
   CONTRACTUAL_BIDDED_PRICES, 
   issueFuelAuthorization,
@@ -145,6 +146,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Modais
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
+  const [isLegacyVoucherModalOpen, setIsLegacyVoucherModalOpen] = useState(false);
   const [newOrderStep, setNewOrderStep] = useState<1 | 2 | 3>(1);
   const [vehicleSearchFilter, setVehicleSearchFilter] = useState('');
   const [driverSearchQuery, setDriverSearchQuery] = useState('');
@@ -1472,13 +1474,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               <span>Novo Veículo</span>
             </button>
           ) : (
-            <button
-              onClick={() => setIsNewOrderModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl hover:shadow-lg transition-all cursor-pointer"
-            >
-              <Plus size={15} />
-              <span>Emitir Ordem Digital</span>
-            </button>
+            <>
+              <button
+                onClick={() => setIsLegacyVoucherModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 rounded-xl hover:shadow-md transition-all cursor-pointer"
+                title="Lançar ou importar abastecimentos anteriores feitos em talão ou canhoto de papel"
+              >
+                <FileText size={15} />
+                <span>Lançar Canhoto Antigo</span>
+              </button>
+
+              <button
+                onClick={() => setIsNewOrderModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl hover:shadow-lg transition-all cursor-pointer"
+              >
+                <Plus size={15} />
+                <span>Emitir Ordem Digital</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -1546,11 +1559,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div className="font-mono font-bold text-neutral-900 dark:text-white">
                             {order.order_number}
                           </div>
-                          {order.is_full_tank_order && (
+                          {(order as any).is_legacy_voucher || order.supply_mode === 'canhoto_legado' ? (
+                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" title={(order as any).notes || 'Canhoto físico antigo'}>
+                              📑 {(order as any).voucher_number || 'Canhoto Antigo'}
+                            </span>
+                          ) : order.is_full_tank_order ? (
                             <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
                               🚨 Tanque Cheio (Prontidão)
                             </span>
-                          )}
+                          ) : null}
                           <div className="text-[10px] text-neutral-400 mt-0.5">
                             {new Date(order.created_at).toLocaleDateString('pt-BR')}
                           </div>
@@ -5135,6 +5152,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         onClose={() => setIsBudgetClassificationsModalOpen(false)}
         onUpdated={(updatedList) => {
           setBudgetClassifications(updatedList);
+          loadData();
+        }}
+        institutionId={currentUser?.institution_id}
+      />
+
+      {/* LANÇAMENTO E IMPORTAÇÃO DE CANHOTOS ANTIGOS (TALÃO DE PAPEL) */}
+      <LegacyVoucherModal
+        isOpen={isLegacyVoucherModalOpen}
+        onClose={() => setIsLegacyVoucherModalOpen(false)}
+        vehicles={vehicles}
+        drivers={drivers}
+        stations={stations}
+        biddedPrices={biddedPrices}
+        onSuccess={() => {
           loadData();
         }}
         institutionId={currentUser?.institution_id}
