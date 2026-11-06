@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Fuel, Camera, CheckCircle2, RefreshCw,
   Car, User, Gauge, ShieldCheck, Check, RotateCcw, AlertCircle,
-  Sun, Moon, Search, Image as ImageIcon, X, Edit3
+  Sun, Moon, Search, X, Edit3
 } from 'lucide-react';
 import {
   TwoWayFuelOrder,
@@ -291,27 +291,17 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     }
   };
 
-  const handleCapturePumpPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    await processCapturedFile(file, 'pump');
-  };
-
-  const handleCaptureOdometerPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    await processCapturedFile(file, 'odometer');
-  };
-
-  // Câmera integrada dentro do próprio navegador (WebRTC)
+  // Câmera ao vivo integrada na tela do navegador (WebRTC direto)
   const openLiveBrowserCamera = async (target: 'pump' | 'odometer') => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showToast('Seu navegador não suporta câmera ao vivo integrada. Use o botão Fotografar.', 'warning');
+      showToast('Seu navegador não possui suporte para câmera ao vivo na tela.', 'error');
       return;
     }
     try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 960 } },
         audio: false
@@ -321,12 +311,18 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
           videoRef.current.play().catch(() => {});
         }
-      }, 80);
-    } catch (err) {
-      console.warn('Permissão de câmera integrada negada ou indisponível:', err);
-      showToast('Permita o acesso à câmera no navegador ou use a opção Anexar Foto.', 'warning');
+      }, 100);
+    } catch (err: unknown) {
+      console.warn('Permissão de câmera negada ou erro:', err);
+      const isDenied = err instanceof Error && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+      if (isDenied) {
+        showToast('Permissão de acesso à câmera negada. Autorize o uso da câmera nas configurações do navegador.', 'error');
+      } else {
+        showToast('Não foi possível iniciar a câmera na tela. Verifique as permissões do dispositivo.', 'error');
+      }
     }
   };
 
@@ -516,28 +512,31 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         </div>
       </header>
 
-      {/* MODAL DE CÂMERA AO VIVO NO NAVEGADOR (FALLBACK UNIVERSAL) */}
+      {/* MODAL DE CÂMERA AO VIVO NA TELA (DIRETO NO NAVEGADOR) */}
       {liveCameraTarget && (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4">
-          <div className="flex items-center justify-between text-white">
+        <div className="fixed inset-0 z-50 bg-black flex flex-col justify-between p-4 safe-area-inset">
+          <div className="flex items-center justify-between text-white pt-2">
             <div>
-              <span className="text-[10px] font-black uppercase text-amber-400 block">
-                {liveCameraTarget === 'pump' ? '1. Visor da Bomba' : '2. Painel / Odômetro'}
+              <span className="text-[10px] font-black uppercase text-amber-400 block tracking-wider">
+                {liveCameraTarget === 'pump' ? '1. Foto do Visor da Bomba' : '2. Foto do Painel / Odômetro'}
               </span>
-              <h3 className="text-sm font-bold">
-                {liveCameraTarget === 'pump' ? 'Aponte para os litros e valor na bomba' : 'Aponte para o KM/Horímetro no painel'}
+              <h3 className="text-sm font-bold text-neutral-100">
+                {liveCameraTarget === 'pump'
+                  ? 'Aponte para os litros e valor na bomba'
+                  : `Aponte para a quilometragem (${metricUnit}) no painel`}
               </h3>
             </div>
             <button
               type="button"
               onClick={closeLiveBrowserCamera}
-              className="p-2 rounded-full bg-white/15 text-white hover:bg-white/25 cursor-pointer"
+              className="p-2.5 rounded-full bg-white/20 hover:bg-white/30 text-white transition-colors cursor-pointer"
+              title="Fechar Câmera"
             >
               <X size={20} />
             </button>
           </div>
 
-          <div className="flex-1 my-4 rounded-2xl overflow-hidden bg-neutral-900 flex items-center justify-center border border-white/20">
+          <div className="flex-1 my-3 rounded-3xl overflow-hidden bg-neutral-900 flex items-center justify-center border-2 border-white/20 relative shadow-2xl">
             <video
               ref={videoRef}
               autoPlay
@@ -545,16 +544,22 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
               muted
               className="w-full h-full object-cover"
             />
+            {/* Moldura guia para o enquadramento */}
+            <div className="absolute inset-x-6 inset-y-12 border-2 border-dashed border-amber-400/60 rounded-2xl pointer-events-none flex items-end justify-center pb-3">
+              <span className="text-[11px] text-amber-300 font-bold bg-black/60 backdrop-blur-sm px-3.5 py-1 rounded-full shadow">
+                {liveCameraTarget === 'pump' ? 'Enquadre os litros e o valor' : 'Enquadre o odômetro no painel'}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center justify-center pb-4">
+          <div className="flex items-center justify-center pb-4 pt-1">
             <button
               type="button"
               onClick={snapLiveBrowserPhoto}
-              className="px-8 py-4 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-black text-sm uppercase tracking-wider shadow-xl flex items-center gap-2 cursor-pointer"
+              className="px-8 py-4 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-black text-sm uppercase tracking-wider shadow-xl shadow-amber-500/30 flex items-center gap-2.5 cursor-pointer transition-all"
             >
-              <Camera size={20} />
-              <span>Capturar Foto Agora</span>
+              <Camera size={22} />
+              <span>Tirar Foto Agora</span>
             </button>
           </div>
         </div>
@@ -911,7 +916,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                     </div>
                   )}
 
-                  {/* 1. FOTO DA BOMBA DE COMBUSTÍVEL */}
+                  {/* 1. FOTO DO VISOR DA BOMBA */}
                   <div className="space-y-2">
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200">
                       1. Foto do Visor da Bomba *
@@ -930,66 +935,36 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                           className="w-full h-52 object-cover"
                         />
                         <div className="absolute top-2 right-2 flex gap-1.5">
-                          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-black/75 hover:bg-black text-white text-xs font-bold rounded-xl backdrop-blur-md shadow cursor-pointer transition-colors">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              className="sr-only"
-                              onChange={handleCapturePumpPhoto}
-                            />
-                            <RotateCcw size={14} /> Tirar Outra
-                          </label>
+                          <button
+                            type="button"
+                            onClick={() => openLiveBrowserCamera('pump')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/75 hover:bg-black text-white text-xs font-bold rounded-xl backdrop-blur-md shadow cursor-pointer transition-colors"
+                          >
+                            <RotateCcw size={14} /> Tirar Outra Foto
+                          </button>
                         </div>
                         <div className="absolute bottom-2 left-2 bg-emerald-600/90 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1">
                           <Check size={12} /> Visor da Bomba Registrado
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <label className="w-full py-5 px-4 border-2 border-dashed border-amber-400 dark:border-amber-600 hover:border-amber-500 rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-amber-100/50 active:scale-[0.98] cursor-pointer group">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            className="sr-only"
-                            onChange={handleCapturePumpPhoto}
-                          />
-                          <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform">
-                            <Camera size={24} />
-                          </div>
-                          <div>
-                            <span className="text-xs font-black uppercase text-amber-900 dark:text-amber-200 block">
-                              Abrir Câmera e Fotografar Bomba
-                            </span>
-                            <span className="text-[10px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5">
-                              Mostre os litros abastecidos e o valor no visor
-                            </span>
-                          </div>
-                        </label>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openLiveBrowserCamera('pump')}
-                            className="py-2 px-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-white dark:bg-neutral-800 text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center justify-center gap-1.5 hover:bg-amber-50 cursor-pointer"
-                          >
-                            <Camera size={13} />
-                            <span>Câmera na Tela</span>
-                          </button>
-
-                          <label className="py-2 px-3 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-[11px] font-bold text-slate-700 dark:text-neutral-300 flex items-center justify-center gap-1.5 hover:bg-slate-50 cursor-pointer">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={handleCapturePumpPhoto}
-                            />
-                            <ImageIcon size={13} />
-                            <span>Escolher Foto</span>
-                          </label>
+                      <button
+                        type="button"
+                        onClick={() => openLiveBrowserCamera('pump')}
+                        className="w-full py-6 px-4 border-2 border-dashed border-amber-400 dark:border-amber-600 hover:border-amber-500 rounded-3xl bg-amber-50/60 dark:bg-amber-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-amber-100/50 active:scale-[0.98] cursor-pointer group shadow-sm"
+                      >
+                        <div className="w-13 h-13 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-105 transition-transform">
+                          <Camera size={26} />
                         </div>
-                      </div>
+                        <div>
+                          <span className="text-xs font-black uppercase text-amber-900 dark:text-amber-200 block">
+                            Abrir Câmera na Tela
+                          </span>
+                          <span className="text-[11px] text-amber-700/80 dark:text-amber-400/80 block mt-0.5 font-medium">
+                            Toque para fotografar os litros e o valor no visor da bomba
+                          </span>
+                        </div>
+                      </button>
                     )}
                   </div>
 
@@ -1012,66 +987,36 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                           className="w-full h-52 object-cover"
                         />
                         <div className="absolute top-2 right-2 flex gap-1.5">
-                          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-black/75 hover:bg-black text-white text-xs font-bold rounded-xl backdrop-blur-md shadow cursor-pointer transition-colors">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              capture="environment"
-                              className="sr-only"
-                              onChange={handleCaptureOdometerPhoto}
-                            />
-                            <RotateCcw size={14} /> Tirar Outra
-                          </label>
+                          <button
+                            type="button"
+                            onClick={() => openLiveBrowserCamera('odometer')}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-black/75 hover:bg-black text-white text-xs font-bold rounded-xl backdrop-blur-md shadow cursor-pointer transition-colors"
+                          >
+                            <RotateCcw size={14} /> Tirar Outra Foto
+                          </button>
                         </div>
                         <div className="absolute bottom-2 left-2 bg-emerald-600/90 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1">
                           <Check size={12} /> Painel do Veículo Registrado
                         </div>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <label className="w-full py-5 px-4 border-2 border-dashed border-sky-400 dark:border-sky-600 hover:border-sky-500 rounded-3xl bg-sky-50/60 dark:bg-sky-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-sky-100/50 active:scale-[0.98] cursor-pointer group">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            capture="environment"
-                            className="sr-only"
-                            onChange={handleCaptureOdometerPhoto}
-                          />
-                          <div className="w-12 h-12 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/30 group-hover:scale-105 transition-transform">
-                            <Gauge size={24} />
-                          </div>
-                          <div>
-                            <span className="text-xs font-black uppercase text-sky-900 dark:text-sky-200 block">
-                              Abrir Câmera e Fotografar Painel
-                            </span>
-                            <span className="text-[10px] text-sky-700/80 dark:text-sky-400/80 block mt-0.5">
-                              Mostre a leitura atual visível no painel do veículo
-                            </span>
-                          </div>
-                        </label>
-
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openLiveBrowserCamera('odometer')}
-                            className="py-2 px-3 rounded-xl border border-sky-300 dark:border-sky-800 bg-white dark:bg-neutral-800 text-[11px] font-bold text-sky-800 dark:text-sky-300 flex items-center justify-center gap-1.5 hover:bg-sky-50 cursor-pointer"
-                          >
-                            <Camera size={13} />
-                            <span>Câmera na Tela</span>
-                          </button>
-
-                          <label className="py-2 px-3 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-[11px] font-bold text-slate-700 dark:text-neutral-300 flex items-center justify-center gap-1.5 hover:bg-slate-50 cursor-pointer">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              className="sr-only"
-                              onChange={handleCaptureOdometerPhoto}
-                            />
-                            <ImageIcon size={13} />
-                            <span>Escolher Foto</span>
-                          </label>
+                      <button
+                        type="button"
+                        onClick={() => openLiveBrowserCamera('odometer')}
+                        className="w-full py-6 px-4 border-2 border-dashed border-sky-400 dark:border-sky-600 hover:border-sky-500 rounded-3xl bg-sky-50/60 dark:bg-sky-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-sky-100/50 active:scale-[0.98] cursor-pointer group shadow-sm"
+                      >
+                        <div className="w-13 h-13 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/30 group-hover:scale-105 transition-transform">
+                          <Gauge size={26} />
                         </div>
-                      </div>
+                        <div>
+                          <span className="text-xs font-black uppercase text-sky-900 dark:text-sky-200 block">
+                            Abrir Câmera na Tela
+                          </span>
+                          <span className="text-[11px] text-sky-700/80 dark:text-sky-400/80 block mt-0.5 font-medium">
+                            Toque para fotografar a leitura atual visível no painel ({metricUnit})
+                          </span>
+                        </div>
+                      </button>
                     )}
                   </div>
 
