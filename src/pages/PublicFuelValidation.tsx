@@ -10,7 +10,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Fuel, Camera, CheckCircle2, RefreshCw,
   Car, User, Gauge, ShieldCheck, Check, RotateCcw, AlertCircle,
-  Sun, Moon, Search, Image as ImageIcon, X
+  Sun, Moon, Search, Image as ImageIcon, X, Edit3
 } from 'lucide-react';
 import {
   TwoWayFuelOrder,
@@ -73,6 +73,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
   const [loading, setLoading] = useState(false);
   const [order, setOrder] = useState<TwoWayFuelOrder | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
 
   // Campos do Formulário do Motorista
   const [driverName, setDriverName] = useState('');
@@ -185,6 +186,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     setLoading(true);
     setErrorMsg(null);
     setSuccessResult(null);
+    setIsEditing(false);
 
     try {
       const result = await getFuelAuthorizationByNumber(clean);
@@ -358,21 +360,40 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     }, 'image/jpeg', 0.85);
   };
 
+  const handleStartEditing = () => {
+    if (!order) return;
+    setDriverName(order.driver_name || '');
+    setVehiclePlate(order.vehicle?.plate || '');
+    setCurrentKmFormatted(order.current_odometer ? formatThousands(order.current_odometer) : '');
+    setLitersSupplied(order.liters_supplied ? String(order.liters_supplied) : '');
+    setPumpPhotoPreview(order.pump_photo_url || null);
+    setOdometerPhotoPreview(order.odometer_photo_url || null);
+    setPumpPhoto(null);
+    setOdometerPhoto(null);
+    setIsEditing(true);
+  };
+
   // Envio final para o Gestor de Frotas
   const handleSubmitSupply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!order) return;
 
     // 1. Validação da Foto da Bomba
-    const effectivePumpFile = pumpPhoto || (pumpPhotoPreview ? dataUrlToJpegFile(pumpPhotoPreview, 'bomba.jpg') : null);
-    if (!effectivePumpFile && !order.pump_photo_url) {
+    let effectivePumpFile: File | null = pumpPhoto;
+    if (!effectivePumpFile && pumpPhotoPreview && pumpPhotoPreview.startsWith('data:')) {
+      effectivePumpFile = dataUrlToJpegFile(pumpPhotoPreview, 'bomba.jpg');
+    }
+    if (!effectivePumpFile && !order.pump_photo_url && !pumpPhotoPreview) {
       showToast('A foto do visor da bomba de combustível é obrigatória!', 'warning');
       return;
     }
 
     // 2. Validação da Foto do Odômetro
-    const effectiveOdometerFile = odometerPhoto || (odometerPhotoPreview ? dataUrlToJpegFile(odometerPhotoPreview, 'odometro.jpg') : null);
-    if (!effectiveOdometerFile && !order.odometer_photo_url) {
+    let effectiveOdometerFile: File | null = odometerPhoto;
+    if (!effectiveOdometerFile && odometerPhotoPreview && odometerPhotoPreview.startsWith('data:')) {
+      effectiveOdometerFile = dataUrlToJpegFile(odometerPhotoPreview, 'odometro.jpg');
+    }
+    if (!effectiveOdometerFile && !order.odometer_photo_url && !odometerPhotoPreview) {
       showToast('A foto do painel/odômetro do veículo é obrigatória!', 'warning');
       return;
     }
@@ -413,12 +434,16 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       if (effectivePumpFile) {
         setSubmitStep('Enviando foto da bomba...');
         uploadedPumpUrl = await uploadFuelDocumentPhoto(effectivePumpFile, 'pumps');
+      } else if (pumpPhotoPreview && pumpPhotoPreview.startsWith('http')) {
+        uploadedPumpUrl = pumpPhotoPreview;
       }
 
       let uploadedOdometerUrl = order.odometer_photo_url;
       if (effectiveOdometerFile) {
         setSubmitStep('Enviando foto do odômetro...');
         uploadedOdometerUrl = await uploadFuelDocumentPhoto(effectiveOdometerFile, 'odometers');
+      } else if (odometerPhotoPreview && odometerPhotoPreview.startsWith('http')) {
+        uploadedOdometerUrl = odometerPhotoPreview;
       }
 
       setSubmitStep('Registrando abastecimento no painel do gestor...');
@@ -431,13 +456,14 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         vehicle_plate: vehiclePlate.trim().toUpperCase()
       });
 
+      setIsEditing(false);
       try {
         sessionStorage.removeItem(`${DRAFT_PREFIX}${order.order_number}`);
       } catch {}
 
       setOrder(result.order);
       setSuccessResult(result);
-      showToast('Abastecimento e fotos enviados com sucesso! O gestor de frotas foi notificado.', 'success');
+      showToast(isEditing ? 'Abastecimento corrigido e salvo com sucesso!' : 'Abastecimento e fotos enviados com sucesso! O gestor de frotas foi notificado.', 'success');
     } catch (err: unknown) {
       console.error('Erro ao registrar abastecimento:', err);
       const message = err instanceof Error ? err.message : 'Falha ao transmitir as fotos e dados.';
@@ -716,23 +742,29 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
             <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-slate-200 dark:border-neutral-800 shadow-sm overflow-hidden">
               {/* STATUS BAR */}
               <div className={`p-4 flex items-center justify-between ${
-                order.status === 'abastecido' || order.status === 'auditado'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-amber-500 text-white'
+                isEditing
+                  ? 'bg-blue-600 text-white'
+                  : order.status === 'abastecido' || order.status === 'auditado'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-amber-500 text-white'
               }`}>
                 <div className="flex items-center gap-2">
-                  {order.status === 'abastecido' || order.status === 'auditado' ? (
+                  {isEditing ? (
+                    <Edit3 size={18} />
+                  ) : order.status === 'abastecido' || order.status === 'auditado' ? (
                     <CheckCircle2 size={18} />
                   ) : (
                     <Fuel size={18} />
                   )}
                   <div>
                     <span className="text-[10px] font-black uppercase tracking-wider block leading-tight">
-                      {order.status === 'abastecido' || order.status === 'auditado'
-                        ? 'Abastecimento Concluído'
-                        : order.supply_mode === 'encher_tanque' || order.is_full_tank_order
-                          ? 'Autorização Top-Off (Encher Tanque)'
-                          : 'Autorização Válida para Abastecimento'}
+                      {isEditing
+                        ? 'Modo de Edição / Correção'
+                        : order.status === 'abastecido' || order.status === 'auditado'
+                          ? 'Abastecimento Concluído'
+                          : order.supply_mode === 'encher_tanque' || order.is_full_tank_order
+                            ? 'Autorização Top-Off (Encher Tanque)'
+                            : 'Autorização Válida para Abastecimento'}
                     </span>
                     <span className="text-xs font-mono font-bold">
                       {order.order_number}
@@ -763,7 +795,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
               </div>
 
               {/* SE JÁ ESTIVER ABASTECIDO ANTERIORMENTE */}
-              {(order.status === 'abastecido' || order.status === 'auditado') ? (
+              {((order.status === 'abastecido' || order.status === 'auditado') && !isEditing) ? (
                 <div className="p-6 text-center space-y-4">
                   <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
                     <CheckCircle2 size={32} />
@@ -825,13 +857,23 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                     )}
                   </div>
 
-                  <div className="pt-2">
+                  <div className="pt-2 space-y-2">
+                    {order.status !== 'auditado' && (
+                      <button
+                        type="button"
+                        onClick={handleStartEditing}
+                        className="w-full inline-flex items-center justify-center gap-2 py-3 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white font-bold text-xs uppercase rounded-xl transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+                      >
+                        <Edit3 size={16} /> Corrigir Dados / Editar Abastecimento
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => {
                         setOrder(null);
                         setSearchCode('');
                         setErrorMsg(null);
+                        setIsEditing(false);
                         window.history.pushState({}, '', '/validar-abastecimento');
                       }}
                       className="w-full inline-flex items-center justify-center gap-2 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-900 text-white font-bold text-xs uppercase rounded-xl transition-all shadow-sm cursor-pointer"
@@ -843,12 +885,31 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
               ) : (
                 /* FORMULÁRIO DO MOTORISTA NA BOMBA (SEM EXIGÊNCIA DE NOTA FISCAL) */
                 <form onSubmit={handleSubmitSupply} className="p-5 space-y-5">
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-2.5">
-                    <ShieldCheck className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
-                    <p className="text-xs text-amber-900 dark:text-amber-200 leading-snug">
-                      Fotografe apenas o <strong>visor da bomba</strong> e o <strong>painel do veículo</strong>, e informe a leitura e os litros. <strong>Não é necessário anexar nota fiscal.</strong>
-                    </p>
-                  </div>
+                  {isEditing ? (
+                    <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 rounded-2xl flex items-center justify-between gap-2.5">
+                      <div className="flex items-center gap-2 text-xs text-blue-900 dark:text-blue-200">
+                        <Edit3 size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                        <div>
+                          <strong className="block">Modo de Correção de Abastecimento</strong>
+                          <span className="text-[11px] opacity-80">Ajuste os dados preenchidos incorretamente ou repita as fotos.</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(false)}
+                        className="text-xs font-bold text-blue-700 dark:text-blue-300 hover:underline px-2 py-1 cursor-pointer shrink-0"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 rounded-2xl flex items-start gap-2.5">
+                      <ShieldCheck className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={18} />
+                      <p className="text-xs text-amber-900 dark:text-amber-200 leading-snug">
+                        Fotografe apenas o <strong>visor da bomba</strong> e o <strong>painel do veículo</strong>, e informe a leitura e os litros. <strong>Não é necessário anexar nota fiscal.</strong>
+                      </p>
+                    </div>
+                  )}
 
                   {/* 1. FOTO DA BOMBA DE COMBUSTÍVEL */}
                   <div className="space-y-2">
@@ -1111,6 +1172,11 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                         <>
                           <RefreshCw className="animate-spin" size={20} />
                           <span>{submitStep || 'Transmitindo ao Gestor...'}</span>
+                        </>
+                      ) : isEditing ? (
+                        <>
+                          <Check size={20} />
+                          <span>Salvar Correções do Abastecimento</span>
                         </>
                       ) : (
                         <>

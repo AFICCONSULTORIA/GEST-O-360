@@ -599,9 +599,9 @@ export async function validateAndCompleteFuelOrder(
     throw new Error(`Ordem de fornecimento nº "${orderId}" não foi encontrada no sistema.`);
   }
 
-  // Se já foi finalizada
-  if (order.status === 'abastecido' || order.status === 'auditado') {
-    throw new Error(`Esta autorização já foi liquidada anteriormente em ${new Date(order.supplied_at || order.created_at).toLocaleString('pt-BR')}.`);
+  // Se já foi homologada pelo Controle Interno
+  if (order.status === 'auditado') {
+    throw new Error(`Esta autorização já foi homologada pelo Controle Interno em ${new Date(order.supplied_at || order.created_at).toLocaleString('pt-BR')} e não pode mais ser alterada.`);
   }
 
   // 2. Buscar veículo (com fallback para supabaseAnon e fallback seguro para nunca perder as fotos)
