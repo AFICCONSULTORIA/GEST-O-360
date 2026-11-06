@@ -135,6 +135,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [driverSearchTerm, setDriverSearchTerm] = useState('');
   const [stationSearchTerm, setStationSearchTerm] = useState('');
 
+  // Paginação (30 itens por página)
+  const ITEMS_PER_PAGE = 30;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Tabela Dinâmica de Preços Licitados & Reequilíbrio Econômico-Financeiro
   const [biddedPrices, setBiddedPrices] = useState<BiddedPricesMap>(() => {
     return getBiddedFuelPrices(currentUser?.institution_id);
@@ -779,23 +783,223 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     };
   }, [orders]);
 
-  // Filtragem de ordens
+  // Filtragem ampla e resiliente de ordens (busca em todos os campos)
   const filteredOrders = useMemo(() => {
+    const raw = searchTerm.trim().toLowerCase();
+    const searchTerms = raw.split(/\s+/).filter(Boolean);
+
     return orders.filter(order => {
+      if (!order) return false;
       const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
-      const matchesSearch =
-        order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.driver_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (v?.plate && v.plate.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (v?.model && v.model.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (order.station_name && order.station_name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const matchesDept = departmentFilter === 'all' || v?.department === departmentFilter;
+      // Filtro de Secretaria
+      const matchesDept = departmentFilter === 'all' || (v?.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase();
+      if (!matchesDept) return false;
+
+      // Filtro de Status
       const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      if (!matchesStatus) return false;
 
-      return matchesSearch && matchesDept && matchesStatus;
+      // Se não digitou busca, passa direto
+      if (searchTerms.length === 0) return true;
+
+      // Campos textuais para busca resiliente
+      const orderNum = (order.order_number || '').toLowerCase();
+      const cleanOrderNum = orderNum.replace(/[^a-z0-9]/g, '');
+
+      const driver = (order.driver_name || '').toLowerCase();
+      const driverDoc = (order.driver_document || '').replace(/\D/g, '');
+
+      const plate = (v?.plate || '').toLowerCase();
+      const cleanPlate = plate.replace(/[^a-z0-9]/g, '');
+
+      const model = (v?.model || '').toLowerCase();
+      const prefix = (v?.prefix_code || '').toLowerCase();
+      const station = (order.station_name || '').toLowerCase();
+      const voucher = String((order as any).voucher_number || (order as any).custom_order_number || '').toLowerCase();
+      const cleanVoucher = voucher.replace(/[^a-z0-9]/g, '');
+      const invoice = (order.invoice_number || '').toLowerCase();
+      const fuel = (order.fuel_type || '').toLowerCase().replace(/_/g, ' ');
+      const notes = String((order as any).notes || '').toLowerCase();
+      const dept = (v?.department || '').toLowerCase();
+      const authBy = (order.authorized_by_name || '').toLowerCase();
+
+      // Cada termo digitado deve encontrar correspondência
+      return searchTerms.every(term => {
+        const cleanTerm = term.replace(/[^a-z0-9]/g, '');
+        return (
+          orderNum.includes(term) ||
+          (cleanTerm && cleanOrderNum.includes(cleanTerm)) ||
+          driver.includes(term) ||
+          (cleanTerm && driverDoc.includes(cleanTerm)) ||
+          plate.includes(term) ||
+          (cleanTerm && cleanPlate.includes(cleanTerm)) ||
+          model.includes(term) ||
+          prefix.includes(term) ||
+          station.includes(term) ||
+          voucher.includes(term) ||
+          (cleanTerm && cleanVoucher.includes(cleanTerm)) ||
+          invoice.includes(term) ||
+          fuel.includes(term) ||
+          notes.includes(term) ||
+          dept.includes(term) ||
+          authBy.includes(term)
+        );
+      });
     });
   }, [orders, vehicles, searchTerm, departmentFilter, statusFilter]);
+
+  // Filtragem ampla de veículos para a aba de Veículos (utiliza a barra de pesquisa principal)
+  const filteredVehiclesList = useMemo(() => {
+    const raw = searchTerm.trim().toLowerCase();
+    const searchTerms = raw.split(/\s+/).filter(Boolean);
+
+    return vehicles.filter(v => {
+      if (!v) return false;
+
+      // Filtro de Secretaria
+      const matchesDept = departmentFilter === 'all' || (v.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase();
+      if (!matchesDept) return false;
+
+      // Filtro de Status
+      const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
+      if (!matchesStatus) return false;
+
+      if (searchTerms.length === 0) return true;
+
+      const plate = (v.plate || '').toLowerCase();
+      const cleanPlate = plate.replace(/[^a-z0-9]/g, '');
+      const model = (v.model || '').toLowerCase();
+      const prefix = (v.prefix_code || '').toLowerCase();
+      const dept = (v.department || '').toLowerCase();
+      const fuel = (v.fuel_type || '').toLowerCase().replace(/_/g, ' ');
+      const chassis = (v.chassis_number || '').toLowerCase();
+      const renavam = (v.renavam || '').toLowerCase();
+
+      return searchTerms.every(term => {
+        const cleanT = term.replace(/[^a-z0-9]/g, '');
+        return (
+          plate.includes(term) ||
+          (cleanT && cleanPlate.includes(cleanT)) ||
+          model.includes(term) ||
+          prefix.includes(term) ||
+          dept.includes(term) ||
+          fuel.includes(term) ||
+          chassis.includes(term) ||
+          renavam.includes(term)
+        );
+      });
+    });
+  }, [vehicles, searchTerm, departmentFilter, statusFilter]);
+
+  // Reseta para página 1 ao alterar filtros de busca ou aba
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, departmentFilter, statusFilter, activeTab]);
+
+  // Paginação para Ordens (Aba 1 e Aba 3 - 30 itens por página)
+  const totalPagesOrders = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE) || 1;
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredOrders.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredOrders, currentPage]);
+
+  // Paginação para Veículos (Aba 4 - 30 itens por página)
+  const totalPagesVehicles = Math.ceil(filteredVehiclesList.length / ITEMS_PER_PAGE) || 1;
+  const paginatedVehicles = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredVehiclesList.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredVehiclesList, currentPage]);
+
+  // Paginação para Execução / Lançamento de Canhotos (Aba 2 - 30 itens por página)
+  const pendingExecutionOrders = useMemo(() => {
+    return filteredOrders.filter(o => o.status === 'autorizado' || o.status === 'autorizado_pendente');
+  }, [filteredOrders]);
+  const totalPagesExecution = Math.ceil(pendingExecutionOrders.length / ITEMS_PER_PAGE) || 1;
+  const paginatedExecutionOrders = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return pendingExecutionOrders.slice(start, start + ITEMS_PER_PAGE);
+  }, [pendingExecutionOrders, currentPage]);
+
+  // Paginação para Motoristas (Aba 5 - 30 itens por página)
+  const totalPagesDrivers = Math.ceil(filteredDrivers.length / ITEMS_PER_PAGE) || 1;
+  const paginatedDrivers = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredDrivers.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredDrivers, currentPage]);
+
+  // Paginação para Postos (Aba 6 - 30 itens por página)
+  const totalPagesStations = Math.ceil(filteredStations.length / ITEMS_PER_PAGE) || 1;
+  const paginatedStations = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredStations.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredStations, currentPage]);
+
+  // Componente de navegação e paginação de 30 itens
+  const renderPagination = (
+    current: number,
+    total: number,
+    totalItems: number,
+    onPageChange: (page: number) => void
+  ) => {
+    if (totalItems <= ITEMS_PER_PAGE) return null;
+
+    const startItem = (current - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(current * ITEMS_PER_PAGE, totalItems);
+
+    return (
+      <div className="px-4 py-3 border-t border-neutral-100 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-800/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div className="text-neutral-500 dark:text-neutral-400 font-medium">
+          Mostrando <strong className="text-neutral-800 dark:text-white font-bold">{startItem}</strong> a{' '}
+          <strong className="text-neutral-800 dark:text-white font-bold">{endItem}</strong> de{' '}
+          <strong className="text-neutral-800 dark:text-white font-bold">{totalItems}</strong> registros
+          {' '}(30 por página)
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onPageChange(1)}
+            disabled={current === 1}
+            className="px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+            title="Primeira página"
+          >
+            «
+          </button>
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.max(1, current - 1))}
+            disabled={current === 1}
+            className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+          >
+            Anterior
+          </button>
+
+          <span className="px-3 py-1.5 font-bold text-neutral-900 dark:text-white bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-sm">
+            Página {current} de {total}
+          </span>
+
+          <button
+            type="button"
+            onClick={() => onPageChange(Math.min(total, current + 1))}
+            disabled={current === total}
+            className="px-3 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+          >
+            Próxima
+          </button>
+          <button
+            type="button"
+            onClick={() => onPageChange(total)}
+            disabled={current === total}
+            className="px-2.5 py-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 font-bold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
+            title="Última página"
+          >
+            »
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   // Abertura do modal de execução com pré-preenchimento
   const handleOpenExecution = (order: FuelSupplyOrder) => {
@@ -1393,8 +1597,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               placeholder="Buscar por placa, modelo, ordem ou motorista..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white"
+              className="w-full pl-9 pr-8 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white"
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-full cursor-pointer"
+                title="Limpar pesquisa"
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
 
           <select
@@ -1414,10 +1628,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer"
           >
             <option value="all">Todos os Status</option>
-            <option value="autorizado">Autorizado (Aguardando)</option>
-            <option value="abastecido">Abastecido (Pendente Auditoria)</option>
-            <option value="auditado">Auditado & Conforme</option>
-            <option value="glosado">Glosado (Bloqueado)</option>
+            {activeTab === 'vehicles' ? (
+              <>
+                <option value="ativo">Ativo</option>
+                <option value="manutencao">Em Manutenção</option>
+                <option value="inativo">Inativo</option>
+                <option value="baixado">Baixado</option>
+              </>
+            ) : (
+              <>
+                <option value="autorizado">Autorizado (Aguardando)</option>
+                <option value="abastecido">Abastecido (Pendente Auditoria)</option>
+                <option value="auditado">Auditado & Conforme</option>
+                <option value="glosado">Glosado (Bloqueado)</option>
+              </>
+            )}
           </select>
 
           <button
@@ -1556,7 +1781,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </td>
                   </tr>
                 ) : (
-                  filteredOrders.map(order => {
+                  paginatedOrders.map(order => {
                     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
                     return (
                       <tr key={order.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
@@ -1761,6 +1986,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </tbody>
             </table>
           </div>
+
+          {/* Paginação de 30 itens por página */}
+          {renderPagination(currentPage, totalPagesOrders, filteredOrders.length, setCurrentPage)}
         </div>
       )}
 
@@ -1776,14 +2004,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orders.filter(o => o.status === 'autorizado' || o.status === 'autorizado_pendente').length === 0 ? (
+            {pendingExecutionOrders.length === 0 ? (
               <div className="col-span-full bg-white dark:bg-neutral-900 p-12 text-center rounded-3xl border border-neutral-100 dark:border-neutral-800 text-neutral-400">
                 <CheckCircle2 size={36} className="mx-auto text-emerald-500 mb-2 opacity-80" />
-                <p className="font-bold text-neutral-800 dark:text-white">Todas as ordens emitidas já foram liquidadas ou lançadas!</p>
-                <p className="text-xs mt-1">Nenhuma autorização pendente de abastecimento no momento.</p>
+                <p className="font-bold text-neutral-800 dark:text-white">
+                  {orders.length === 0 ? 'Nenhuma ordem emitida ainda' : 'Nenhuma ordem pendente de lançamento encontrada'}
+                </p>
+                <p className="text-xs mt-1">
+                  {searchTerm.trim() ? 'Tente ajustar os termos da pesquisa.' : 'Todas as ordens emitidas já foram liquidadas ou lançadas!'}
+                </p>
               </div>
             ) : (
-              orders.filter(o => o.status === 'autorizado' || o.status === 'autorizado_pendente').map(order => {
+              paginatedExecutionOrders.map(order => {
                 const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
                 return (
                   <div key={order.id} className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col justify-between">
@@ -1859,6 +2091,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               })
             )}
           </div>
+
+          {/* Paginação de 30 itens por página */}
+          {renderPagination(currentPage, totalPagesExecution, pendingExecutionOrders.length, setCurrentPage)}
         </div>
       )}
 
@@ -1908,7 +2143,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </td>
                     </tr>
                   ) : (
-                    filteredOrders.map(order => {
+                    paginatedOrders.map(order => {
                       const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
                       const deltaOdo = order.current_odometer && order.previous_odometer 
                         ? order.current_odometer - order.previous_odometer 
@@ -2139,6 +2374,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 </tbody>
               </table>
             </div>
+
+            {/* Paginação de 30 itens por página */}
+            {renderPagination(currentPage, totalPagesOrders, filteredOrders.length, setCurrentPage)}
           </div>
         </div>
       )}
@@ -2148,9 +2386,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
             <div>
-              <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider">
-                Cadastro Técnico de Veículos e Máquinas Pesadas
-              </h4>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider">
+                  Cadastro Técnico de Veículos e Máquinas Pesadas
+                </h4>
+                <span className="text-xs font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-full">
+                  {filteredVehiclesList.length} {filteredVehiclesList.length === 1 ? 'veículo' : 'veículos'}
+                </span>
+              </div>
               <p className="text-neutral-400 text-xs">Capacidades de tanque, parâmetros de consumo e controle de odômetro</p>
             </div>
             <div className="flex items-center gap-2">
@@ -2189,13 +2432,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
-                {vehicles.length === 0 ? (
+                {filteredVehiclesList.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="text-center py-12 text-neutral-400">
                       <Truck size={36} className="mx-auto text-neutral-400 mb-2 opacity-60" />
-                      <p className="font-bold text-neutral-800 dark:text-white">Nenhum veículo cadastrado na frota</p>
+                      <p className="font-bold text-neutral-800 dark:text-white">
+                        {vehicles.length === 0 ? 'Nenhum veículo cadastrado na frota' : 'Nenhum veículo encontrado para esta pesquisa'}
+                      </p>
                       <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
-                        A frota municipal está limpa. Clique em <strong>"Cadastrar Veículo"</strong> para adicionar os veículos da frota ou sincronize do patrimônio municipal.
+                        {vehicles.length === 0
+                          ? 'A frota municipal está limpa. Clique em "Cadastrar Veículo" para adicionar os veículos da frota ou sincronize do patrimônio municipal.'
+                          : 'Tente alterar os termos da pesquisa ou os filtros de secretaria/status acima.'}
                       </p>
                       <div className="mt-4 flex items-center justify-center gap-2">
                         <button
@@ -2214,7 +2461,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </td>
                   </tr>
                 ) : (
-                  vehicles.map(vehicle => (
+                  paginatedVehicles.map(vehicle => (
                     <tr key={vehicle.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
                       <td className="px-4 py-3.5">
                         <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
@@ -2297,6 +2544,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </tbody>
             </table>
           </div>
+
+          {/* Paginação de 30 itens por página */}
+          {renderPagination(currentPage, totalPagesVehicles, filteredVehiclesList.length, setCurrentPage)}
         </div>
       )}
 
@@ -2399,7 +2649,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </td>
                   </tr>
                 ) : (
-                  filteredDrivers.map(driver => (
+                  paginatedDrivers.map(driver => (
                     <tr key={driver.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
                       <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
                         {driver.full_name}
@@ -2459,6 +2709,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </tbody>
             </table>
           </div>
+
+          {/* Paginação de 30 itens por página */}
+          {renderPagination(currentPage, totalPagesDrivers, filteredDrivers.length, setCurrentPage)}
         </div>
       )}
 
@@ -2553,7 +2806,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </td>
                   </tr>
                 ) : (
-                  filteredStations.map(station => (
+                  paginatedStations.map(station => (
                     <tr key={station.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
                       <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
                         {station.name}
@@ -2605,6 +2858,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </tbody>
             </table>
           </div>
+
+          {/* Paginação de 30 itens por página */}
+          {renderPagination(currentPage, totalPagesStations, filteredStations.length, setCurrentPage)}
         </div>
       )}
 
