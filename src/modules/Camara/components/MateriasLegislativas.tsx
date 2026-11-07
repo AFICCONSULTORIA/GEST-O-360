@@ -3,11 +3,12 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   FileText, Plus, Search, Filter, Eye, Edit2, 
   Calendar, User, Clock, CheckCircle2, AlertTriangle, 
-  Layers, Tag, Printer, Sparkles, ChevronRight
+  Layers, Tag, Printer, Sparkles, ChevronRight, Scale
 } from 'lucide-react';
 import { MateriaLegislativa, TipoMateria, StatusMateria, Comissao, Vereador } from '../types';
 import { MateriaDetailModal } from './MateriaDetailModal';
 import { MateriaFormModal } from './MateriaFormModal';
+import { showToast } from '../../../components/ui/Toast';
 
 interface MateriasLegislativasProps {
   materias: MateriaLegislativa[];
@@ -293,6 +294,29 @@ export const MateriasLegislativas: React.FC<MateriasLegislativasProps> = ({
                 >
                   <Eye size={14} /> Detalhes & Timeline
                 </button>
+
+                {(materia.status === 'Sancionado' || materia.status === 'Promulgado') && (
+                  <button
+                    onClick={() => {
+                      showToast(`Matéria ${materia.numero} pronta para registro oficial no Banco de Leis.`, 'success');
+                      window.dispatchEvent(new CustomEvent('gestao360:open-law-form', {
+                        detail: {
+                          numero: materia.numero,
+                          ementa: materia.ementa,
+                          texto_integral: materia.texto_integral,
+                          autor_nome: materia.autor_nome,
+                          tipo: materia.tipo
+                        }
+                      }));
+                    }}
+                    className="px-3 py-2 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-200 dark:border-emerald-800 shadow-xs"
+                    title="Publicar esta matéria aprovada como Lei Oficial no Banco de Leis da Prefeitura"
+                  >
+                    <Scale size={14} className="text-emerald-600 dark:text-emerald-400" />
+                    <span className="hidden lg:inline">Publicar no Banco de Leis</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     setMateriaToEdit(materia);

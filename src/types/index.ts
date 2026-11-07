@@ -29,6 +29,8 @@ export type LawCategory =
   | 'Urbanismo e Patrimônio' 
   | 'Geral';
 
+export type LawOriginPower = 'executivo' | 'legislativo' | 'conjunto';
+
 export interface MunicipalLaw {
   id: string;
   number: string;
@@ -37,9 +39,19 @@ export interface MunicipalLaw {
   category: LawCategory;
   ementa: string;
   full_text?: string;
+  compiled_text?: string;
+  is_compiled?: boolean;
   publication_date: string;
   status: LawStatus;
   author?: string;
+  origin_power?: LawOriginPower;
+  materia_id?: string;             // Vínculo com a matéria legislativa da Câmara
+  materia_numero?: string;         // Ex: "PL 014/2023"
+  parent_law_id?: string;          // Vínculo se este ato regulamenta uma Lei Mãe (ex: Decreto regulamentador)
+  parent_law_number?: string;      // Ex: "Lei nº 1.420/2023"
+  parent_law_title?: string;
+  revoked_by_id?: string;          // ID da lei que a revogou
+  revoked_by_number?: string;      // Ex: "Lei nº 1.950/2025"
   file_url?: string;
   external_link?: string;
   tags?: string[];

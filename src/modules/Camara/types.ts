@@ -75,6 +75,8 @@ export interface MateriaLegislativa {
   tramitacoes?: Tramitacao[];
   pareceres?: Parecer[];
   votacoes?: Votacao[];
+  promoted_law_id?: string;
+  promoted_law_number?: string;
   institution_id?: string;
 }
 
