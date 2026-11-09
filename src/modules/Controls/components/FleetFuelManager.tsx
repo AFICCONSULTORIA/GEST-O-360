@@ -95,6 +95,7 @@ import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVou
 import { DriverBatchImporter } from './DriverBatchImporter';
 import { BudgetClassificationsModal } from './BudgetClassificationsModal';
 import { LegacyVoucherModal } from './LegacyVoucherModal';
+import { MercosulPlate } from './MercosulPlate';
 import { 
   CONTRACTUAL_BIDDED_PRICES, 
   issueFuelAuthorization,
@@ -2523,10 +2524,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                         {/* Veículo */}
                         <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
-                              {v?.plate || 'SEM PLACA'}
-                            </span>
+                          <div className="flex items-center gap-2.5">
+                            <MercosulPlate plate={v?.plate} size="xs" />
                             <span className="font-semibold text-neutral-800 dark:text-neutral-200">
                               {v?.model || 'Veículo Municipal'}
                             </span>
@@ -2774,9 +2773,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <h4 className="text-sm font-black text-neutral-900 dark:text-white">
                         {v?.model || 'Veículo Municipal'}
                       </h4>
-                      <p className="text-xs text-neutral-500 mb-3">
-                        Placa: <strong className="text-neutral-900 dark:text-white">{v?.plate}</strong> • Prefixo: {v?.prefix_code || '-'}
-                      </p>
+                      <div className="flex items-center gap-2 mb-3">
+                        <MercosulPlate plate={v?.plate} size="xs" />
+                        <span className="text-xs text-neutral-500">
+                          Prefixo: <strong className="text-neutral-700 dark:text-neutral-300">{v?.prefix_code || '-'}</strong>
+                        </span>
+                      </div>
 
                       <div className="space-y-1.5 text-xs text-neutral-600 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-800/50 p-3 rounded-xl mb-4">
                         <div className="flex justify-between">
@@ -2902,10 +2904,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         >
                           {/* Veículo */}
                           <td className="px-4 py-3.5">
-                            <div className="font-mono font-bold text-neutral-900 dark:text-white">
-                              {v?.plate || 'SEM PLACA'}
+                            <div className="mb-1">
+                              <MercosulPlate plate={v?.plate} size="xs" />
                             </div>
-                            <div className="text-[11px] text-neutral-600 dark:text-neutral-300">
+                            <div className="text-[11px] font-bold text-neutral-800 dark:text-neutral-200">
                               {v?.model}
                             </div>
                             <div className="text-[10px] text-neutral-400">
@@ -3214,10 +3216,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 ) : (
                   paginatedVehicles.map(vehicle => (
                     <tr key={vehicle.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
-                      <td className="px-4 py-3.5">
-                        <span className="px-2 py-0.5 rounded font-mono font-bold text-[11px] bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
-                          {vehicle.plate}
-                        </span>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        <MercosulPlate plate={vehicle.plate} size="sm" />
                       </td>
                       <td className="px-4 py-3.5 font-bold text-neutral-700 dark:text-neutral-300">
                         {vehicle.prefix_code || '-'}
@@ -3798,9 +3798,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               }`}
                             >
                               <div className="flex items-center gap-2.5">
-                                <span className="font-mono font-black text-xs px-2 py-1 rounded bg-neutral-900 text-white dark:bg-white dark:text-neutral-950">
-                                  {v.plate}
-                                </span>
+                                <MercosulPlate plate={v.plate} size="xs" />
                                 <div>
                                   <div className="font-bold text-xs text-neutral-900 dark:text-white flex items-center gap-1.5">
                                     <span>{v.model}</span>
@@ -5169,10 +5167,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                   <div className="space-y-2">
                     <div>
-                      <span className="text-neutral-400 block text-[10px] font-bold uppercase">Veículo / Placa</span>
-                      <strong className="text-neutral-900 dark:text-white font-mono text-sm">
-                        {viewingAttachmentOrder.vehicle?.plate || 'SEM PLACA'} {viewingAttachmentOrder.vehicle?.prefix_code ? `(${viewingAttachmentOrder.vehicle.prefix_code})` : ''}
-                      </strong>
+                      <span className="text-neutral-400 block text-[10px] font-bold uppercase mb-1">Veículo / Placa Oficial</span>
+                      <div className="flex items-center gap-2 mb-1">
+                        <MercosulPlate plate={viewingAttachmentOrder.vehicle?.plate} size="sm" />
+                        {viewingAttachmentOrder.vehicle?.prefix_code && (
+                          <span className="text-xs font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-lg">
+                            Prefixo: {viewingAttachmentOrder.vehicle.prefix_code}
+                          </span>
+                        )}
+                      </div>
                       <span className="text-neutral-500 block text-[11px]">{viewingAttachmentOrder.vehicle?.model} • {viewingAttachmentOrder.vehicle?.department}</span>
                     </div>
 
