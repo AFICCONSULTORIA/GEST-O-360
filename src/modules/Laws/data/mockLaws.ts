@@ -2,6 +2,106 @@ import { MunicipalLaw } from '../../../types';
 
 export const INITIAL_MOCK_LAWS: MunicipalLaw[] = [
   {
+    id: 'law_1331_2026',
+    number: '1331/2026',
+    title: 'Abertura de Crédito Adicional Especial por Superávit Financeiro e LDO/2026',
+    type: 'Lei Ordinária',
+    category: 'Finanças e Tributos',
+    publication_date: '2026-01-23',
+    status: 'Em Vigor',
+    author: 'Poder Executivo Municipal (Prefeito Thiago Timo Oliveira)',
+    origin_power: 'executivo',
+    materia_numero: 'Projeto de Lei nº 003/2026 (Câmara Municipal de Torixoréu)',
+    ementa: 'Dispõe sobre a autorização de Abertura de Crédito Adicional Especial por Superávit Financeiro, e LDO/2026, e dá outras providências.',
+    full_text: `AMM-MT | Disponível na edição de 23 de Janeiro de 2026 | Mato Grosso
+
+LEI Nº 1331/ 2026
+23 de Janeiro de 2026
+PREF. TORIXORÉU
+
+"Dispõe sobre a autorização de Abertura de Crédito Adicional Especial por Superávit Financeiro, e LDO/2026, e dá outras providências".
+
+O PREFEITO DO MUNICÍPIO DE TORIXORÉU, ESTADO DE MATO GROSSO, Senhor THIAGO TIMO OLIVEIRA, no uso das atribuições que lhe confere a Constituição Estadual e a Lei Orgânica Municipal, FAZ SABER a toda população do município, que a Câmara Municipal aprovou e ele sanciona a seguinte Lei:
+
+Art. 1º - Fica o Poder Executivo Municipal autorizado a Abertura de Crédito Adicional Especial para criação de ficha orçamentária grupo 2, no valor de R$ 5.681.672,91 (Cinco Milhões, Seiscentos e Oitenta e Um Mil, Seiscentos e Setenta e Dois Reais, e Noventa e Um Centavos) no Orçamento Municipal vigente.
+
+Prefeitura Municipal de Torixoréu
+
+Órgão: 04 Secretaria Municipal de Educação
+Função: 12 Educação
+Subfunção: 361 Ensino Fundamental
+Programa: 5070 – Educação Básica Pública
+Projeto/Atividade: 2061 – Rem. dos Profissionais da Educação Básica Ensino Fundamental FUNDEB 70%
+Natureza da Despesa: 3.1.9.0.00 Aplicações Diretas.....................R$ 89.755,00
+Fonte de Recurso: 2.540.107000
+
+Projeto/Atividade: 2063 – Manutenção e Encargos do FUNDEB - Infantil 30%
+Natureza da Despesa: 3.1.9.0.00 Aplicações Diretas.....................R$ 16.240,00
+Fonte de Recurso: 2.540.0
+
+Órgão: 05 Secretaria Municipal de Viação e Obras
+Função: 26 Transporte
+Subfunção: 782 Transporte Rodoviário
+Programa: 4060 – Malha Viária Rural
+Projeto/Atividade: 1016 – Const. e Reconstrução de Pontes, Bueiros e serviços
+Natureza da Despesa: 4.4.90.51 Obras e Instalações.....................R$ 1.023.688,93
+Fonte de Recurso: 2.706
+
+Órgão: 06 Secretaria Municipal de Saúde
+Função: 10 Saúde
+Subfunção: 301 Atenção Básica
+Programa: 6010 – Atenção Básica
+Projeto/Atividade: 2038 – Manutenção do Piso da Atenção Primária em Saúde
+Natureza da Despesa: 3.3.90.00 Aplicações Diretas.....................R$ 500.000,00
+Fonte de Recurso: 2.600.311000
+
+Natureza da Despesa: 3.3.90.00 Aplicações Diretas.....................R$ 500.000,00
+Fonte de Recurso: 2.600.312000
+
+Função: 10 Saúde
+Subfunção: 302 Assistência Hospitalar e Ambulatorial
+Programa: 6030 – MAC - Média e Alta Complexidade
+Projeto/Atividade: 1067 – Reforma e Ampliação do Hospital Municipal São João Bosco
+Natureza da Despesa: 4.4.90.51 Obras e Instalações.....................R$ 531.205,93
+Fonte de Recurso: 2.632
+
+Projeto/Atividade: 2037 – Manutenção e Encargos com Hospital Municipal São João Bosco
+Natureza da Despesa: 3.3.90.00 Aplicações Diretas.....................R$ 13.884,00
+Fonte de Recurso: 2.600.311000
+
+Órgão: 10 Secretaria Municipal de Assistência Social
+Função: 08 Assistência Social
+Subfunção: 122 Administração Geral
+Programa: 6090 – Gestão do Sistema de Assistência Social
+Projeto/Atividade: XXXX – Reforma Ampliação do Centro de Referência da Assistência Social CRAS
+Natureza da Despesa: 4.4.90.51 Obras e Instalações.....................R$ 54.891,65
+Fonte de Recurso: 2.665
+
+Função: 16 Habitação
+Subfunção: 482 Habitação Urbana
+Programa: 6100 – Morar melhor
+Projeto/Atividade: 1030 – Const. De Unidades Habitacionais c/ Infraestrutura
+Natureza da Despesa: 4.4.90.51 Obras e Instalações.....................R$ 2.724.418,60
+Fonte de Recurso: 2.701
+
+Natureza da Despesa: 4.4.90.51 Obras e Instalações.....................R$ 227.588,80
+Fonte de Recurso: 2.755
+
+Art. 2º - O recurso para cobertura do Crédito Adicional Especial aberto no artigo anterior será por Superavit Financeiro, apurado no Balanço Patrimonial (2025), conforme previsto no, § 1° do art. 43 da Lei Federal nº 4.320, de 17 de março de 1964.
+
+Art. 3º - Fica autorizado à inclusão e atualização destas despesas dos instrumentos de planejamento exigidos pela Lei nº 101/00, (PPA/LDO/LOA).
+
+Art. 4º- A presente lei entrará em vigor na data de sua publicação.
+
+Gabinete do Prefeito Municipal de Torixoréu/MT, 22 de janeiro de 2026.
+
+THIAGO TIMO OLIVEIRA
+Prefeito Municipal`,
+    is_compiled: false,
+    tags: ['Crédito Especial', 'Superávit Financeiro', 'Torixoréu', 'Orçamento 2026', 'Educação', 'Saúde', 'Obras', 'Diário Oficial AMM-MT'],
+    external_link: 'https://amm.diariomunicipal.org/'
+  },
+  {
     id: 'law_1',
     number: '001/1990',
     title: 'Lei Orgânica do Município',

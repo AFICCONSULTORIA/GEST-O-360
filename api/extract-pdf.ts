@@ -33,7 +33,26 @@ export default async function handler(req: any, res: any) {
 
     let prompt = '';
 
-    if (mode === 'table_extractor') {
+    if (mode === 'law_ocr') {
+      prompt = userInstructions || `
+Você é o mais conceituado especialista em técnica legislativa municipal brasileira (LC 95/1998, Lei 4.320/1964 e Diários Oficiais AMM-MT).
+Analise o PDF anexo e faça a transcrição completa e fiel do ato normativo em JSON válido:
+{
+  "numero": "apenas o número (ex: 1331)",
+  "ano": "ano de publicação com 4 dígitos (ex: 2026)",
+  "tipo": "Lei Ordinária" | "Lei Complementar" | "Decreto" | "Portaria" | "Resolução" | "Emenda à LOM" | "Outros",
+  "categoria": "Finanças e Tributos" | "Administração Geral" | "Saúde" | "Educação" | "Meio Ambiente" | "Viação e Obras" | "Servidores e RH" | "Assistência Social" | "Urbanismo e Patrimônio" | "Geral",
+  "status": "Em Vigor",
+  "origem_poder": "executivo" | "legislativo",
+  "data_publicacao": "YYYY-MM-DD",
+  "titulo": "Título descritivo curto sobre o assunto da norma (ex: Abertura de Crédito Adicional Especial por Superávit Financeiro)",
+  "autor": "Nome do signatário (ex: Thiago Timo Oliveira)",
+  "ementa": "Texto completo da ementa sem aspas",
+  "tags": ["tag1", "tag2", "tag3"],
+  "valor_total_credito": "R$ valor se for crédito adicional ou vazio",
+  "texto_integral": "Transcrição integral e fiel de toda a norma com cabeçalho, epígrafe, ementa, preâmbulo, todos os artigos, todas as dotações orçamentárias (Órgão, Função, Subfunção, Programa, Projeto/Atividade, Natureza da Despesa, Fonte de Recurso) e fecho com assinatura."
+}`;
+    } else if (mode === 'table_extractor') {
       const columnsToExtract = (customColumns && Array.isArray(customColumns) && customColumns.length > 0)
         ? customColumns
         : [];
@@ -138,27 +157,46 @@ REGRAS OBRIGATÓRIAS:
     }
 
     const genAI = new GoogleGenAI({ apiKey });
-    const response = await genAI.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            {
-              inlineData: {
-                mimeType: "application/pdf",
-                data: cleanBase64
-              }
-            },
-            {
-              text: prompt
-            }
-          ]
-        }
-      ]
-    });
+    let rawText = '';
+    const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
 
-    const rawText = response.text || '{}';
+    for (const modelName of models) {
+      try {
+        const response = await genAI.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: "application/pdf",
+                    data: cleanBase64
+                  }
+                },
+                {
+                  text: prompt
+                }
+              ]
+            }
+          ],
+          config: {
+            responseMimeType: "application/json",
+            temperature: 0.1
+          }
+        });
+        if (response.text) {
+          rawText = response.text;
+          break;
+        }
+      } catch (e) {
+        console.warn(`Tentativa com ${modelName} falhou em /api/extract-pdf:`, e);
+      }
+    }
+
+    if (!rawText) {
+      throw new Error('Nenhum modelo retornou resposta válida.');
+    }
     let cleanJson = rawText.trim();
     if (cleanJson.startsWith('```json')) {
       cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');

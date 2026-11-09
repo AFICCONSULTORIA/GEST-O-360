@@ -2206,17 +2206,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       </div>
 
       {/* 3. Barra de Ações e Filtros */}
-      <div className="bg-white dark:bg-neutral-900 p-4 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm space-y-3.5">
-        {/* Linha 1: Pesquisa Operacional e Filtros - Em linha única e fluida */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2.5">
-          <div className="relative flex-1 min-w-[240px]">
+      <div className="bg-white dark:bg-neutral-900 p-4 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+        {/* Busca e Filtros */}
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[200px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
               placeholder="Buscar por placa, modelo, ordem ou motorista..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-8 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white transition shadow-xs"
+              className="w-full pl-9 pr-8 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white"
             />
             {searchTerm && (
               <button
@@ -2230,128 +2230,119 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             )}
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
-            <select
-              value={departmentFilter}
-              onChange={e => setDepartmentFilter(e.target.value)}
-              className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer hover:border-neutral-300 dark:hover:border-neutral-600 transition"
-            >
-              <option value="all">Todas as Secretarias</option>
-              {departments.map(dept => (
-                <option key={dept} value={dept}>{dept}</option>
-              ))}
-            </select>
+          <select
+            value={departmentFilter}
+            onChange={e => setDepartmentFilter(e.target.value)}
+            className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer"
+          >
+            <option value="all">Todas as Secretarias</option>
+            {departments.map(dept => (
+              <option key={dept} value={dept}>{dept}</option>
+            ))}
+          </select>
 
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer hover:border-neutral-300 dark:hover:border-neutral-600 transition"
-            >
-              <option value="all">Todos os Status</option>
-              {activeTab === 'vehicles' ? (
-                <>
-                  <option value="ativo">Ativo</option>
-                  <option value="manutencao">Em Manutenção</option>
-                  <option value="inativo">Inativo</option>
-                  <option value="baixado">Baixado</option>
-                </>
-              ) : (
-                <>
-                  <option value="autorizado">Autorizado (Aguardando)</option>
-                  <option value="abastecido">Abastecido (Pendente Auditoria)</option>
-                  <option value="auditado">Auditado & Conforme</option>
-                  <option value="glosado">Glosado (Bloqueado)</option>
-                </>
-              )}
-            </select>
-
-            <button
-              onClick={loadData}
-              title="Recarregar dados"
-              className="p-2.5 text-neutral-500 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl cursor-pointer transition"
-            >
-              <RefreshCw size={15} />
-            </button>
-          </div>
-        </div>
-
-        {/* Linha 2: Barra de Ações Rápidas, Ferramentas e Exportação */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-2.5 pt-3 border-t border-neutral-100 dark:border-neutral-800/80">
-          <div className="flex items-center gap-2 text-neutral-400 dark:text-neutral-500 text-xs font-semibold">
-            <Sliders size={14} className="text-neutral-400" />
-            <span>Ferramentas e Ações da Frota:</span>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleSyncPatrimonio}
-              disabled={syncingPatrimonio}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
-              title="Importar/Atualizar veículos cadastrados no patrimônio municipal de Torixoréu"
-            >
-              <RefreshCw size={14} className={syncingPatrimonio ? 'animate-spin' : ''} />
-              <span>Sincronizar Patrimônio</span>
-            </button>
-
-            <button
-              onClick={handleExportExcel}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded-xl transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800"
-            >
-              <FileSpreadsheet size={15} />
-              <span>Exportar Relatório TCE (Excel)</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setPriceEditForm(biddedPrices);
-                setIsPriceConfigModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded-xl transition-all cursor-pointer border border-amber-200 dark:border-amber-800"
-              title="Tabela de Preços Licitados por Combustível e Aditivos de Reequilíbrio Contratual"
-            >
-              <Sliders size={14} />
-              <span>Preços Licitados / Reequilíbrio</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setIsBudgetClassificationsModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
-              title="Gerenciar Fichas Orçamentárias, Centros de Custo e Créditos Especiais"
-            >
-              <Layers size={14} />
-              <span>Fichas Orçamentárias / Créditos</span>
-            </button>
-
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer"
+          >
+            <option value="all">Todos os Status</option>
             {activeTab === 'vehicles' ? (
-              <button
-                onClick={() => setIsNewVehicleModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl hover:shadow-lg transition-all cursor-pointer"
-              >
-                <Plus size={15} />
-                <span>Novo Veículo</span>
-              </button>
+              <>
+                <option value="ativo">Ativo</option>
+                <option value="manutencao">Em Manutenção</option>
+                <option value="inativo">Inativo</option>
+                <option value="baixado">Baixado</option>
+              </>
             ) : (
               <>
-                <button
-                  onClick={() => setIsLegacyVoucherModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 rounded-xl hover:shadow-md transition-all cursor-pointer"
-                  title="Lançar ou importar abastecimentos anteriores feitos em talão ou canhoto de papel"
-                >
-                  <FileText size={15} />
-                  <span>Lançar Canhoto Antigo</span>
-                </button>
-
-                <button
-                  onClick={() => setIsNewOrderModalOpen(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl hover:shadow-lg transition-all cursor-pointer"
-                >
-                  <Plus size={15} />
-                  <span>Emitir Ordem Digital</span>
-                </button>
+                <option value="autorizado">Autorizado (Aguardando)</option>
+                <option value="abastecido">Abastecido (Pendente Auditoria)</option>
+                <option value="auditado">Auditado & Conforme</option>
+                <option value="glosado">Glosado (Bloqueado)</option>
               </>
             )}
-          </div>
+          </select>
+
+          <button
+            onClick={loadData}
+            title="Recarregar dados"
+            className="p-2 text-neutral-500 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-neutral-800 rounded-xl cursor-pointer"
+          >
+            <RefreshCw size={15} />
+          </button>
+        </div>
+
+        {/* Botões Principais */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncPatrimonio}
+            disabled={syncingPatrimonio}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
+            title="Importar/Atualizar veículos cadastrados no patrimônio municipal de Torixoréu"
+          >
+            <RefreshCw size={14} className={syncingPatrimonio ? 'animate-spin' : ''} />
+            <span>Sincronizar Patrimônio</span>
+          </button>
+
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded-xl transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800"
+          >
+            <FileSpreadsheet size={15} />
+            <span>Exportar Relatório TCE (Excel)</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setPriceEditForm(biddedPrices);
+              setIsPriceConfigModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded-xl transition-all cursor-pointer border border-amber-200 dark:border-amber-800"
+            title="Tabela de Preços Licitados por Combustível e Aditivos de Reequilíbrio Contratual"
+          >
+            <Sliders size={14} />
+            <span>Preços Licitados / Reequilíbrio</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsBudgetClassificationsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
+            title="Gerenciar Fichas Orçamentárias, Centros de Custo e Créditos Especiais"
+          >
+            <Layers size={14} />
+            <span>Fichas Orçamentárias / Créditos</span>
+          </button>
+
+          {activeTab === 'vehicles' ? (
+            <button
+              onClick={() => setIsNewVehicleModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl hover:shadow-lg transition-all cursor-pointer"
+            >
+              <Plus size={15} />
+              <span>Novo Veículo</span>
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => setIsLegacyVoucherModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 rounded-xl hover:shadow-md transition-all cursor-pointer"
+                title="Lançar ou importar abastecimentos anteriores feitos em talão ou canhoto de papel"
+              >
+                <FileText size={15} />
+                <span>Lançar Canhoto Antigo</span>
+              </button>
+
+              <button
+                onClick={() => setIsNewOrderModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl hover:shadow-lg transition-all cursor-pointer"
+              >
+                <Plus size={15} />
+                <span>Emitir Ordem Digital</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 

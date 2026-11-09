@@ -35,7 +35,9 @@ import {
   FileCheck2,
   X,
   FileSearch,
-  FilterX
+  FilterX,
+  Files,
+  Zap
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { MunicipalLaw, LawType, LawStatus, LawCategory, LawOriginPower, AdminUser, Institution } from '../../types';
@@ -50,6 +52,7 @@ import { INITIAL_MOCK_LAWS } from './data/mockLaws';
 import { LawCollectionsGrid } from './components/LawCollectionsGrid';
 import { LawReaderModal } from './components/LawReaderModal';
 import { LawFormModal, LAW_TYPES, LAW_CATEGORIES, LAW_STATUSES } from './components/LawFormModal';
+import { LawBatchImportModal } from './components/LawBatchImportModal';
 
 export { INITIAL_MOCK_LAWS };
 
@@ -68,6 +71,7 @@ export const LawsModule = ({
   const [selectedLaw, setSelectedLaw] = useState<MunicipalLaw | null>(null);
   const [editingLaw, setEditingLaw] = useState<MunicipalLaw | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isBatchImportOpen, setIsBatchImportOpen] = useState(false);
   const [initialMateriaData, setInitialMateriaData] = useState<any>(null);
 
   // Filtros
@@ -97,7 +101,14 @@ export const LawsModule = ({
         if (isDemo) {
           const demoLaws = localStorage.getItem('gestao360_demo_laws');
           if (demoLaws) {
-            try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+            try { 
+              const parsed = JSON.parse(demoLaws);
+              const existingIds = new Set((parsed || []).map((l: any) => l.id));
+              const missing = INITIAL_MOCK_LAWS.filter(l => !existingIds.has(l.id));
+              setLaws([...missing, ...parsed]);
+            } catch (e) { 
+              setLaws(INITIAL_MOCK_LAWS); 
+            }
           } else {
             setLaws(INITIAL_MOCK_LAWS);
           }
@@ -109,7 +120,14 @@ export const LawsModule = ({
       } else if (isDemo) {
         const demoLaws = localStorage.getItem('gestao360_demo_laws');
         if (demoLaws) {
-          try { setLaws(JSON.parse(demoLaws)); } catch (e) { setLaws(INITIAL_MOCK_LAWS); }
+          try { 
+            const parsed = JSON.parse(demoLaws);
+            const existingIds = new Set((parsed || []).map((l: any) => l.id));
+            const missing = INITIAL_MOCK_LAWS.filter(l => !existingIds.has(l.id));
+            setLaws([...missing, ...parsed]);
+          } catch (e) { 
+            setLaws(INITIAL_MOCK_LAWS); 
+          }
         } else {
           setLaws(INITIAL_MOCK_LAWS);
         }
@@ -171,6 +189,9 @@ export const LawsModule = ({
       } catch (e) {
         console.warn('Erro no upload do storage, prosseguindo com link local:', e);
       }
+      if (!fileUrl) {
+        fileUrl = URL.createObjectURL(pdfFile);
+      }
     }
 
     const payload = {
@@ -187,7 +208,13 @@ export const LawsModule = ({
       } catch (err) {
         console.warn('Erro ao atualizar no Supabase, atualizando localmente:', err);
       }
-      setLaws(prev => prev.map(l => l.id === lawData.id ? { ...l, ...payload } as MunicipalLaw : l));
+      setLaws(prev => {
+        const updated = prev.map(l => l.id === lawData.id ? { ...l, ...payload } as MunicipalLaw : l);
+        try {
+          localStorage.setItem('gestao360_demo_laws', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
       showToast('Ato normativo atualizado com sucesso!', 'success');
     } else {
       // Criação
@@ -222,13 +249,83 @@ export const LawsModule = ({
         console.warn('Erro ao salvar no Supabase, adicionando localmente:', err);
       }
 
-      setLaws(prev => [newLaw, ...prev]);
+      setLaws(prev => {
+        const updated = [newLaw, ...prev];
+        try {
+          localStorage.setItem('gestao360_demo_laws', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
       showToast('Novo ato normativo publicado com sucesso no Repositório Oficial!', 'success');
     }
 
     setIsFormOpen(false);
     setEditingLaw(null);
     setInitialMateriaData(null);
+  };
+
+  // Salvar Múltiplas Normas em Lote (Batch Import com OCR)
+  const handleBatchSaved = async (lawsToSave: Array<{ data: Partial<MunicipalLaw>; file?: File }>) => {
+    const newlyCreatedLaws: MunicipalLaw[] = [];
+
+    for (let i = 0; i < lawsToSave.length; i++) {
+      const { data, file } = lawsToSave[i];
+      let fileUrl = data.file_url;
+
+      if (file) {
+        const safeName = file.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9.-]/g, '_');
+        const instFolder = institution?.id || 'geral';
+        const filename = `${instFolder}/law_batch_${Date.now()}_${i}_${safeName}`;
+        try {
+          const { error: uploadError } = await supabase.storage.from('leis').upload(filename, file);
+          if (!uploadError) {
+            const { data: publicUrlData } = supabase.storage.from('leis').getPublicUrl(filename);
+            fileUrl = publicUrlData.publicUrl;
+          }
+        } catch (e) {
+          console.warn('Erro upload storage no lote:', e);
+        }
+        if (!fileUrl) {
+          fileUrl = URL.createObjectURL(file);
+        }
+      }
+
+      const newLaw: MunicipalLaw = {
+        id: `law_batch_${Date.now()}_${i}`,
+        number: data.number || '',
+        title: data.title || '',
+        type: data.type || 'Lei Ordinária',
+        category: data.category || 'Finanças e Tributos',
+        ementa: data.ementa || '',
+        publication_date: data.publication_date || new Date().toISOString().split('T')[0],
+        status: data.status || 'Em Vigor',
+        full_text: data.full_text,
+        author: data.author,
+        origin_power: data.origin_power || 'executivo',
+        materia_numero: data.materia_numero,
+        file_url: fileUrl,
+        tags: data.tags,
+        institution_id: institution?.id || null,
+        created_at: new Date().toISOString()
+      };
+
+      newlyCreatedLaws.push(newLaw);
+    }
+
+    // Tenta persistir no Supabase se houver conexão
+    try {
+      await supabase.from('municipal_laws').insert(newlyCreatedLaws);
+    } catch (err) {
+      console.warn('Persistindo lote localmente:', err);
+    }
+
+    setLaws(prev => {
+      const updated = [...newlyCreatedLaws, ...prev];
+      try {
+        localStorage.setItem('gestao360_demo_laws', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
   };
 
   // Excluir Norma
@@ -402,18 +499,30 @@ export const LawsModule = ({
           </button>
 
           {canEdit && (
-            <button
-              type="button"
-              onClick={() => {
-                setEditingLaw(null);
-                setInitialMateriaData(null);
-                setIsFormOpen(true);
-              }}
-              className="px-5 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-md hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 cursor-pointer"
-            >
-              <Plus size={16} />
-              <span>Publicar Ato Normativo</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setIsBatchImportOpen(true)}
+                className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
+                title="Importar múltiplos arquivos PDF de leis de uma só vez com OCR inteligente"
+              >
+                <Files size={16} />
+                <span>Importar Leis em Lote</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingLaw(null);
+                  setInitialMateriaData(null);
+                  setIsFormOpen(true);
+                }}
+                className="px-5 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-md hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <Plus size={16} />
+                <span>Publicar Ato Normativo</span>
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -929,12 +1038,24 @@ export const LawsModule = ({
             lawToEdit={editingLaw}
             allLaws={laws}
             initialMateriaData={initialMateriaData}
+            institution={institution}
             onClose={() => {
               setIsFormOpen(false);
               setEditingLaw(null);
               setInitialMateriaData(null);
             }}
             onSave={handleSaveLaw}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE IMPORTAÇÃO EM LOTE COM OCR */}
+      <AnimatePresence>
+        {isBatchImportOpen && (
+          <LawBatchImportModal
+            institution={institution}
+            onClose={() => setIsBatchImportOpen(false)}
+            onBatchSaved={handleBatchSaved}
           />
         )}
       </AnimatePresence>
