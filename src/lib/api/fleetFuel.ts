@@ -755,8 +755,7 @@ export async function getFuelSupplyOrders(filters?: {
     const buildQuery = (client: any) => {
       let q = client.from('fuel_supply_orders').select(`
         *,
-        vehicle:fleet_vehicles(*),
-        budget_classification:fleet_budget_classifications(*)
+        vehicle:fleet_vehicles(*)
       `);
       if (filters?.institutionId) {
         q = q.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default,institution_id.is.null`);

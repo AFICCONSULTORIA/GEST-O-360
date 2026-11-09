@@ -1444,32 +1444,6 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
 
   // 1. Persistir no Supabase
   try {
-    await supabase.from('fleet_supply_orders').insert([{
-      id: newOrder.id,
-      institution_id: newOrder.institution_id,
-      order_number: newOrder.order_number,
-      vehicle_id: newOrder.vehicle_id,
-      driver_name: newOrder.driver_name,
-      driver_document: newOrder.driver_document,
-      station_name: newOrder.station_name,
-      fuel_type: newOrder.fuel_type,
-      bidded_unit_price: newOrder.bidded_unit_price,
-      liters_authorized: newOrder.liters_authorized,
-      liters_supplied: newOrder.liters_supplied,
-      total_authorized_value: newOrder.total_authorized_value,
-      previous_odometer: newOrder.previous_odometer,
-      current_odometer: newOrder.current_odometer,
-      calculated_km_per_liter: newOrder.calculated_km_per_liter,
-      anomaly_level: 'none',
-      supply_mode: newOrder.supply_mode,
-      receipt_photo_url: newOrder.receipt_photo_url,
-      authorized_by_name: newOrder.authorized_by_name,
-      authorized_by_role: newOrder.authorized_by_role,
-      status: 'abastecido',
-      created_at: newOrder.created_at,
-      supplied_at: newOrder.supplied_at
-    }]);
-
     await supabase.from('fuel_supply_orders').insert([{
       id: newOrder.id,
       institution_id: newOrder.institution_id,
