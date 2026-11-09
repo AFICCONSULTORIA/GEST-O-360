@@ -1485,6 +1485,8 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
       total_value: newOrder.total_authorized_value,
       previous_odometer: newOrder.previous_odometer,
       current_odometer: newOrder.current_odometer,
+      receipt_photo_url: newOrder.receipt_photo_url,
+      receipt_attachment_url: newOrder.receipt_attachment_url,
       status: 'abastecido',
       created_at: newOrder.created_at,
       supplied_at: newOrder.supplied_at

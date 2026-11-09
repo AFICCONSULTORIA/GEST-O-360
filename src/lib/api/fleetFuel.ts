@@ -794,8 +794,8 @@ export async function getFuelSupplyOrders(filters?: {
           ...ord,
           budget_classification_id: ord.budget_classification_id || cached?.budget_classification_id || resolvedBc?.id,
           budget_classification: resolvedBc,
-          receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url,
-          receipt_photo_url: ord.receipt_photo_url || ord.receipt_attachment_url
+          receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url || cached?.receipt_attachment_url || cached?.receipt_photo_url,
+          receipt_photo_url: ord.receipt_photo_url || ord.receipt_attachment_url || cached?.receipt_photo_url || cached?.receipt_attachment_url
         };
       });
       saveLocalRealOrders(normalized);
@@ -819,7 +819,9 @@ export async function getFuelSupplyOrders(filters?: {
       ...order, 
       vehicle: order.vehicle || vehicle,
       budget_classification: resolvedBc,
-      budget_classification_id: resolvedBc?.id || order.budget_classification_id
+      budget_classification_id: resolvedBc?.id || order.budget_classification_id,
+      receipt_attachment_url: order.receipt_attachment_url || order.receipt_photo_url,
+      receipt_photo_url: order.receipt_photo_url || order.receipt_attachment_url
     };
   });
 

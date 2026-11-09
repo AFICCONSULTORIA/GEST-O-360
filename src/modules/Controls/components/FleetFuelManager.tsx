@@ -614,16 +614,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   };
 
   const openAttachmentViewer = (order: FuelSupplyOrder, preferredTab?: 'pump' | 'odometer' | 'receipt') => {
+    const hasPump = Boolean(order.pump_photo_url);
+    const hasOdo = Boolean(order.odometer_photo_url);
+    const hasReceipt = Boolean(order.receipt_photo_url || order.receipt_attachment_url);
+
     if (preferredTab) {
       setSelectedAttachmentPhoto(preferredTab);
-    } else if (order.pump_photo_url) {
+    } else if (hasReceipt && !hasPump && !hasOdo) {
+      // Se possui apenas canhoto anexado (ex: lançamento retroativo), abre direto na aba do canhoto!
+      setSelectedAttachmentPhoto('receipt');
+    } else if (hasPump) {
       setSelectedAttachmentPhoto('pump');
-    } else if (order.odometer_photo_url) {
+    } else if (hasOdo) {
       setSelectedAttachmentPhoto('odometer');
-    } else if (order.receipt_photo_url || order.receipt_attachment_url) {
+    } else if (hasReceipt) {
       setSelectedAttachmentPhoto('receipt');
     } else {
-      setSelectedAttachmentPhoto('pump');
+      setSelectedAttachmentPhoto('receipt');
     }
     setViewingAttachmentOrder(order);
     const resolvedBc = resolveOrderBudget(order, order.vehicle, budgetClassifications);
@@ -1385,7 +1392,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       unit_price: order.unit_price || 6.19,
       invoice_number: order.invoice_number || '',
       invoice_key: order.invoice_key || '',
-      receipt_attachment_url: order.receipt_attachment_url || '',
+      receipt_attachment_url: order.receipt_attachment_url || (order as any).receipt_photo_url || '',
       odometer_photo_url: order.odometer_photo_url || '',
       pump_photo_url: order.pump_photo_url || '',
       invoice_attachment_url: order.invoice_attachment_url || '',
@@ -5316,23 +5323,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     })()}
                   </div>
 
-                  {/* Miniaturas Rápidas Lado a Lado */}
-                  {(viewingAttachmentOrder.pump_photo_url || viewingAttachmentOrder.odometer_photo_url) && (
-                    <div className="grid grid-cols-2 gap-2">
+                  {/* Miniaturas Rápidas Lado a Lado (Bomba, Odômetro e Canhoto) */}
+                  {(viewingAttachmentOrder.pump_photo_url || viewingAttachmentOrder.odometer_photo_url || viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url) && (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {viewingAttachmentOrder.pump_photo_url && (
                         <button
                           type="button"
                           onClick={() => setSelectedAttachmentPhoto('pump')}
                           className={`p-1.5 rounded-xl border text-left transition-all flex items-center gap-2 cursor-pointer ${
                             selectedAttachmentPhoto === 'pump'
-                              ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/30'
+                              ? 'border-amber-500 bg-amber-50/50 dark:bg-amber-950/30 ring-2 ring-amber-500/20'
                               : 'border-neutral-200 dark:border-neutral-800 hover:border-amber-400'
                           }`}
                         >
                           <img src={viewingAttachmentOrder.pump_photo_url} alt="Bomba" className="w-12 h-12 rounded-lg object-cover shrink-0" />
                           <div className="min-w-0">
-                            <span className="text-[10px] font-black uppercase text-amber-600 block">Visor da Bomba</span>
-                            <span className="text-[10px] text-neutral-500 truncate block">Clique para ampliar</span>
+                            <span className="text-[10px] font-black uppercase text-amber-600 block">Visor Bomba</span>
+                            <span className="text-[10px] text-neutral-500 truncate block">Ver foto</span>
                           </div>
                         </button>
                       )}
@@ -5342,14 +5349,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           onClick={() => setSelectedAttachmentPhoto('odometer')}
                           className={`p-1.5 rounded-xl border text-left transition-all flex items-center gap-2 cursor-pointer ${
                             selectedAttachmentPhoto === 'odometer'
-                              ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/30'
+                              ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/30 ring-2 ring-blue-500/20'
                               : 'border-neutral-200 dark:border-neutral-800 hover:border-blue-400'
                           }`}
                         >
                           <img src={viewingAttachmentOrder.odometer_photo_url} alt="Odômetro" className="w-12 h-12 rounded-lg object-cover shrink-0" />
                           <div className="min-w-0">
-                            <span className="text-[10px] font-black uppercase text-blue-600 block">Painel / Odômetro</span>
-                            <span className="text-[10px] text-neutral-500 truncate block">Clique para ampliar</span>
+                            <span className="text-[10px] font-black uppercase text-blue-600 block">Odômetro</span>
+                            <span className="text-[10px] text-neutral-500 truncate block">Ver foto</span>
+                          </div>
+                        </button>
+                      )}
+                      {(viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url) && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAttachmentPhoto('receipt')}
+                          className={`p-1.5 rounded-xl border text-left transition-all flex items-center gap-2 cursor-pointer ${
+                            selectedAttachmentPhoto === 'receipt'
+                              ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-950/30 ring-2 ring-emerald-500/20'
+                              : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-400'
+                          }`}
+                        >
+                          <img 
+                            src={viewingAttachmentOrder.receipt_photo_url || viewingAttachmentOrder.receipt_attachment_url} 
+                            alt="Canhoto" 
+                            className="w-12 h-12 rounded-lg object-cover shrink-0" 
+                          />
+                          <div className="min-w-0">
+                            <span className="text-[10px] font-black uppercase text-emerald-600 block">Canhoto Físico</span>
+                            <span className="text-[10px] text-neutral-500 truncate block">Ver foto</span>
                           </div>
                         </button>
                       )}
