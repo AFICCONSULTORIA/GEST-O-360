@@ -46,6 +46,22 @@ if (type === 'major') {
   versionData.build += 1;
 }
 
+// Regra: a cada 100 builds (ou ao atingir 100), avança a 3ª casa (patch) e zera o build (ex: após 0.0.0.99/100 vira 0.0.1.0)
+if (versionData.build >= 100) {
+  versionData.patch += Math.floor(versionData.build / 100);
+  versionData.build = versionData.build % 100;
+}
+
+if (versionData.patch >= 100) {
+  versionData.minor += Math.floor(versionData.patch / 100);
+  versionData.patch = versionData.patch % 100;
+}
+
+if (versionData.minor >= 100) {
+  versionData.major += Math.floor(versionData.minor / 100);
+  versionData.minor = versionData.minor % 100;
+}
+
 versionData.version = `${versionData.major}.${versionData.minor}.${versionData.patch}.${versionData.build}`;
 
 const now = new Date();
