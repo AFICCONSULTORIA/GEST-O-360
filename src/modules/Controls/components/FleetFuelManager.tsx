@@ -53,7 +53,8 @@ import {
   CloudUpload,
   Bell,
   BellRing,
-  CheckCheck
+  CheckCheck,
+  RotateCcw
 } from 'lucide-react';
 import {
   FleetVehicle,
@@ -108,7 +109,8 @@ import {
   uploadFuelDocumentPhoto,
   linkInvoiceToFuelOrder,
   syncLocalOrdersToSupabase,
-  updateFuelOrderBudgetClassification
+  updateFuelOrderBudgetClassification,
+  cancelFuelOrderHomologation
 } from '../../../lib/api/fleetFuelAudit';
 import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
@@ -1392,8 +1394,43 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     );
   };
 
+  // Cancelar Homologação ou Glosa para permitir correções de dados
+  const handleCancelHomologation = async (order: FuelSupplyOrder) => {
+    const isGlosado = order.status === 'glosado';
+    const actionLabel = isGlosado ? 'glosa' : 'homologação';
+    const confirmMsg = `Deseja realmente cancelar a ${actionLabel} da Ordem nº ${order.order_number}?\n\nA ordem retornará ao status "Abastecido no Posto", liberando a edição de odômetro, litragem, fotos e dotação orçamentária.`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await cancelFuelOrderHomologation(order.id, 'Cancelamento para correção de dados', currentUser?.id);
+      showToast(`A ${actionLabel} da ordem ${order.order_number} foi cancelada com sucesso! A ordem já pode ser editada.`, 'success');
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao cancelar homologação.', 'error');
+    }
+  };
+
   // Abertura do modal de execução com pré-preenchimento
-  const handleOpenExecution = (order: FuelSupplyOrder) => {
+  const handleOpenExecution = async (order: FuelSupplyOrder) => {
+    if (order.status === 'auditado' || order.status === 'glosado') {
+      const isGlosado = order.status === 'glosado';
+      const actionName = isGlosado ? 'glosada' : 'homologada';
+      const proceed = window.confirm(
+        `A Ordem nº ${order.order_number} está ${actionName}.\n\nDeseja cancelar a ${actionName} para reabrir esta ordem e editar os dados (odômetro, litragem ou fotos)?`
+      );
+      if (!proceed) return;
+
+      try {
+        await cancelFuelOrderHomologation(order.id, 'Cancelado para permitir nova edição de dados', currentUser?.id);
+        showToast(`Homologação cancelada. Ordem ${order.order_number} reaberta para edição!`, 'info');
+        loadData(true);
+      } catch (err: any) {
+        showToast(err.message || 'Erro ao cancelar homologação.', 'error');
+        return;
+      }
+    }
+
     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
     setSelectedOrderForAction(order);
     setExecutionForm({
@@ -1593,7 +1630,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         invoice_coupon_number: executionForm.invoice_number?.trim() || undefined,
         audit_justification: executionForm.invoice_key?.trim() || undefined,
         custom_order_number: executionForm.custom_order_number?.trim() || undefined,
-        budget_classification_id: executionForm.budget_classification_id || undefined
+        budget_classification_id: executionForm.budget_classification_id || undefined,
+        allowAuditedEdit: true
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
@@ -2682,6 +2720,38 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               </button>
                             )}
 
+                            {order.status === 'auditado' && (
+                              <>
+                                <button
+                                  onClick={() => handleCancelHomologation(order)}
+                                  title="Cancelar Homologação para permitir editar ou corrigir erros"
+                                  className="px-2 py-1 text-[10px] font-bold text-rose-700 hover:text-rose-900 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-800 shadow-xs"
+                                >
+                                  <RotateCcw size={11} className="text-rose-600 dark:text-rose-400" />
+                                  <span>Cancelar Homologação</span>
+                                </button>
+                                <button
+                                  onClick={() => handleOpenExecution(order)}
+                                  title="Editar ordem homologada (reabre para edição)"
+                                  className="px-2 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                                >
+                                  <Edit2 size={12} />
+                                  <span>Editar</span>
+                                </button>
+                              </>
+                            )}
+
+                            {order.status === 'glosado' && (
+                              <button
+                                onClick={() => handleCancelHomologation(order)}
+                                title="Cancelar Glosa e Reabrir Ordem para Edição"
+                                className="px-2 py-1 text-[10px] font-bold text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-neutral-300 dark:border-neutral-700 shadow-xs"
+                              >
+                                <RotateCcw size={11} />
+                                <span>Reabrir</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => handleOpenBudgetModal(order)}
                               title="Editar / Alterar Dotação Orçamentária"
@@ -3061,13 +3131,34 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <td className="px-4 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               {order.status === 'glosado' ? (
-                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                                  Glosado (Bloqueado)
-                                </span>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                    Glosado (Bloqueado)
+                                  </span>
+                                  <button
+                                    onClick={() => handleCancelHomologation(order)}
+                                    title="Cancelar Glosa e Reabrir para Edição"
+                                    className="px-2 py-1 text-[10px] font-bold text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-neutral-300 dark:border-neutral-700"
+                                  >
+                                    <RotateCcw size={11} />
+                                    <span>Reabrir</span>
+                                  </button>
+                                </div>
                               ) : order.status === 'auditado' ? (
-                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                                  Homologado
-                                </span>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                                    <CheckCircle2 size={11} />
+                                    Homologado
+                                  </span>
+                                  <button
+                                    onClick={() => handleCancelHomologation(order)}
+                                    title="Cancelar homologação para poder editar ou corrigir erros"
+                                    className="px-2 py-1 text-[10px] font-bold text-rose-700 hover:text-rose-900 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-800 shadow-xs"
+                                  >
+                                    <RotateCcw size={11} className="text-rose-600 dark:text-rose-400" />
+                                    <span>Cancelar Homologação</span>
+                                  </button>
+                                </div>
                               ) : (
                                 <>
                                   <button
@@ -5449,12 +5540,29 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 <div className="text-xs text-neutral-500">
                   Comprovação por fotos na bomba e painel • <strong>Sem exigência de Nota Fiscal</strong>
                 </div>
-                <button
-                  onClick={() => setViewingAttachmentOrder(null)}
-                  className="px-5 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 rounded-xl cursor-pointer"
-                >
-                  Fechar Visualizador
-                </button>
+                <div className="flex items-center gap-2">
+                  {viewingAttachmentOrder.status === 'auditado' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ord = viewingAttachmentOrder;
+                        setViewingAttachmentOrder(null);
+                        handleCancelHomologation(ord);
+                      }}
+                      className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-rose-700 hover:text-rose-900 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-800 transition cursor-pointer"
+                      title="Cancelar homologação para poder editar odômetro, litragem ou notas"
+                    >
+                      <RotateCcw size={13} className="text-rose-600" />
+                      <span>Cancelar Homologação</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setViewingAttachmentOrder(null)}
+                    className="px-5 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 rounded-xl cursor-pointer"
+                  >
+                    Fechar Visualizador
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>

@@ -248,6 +248,7 @@ export interface OrderCompletionPayload {
   order_number?: string;
   budget_classification_id?: string; // Permite alterar ou definir a Ficha Orçamentária
   budget_classification?: FleetBudgetClassification;
+  allowAuditedEdit?: boolean; // Permite forçar edição mesmo se homologada
 }
 
 export interface ConsumptionAuditCalculation {
@@ -630,8 +631,8 @@ export async function validateAndCompleteFuelOrder(
   }
 
   // Se já foi homologada pelo Controle Interno
-  if (order.status === 'auditado') {
-    throw new Error(`Esta autorização já foi homologada pelo Controle Interno em ${new Date(order.supplied_at || order.created_at).toLocaleString('pt-BR')} e não pode mais ser alterada.`);
+  if (order.status === 'auditado' && !completionData.allowAuditedEdit) {
+    throw new Error(`Esta autorização já foi homologada pelo Controle Interno em ${new Date(order.supplied_at || order.created_at).toLocaleString('pt-BR')}. Para editá-la, cancele a homologação no botão "Cancelar Homologação".`);
   }
 
   // 2. Buscar veículo (com fallback para supabaseAnon e fallback seguro para nunca perder as fotos)
@@ -1673,4 +1674,6 @@ export async function updateFuelOrderBudgetClassification(
 
   return updatedOrder;
 }
+
+export { cancelFuelOrderHomologation } from './fleetFuel';
 

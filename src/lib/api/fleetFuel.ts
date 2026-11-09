@@ -1287,6 +1287,85 @@ export async function auditFuelOrder(
 }
 
 /**
+ * 5.1 cancelFuelOrderHomologation: Cancela a homologação ou glosa de uma ordem,
+ * reabrindo-a no status 'abastecido' para permitir correções de odômetro, litragem ou notas.
+ */
+export async function cancelFuelOrderHomologation(
+  orderId: string,
+  reason?: string,
+  _canceledBy?: string
+): Promise<FuelSupplyOrder> {
+  const orders = getLocalRealOrders();
+  const index = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+
+  if (index === -1) {
+    throw new Error('Ordem de abastecimento não encontrada.');
+  }
+
+  const order = orders[index];
+  const targetStatus = (order.liters_supplied || order.current_odometer || order.pump_photo_url || order.receipt_photo_url)
+    ? 'abastecido'
+    : 'autorizado';
+
+  const nowIso = new Date().toISOString();
+  const updatedOrder: FuelSupplyOrder = {
+    ...order,
+    status: targetStatus,
+    audit_justification: reason ? `[Homologação desfeita]: ${reason}` : undefined,
+    audited_by: undefined,
+    updated_at: nowIso
+  };
+
+  try {
+    const updatePayload = {
+      status: targetStatus,
+      audit_justification: updatedOrder.audit_justification || null,
+      audited_by: null,
+      updated_at: nowIso
+    };
+
+    let query = supabase.from('fuel_supply_orders').update(updatePayload);
+    if (isValidUUID(orderId)) {
+      query = query.eq('id', orderId);
+    } else {
+      query = query.eq('order_number', orderId);
+    }
+    const { error } = await query;
+
+    if (error) {
+      let anonQuery = supabaseAnon.from('fuel_supply_orders').update(updatePayload);
+      if (isValidUUID(orderId)) {
+        anonQuery = anonQuery.eq('id', orderId);
+      } else {
+        anonQuery = anonQuery.eq('order_number', orderId);
+      }
+      await anonQuery;
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao cancelar homologação no Supabase:', err);
+  }
+
+  orders[index] = updatedOrder;
+  saveLocalRealOrders(orders);
+
+  // Notificar canais em tempo real
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+      detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
+    }));
+    if ('BroadcastChannel' in window) {
+      try {
+        const bc = new BroadcastChannel('gestao360_fleet_channel');
+        bc.postMessage({ type: 'ORDER_HOMOLOGATION_CANCELED', order: updatedOrder });
+        bc.close();
+      } catch {}
+    }
+  }
+
+  return updatedOrder;
+}
+
+/**
  * 6. deleteFuelSupplyOrder: Excluir ordem/auditoria de abastecimento (Acesso Administrativo)
  * Nota: A exclusão de uma ordem remove definitivamente do banco de dados (via RPC e DELETE),
  * aplica soft-delete preventivo contra bloqueios de RLS e mantém o contador sequencial contínuo
