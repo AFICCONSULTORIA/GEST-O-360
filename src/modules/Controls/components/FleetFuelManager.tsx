@@ -87,7 +87,8 @@ import {
   updateFleetFuelStation,
   deleteFleetFuelStation,
   clearAllFleetFuelStations,
-  syncLocalDriversAndStationsToSupabase
+  syncLocalDriversAndStationsToSupabase,
+  toBudgetUUID
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
 import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVoucherPDF';
@@ -155,6 +156,47 @@ function formatRelativeNotificationTime(dateIso: string): string {
   } catch {
     return 'Recente';
   }
+}
+
+export function resolveOrderBudget(
+  order?: Partial<FuelSupplyOrder> | null,
+  vehicle?: FleetVehicle | null,
+  budgetClassifications: FleetBudgetClassification[] = []
+): FleetBudgetClassification | undefined {
+  if (!order && !vehicle) return undefined;
+  
+  // 1. Objeto budget_classification direto na ordem
+  if (order?.budget_classification && (order.budget_classification as any).invoice_sheet) {
+    return order.budget_classification as FleetBudgetClassification;
+  }
+  
+  // 2. ID ou número da ficha na ordem
+  if (order?.budget_classification_id) {
+    const match = budgetClassifications.find(b => 
+      b.id === order.budget_classification_id || 
+      b.invoice_sheet === order.budget_classification_id ||
+      b.id === toBudgetUUID(String(order.budget_classification_id))
+    );
+    if (match) return match;
+  }
+  
+  // 3. ID ou ficha no veículo
+  const v = vehicle || order?.vehicle;
+  if (v?.budget_classification_id) {
+    const match = budgetClassifications.find(b => 
+      b.id === v.budget_classification_id || 
+      b.invoice_sheet === v.budget_classification_id ||
+      b.id === toBudgetUUID(String(v.budget_classification_id))
+    );
+    if (match) return match;
+  }
+  
+  // 4. Objeto no veículo
+  if (v?.budget_classification && (v.budget_classification as any).invoice_sheet) {
+    return v.budget_classification as FleetBudgetClassification;
+  }
+  
+  return undefined;
 }
 
 interface FleetFuelManagerProps {
@@ -584,8 +626,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setSelectedAttachmentPhoto('pump');
     }
     setViewingAttachmentOrder(order);
-    const resolvedBudgetId = order.budget_classification_id || (order.budget_classification as any)?.id || order.vehicle?.budget_classification_id || '';
-    setViewerBudgetId(resolvedBudgetId);
+    const resolvedBc = resolveOrderBudget(order, order.vehicle, budgetClassifications);
+    setViewerBudgetId(resolvedBc?.id || order.budget_classification_id || '');
     setIsEditingViewerBudget(false);
   };
 
@@ -1561,10 +1603,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         currentUser?.institution_id || 'inst_1'
       );
       setViewingAttachmentOrder(updated as any);
-      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
+      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number || o.id === viewingAttachmentOrder.id ? (updated as any) : o)));
       setIsEditingViewerBudget(false);
       const sheetName = updated.budget_classification?.invoice_sheet || viewerBudgetId;
-      showToast(`Classificação orçamentária atualizada com sucesso para ${sheetName}!`, 'success');
+      showToast(`Classificação orçamentária atualizada com sucesso para Ficha ${sheetName}!`, 'success');
+      loadData(true);
     } catch (err: any) {
       showToast(err.message || 'Erro ao atualizar dotação.', 'error');
     } finally {
@@ -1576,7 +1619,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const handleOpenBudgetModal = (order: FuelSupplyOrder) => {
     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
     setOrderForBudgetEdit(order);
-    setBudgetEditId(order.budget_classification_id || (order.budget_classification as any)?.id || v?.budget_classification_id || '');
+    const activeBc = resolveOrderBudget(order, v, budgetClassifications);
+    setBudgetEditId(activeBc?.id || order.budget_classification_id || v?.budget_classification_id || '');
   };
 
   const handleSaveOrderBudgetModal = async (e: React.FormEvent) => {
@@ -1589,10 +1633,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         budgetEditId,
         currentUser?.institution_id || 'inst_1'
       );
-      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
+      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number || o.id === orderForBudgetEdit.id ? (updated as any) : o)));
       setOrderForBudgetEdit(null);
       const sheetName = updated.budget_classification?.invoice_sheet || budgetEditId;
-      showToast(`Dotação da ordem ${updated.order_number} atualizada para ${sheetName}!`, 'success');
+      showToast(`Dotação da ordem ${updated.order_number} atualizada para Ficha ${sheetName}!`, 'success');
+      loadData(true);
     } catch (err: any) {
       showToast(err.message || 'Erro ao atualizar dotação da ordem.', 'error');
     } finally {
@@ -2479,7 +2524,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             {v?.department || '-'}
                           </div>
                           {(() => {
-                            const activeBc = order.budget_classification || budgetClassifications.find(b => b.id === order.budget_classification_id) || v?.budget_classification;
+                            const activeBc = resolveOrderBudget(order, v, budgetClassifications);
                             return (
                               <button
                                 type="button"
@@ -2488,7 +2533,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer transition-colors"
                               >
                                 <Layers size={10} className="text-amber-600" />
-                                <span>{activeBc?.invoice_sheet || '11'}</span>
+                                <span>{activeBc?.invoice_sheet ? `Ficha ${activeBc.invoice_sheet}` : 'Definir Ficha'}</span>
                               </button>
                             );
                           })()}
@@ -4184,8 +4229,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         </span>
                         <span className="font-bold text-neutral-900 dark:text-white text-xs">
                           {(() => {
-                            const bc = budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification;
-                            if (!bc) return 'Administração Geral (11 - Fonte 1.1.500.0)';
+                            const bc = budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id || b.invoice_sheet === newOrderForm.budget_classification_id) || 
+                              resolveOrderBudget(null, selectedVehicleForNewOrder, budgetClassifications);
+                            if (!bc) return 'Selecione a Ficha Orçamentária no Passo 1';
                             return `${bc.invoice_sheet} • ${bc.department_local} — Fonte ${bc.funding_source} ${bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}`;
                           })()}
                         </span>
@@ -5155,13 +5201,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             </button>
                           </div>
                         </div>
-                      ) : (
-                        <span className="text-neutral-700 dark:text-neutral-300 block">
-                          Dotação: <strong>{viewingAttachmentOrder.budget_classification?.invoice_sheet || viewingAttachmentOrder.vehicle?.budget_classification?.invoice_sheet || '11'}</strong> • 
-                          Fonte: <strong>{viewingAttachmentOrder.budget_classification?.funding_source || viewingAttachmentOrder.vehicle?.budget_classification?.funding_source || '1.1.500.0'}</strong> • 
-                          Local: <em>{viewingAttachmentOrder.budget_classification?.department_local || viewingAttachmentOrder.vehicle?.department || 'Geral'}</em>
-                        </span>
-                      )}
+                      ) : (() => {
+                        const resolvedBc = resolveOrderBudget(
+                          viewingAttachmentOrder,
+                          viewingAttachmentOrder.vehicle || vehicles.find(v => v.id === viewingAttachmentOrder.vehicle_id),
+                          budgetClassifications
+                        );
+                        return (
+                          <span className="text-neutral-700 dark:text-neutral-300 block">
+                            Dotação: <strong>{resolvedBc ? `Ficha ${resolvedBc.invoice_sheet}` : 'Não definida'}</strong> • 
+                            Fonte: <strong>{resolvedBc?.funding_source || '—'}</strong> • 
+                            Local: <em>{resolvedBc?.department_local || viewingAttachmentOrder.vehicle?.department || 'Geral'}</em>
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -6255,9 +6308,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                   <div className="flex justify-between items-center pt-1.5 border-t border-neutral-200 dark:border-neutral-700">
                     <span className="text-neutral-500">Dotação Atual Vinculada:</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400">
-                      {orderForBudgetEdit.budget_classification?.invoice_sheet || orderForBudgetEdit.vehicle?.budget_classification?.invoice_sheet || '11'} (Fonte {orderForBudgetEdit.budget_classification?.funding_source || orderForBudgetEdit.vehicle?.budget_classification?.funding_source || '1.1.500.0'})
-                    </span>
+                    {(() => {
+                      const resolvedBc = resolveOrderBudget(
+                        orderForBudgetEdit,
+                        orderForBudgetEdit.vehicle || vehicles.find(v => v.id === orderForBudgetEdit.vehicle_id),
+                        budgetClassifications
+                      );
+                      return (
+                        <span className="font-bold text-amber-600 dark:text-amber-400">
+                          {resolvedBc ? `Ficha ${resolvedBc.invoice_sheet}` : 'Não definida'} {resolvedBc?.funding_source ? `(Fonte ${resolvedBc.funding_source})` : ''}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </div>
 

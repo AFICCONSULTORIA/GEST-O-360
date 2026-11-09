@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { TwoWayFuelOrder } from '../../../lib/api/fleetFuelAudit';
-import { FleetVehicle, getLocalBudgetClassifications } from '../../../lib/api/fleetFuel';
+import { FleetVehicle, getLocalBudgetClassifications, toBudgetUUID } from '../../../lib/api/fleetFuel';
 import { BRASAO_BASE64 } from '../../../utils/brasaoBase64';
 import { generateQrSvgSync } from '../../../utils/qrCodeGenerator';
 
@@ -71,14 +71,14 @@ export function gerarCanhotoDuasViasHtml(
   };
 
   // Dados Orçamentários da Autorização
-  const budgetId = order.budget_classification_id || (order.budget_classification as any)?.id || targetVehicle?.budget_classification_id;
   const localBudgets = getLocalBudgetClassifications();
+  const rawBudgetId = order.budget_classification_id || (order.budget_classification as any)?.id || targetVehicle?.budget_classification_id;
   const budget = order.budget_classification || 
     targetVehicle?.budget_classification || 
-    localBudgets.find(b => b.id === budgetId);
+    localBudgets.find(b => b.id === rawBudgetId || b.invoice_sheet === rawBudgetId || (rawBudgetId && b.id === toBudgetUUID(rawBudgetId)));
 
-  const localOrcamentario = budget?.department_local || targetVehicle?.department || 'Administração Geral';
-  const fichaOrcamentaria = budget?.invoice_sheet || '11';
+  const localOrcamentario = budget?.department_local || targetVehicle?.department || 'Geral';
+  const fichaOrcamentaria = budget?.invoice_sheet || (rawBudgetId ? String(rawBudgetId) : '—');
   const fonteRecurso = budget?.funding_source || '1.1.500.0';
   const dotacaoCode = budget?.budget_code ? `Cód: ${budget.budget_code}` : '';
 

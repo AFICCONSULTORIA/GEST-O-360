@@ -526,7 +526,7 @@ export async function getFleetVehicles(department?: string, institutionId: strin
 export async function createFleetVehicle(vehicleData: Omit<FleetVehicle, 'id' | 'created_at'>): Promise<FleetVehicle> {
   const validId = generateValidUUID();
   const rawPlate = vehicleData.plate.toUpperCase().trim();
-  const validBudgetId = isValidUUID(vehicleData.budget_classification_id) ? vehicleData.budget_classification_id : null;
+  const validBudgetId = vehicleData.budget_classification_id ? toBudgetUUID(vehicleData.budget_classification_id) : null;
 
   const newVehicle: FleetVehicle = {
     ...vehicleData,
@@ -601,7 +601,7 @@ export async function createFleetVehicle(vehicleData: Omit<FleetVehicle, 'id' | 
  */
 export async function updateFleetVehicle(id: string, updates: Partial<FleetVehicle>): Promise<FleetVehicle> {
   const validBudgetId = updates.budget_classification_id !== undefined
-    ? (isValidUUID(updates.budget_classification_id) ? updates.budget_classification_id : null)
+    ? (updates.budget_classification_id ? toBudgetUUID(updates.budget_classification_id) : null)
     : undefined;
 
   const supabaseRecord: Record<string, unknown> = {};
@@ -755,7 +755,8 @@ export async function getFuelSupplyOrders(filters?: {
     const buildQuery = (client: any) => {
       let q = client.from('fuel_supply_orders').select(`
         *,
-        vehicle:fleet_vehicles(*)
+        vehicle:fleet_vehicles(*),
+        budget_classification:fleet_budget_classifications(*)
       `);
       if (filters?.institutionId) {
         q = q.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default,institution_id.is.null`);
@@ -780,11 +781,23 @@ export async function getFuelSupplyOrders(filters?: {
     }
 
     if (!error && data) {
-      const normalized = (data as FuelSupplyOrder[]).map(ord => ({
-        ...ord,
-        receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url,
-        receipt_photo_url: ord.receipt_photo_url || ord.receipt_attachment_url
-      }));
+      const localBudgets = getLocalBudgetClassifications();
+      const localOrders = getLocalRealOrders();
+      const normalized = (data as FuelSupplyOrder[]).map(ord => {
+        const cached = localOrders.find(lo => lo.id === ord.id || lo.order_number === ord.order_number);
+        const resolvedBc = ord.budget_classification ||
+          cached?.budget_classification ||
+          localBudgets.find(b => b.id === ord.budget_classification_id || b.invoice_sheet === ord.budget_classification_id || b.id === toBudgetUUID(String(ord.budget_classification_id))) ||
+          localBudgets.find(b => b.id === cached?.budget_classification_id || b.invoice_sheet === cached?.budget_classification_id || b.id === toBudgetUUID(String(cached?.budget_classification_id)));
+
+        return {
+          ...ord,
+          budget_classification_id: ord.budget_classification_id || cached?.budget_classification_id || resolvedBc?.id,
+          budget_classification: resolvedBc,
+          receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url,
+          receipt_photo_url: ord.receipt_photo_url || ord.receipt_attachment_url
+        };
+      });
       saveLocalRealOrders(normalized);
       return normalized;
     }
@@ -794,9 +807,20 @@ export async function getFuelSupplyOrders(filters?: {
 
   // Fallback para ordens reais gravadas localmente
   const vehicles = getLocalRealVehicles();
+  const localBudgets = getLocalBudgetClassifications();
   let orders = getLocalRealOrders().map(order => {
     const vehicle = vehicles.find(v => v.id === order.vehicle_id);
-    return { ...order, vehicle: order.vehicle || vehicle };
+    const resolvedBc = order.budget_classification ||
+      localBudgets.find(b => b.id === order.budget_classification_id || b.invoice_sheet === order.budget_classification_id || b.id === toBudgetUUID(String(order.budget_classification_id))) ||
+      localBudgets.find(b => b.id === vehicle?.budget_classification_id || b.invoice_sheet === vehicle?.budget_classification_id || b.id === toBudgetUUID(String(vehicle?.budget_classification_id))) ||
+      vehicle?.budget_classification;
+
+    return { 
+      ...order, 
+      vehicle: order.vehicle || vehicle,
+      budget_classification: resolvedBc,
+      budget_classification_id: resolvedBc?.id || order.budget_classification_id
+    };
   });
 
   if (filters?.status && filters.status !== 'all') {
@@ -1382,6 +1406,13 @@ export async function clearAllFuelOrders(institutionId?: string, resetSequence: 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export function isValidUUID(id?: string): boolean {
   return !!id && UUID_REGEX.test(id);
+}
+
+export function toBudgetUUID(sheetOrId?: string): string {
+  if (!sheetOrId) return '00000000-0000-4000-8000-000000000011';
+  if (isValidUUID(sheetOrId)) return sheetOrId;
+  const num = parseInt(sheetOrId.replace(/[^0-9]/g, ''), 10) || 11;
+  return `00000000-0000-4000-8000-${String(num).padStart(12, '0')}`;
 }
 
 export function generateValidUUID(): string {
@@ -2420,15 +2451,20 @@ export function getLocalBudgetClassifications(): FleetBudgetClassification[] {
     const raw = localStorage.getItem(STORAGE_KEY_BUDGET);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        return parsed.sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Assegurar que os IDs sejam UUIDs válidos e estáveis
+        const migrated = parsed.map(item => ({
+          ...item,
+          id: isValidUUID(item.id) ? item.id : toBudgetUUID(item.invoice_sheet)
+        }));
+        return migrated.sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0));
       }
     }
   } catch {}
   return [...DEFAULT_BUDGET_CLASSIFICATIONS]
     .sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0))
-    .map((item, idx) => ({
-      id: `bc-${idx + 1}`,
+    .map((item) => ({
+      id: toBudgetUUID(item.invoice_sheet),
       institution_id: 'default',
       ...item,
       is_active: true,

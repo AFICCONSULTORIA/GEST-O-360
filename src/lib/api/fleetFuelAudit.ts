@@ -9,7 +9,7 @@
 
 import { supabase, supabaseAnon } from '../supabase';
 import * as XLSX from 'xlsx';
-import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
 export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'cancelado';
@@ -415,11 +415,12 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   }
 
   // 3. Modo de Fornecimento & Cálculos travados
-  const resolvedBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;
+  const rawBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;
   const localBudgets = getLocalBudgetClassifications();
   const resolvedBudget: FleetBudgetClassification | undefined = payload.budget_classification ||
-    localBudgets.find(b => b.id === resolvedBudgetId) ||
+    localBudgets.find(b => b.id === rawBudgetId || b.invoice_sheet === rawBudgetId || b.id === toBudgetUUID(String(rawBudgetId))) ||
     vehicle.budget_classification;
+  const resolvedBudgetId = resolvedBudget?.id || (rawBudgetId ? toBudgetUUID(rawBudgetId) : undefined);
 
   const supply_mode = payload.supply_mode || (vehicle.always_full_tank ? 'encher_tanque' : 'litragem_fixa');
   const liters_authorized = supply_mode === 'encher_tanque'
@@ -519,10 +520,9 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     created_at: newOrder.created_at
   };
 
-  // Se tiver um UUID válido de budget_classification_id, tenta incluir
-  const isBudgetUUID = newOrder.budget_classification_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(newOrder.budget_classification_id);
-  if (isBudgetUUID) {
-    orderRecord.budget_classification_id = newOrder.budget_classification_id;
+  // Se tiver um UUID de budget_classification_id, inclui na gravação
+  if (resolvedBudgetId && isValidUUID(resolvedBudgetId)) {
+    orderRecord.budget_classification_id = resolvedBudgetId;
   }
 
   try {
@@ -698,15 +698,16 @@ export async function validateAndCompleteFuelOrder(
   const finalOrderNumber = customOrderNumber || order.order_number;
 
   // Resolução de Ficha Orçamentária se fornecida na conclusão/edição
-  let resolvedBudgetId = completionData.budget_classification_id !== undefined
+  let rawBudgetId = completionData.budget_classification_id !== undefined
     ? (completionData.budget_classification_id || undefined)
     : (order.budget_classification_id || vehicle.budget_classification_id);
 
   let resolvedBudget = completionData.budget_classification;
-  if (!resolvedBudget && resolvedBudgetId) {
-    const localBudgets = getLocalBudgetClassifications();
-    resolvedBudget = localBudgets.find(b => b.id === resolvedBudgetId) || order.budget_classification || vehicle.budget_classification;
+  const localBudgets = getLocalBudgetClassifications();
+  if (!resolvedBudget && rawBudgetId) {
+    resolvedBudget = localBudgets.find(b => b.id === rawBudgetId || b.invoice_sheet === rawBudgetId || b.id === toBudgetUUID(String(rawBudgetId))) || order.budget_classification || vehicle.budget_classification;
   }
+  let resolvedBudgetId = resolvedBudget?.id || (rawBudgetId ? toBudgetUUID(rawBudgetId) : undefined);
 
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
@@ -786,7 +787,7 @@ export async function validateAndCompleteFuelOrder(
     audit_justification: updatedOrder.audit_justification || null,
     status: updatedOrder.status,
     supplied_at: updatedOrder.supplied_at,
-    budget_classification_id: resolvedBudgetId || null
+    budget_classification_id: (resolvedBudgetId && isValidUUID(resolvedBudgetId)) ? resolvedBudgetId : null
   };
 
   let persistedRemotely = false;
@@ -1615,53 +1616,78 @@ export async function updateFuelOrderBudgetClassification(
   _institutionId: string = 'inst_1'
 ): Promise<TwoWayFuelOrder> {
   const localBudgets = getLocalBudgetClassifications();
-  const targetBudget = localBudgets.find(b => b.id === budgetId);
+  const targetBudget = localBudgets.find(b => 
+    b.id === budgetId || 
+    b.invoice_sheet === budgetId || 
+    b.id === toBudgetUUID(budgetId)
+  );
+  const resolvedBudgetId = targetBudget?.id || toBudgetUUID(budgetId);
 
-  // 1. Atualizar cache de ordens TwoWay
+  // 1. Atualizar cache de ordens TwoWay e ordens reais locais
   const orders = getLocalOrders();
-  const orderIdx = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
-  if (orderIdx === -1) {
-    throw new Error(`Ordem nº "${orderId}" não encontrada para atualização de dotação.`);
+  let orderIdx = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  let baseOrder: TwoWayFuelOrder | null = orderIdx !== -1 ? orders[orderIdx] : null;
+
+  if (!baseOrder) {
+    try {
+      const rawReal = localStorage.getItem('gestao360_real_orders');
+      if (rawReal) {
+        const realList = JSON.parse(rawReal) as TwoWayFuelOrder[];
+        const rIdx = realList.findIndex(o => o.id === orderId || o.order_number === orderId);
+        if (rIdx !== -1) {
+          baseOrder = realList[rIdx];
+        }
+      }
+    } catch {}
   }
 
   const updatedOrder: TwoWayFuelOrder = {
-    ...orders[orderIdx],
-    budget_classification_id: budgetId,
-    budget_classification: targetBudget || orders[orderIdx].budget_classification
+    ...(baseOrder || { id: orderId, order_number: orderId } as any),
+    budget_classification_id: resolvedBudgetId,
+    budget_classification: targetBudget || baseOrder?.budget_classification
   };
-  orders[orderIdx] = updatedOrder;
+
+  if (orderIdx !== -1) {
+    orders[orderIdx] = updatedOrder;
+  } else {
+    orders.unshift(updatedOrder);
+  }
   saveLocalOrders(orders);
 
-  // Também atualiza o outro cache se existir
+  // Também atualiza o gestao360_real_orders
   try {
     const rawReal = localStorage.getItem('gestao360_real_orders');
     if (rawReal) {
       const realList = JSON.parse(rawReal) as TwoWayFuelOrder[];
       const rIdx = realList.findIndex(o => o.id === orderId || o.order_number === orderId);
       if (rIdx !== -1) {
-        realList[rIdx] = {
-          ...realList[rIdx],
-          budget_classification_id: budgetId,
-          budget_classification: targetBudget || realList[rIdx].budget_classification
-        };
-        localStorage.setItem('gestao360_real_orders', JSON.stringify(realList));
+        realList[rIdx] = updatedOrder;
+      } else {
+        realList.unshift(updatedOrder);
       }
+      localStorage.setItem('gestao360_real_orders', JSON.stringify(realList));
     }
   } catch {}
 
   // 2. Persistir no Supabase remoto
   try {
-    const updatePayload: Record<string, any> = { budget_classification_id: budgetId };
-    let { error } = await supabase
-      .from('fuel_supply_orders')
-      .update(updatePayload)
-      .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+    const updatePayload: Record<string, any> = { budget_classification_id: resolvedBudgetId };
+    let query = supabase.from('fuel_supply_orders').update(updatePayload);
+    if (isValidUUID(orderId)) {
+      query = query.eq('id', orderId);
+    } else {
+      query = query.eq('order_number', orderId);
+    }
+    let { error } = await query;
 
     if (error) {
-      await supabaseAnon
-        .from('fuel_supply_orders')
-        .update(updatePayload)
-        .or(`id.eq.${orderId},order_number.eq.${orderId}`);
+      let anonQuery = supabaseAnon.from('fuel_supply_orders').update(updatePayload);
+      if (isValidUUID(orderId)) {
+        anonQuery = anonQuery.eq('id', orderId);
+      } else {
+        anonQuery = anonQuery.eq('order_number', orderId);
+      }
+      await anonQuery;
     }
   } catch (dbErr) {
     console.warn('[FleetFuelAudit] Aviso ao persistir ficha orçamentária no Supabase:', dbErr);
