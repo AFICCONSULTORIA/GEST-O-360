@@ -1104,15 +1104,27 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   const filteredDrivers = useMemo(() => {
     return drivers.filter(d => {
-      const q = driverSearchTerm.toLowerCase().trim();
+      const q = (driverSearchTerm || searchTerm).toLowerCase().trim();
+      const cleanQ = q.replace(/[^a-z0-9]/g, '');
+      const cleanCpf = (d.cpf || '').replace(/[^0-9]/g, '');
+
       const matchesSearch = !q || 
         d.full_name.toLowerCase().includes(q) || 
         d.cpf.includes(q) ||
-        (d.cnh_number && d.cnh_number.includes(q));
-      const matchesDept = departmentFilter === 'all' || d.department === departmentFilter;
-      return matchesSearch && matchesDept;
+        (cleanQ.length > 0 && cleanCpf.includes(cleanQ)) ||
+        (d.cnh_number && d.cnh_number.toLowerCase().includes(q)) ||
+        (d.department && d.department.toLowerCase().includes(q));
+
+      const matchesDept = departmentFilter === 'all' || 
+        (d.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase() ||
+        (d.department || '').toLowerCase().includes(departmentFilter.toLowerCase()) ||
+        departmentFilter.toLowerCase().includes((d.department || '').toLowerCase());
+
+      const matchesStatus = statusFilter === 'all' || d.status === statusFilter;
+
+      return matchesSearch && matchesDept && matchesStatus;
     });
-  }, [drivers, driverSearchTerm, departmentFilter]);
+  }, [drivers, driverSearchTerm, searchTerm, departmentFilter, statusFilter]);
 
   const filteredStations = useMemo(() => {
     return stations.filter(s => {
@@ -1273,7 +1285,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Reseta para página 1 ao alterar filtros de busca ou aba
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, departmentFilter, statusFilter, activeTab, orderNumberSort]);
+  }, [searchTerm, driverSearchTerm, departmentFilter, statusFilter, activeTab, orderNumberSort]);
 
   // Paginação para Ordens (Aba 1 e Aba 3 - 30 itens por página)
   const totalPagesOrders = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE) || 1;
@@ -2299,7 +2311,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer"
           >
             <option value="all">Todos os Status</option>
-            {activeTab === 'vehicles' ? (
+            {activeTab === 'drivers' ? (
+              <>
+                <option value="ativo">Ativo</option>
+                <option value="afastado">Afastado</option>
+                <option value="inativo">Inativo</option>
+              </>
+            ) : activeTab === 'vehicles' ? (
               <>
                 <option value="ativo">Ativo</option>
                 <option value="manutencao">Em Manutenção</option>
@@ -3299,11 +3317,27 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
                 <input
                   type="text"
-                  placeholder="Buscar motorista ou CPF..."
+                  placeholder="Buscar motorista, CPF ou secretaria..."
                   value={driverSearchTerm}
-                  onChange={e => setDriverSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
+                  onChange={e => {
+                    setDriverSearchTerm(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full pl-8 pr-7 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
                 />
+                {driverSearchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDriverSearchTerm('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-full cursor-pointer"
+                    title="Limpar busca"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -3369,16 +3403,37 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   <tr>
                     <td colSpan={7} className="text-center py-12 text-neutral-400">
                       <Users size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
-                      <p className="font-bold text-neutral-800 dark:text-white">Nenhum motorista cadastrado ainda</p>
-                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
-                        Cadastre os condutores oficiais com Nome Completo, CPF, Data de Nascimento e Secretaria para emissão ágil de ordens.
+                      <p className="font-bold text-neutral-800 dark:text-white">
+                        {drivers.length === 0 ? 'Nenhum motorista cadastrado ainda' : 'Nenhum motorista encontrado para os filtros selecionados'}
                       </p>
-                      <button
-                        onClick={handleOpenNewDriver}
-                        className="mt-4 px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Plus size={14} /> Cadastrar Primeiro Motorista
-                      </button>
+                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
+                        {drivers.length === 0
+                          ? 'Cadastre os condutores oficiais com Nome Completo, CPF, Data de Nascimento e Secretaria para emissão ágil de ordens.'
+                          : 'Tente alterar os termos da busca ou ajustar os filtros de secretaria e status acima.'}
+                      </p>
+                      {drivers.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDriverSearchTerm('');
+                            setSearchTerm('');
+                            setDepartmentFilter('all');
+                            setStatusFilter('all');
+                            setCurrentPage(1);
+                          }}
+                          className="mt-3 px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          Limpar Todos os Filtros
+                        </button>
+                      )}
+                      {drivers.length === 0 && (
+                        <button
+                          onClick={handleOpenNewDriver}
+                          className="mt-4 px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Plus size={14} /> Cadastrar Primeiro Motorista
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ) : (
