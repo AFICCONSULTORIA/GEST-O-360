@@ -780,18 +780,27 @@ export async function getFuelSupplyOrders(filters?: {
     }
 
     if (!error && data) {
-      const localBudgets = getLocalBudgetClassifications();
+      // Carregar em paralelo mapa de dotações/fichas e o catálogo de fichas orçamentárias da nuvem
+      const [remoteBudgetMap, allBudgets] = await Promise.all([
+        getFuelOrderBudgetsFromSupabase(filters?.institutionId || 'inst_1'),
+        getFleetBudgetClassifications(filters?.institutionId || 'inst_1')
+      ]);
       const localOrders = getLocalRealOrders();
       const normalized = (data as FuelSupplyOrder[]).map(ord => {
         const cached = localOrders.find(lo => lo.id === ord.id || lo.order_number === ord.order_number);
+        const resolvedBudgetId = ord.budget_classification_id ||
+          remoteBudgetMap[ord.id] ||
+          remoteBudgetMap[ord.order_number] ||
+          cached?.budget_classification_id;
+
         const resolvedBc = ord.budget_classification ||
           cached?.budget_classification ||
-          localBudgets.find(b => b.id === ord.budget_classification_id || b.invoice_sheet === ord.budget_classification_id || b.id === toBudgetUUID(String(ord.budget_classification_id))) ||
-          localBudgets.find(b => b.id === cached?.budget_classification_id || b.invoice_sheet === cached?.budget_classification_id || b.id === toBudgetUUID(String(cached?.budget_classification_id)));
+          allBudgets.find(b => b.id === resolvedBudgetId || b.invoice_sheet === resolvedBudgetId || b.id === toBudgetUUID(String(resolvedBudgetId))) ||
+          allBudgets.find(b => b.id === cached?.budget_classification_id || b.invoice_sheet === cached?.budget_classification_id || b.id === toBudgetUUID(String(cached?.budget_classification_id)));
 
         return {
           ...ord,
-          budget_classification_id: ord.budget_classification_id || cached?.budget_classification_id || resolvedBc?.id,
+          budget_classification_id: resolvedBudgetId || resolvedBc?.id,
           budget_classification: resolvedBc,
           receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url || cached?.receipt_attachment_url || cached?.receipt_photo_url,
           receipt_photo_url: ord.receipt_photo_url || ord.receipt_attachment_url || cached?.receipt_photo_url || cached?.receipt_attachment_url
@@ -2489,13 +2498,141 @@ export interface NewBudgetClassificationPayload {
   is_active?: boolean;
 }
 
+const getOrderBudgetsStorageKey = (institutionId?: string) =>
+  `@gestao360:fuel_order_budgets_${institutionId || 'inst_1'}`;
+
+/**
+ * Consulta o mapa de fichas orçamentárias vinculadas a cada ordem (persistido na nuvem em institutions.notes)
+ */
+export async function getFuelOrderBudgetsFromSupabase(institutionId: string = 'inst_1'): Promise<Record<string, string>> {
+  const targetInst = institutionId || 'inst_1';
+  let cached: Record<string, string> = {};
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(getOrderBudgetsStorageKey(targetInst));
+      if (raw) cached = JSON.parse(raw);
+    } catch {}
+  }
+
+  try {
+    let { data, error } = await supabase
+      .from('institutions')
+      .select('notes')
+      .eq('id', targetInst)
+      .maybeSingle();
+
+    if (error) {
+      const anonRes = await supabaseAnon
+        .from('institutions')
+        .select('notes')
+        .eq('id', targetInst)
+        .maybeSingle();
+      data = anonRes.data;
+      error = anonRes.error;
+    }
+
+    if (!error && data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (parsed?.fuel_order_budgets && typeof parsed.fuel_order_budgets === 'object') {
+          const merged = { ...cached, ...parsed.fuel_order_budgets };
+          if (typeof window !== 'undefined') {
+            try { localStorage.setItem(getOrderBudgetsStorageKey(targetInst), JSON.stringify(merged)); } catch {}
+          }
+          return merged;
+        }
+      } catch {}
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Aviso ao carregar fichas de ordens do Supabase:', err);
+  }
+
+  return cached;
+}
+
+/**
+ * Salva a vinculação da ficha orçamentária de uma ordem no Supabase (institutions.notes e coluna remota)
+ * Garante que qualquer outro computador ou aba anônima visualize a dotação correta imediatamente.
+ */
+export async function saveFuelOrderBudgetToSupabase(
+  orderId: string,
+  orderNumber: string | undefined,
+  budgetId: string,
+  institutionId: string = 'inst_1'
+): Promise<void> {
+  const targetInst = institutionId || 'inst_1';
+
+  // 1. Atualizar cache local síncrono
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(getOrderBudgetsStorageKey(targetInst));
+      const map = raw ? JSON.parse(raw) : {};
+      if (orderId) map[orderId] = budgetId;
+      if (orderNumber) map[orderNumber] = budgetId;
+      localStorage.setItem(getOrderBudgetsStorageKey(targetInst), JSON.stringify(map));
+    } catch {}
+  }
+
+  // 2. Persistir no Supabase remoto (institutions.notes)
+  try {
+    let { data } = await supabase
+      .from('institutions')
+      .select('notes')
+      .eq('id', targetInst)
+      .maybeSingle();
+
+    if (!data) {
+      const anonRes = await supabaseAnon
+        .from('institutions')
+        .select('notes')
+        .eq('id', targetInst)
+        .maybeSingle();
+      data = anonRes.data;
+    }
+
+    const currentNotes = data?.notes ? JSON.parse(data.notes) : {};
+    if (!currentNotes.fuel_order_budgets || typeof currentNotes.fuel_order_budgets !== 'object') {
+      currentNotes.fuel_order_budgets = {};
+    }
+    if (orderId) currentNotes.fuel_order_budgets[orderId] = budgetId;
+    if (orderNumber) currentNotes.fuel_order_budgets[orderNumber] = budgetId;
+
+    let { error } = await supabase
+      .from('institutions')
+      .update({ notes: JSON.stringify(currentNotes) })
+      .eq('id', targetInst);
+
+    if (error) {
+      await supabaseAnon
+        .from('institutions')
+        .update({ notes: JSON.stringify(currentNotes) })
+        .eq('id', targetInst);
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Aviso ao persistir ficha em institutions.notes:', err);
+  }
+
+  // 3. Tentar também atualizar diretamente a coluna budget_classification_id em fuel_supply_orders caso exista
+  try {
+    const updatePayload = { budget_classification_id: budgetId };
+    if (isValidUUID(orderId)) {
+      const res = await supabase.from('fuel_supply_orders').update(updatePayload).eq('id', orderId);
+      if (res.error) await supabaseAnon.from('fuel_supply_orders').update(updatePayload).eq('id', orderId);
+    } else if (orderNumber) {
+      const res = await supabase.from('fuel_supply_orders').update(updatePayload).eq('order_number', orderNumber);
+      if (res.error) await supabaseAnon.from('fuel_supply_orders').update(updatePayload).eq('order_number', orderNumber);
+    }
+  } catch {}
+}
+
 export async function createFleetBudgetClassification(
   payload: NewBudgetClassificationPayload,
   institutionId: string = 'inst_1'
 ): Promise<FleetBudgetClassification> {
+  const targetInst = payload.institution_id || institutionId || 'default';
   const newItem: FleetBudgetClassification = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `bc-${Date.now()}`,
-    institution_id: payload.institution_id || institutionId,
+    institution_id: targetInst,
     department_local: payload.department_local.trim(),
     invoice_sheet: payload.invoice_sheet.trim(),
     funding_source: payload.funding_source.trim(),
@@ -2505,15 +2642,28 @@ export async function createFleetBudgetClassification(
   };
 
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('fleet_budget_classifications')
       .insert([newItem])
       .select()
       .single();
 
+    if (error) {
+      const fallbackItem = { ...newItem, institution_id: 'default' };
+      const retryAnon = await supabaseAnon
+        .from('fleet_budget_classifications')
+        .insert([fallbackItem])
+        .select()
+        .single();
+      if (!retryAnon.error && retryAnon.data) {
+        data = retryAnon.data;
+        error = null;
+      }
+    }
+
     if (!error && data) {
       const list = getLocalBudgetClassifications();
-      saveLocalBudgetClassifications([data as FleetBudgetClassification, ...list]);
+      saveLocalBudgetClassifications([data as FleetBudgetClassification, ...list.filter(x => x.id !== data.id && x.invoice_sheet !== data.invoice_sheet)]);
       return data as FleetBudgetClassification;
     }
   } catch (err) {
@@ -2545,18 +2695,33 @@ export async function updateFleetBudgetClassification(
   };
 
   try {
-    const { data, error } = await supabase
+    const updatePayload = {
+      department_local: updated.department_local,
+      invoice_sheet: updated.invoice_sheet,
+      funding_source: updated.funding_source,
+      budget_code: updated.budget_code,
+      is_active: updated.is_active
+    };
+
+    let { data, error } = await supabase
       .from('fleet_budget_classifications')
-      .update({
-        department_local: updated.department_local,
-        invoice_sheet: updated.invoice_sheet,
-        funding_source: updated.funding_source,
-        budget_code: updated.budget_code,
-        is_active: updated.is_active
-      })
+      .update(updatePayload)
       .eq('id', id)
       .select()
       .single();
+
+    if (error) {
+      const retryAnon = await supabaseAnon
+        .from('fleet_budget_classifications')
+        .update(updatePayload)
+        .eq('id', id)
+        .select()
+        .single();
+      if (!retryAnon.error && retryAnon.data) {
+        data = retryAnon.data;
+        error = null;
+      }
+    }
 
     if (!error && data) {
       if (existingIdx !== -1) {
@@ -2582,7 +2747,10 @@ export async function updateFleetBudgetClassification(
 
 export async function deleteFleetBudgetClassification(id: string): Promise<boolean> {
   try {
-    await supabase.from('fleet_budget_classifications').delete().eq('id', id);
+    let { error } = await supabase.from('fleet_budget_classifications').delete().eq('id', id);
+    if (error) {
+      await supabaseAnon.from('fleet_budget_classifications').delete().eq('id', id);
+    }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao deletar classificação no Supabase:', err);
   }
@@ -2595,11 +2763,23 @@ export async function deleteFleetBudgetClassification(id: string): Promise<boole
 
 export async function getFleetBudgetClassifications(institutionId?: string): Promise<FleetBudgetClassification[]> {
   try {
-    let query = supabase.from('fleet_budget_classifications').select('*');
-    if (institutionId) {
-      query = query.or(`institution_id.eq.${institutionId},institution_id.eq.default`);
+    const buildQuery = (client: any) => {
+      let query = client.from('fleet_budget_classifications').select('*');
+      if (institutionId) {
+        query = query.or(`institution_id.eq.${institutionId},institution_id.eq.default,institution_id.is.null`);
+      }
+      return query;
+    };
+
+    let { data, error } = await buildQuery(supabase);
+    if (error) {
+      const retryAnon = await buildQuery(supabaseAnon);
+      if (!retryAnon.error && retryAnon.data) {
+        data = retryAnon.data;
+        error = null;
+      }
     }
-    const { data, error } = await query;
+
     if (!error && data && data.length > 0) {
       const sorted = (data as FleetBudgetClassification[]).sort(
         (a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0)

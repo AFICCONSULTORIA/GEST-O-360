@@ -9,7 +9,7 @@
 
 import { supabase, supabaseAnon } from '../supabase';
 import * as XLSX from 'xlsx';
-import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
 export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'cancelado';
@@ -1645,26 +1645,14 @@ export async function updateFuelOrderBudgetClassification(
     }
   } catch {}
 
-  // 2. Persistir no Supabase remoto
+  // 2. Persistir no Supabase remoto usando a sincronização em nuvem resiliente (institutions.notes e coluna)
   try {
-    const updatePayload: Record<string, any> = { budget_classification_id: resolvedBudgetId };
-    let query = supabase.from('fuel_supply_orders').update(updatePayload);
-    if (isValidUUID(orderId)) {
-      query = query.eq('id', orderId);
-    } else {
-      query = query.eq('order_number', orderId);
-    }
-    let { error } = await query;
-
-    if (error) {
-      let anonQuery = supabaseAnon.from('fuel_supply_orders').update(updatePayload);
-      if (isValidUUID(orderId)) {
-        anonQuery = anonQuery.eq('id', orderId);
-      } else {
-        anonQuery = anonQuery.eq('order_number', orderId);
-      }
-      await anonQuery;
-    }
+    await saveFuelOrderBudgetToSupabase(
+      orderId,
+      updatedOrder.order_number,
+      resolvedBudgetId,
+      _institutionId || 'inst_1'
+    );
   } catch (dbErr) {
     console.warn('[FleetFuelAudit] Aviso ao persistir ficha orçamentária no Supabase:', dbErr);
   }

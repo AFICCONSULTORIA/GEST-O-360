@@ -34,6 +34,7 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
   onUpdated,
   institutionId = 'inst_1'
 }) => {
+  const targetInst = institutionId || 'inst_1';
   const [classifications, setClassifications] = useState<FleetBudgetClassification[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,7 +56,7 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
   const loadClassifications = async () => {
     setLoading(true);
     try {
-      const data = await getFleetBudgetClassifications(institutionId);
+      const data = await getFleetBudgetClassifications(targetInst);
       setClassifications(data);
     } catch (err) {
       console.error(err);
@@ -71,7 +72,7 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
       setIsEditing(false);
       setEditingId(null);
     }
-  }, [isOpen, institutionId]);
+  }, [isOpen, targetInst]);
 
   // Filtragem inteligente
   const filteredList = useMemo(() => {
@@ -144,17 +145,17 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
         showToast('Classificação orçamentária atualizada com sucesso!', 'success');
       } else {
         await createFleetBudgetClassification({
-          institution_id: institutionId,
+          institution_id: targetInst,
           department_local: formData.department_local,
           invoice_sheet: formData.invoice_sheet,
           funding_source: formData.funding_source,
           budget_code: formData.budget_code,
           is_active: formData.is_active
-        }, institutionId);
+        }, targetInst);
         showToast('Nova dotação/crédito orçamentário cadastrado com sucesso!', 'success');
       }
 
-      const updated = await getFleetBudgetClassifications(institutionId);
+      const updated = await getFleetBudgetClassifications(targetInst);
       setClassifications(updated);
       onUpdated(updated);
       setIsEditing(false);
@@ -175,7 +176,7 @@ export const BudgetClassificationsModal: React.FC<BudgetClassificationsModalProp
     try {
       await deleteFleetBudgetClassification(id);
       showToast(`Ficha nº ${sheet} removida com sucesso.`, 'info');
-      const updated = await getFleetBudgetClassifications(institutionId);
+      const updated = await getFleetBudgetClassifications(targetInst);
       setClassifications(updated);
       onUpdated(updated);
     } catch (err) {
