@@ -29,34 +29,38 @@ export const ToastContainer = () => {
 
   React.useEffect(() => {
     const unsub = toastEmitter.subscribe(toast => {
-      setToasts(prev => [...prev, toast]);
-      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toast.id)), 4000);
+      setToasts(prev => {
+        // Evita duplicar a mesma mensagem se já estiver visível e mantém no máximo 2 avisos minimalistas
+        const withoutDuplicate = prev.filter(t => t.message !== toast.message);
+        return [...withoutDuplicate.slice(-1), toast];
+      });
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toast.id)), 3200);
     });
     return unsub;
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 z-[99999] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed bottom-4 right-4 z-[99999] flex flex-col gap-1.5 pointer-events-none max-w-sm">
       <AnimatePresence>
         {toasts.map(t => (
           <motion.div 
             key={t.id} 
-            initial={{ opacity: 0, y: 20, scale: 0.9 }} 
+            initial={{ opacity: 0, y: 12, scale: 0.96 }} 
             animate={{ opacity: 1, y: 0, scale: 1 }} 
-            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }} 
-            className={`pointer-events-auto flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl border backdrop-blur-md ${
-              t.type === 'error' ? 'bg-rose-50/90 border-rose-100 text-rose-800 dark:bg-rose-950/90 dark:border-rose-900/50 dark:text-rose-200' :
-              t.type === 'success' ? 'bg-emerald-50/90 border-emerald-100 text-emerald-800 dark:bg-emerald-950/90 dark:border-emerald-900/50 dark:text-emerald-200' :
-              t.type === 'warning' ? 'bg-amber-50/90 border-amber-100 text-amber-800 dark:bg-amber-950/90 dark:border-amber-900/50 dark:text-amber-200' :
-              'bg-white/90 border-neutral-100 text-neutral-800 dark:bg-neutral-900/90 dark:border-neutral-800 dark:text-neutral-200'
+            exit={{ opacity: 0, y: 8, scale: 0.96, transition: { duration: 0.15 } }} 
+            className={`pointer-events-auto flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl shadow-lg border backdrop-blur-md ${
+              t.type === 'error' ? 'bg-rose-950/90 border-rose-800/60 text-rose-100' :
+              t.type === 'success' ? 'bg-neutral-900/95 border-emerald-500/40 text-white dark:bg-neutral-900/95' :
+              t.type === 'warning' ? 'bg-amber-950/90 border-amber-800/60 text-amber-100' :
+              'bg-neutral-900/90 border-neutral-800 text-neutral-100'
             }`}
           >
-             {t.type === 'error' && <XCircle size={24} className="text-rose-500" />}
-             {t.type === 'success' && <CheckCircle2 size={24} className="text-emerald-500" />}
-             {t.type === 'info' && <Info size={24} className="text-blue-500" />}
-             {t.type === 'warning' && <AlertTriangle size={24} className="text-amber-500" />}
-             <span className="text-sm font-bold flex-1">{t.message}</span>
-             <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="ml-3 p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors"><X size={16} /></button>
+             {t.type === 'error' && <XCircle size={16} className="text-rose-400 shrink-0" />}
+             {t.type === 'success' && <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />}
+             {t.type === 'info' && <Info size={16} className="text-blue-400 shrink-0" />}
+             {t.type === 'warning' && <AlertTriangle size={16} className="text-amber-400 shrink-0" />}
+             <span className="text-xs font-semibold leading-snug flex-1 line-clamp-2">{t.message}</span>
+             <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="p-0.5 text-neutral-400 hover:text-white rounded-full transition-colors cursor-pointer"><X size={13} /></button>
           </motion.div>
         ))}
       </AnimatePresence>

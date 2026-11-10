@@ -129,7 +129,11 @@ export interface FleetNotification {
   plate?: string;
   vehicleModel?: string;
   driverName?: string;
+  stationName?: string;
   liters?: number;
+  currentOdometer?: number;
+  pumpPhotoUrl?: string;
+  odometerPhotoUrl?: string;
   timestamp: string;
   read: boolean;
   hasPhotos: boolean;
@@ -202,6 +206,81 @@ export function resolveOrderBudget(
   return undefined;
 }
 
+/**
+ * Resolução segura e à prova de falhas dos valores financeiros da ordem (evita NaN)
+ */
+export function resolveOrderFinancials(
+  order: Partial<FuelSupplyOrder> | null | undefined,
+  biddedPricesMap?: BiddedPricesMap
+): {
+  unitPrice: number;
+  effectiveLiters: number;
+  effectiveValue: number;
+  formattedValue: string;
+  formattedUnitPrice: string;
+} {
+  if (!order) {
+    return {
+      unitPrice: 6.19,
+      effectiveLiters: 0,
+      effectiveValue: 0,
+      formattedValue: 'R$ 0,00',
+      formattedUnitPrice: 'R$ 6,19'
+    };
+  }
+
+  const isSupplied = order.status !== 'autorizado' && order.status !== 'autorizado_pendente';
+  const rawLiters = isSupplied && order.liters_supplied ? order.liters_supplied : order.liters_authorized;
+  const numLiters = Number(rawLiters);
+  const effectiveLiters = !isNaN(numLiters) && numLiters > 0 ? numLiters : 0;
+
+  // Preço unitário contratual com fallback seguro por combustível
+  const fuelKey = order.fuel_type as FuelType;
+  const priceFromConfig = fuelKey && biddedPricesMap?.[fuelKey]?.price ? Number(biddedPricesMap[fuelKey].price) : undefined;
+  const priceFromContractual = fuelKey && CONTRACTUAL_BIDDED_PRICES[fuelKey]?.price ? Number(CONTRACTUAL_BIDDED_PRICES[fuelKey].price) : undefined;
+
+  let unitPrice = 0;
+  const orderBiddedPrice = Number((order as any)?.bidded_unit_price);
+  const orderUnitPrice = Number(order.unit_price);
+
+  if (!isNaN(orderBiddedPrice) && orderBiddedPrice > 0) {
+    unitPrice = orderBiddedPrice;
+  } else if (!isNaN(orderUnitPrice) && orderUnitPrice > 0) {
+    unitPrice = orderUnitPrice;
+  } else if (typeof priceFromConfig === 'number' && !isNaN(priceFromConfig) && priceFromConfig > 0) {
+    unitPrice = priceFromConfig;
+  } else if (typeof priceFromContractual === 'number' && !isNaN(priceFromContractual) && priceFromContractual > 0) {
+    unitPrice = priceFromContractual;
+  } else {
+    unitPrice = 6.19;
+  }
+
+  if (isNaN(unitPrice) || unitPrice <= 0) unitPrice = 6.19;
+
+  // Valor total apurado com fallback seguro
+  const orderTotalValue = Number(order.total_value);
+  const orderTotalAuth = Number((order as any)?.total_authorized_value);
+
+  let effectiveValue = 0;
+  if (!isNaN(orderTotalValue) && orderTotalValue > 0) {
+    effectiveValue = orderTotalValue;
+  } else if (!isNaN(orderTotalAuth) && orderTotalAuth > 0) {
+    effectiveValue = orderTotalAuth;
+  } else {
+    effectiveValue = Number((effectiveLiters * unitPrice).toFixed(2));
+  }
+
+  if (isNaN(effectiveValue) || effectiveValue < 0) effectiveValue = 0;
+
+  return {
+    unitPrice,
+    effectiveLiters,
+    effectiveValue,
+    formattedValue: effectiveValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+    formattedUnitPrice: `R$ ${unitPrice.toFixed(2)}`
+  };
+}
+
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
 }
@@ -225,11 +304,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [selectedAttachmentPhoto, setSelectedAttachmentPhoto] = useState<'pump' | 'odometer' | 'receipt' | 'invoice'>('pump');
   const [loading, setLoading] = useState(true);
 
-  // Notificações e Campainha da Frota (inclui recebidas offline)
+  // Notificações Minimalistas da Frota (focadas exclusivamente em abastecimentos no posto com fotos da bomba/odômetro)
   const [notifications, setNotifications] = useState<FleetNotification[]>(() => {
     try {
       const instId = currentUser?.institution_id || 'inst_1';
-      const raw = localStorage.getItem(`gestao360_fleet_notifications_${instId}`);
+      const raw = localStorage.getItem(`gestao360_fleet_station_notifs_v2_${instId}`);
       if (raw) return JSON.parse(raw);
     } catch {}
     return [];
@@ -238,6 +317,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread' | 'abastecimento' | 'alerta'>('all');
   const [bellAnimate, setBellAnimate] = useState(false);
   const notificationDropdownRef = React.useRef<HTMLDivElement>(null);
+  const notifiedStationEventsRef = React.useRef<Record<string, number>>({});
 
   // Filtros
   const [searchTerm, setSearchTerm] = useState('');
@@ -279,6 +359,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
   const [isExecutionModalOpen, setIsExecutionModalOpen] = useState(false);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
+  const [isToolsModalOpen, setIsToolsModalOpen] = useState(false);
+  const [showGlossReasonBox, setShowGlossReasonBox] = useState(false);
   const [isNewVehicleModalOpen, setIsNewVehicleModalOpen] = useState(false);
   const [isLinkInvoiceModalOpen, setIsLinkInvoiceModalOpen] = useState(false);
   const [invoiceLinkOrder, setInvoiceLinkOrder] = useState<FuelSupplyOrder | null>(null);
@@ -424,21 +506,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     return notifications.filter(n => !n.read).length;
   }, [notifications]);
 
-  // Notificações filtradas para o dropdown
+  // Notificações filtradas (minimalistas e sem duplicidade)
   const filteredNotifications = useMemo(() => {
-    return notifications.filter(n => {
-      if (notificationFilter === 'unread') return !n.read;
-      if (notificationFilter === 'abastecimento') return n.type === 'abastecimento';
-      if (notificationFilter === 'alerta') return n.type === 'bloqueio_tce' || n.type === 'alerta_auditoria';
-      return true;
-    });
+    if (notificationFilter === 'unread') {
+      return notifications.filter(n => !n.read);
+    }
+    return notifications;
   }, [notifications, notificationFilter]);
 
-  // Sincronizar e recuperar notificações (inclusive geradas enquanto o usuário esteve offline)
+  // Sincronização minimalista: foca apenas em abastecimentos no posto com fotos da bomba e odômetro
   const syncNotificationsWithOrders = (ordList: FuelSupplyOrder[], vehList: FleetVehicle[], instId: string) => {
     try {
-      const storageKey = `gestao360_fleet_notifications_${instId}`;
-      const lastVisitKey = `gestao360_fleet_last_visit_${instId}`;
+      const storageKey = `gestao360_fleet_station_notifs_v2_${instId}`;
+      const lastVisitKey = `gestao360_fleet_last_visit_v2_${instId}`;
 
       let currentNotifs: FleetNotification[] = [];
       const stored = localStorage.getItem(storageKey);
@@ -449,128 +529,126 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       }
 
       const rawLastVisit = localStorage.getItem(lastVisitKey);
-      // Se nunca visitou, consideramos as últimas 48 horas como janela de verificação
-      const lastVisitTime = rawLastVisit ? new Date(rawLastVisit).getTime() : Date.now() - 48 * 3600 * 1000;
+      const lastVisitTime = rawLastVisit ? new Date(rawLastVisit).getTime() : Date.now() - 24 * 3600 * 1000;
 
-      const newNotifs: FleetNotification[] = [];
+      const existingMap = new Map<string, FleetNotification>();
+      currentNotifs.forEach(n => existingMap.set(n.orderNumber || n.id, n));
+
+      const stationNotifs: FleetNotification[] = [];
 
       ordList.forEach(ord => {
+        const isLegacy = Boolean((ord as any).is_legacy_voucher || (ord as any).supply_mode === 'canhoto_legado');
+        const hasStationPhotos = Boolean(ord.pump_photo_url || ord.odometer_photo_url);
+
+        // Foca especificamente em abastecimentos no posto que inseriram fotos da bomba/odômetro (ou recém-abastecidos no posto)
+        if (isLegacy && !hasStationPhotos) return;
+        if (!hasStationPhotos && ord.status !== 'abastecido') return;
+
         const v = ord.vehicle || vehList.find(item => item.id === ord.vehicle_id);
         const orderTime = ord.supplied_at ? new Date(ord.supplied_at).getTime() : new Date(ord.created_at).getTime();
         const wasWhileOffline = orderTime > lastVisitTime;
+        const prevNotif = existingMap.get(ord.order_number);
+        const isAlreadyAudited = ord.status === 'auditado' || ord.status === 'glosado';
 
-        // 1. Notificação de Abastecimento Realizado / Fotos
-        if (ord.status === 'abastecido' || ord.status === 'auditado' || ord.status === 'glosado' || ord.pump_photo_url || ord.odometer_photo_url) {
-          const notifId = `notif_supply_${ord.order_number}`;
-          const exists = currentNotifs.some(n => n.id === notifId || (n.orderNumber === ord.order_number && n.type === 'abastecimento'));
-          if (!exists) {
-            newNotifs.push({
-              id: notifId,
-              orderId: ord.id,
-              orderNumber: ord.order_number,
-              type: 'abastecimento',
-              title: `Abastecimento Confirmado`,
-              message: `${v?.plate || 'Sem Placa'} • ${v?.model || 'Veículo'} (${Number(ord.liters_supplied || ord.liters_authorized).toFixed(1)} L) por ${ord.driver_name}`,
-              plate: v?.plate,
-              vehicleModel: v?.model,
-              driverName: ord.driver_name,
-              liters: ord.liters_supplied || ord.liters_authorized,
-              timestamp: ord.supplied_at || ord.created_at || new Date().toISOString(),
-              read: !wasWhileOffline, // se ocorreu enquanto esteve offline, fica NÃO LIDA!
-              hasPhotos: Boolean(ord.pump_photo_url || ord.odometer_photo_url),
-              anomalyLevel: ord.anomaly_level,
-              anomalyReason: ord.anomaly_reason
-            });
-          }
-        }
-
-        // 2. Notificação de Alerta Antifraude / Bloqueio TCE
-        if (ord.anomaly_level === 'bloqueio_critico' || ord.anomaly_level === 'alerta_amarelo' || ord.is_anomaly) {
-          const isCritical = ord.anomaly_level === 'bloqueio_critico';
-          const notifId = `notif_anomaly_${ord.order_number}`;
-          const exists = currentNotifs.some(n => n.id === notifId || (n.orderNumber === ord.order_number && (n.type === 'bloqueio_tce' || n.type === 'alerta_auditoria')));
-          if (!exists) {
-            newNotifs.push({
-              id: notifId,
-              orderId: ord.id,
-              orderNumber: ord.order_number,
-              type: isCritical ? 'bloqueio_tce' : 'alerta_auditoria',
-              title: isCritical ? 'Bloqueio Crítico TCE' : 'Alerta de Consumo TCE',
-              message: ord.anomaly_reason || 'Inconsistência identificada na auditoria de odômetro ou consumo.',
-              plate: v?.plate,
-              vehicleModel: v?.model,
-              driverName: ord.driver_name,
-              liters: ord.liters_supplied || ord.liters_authorized,
-              timestamp: ord.supplied_at || ord.created_at || new Date().toISOString(),
-              read: !wasWhileOffline, // se ocorreu enquanto esteve offline, fica NÃO LIDA!
-              hasPhotos: Boolean(ord.pump_photo_url || ord.odometer_photo_url),
-              anomalyLevel: ord.anomaly_level,
-              anomalyReason: ord.anomaly_reason
-            });
-          }
-        }
+        stationNotifs.push({
+          id: `notif_posto_${ord.order_number}`,
+          orderId: ord.id,
+          orderNumber: ord.order_number,
+          type: 'abastecimento',
+          title: hasStationPhotos ? 'Abastecido no Posto • Fotos Recebidas' : 'Abastecimento Registrado no Posto',
+          message: `${v?.plate || 'Placa'} • ${v?.model || 'Veículo'} • ${Number(ord.liters_supplied || ord.liters_authorized || 0).toFixed(1)} L`,
+          plate: v?.plate,
+          vehicleModel: v?.model,
+          driverName: ord.driver_name,
+          stationName: ord.station_name,
+          liters: ord.liters_supplied || ord.liters_authorized,
+          currentOdometer: ord.current_odometer,
+          pumpPhotoUrl: ord.pump_photo_url,
+          odometerPhotoUrl: ord.odometer_photo_url,
+          timestamp: ord.supplied_at || ord.created_at || new Date().toISOString(),
+          read: isAlreadyAudited ? true : prevNotif ? prevNotif.read : !wasWhileOffline,
+          hasPhotos: hasStationPhotos,
+          anomalyLevel: ord.anomaly_level,
+          anomalyReason: ord.anomaly_reason
+        });
       });
 
-      const mergedMap = new Map<string, FleetNotification>();
-      newNotifs.forEach(n => mergedMap.set(n.id, n));
-      currentNotifs.forEach(n => {
-        if (!mergedMap.has(n.id)) mergedMap.set(n.id, n);
-      });
+      const sorted = stationNotifs
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 12);
 
-      const mergedList = Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      );
-
-      const trimmed = mergedList.slice(0, 100);
-      localStorage.setItem(storageKey, JSON.stringify(trimmed));
-      setNotifications(trimmed);
-
-      // Atualiza lastVisit
+      localStorage.setItem(storageKey, JSON.stringify(sorted));
+      setNotifications(sorted);
       localStorage.setItem(lastVisitKey, new Date().toISOString());
     } catch (err) {
       console.warn('[FleetFuelManager] Erro ao sincronizar notificações:', err);
     }
   };
 
+  // Disparo único e minimalista quando o abastecimento é feito no posto com fotos da bomba e odômetro
   const addRealtimeNotification = (ord: any) => {
     if (!ord) return;
+    const orderKey = String(ord.order_number || ord.id || '');
+    const hasStationPhotos = Boolean(ord.pump_photo_url || ord.odometer_photo_url);
+    const dedupeKey = `${orderKey}_${hasStationPhotos ? 'photos' : 'supply'}`;
+    const now = Date.now();
+
+    // Evita disparos repetidos do mesmo evento (Realtime + BroadcastChannel + Polling)
+    if (orderKey && notifiedStationEventsRef.current[dedupeKey] && now - notifiedStationEventsRef.current[dedupeKey] < 20000) {
+      return;
+    }
+    if (orderKey) {
+      notifiedStationEventsRef.current[dedupeKey] = now;
+    }
+
     const v = ord.vehicle || vehicles.find(item => item.id === ord.vehicle_id);
-    const isCritical = ord.anomaly_level === 'bloqueio_critico';
-    const isAnomaly = ord.is_anomaly || isCritical || ord.anomaly_level === 'alerta_amarelo';
-    
+    const plateLabel = v?.plate || ord.plate || '';
+    const litersLabel = Number(ord.liters_supplied || ord.liters_authorized || 0).toFixed(1);
+
+    playFuelAlertChime();
+    sendDesktopNotification(
+      '⛽ Abastecimento no Posto',
+      `${plateLabel ? `${plateLabel} • ` : ''}${litersLabel}L abastecidos. Fotos da bomba e odômetro inseridas.`
+    );
+    showToast(
+      `⛽ ${plateLabel || ord.order_number || 'Veículo'} abastecido no posto (${litersLabel} L)${hasStationPhotos ? ' • Fotos da bomba e odômetro recebidas' : ''}`,
+      'success'
+    );
+
+    const notifId = `notif_posto_${ord.order_number || now}`;
     const notif: FleetNotification = {
-      id: `notif_realtime_${ord.order_number || Date.now()}_${Date.now()}`,
+      id: notifId,
       orderId: ord.id,
       orderNumber: ord.order_number || 'Ordem Digital',
-      type: isCritical ? 'bloqueio_tce' : isAnomaly ? 'alerta_auditoria' : 'abastecimento',
-      title: isCritical 
-        ? `Bloqueio Crítico TCE: ${ord.order_number || ''}` 
-        : isAnomaly 
-        ? `Alerta de Auditoria: ${ord.order_number || ''}` 
-        : `Abastecimento Confirmado na Bomba`,
-      message: `${v?.plate || 'Sem Placa'} • ${v?.model || 'Veículo Municipal'} (${Number(ord.liters_supplied || ord.liters_authorized || 0).toFixed(1)} L) por ${ord.driver_name || 'Condutor'}`,
+      type: 'abastecimento',
+      title: hasStationPhotos ? 'Abastecido no Posto • Fotos Recebidas' : 'Abastecimento no Posto',
+      message: `${plateLabel || 'Veículo'} • ${v?.model || 'Frota'} • ${litersLabel} L`,
       plate: v?.plate,
       vehicleModel: v?.model,
       driverName: ord.driver_name,
+      stationName: ord.station_name,
       liters: ord.liters_supplied || ord.liters_authorized,
+      currentOdometer: ord.current_odometer,
+      pumpPhotoUrl: ord.pump_photo_url,
+      odometerPhotoUrl: ord.odometer_photo_url,
       timestamp: new Date().toISOString(),
       read: false,
-      hasPhotos: Boolean(ord.pump_photo_url || ord.odometer_photo_url),
+      hasPhotos: hasStationPhotos,
       anomalyLevel: ord.anomaly_level,
       anomalyReason: ord.anomaly_reason
     };
 
     setNotifications(prev => {
-      const updated = [notif, ...prev.filter(n => n.id !== notif.id)].slice(0, 100);
+      const updated = [notif, ...prev.filter(n => n.id !== notifId && n.orderNumber !== notif.orderNumber)].slice(0, 12);
       const instId = currentUser?.institution_id || 'inst_1';
       try {
-        localStorage.setItem(`gestao360_fleet_notifications_${instId}`, JSON.stringify(updated));
+        localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
       } catch {}
       return updated;
     });
 
     setBellAnimate(true);
-    setTimeout(() => setBellAnimate(false), 2000);
+    setTimeout(() => setBellAnimate(false), 1800);
   };
 
   const markAllNotificationsAsRead = () => {
@@ -578,37 +656,33 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const updated = prev.map(n => ({ ...n, read: true }));
       const instId = currentUser?.institution_id || 'inst_1';
       try {
-        localStorage.setItem(`gestao360_fleet_notifications_${instId}`, JSON.stringify(updated));
+        localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
       } catch {}
       return updated;
     });
-    showToast('Todas as notificações foram marcadas como lidas.', 'info');
   };
 
   const clearNotificationHistory = () => {
     const instId = currentUser?.institution_id || 'inst_1';
     setNotifications([]);
     try {
-      localStorage.removeItem(`gestao360_fleet_notifications_${instId}`);
+      localStorage.removeItem(`gestao360_fleet_station_notifs_v2_${instId}`);
     } catch {}
-    showToast('Histórico de notificações limpo.', 'info');
   };
 
   const handleNotificationClick = (notif: FleetNotification) => {
-    // 1. Marca como lida
     setNotifications(prev => {
       const updated = prev.map(n => n.id === notif.id ? { ...n, read: true } : n);
       const instId = currentUser?.institution_id || 'inst_1';
       try {
-        localStorage.setItem(`gestao360_fleet_notifications_${instId}`, JSON.stringify(updated));
+        localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
       } catch {}
       return updated;
     });
 
-    // 2. Se a ordem existe, abre o visualizador de fotos e detalhes imediatamente!
     const targetOrder = orders.find(o => o.order_number === notif.orderNumber || o.id === notif.orderId);
     if (targetOrder) {
-      openAttachmentViewer(targetOrder);
+      openAttachmentViewer(targetOrder, 'pump');
       setIsNotificationOpen(false);
     } else {
       setSearchTerm(notif.orderNumber);
@@ -624,7 +698,6 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (preferredTab) {
       setSelectedAttachmentPhoto(preferredTab);
     } else if (hasReceipt && !hasPump && !hasOdo) {
-      // Se possui apenas canhoto anexado (ex: lançamento retroativo), abre direto na aba do canhoto!
       setSelectedAttachmentPhoto('receipt');
     } else if (hasPump) {
       setSelectedAttachmentPhoto('pump');
@@ -664,26 +737,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         setBiddedPrices(bPrices);
       }
 
-      // Detectar em tempo real se alguma ordem foi abastecida ou recebeu fotos via celular na bomba
+      // Detectar em tempo real quando o abastecimento é feito no posto e recebe as fotos da bomba e odômetro
       ordList.forEach(ord => {
         const prevStatus = prevStatusesRef.current[ord.id] || prevStatusesRef.current[ord.order_number];
         const prevHadPhotos = prevPhotosRef.current[ord.id];
         const nowHasPhotos = Boolean(ord.pump_photo_url || ord.odometer_photo_url);
 
-        const statusJustCompleted =
+        const statusJustSupplied =
           prevStatus &&
           (prevStatus === 'autorizado_pendente' || prevStatus === 'aguardando_abastecimento' || prevStatus === 'autorizado') &&
-          (ord.status === 'abastecido' || ord.status === 'auditado' || ord.status === 'glosado');
+          ord.status === 'abastecido';
 
         const photosJustArrived = prevHadPhotos === false && nowHasPhotos;
 
-        if (statusJustCompleted || photosJustArrived) {
-          playFuelAlertChime();
-          sendDesktopNotification(
-            '⛽ Abastecimento Confirmado na Bomba!',
-            `Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) abastecida com ${ord.liters_supplied || ''}L. Fotos recebidas.`
-          );
-          showToast(`⛽ Abastecimento recebido na bomba! Ordem ${ord.order_number} (${ord.vehicle?.plate || ''}) finalizada pelo condutor com fotos anexadas.`, 'success');
+        if (statusJustSupplied || photosJustArrived) {
           addRealtimeNotification(ord);
         }
         prevStatusesRef.current[ord.id] = ord.status;
@@ -691,7 +758,6 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         prevPhotosRef.current[ord.id] = nowHasPhotos;
       });
 
-      // Sincroniza e recupera notificações (inclusive ordens abastecidas enquanto offline)
       syncNotificationsWithOrders(ordList, vehList, instId);
 
       setViewingAttachmentOrder(prev => {
@@ -1017,8 +1083,6 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     const handleLocalUpdate = (e: Event) => {
       const customEvent = e as CustomEvent;
       const orderNumber = customEvent.detail?.orderNumber || customEvent.detail?.order?.order_number;
-      playFuelAlertChime();
-      showToast(`⛽ Abastecimento recebido! Ordem ${orderNumber ? `"${orderNumber}" ` : ''}confirmada na bomba com fotos.`, 'success');
       if (customEvent.detail?.order) {
         addRealtimeNotification(customEvent.detail.order);
       } else if (orderNumber) {
@@ -1036,19 +1100,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       bc.onmessage = (event) => {
         if (event.data?.type === 'ORDER_COMPLETED') {
           const ord = event.data?.order;
-          playFuelAlertChime();
-          sendDesktopNotification(
-            '⛽ Abastecimento Recebido na Bomba!',
-            `Ordem ${ord?.order_number || ''} abastecida com fotos do visor.`
-          );
-          showToast(`⛽ Abastecimento recebido em tempo real! Ordem ${ord?.order_number || ''} abastecida na bomba com fotos do visor e odômetro.`, 'success');
           if (ord) addRealtimeNotification(ord);
           loadData(true);
         }
       };
     }
 
-    // 3. Supabase Realtime para notificações remotas do celular do motorista
+    // 3. Supabase Realtime para notificações remotas do posto (bomba + odômetro)
     const channel = supabase
       .channel('fuel_supply_orders_realtime')
       .on(
@@ -1057,13 +1115,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         (payload) => {
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
             const updated = payload.new as any;
-            if (updated && (updated.status === 'abastecido' || updated.pump_photo_url)) {
-              playFuelAlertChime();
-              sendDesktopNotification(
-                '⛽ Abastecimento Confirmado na Bomba!',
-                `Ordem ${updated.order_number || ''} finalizada com sucesso. Fotos da bomba e odômetro recebidas.`
-              );
-              showToast(`⛽ Abastecimento confirmado na bomba! Ordem ${updated.order_number || ''} (${updated.liters_supplied ? `${updated.liters_supplied}L` : ''}) - Fotos do visor e odômetro recebidas!`, 'success');
+            if (updated && (updated.status === 'abastecido' || updated.pump_photo_url || updated.odometer_photo_url)) {
               addRealtimeNotification(updated);
             }
             loadData(true);
@@ -1095,6 +1147,53 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!selectedVehicleForNewOrder) return false;
     return newOrderForm.liters_authorized > selectedVehicleForNewOrder.tank_capacity;
   }, [selectedVehicleForNewOrder, newOrderForm.liters_authorized]);
+
+  // Checagem em tempo real de coerência do odômetro na emissão (Odômetro regressivo)
+  const isOdometerInvalid = useMemo(() => {
+    if (!selectedVehicleForNewOrder) return false;
+    const prevOdo = Number(selectedVehicleForNewOrder.current_odometer || 0);
+    const currOdo = Number(newOrderForm.current_odometer || 0);
+    return currOdo > 0 && currOdo < prevOdo;
+  }, [selectedVehicleForNewOrder, newOrderForm.current_odometer]);
+
+  // Semáforo Integrado de Auditoria Prévia da Emissão (Padrão TCE)
+  const emissionSemaphore = useMemo(() => {
+    if (isLitersOverCapacity) {
+      return {
+        level: 'critico' as const,
+        label: 'Bloqueio Crítico TCE',
+        reason: `Litragem (${newOrderForm.liters_authorized}L) excede a capacidade máxima do tanque (${selectedVehicleForNewOrder?.tank_capacity}L - ${selectedVehicleForNewOrder?.model}).`,
+        badgeColor: 'bg-rose-600 text-white animate-pulse',
+        canEmit: false
+      };
+    }
+    if (isOdometerInvalid) {
+      return {
+        level: 'critico' as const,
+        label: 'Odômetro Regressivo (Bloqueio)',
+        reason: `Odômetro informado (${formatThousands(newOrderForm.current_odometer)} km) é inferior ao último odômetro cadastrado (${formatThousands(selectedVehicleForNewOrder?.current_odometer || 0)} km).`,
+        badgeColor: 'bg-rose-600 text-white animate-pulse',
+        canEmit: false
+      };
+    }
+    const hasBudget = Boolean(newOrderForm.budget_classification_id || selectedVehicleForNewOrder?.budget_classification_id);
+    if (!hasBudget) {
+      return {
+        level: 'alerta' as const,
+        label: 'Alerta de Dotação',
+        reason: 'Nenhuma dotação orçamentária vinculada. Recomenda-se selecionar a Ficha Orçamentária.',
+        badgeColor: 'bg-amber-500 text-white',
+        canEmit: true
+      };
+    }
+    return {
+      level: 'conforme' as const,
+      label: '100% Conforme',
+      reason: 'Parâmetros validados: capacidade física, odômetro e dotação conformes com o TCE.',
+      badgeColor: 'bg-emerald-600 text-white',
+      canEmit: true
+    };
+  }, [isLitersOverCapacity, isOdometerInvalid, newOrderForm.liters_authorized, newOrderForm.current_odometer, newOrderForm.budget_classification_id, selectedVehicleForNewOrder]);
 
   // Lista de Secretarias
   const departments = useMemo(() => {
@@ -1139,23 +1238,43 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     });
   }, [stations, stationSearchTerm]);
 
-  // Métricas do Painel de Auditoria (KPIs)
+  // Métricas do Painel de Auditoria (KPIs) e Contadores de Fluxo
   const auditMetrics = useMemo(() => {
     const totalOrders = orders.length;
-    const suppliedOrders = orders.filter(o => o.status !== 'autorizado');
-    const totalLiters = suppliedOrders.reduce((acc, o) => acc + (o.liters_supplied || 0), 0);
-    const totalSpent = suppliedOrders.reduce((acc, o) => acc + (o.total_value || 0), 0);
-    const anomalousOrders = orders.filter(o => o.is_anomaly || o.status === 'glosado');
+    const waitingOrders = orders.filter(o => o.status === 'autorizado' || o.status === 'autorizado_pendente');
+    const pendingHomologationOrders = orders.filter(o => o.status === 'abastecido');
+    const conformePendingOrders = pendingHomologationOrders.filter(
+      o => !o.is_anomaly && o.anomaly_level !== 'bloqueio_critico' && o.anomaly_level !== 'alerta_amarelo'
+    );
+    const yellowAlertOrders = orders.filter(o => o.anomaly_level === 'alerta_amarelo');
+    const suppliedOrders = orders.filter(o => o.status !== 'autorizado' && o.status !== 'autorizado_pendente');
+    const totalLiters = suppliedOrders.reduce((acc, o) => {
+      const lit = Number(o.liters_supplied || o.liters_authorized || 0);
+      return acc + (isNaN(lit) ? 0 : lit);
+    }, 0);
+    const totalSpent = suppliedOrders.reduce((acc, o) => {
+      const val = Number(o.total_value) || Number((o as any).total_authorized_value) || 0;
+      return acc + (isNaN(val) ? 0 : val);
+    }, 0);
+    const anomalousOrders = orders.filter(o => o.is_anomaly || o.status === 'glosado' || o.anomaly_level === 'bloqueio_critico');
     const auditedOrders = orders.filter(o => o.status === 'auditado' || o.status === 'liquidado');
 
-    // Consumo médio ponderado
-    const validConsumptionOrders = suppliedOrders.filter(o => (o.calculated_consumption || 0) > 0);
+    // Consumo médio ponderado (ignora 1º registro de odômetro base e anomalias irreais)
+    const validConsumptionOrders = suppliedOrders.filter(o => {
+      const c = Number(o.calculated_consumption ?? o.calculated_km_per_liter ?? 0);
+      const prevOdo = Number(o.previous_odometer || 0);
+      return prevOdo > 0 && !isNaN(c) && c > 0 && c <= 50;
+    });
     const avgConsumption = validConsumptionOrders.length > 0
-      ? (validConsumptionOrders.reduce((acc, o) => acc + (o.calculated_consumption || 0), 0) / validConsumptionOrders.length).toFixed(2)
+      ? (validConsumptionOrders.reduce((acc, o) => acc + Number(o.calculated_consumption ?? o.calculated_km_per_liter ?? 0), 0) / validConsumptionOrders.length).toFixed(2)
       : '0.00';
 
     return {
       totalOrders,
+      waitingCount: waitingOrders.length,
+      pendingHomologationCount: pendingHomologationOrders.length,
+      conformePendingCount: conformePendingOrders.length,
+      yellowAlertCount: yellowAlertOrders.length,
       totalLiters: totalLiters.toFixed(2),
       totalSpent: totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       anomalousCount: anomalousOrders.length,
@@ -1177,8 +1296,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const matchesDept = departmentFilter === 'all' || (v?.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase();
       if (!matchesDept) return false;
 
-      // Filtro de Status
-      const matchesStatus = statusFilter === 'all' || order.status === statusFilter;
+      // Filtro de Status e Semáforo
+      let matchesStatus = true;
+      if (statusFilter === 'all') {
+        matchesStatus = true;
+      } else if (statusFilter === 'anomalia_critica') {
+        matchesStatus = order.anomaly_level === 'bloqueio_critico' || order.is_anomaly || order.status === 'glosado';
+      } else if (statusFilter === 'alerta_amarelo') {
+        matchesStatus = order.anomaly_level === 'alerta_amarelo';
+      } else if (statusFilter === 'conforme') {
+        matchesStatus = order.status === 'auditado' || (order.status === 'abastecido' && !order.is_anomaly && order.anomaly_level !== 'bloqueio_critico' && order.anomaly_level !== 'alerta_amarelo');
+      } else {
+        matchesStatus = order.status === statusFilter;
+      }
       if (!matchesStatus) return false;
 
       // Se não digitou busca, passa direto
@@ -1411,6 +1541,82 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
   };
 
+  // Homologação rápida em lote de todas as ordens abastecidas que estão 100% conformes no Semáforo TCE
+  const handleBatchHomologateConformes = async () => {
+    const conformesToAudit = filteredOrders.filter(
+      o => o.status === 'abastecido' && !o.is_anomaly && o.anomaly_level !== 'bloqueio_critico' && o.anomaly_level !== 'alerta_amarelo'
+    );
+    if (conformesToAudit.length === 0) {
+      showToast('Não há ordens pendentes e 100% conformes para homologar em lote.', 'info');
+      return;
+    }
+    if (!window.confirm(`Deseja homologar em lote ${conformesToAudit.length} ${conformesToAudit.length === 1 ? 'ordem abastecida que está' : 'ordens abastecidas que estão'} 100% Conforme no Semáforo TCE?`)) {
+      return;
+    }
+    try {
+      for (const ord of conformesToAudit) {
+        await auditFuelOrder(
+          ord.id,
+          'auditado',
+          'Homologação em lote pelo Controle Interno — Semáforo TCE 100% Conforme.',
+          currentUser?.id
+        );
+      }
+      showToast(`${conformesToAudit.length} ${conformesToAudit.length === 1 ? 'ordem homologada' : 'ordens homologadas'} com sucesso!`, 'success');
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao homologar ordens em lote.', 'error');
+    }
+  };
+
+  // Abre a Janela Central da Ordem (Inspeção, Homologação em 1 Clique e Ações)
+  const handleOpenOrderHub = (order: FuelSupplyOrder) => {
+    setSelectedOrderForAction(order);
+    setShowGlossReasonBox(false);
+    setAuditForm({
+      status: order.status === 'glosado' ? 'glosado' : 'auditado',
+      justification:
+        order.anomaly_reason ||
+        'Documentação física, odômetro e comprovantes conferidos e homologados em conformidade com as diretrizes do Tribunal de Contas.'
+    });
+    setIsAuditModalOpen(true);
+  };
+
+  // Homologação Instantânea em 1 Clique dentro da Janela da Ordem
+  const handleInstantHomologate = async (order: FuelSupplyOrder, customJustification?: string) => {
+    try {
+      const justificationText =
+        customJustification?.trim() ||
+        'Documentação física, odômetro e comprovantes conferidos e homologados em conformidade com as diretrizes do Tribunal de Contas.';
+      await auditFuelOrder(order.id, 'auditado', justificationText, currentUser?.id);
+      showToast(`Ordem ${order.order_number} homologada com sucesso!`, 'success');
+      setIsAuditModalOpen(false);
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao homologar ordem.', 'error');
+    }
+  };
+
+  // Cancelamento de Homologação direto na Janela da Ordem (sem exigir prompt extra)
+  const handleInstantCancelHomologation = async (order: FuelSupplyOrder, openEditAfter = false) => {
+    try {
+      await cancelFuelOrderHomologation(
+        order.id,
+        'Homologação/Glosa cancelada pelo gestor na janela da ordem para revisão.',
+        currentUser?.id
+      );
+      showToast(`Homologação cancelada! Ordem ${order.order_number} reaberta.`, 'info');
+      setIsAuditModalOpen(false);
+      await loadData(true);
+      if (openEditAfter) {
+        const reopenedOrder = { ...order, status: 'abastecido' as const };
+        handleOpenExecution(reopenedOrder);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao cancelar homologação.', 'error');
+    }
+  };
+
   // Abertura do modal de execução com pré-preenchimento
   const handleOpenExecution = async (order: FuelSupplyOrder) => {
     if (order.status === 'auditado' || order.status === 'glosado') {
@@ -1563,7 +1769,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       return;
     }
     if (isLitersOverCapacity) {
-      showToast('A litragem excede a capacidade do tanque do veículo. Operação bloqueada.', 'error');
+      showToast('A litragem excede a capacidade do tanque do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
+      return;
+    }
+    if (isOdometerInvalid) {
+      showToast('O odômetro informado não pode ser menor que o odômetro anterior do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
       return;
     }
 
@@ -1914,44 +2124,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
         {/* Abas de Navegação e Campainha de Notificações */}
         <div className="flex items-center gap-2.5 flex-wrap w-full lg:w-auto justify-between lg:justify-end">
-          {/* Abas */}
+          {/* Abas Principais Enxutas */}
           <div className="flex flex-wrap bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1">
             <button
               onClick={() => setActiveTab('orders')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer relative ${
                 activeTab === 'orders'
                   ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
                   : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
               }`}
             >
               <FileText size={15} />
-              <span>Ordens & Emissão</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('execution')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                activeTab === 'execution'
-                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <Layers size={15} />
-              <span>Lançamento de Canhotos</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('audit')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer relative ${
-                activeTab === 'audit'
-                  ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-              }`}
-            >
-              <ShieldCheck size={15} />
-              <span>Auditoria & Semáforo</span>
+              <span>Ordens ({orders.length})</span>
               {auditMetrics.anomalousCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" title="Há alertas no Semáforo TCE" />
               )}
             </button>
 
@@ -1992,146 +2178,88 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             </button>
           </div>
 
-          {/* Campainha de Notificações com Histórico e Alertas Offline */}
+          {/* Campainha Minimalista: Abastecimentos no Posto (Bomba + Odômetro) */}
           <div className="relative" ref={notificationDropdownRef}>
             <button
               type="button"
               onClick={() => setIsNotificationOpen(!isNotificationOpen)}
-              title="Central de Notificações de Frotas"
+              title="Abastecimentos no Posto (Fotos da Bomba e Odômetro)"
               className={`relative p-2.5 rounded-2xl transition-all cursor-pointer border flex items-center justify-center ${
                 unreadNotificationsCount > 0
-                  ? 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/40 text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-800 shadow-sm shadow-amber-500/15'
+                  ? 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 shadow-xs'
                   : 'bg-white hover:bg-neutral-50 dark:bg-neutral-800 dark:hover:bg-neutral-700/60 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
               }`}
             >
               {unreadNotificationsCount > 0 ? (
-                <BellRing size={20} className={bellAnimate ? 'animate-bounce text-amber-500' : 'text-amber-600 dark:text-amber-400'} />
+                <BellRing size={19} className={bellAnimate ? 'animate-bounce text-emerald-600' : 'text-emerald-600 dark:text-emerald-400'} />
               ) : (
-                <Bell size={20} className="text-neutral-500 dark:text-neutral-400" />
+                <Bell size={19} className="text-neutral-500 dark:text-neutral-400" />
               )}
 
               {unreadNotificationsCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 flex items-center justify-center text-[10px] font-black text-white bg-rose-600 rounded-full shadow-md animate-pulse">
-                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-4.5 px-1 flex items-center justify-center text-[10px] font-black text-white bg-emerald-600 rounded-full shadow-xs">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
                 </span>
               )}
             </button>
 
-            {/* Painel Dropdown de Notificações */}
+            {/* Popover Minimalista focado em Abastecimentos e Fotos do Posto */}
             <AnimatePresence>
               {isNotificationOpen && (
                 <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  initial={{ opacity: 0, y: 8, scale: 0.97 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  transition={{ duration: 0.15 }}
-                  className="absolute right-0 mt-2 w-84 sm:w-96 bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 z-50 overflow-hidden flex flex-col max-h-[85vh]"
+                  exit={{ opacity: 0, y: 8, scale: 0.97 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute right-0 mt-2 w-80 sm:w-88 bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800 z-50 overflow-hidden flex flex-col max-h-[75vh]"
                 >
-                  {/* Cabeçalho do Popover */}
-                  <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between bg-neutral-50/70 dark:bg-neutral-800/40">
+                  {/* Cabeçalho Minimalista */}
+                  <div className="px-3.5 py-2.5 border-b border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                        <Bell size={16} />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-neutral-900 dark:text-white uppercase tracking-tight flex items-center gap-1.5">
-                          Notificações da Frota
-                          {unreadNotificationsCount > 0 && (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-black">
-                              {unreadNotificationsCount} novas
-                            </span>
-                          )}
-                        </h4>
-                        <p className="text-[10px] text-neutral-400">
-                          Histórico completo, incluindo eventos offline
-                        </p>
-                      </div>
+                      <Camera size={14} className="text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs font-black text-neutral-900 dark:text-white">
+                        Abastecimentos no Posto
+                      </span>
+                      {unreadNotificationsCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-600 text-white font-bold">
+                          {unreadNotificationsCount}
+                        </span>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 text-[11px]">
                       {unreadNotificationsCount > 0 && (
                         <button
                           type="button"
                           onClick={markAllNotificationsAsRead}
-                          title="Marcar todas como lidas"
-                          className="p-1.5 text-neutral-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                          className="px-2 py-1 text-neutral-500 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-lg cursor-pointer font-semibold transition-colors"
                         >
-                          <CheckCheck size={16} />
+                          Lidas
                         </button>
                       )}
                       {notifications.length > 0 && (
                         <button
                           type="button"
                           onClick={clearNotificationHistory}
-                          title="Limpar histórico"
-                          className="p-1.5 text-neutral-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                          title="Limpar avisos"
+                          className="p-1 text-neutral-400 hover:text-rose-600 rounded-lg cursor-pointer transition-colors"
                         >
-                          <Trash2 size={15} />
+                          <Trash2 size={13} />
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {/* Filtros Rápidos */}
-                  <div className="flex items-center gap-1 p-2 border-b border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-[11px] font-bold overflow-x-auto">
-                    <button
-                      type="button"
-                      onClick={() => setNotificationFilter('all')}
-                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        notificationFilter === 'all'
-                          ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
-                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Todas ({notifications.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotificationFilter('unread')}
-                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        notificationFilter === 'unread'
-                          ? 'bg-rose-600 text-white'
-                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Não lidas ({unreadNotificationsCount})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotificationFilter('abastecimento')}
-                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        notificationFilter === 'abastecimento'
-                          ? 'bg-amber-600 text-white'
-                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Abastecimentos
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNotificationFilter('alerta')}
-                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                        notificationFilter === 'alerta'
-                          ? 'bg-rose-600 text-white'
-                          : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                      }`}
-                    >
-                      Alertas TCE
-                    </button>
-                  </div>
-
-                  {/* Lista de Notificações */}
-                  <div className="overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[360px] p-1">
+                  {/* Lista Enxuta com Miniaturas da Bomba e Odômetro */}
+                  <div className="overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800 max-h-[340px]">
                     {filteredNotifications.length === 0 ? (
-                      <div className="py-10 px-4 text-center text-neutral-400">
-                        <Bell size={28} className="mx-auto mb-2 opacity-40 text-neutral-400" />
-                        <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                          Nenhuma notificação encontrada
+                      <div className="py-8 px-4 text-center text-neutral-400">
+                        <Camera size={22} className="mx-auto mb-1.5 opacity-40" />
+                        <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
+                          Sem novos abastecimentos no posto
                         </p>
-                        <p className="text-[10px] mt-0.5">
-                          {notificationFilter === 'unread' 
-                            ? 'Todas as notificações foram lidas!' 
-                            : 'Novos abastecimentos e fotos enviadas pela bomba aparecerão aqui.'}
+                        <p className="text-[11px] mt-0.5 text-neutral-400">
+                          Você será avisado aqui assim que enviarem as fotos da bomba e do odômetro.
                         </p>
                       </div>
                     ) : (
@@ -2141,86 +2269,71 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div
                             key={notif.id}
                             onClick={() => handleNotificationClick(notif)}
-                            className={`p-3 rounded-2xl transition-all cursor-pointer flex items-start gap-3 relative group ${
+                            className={`p-3 transition-colors cursor-pointer flex items-center justify-between gap-2.5 ${
                               isUnread
-                                ? 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/70 dark:hover:bg-amber-950/50'
-                                : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/60'
+                                ? 'bg-emerald-50/50 dark:bg-emerald-950/20 hover:bg-emerald-50 dark:hover:bg-emerald-950/30'
+                                : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50'
                             }`}
                           >
-                            {/* Ícone de Destaque */}
-                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                              notif.type === 'bloqueio_tce'
-                                ? 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
-                                : notif.type === 'alerta_auditoria'
-                                ? 'bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400'
-                                : 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                            }`}>
-                              {notif.type === 'bloqueio_tce' ? (
-                                <AlertTriangle size={15} />
-                              ) : notif.type === 'alerta_auditoria' ? (
-                                <AlertCircle size={15} />
-                              ) : (
-                                <Fuel size={15} />
+                            {/* Dados Principais Minimalistas */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                {isUnread && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                )}
+                                <span className="font-mono text-xs font-black text-neutral-900 dark:text-white">
+                                  {notif.plate || notif.orderNumber}
+                                </span>
+                                <span className="text-[11px] text-neutral-500 truncate">
+                                  • {notif.vehicleModel || 'Veículo'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center gap-2 mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+                                <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
+                                  {Number(notif.liters || 0).toFixed(1)} L
+                                </span>
+                                {notif.currentOdometer ? (
+                                  <span className="font-mono">
+                                    • KM {formatThousands(notif.currentOdometer)}
+                                  </span>
+                                ) : null}
+                                <span className="text-[10px] text-neutral-400">
+                                  • {formatRelativeNotificationTime(notif.timestamp)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Miniaturas das Fotos da Bomba e do Odômetro */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              {notif.pumpPhotoUrl ? (
+                                <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 bg-neutral-100" title="Foto da Bomba">
+                                  <img src={notif.pumpPhotoUrl} alt="Bomba" className="w-full h-full object-cover" />
+                                  <span className="absolute bottom-0 inset-x-0 bg-black/65 text-[7px] text-white text-center font-bold uppercase leading-tight">
+                                    Bomba
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              {notif.odometerPhotoUrl ? (
+                                <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-neutral-200 dark:border-neutral-700 bg-neutral-100" title="Foto do Odômetro">
+                                  <img src={notif.odometerPhotoUrl} alt="Odômetro" className="w-full h-full object-cover" />
+                                  <span className="absolute bottom-0 inset-x-0 bg-black/65 text-[7px] text-white text-center font-bold uppercase leading-tight">
+                                    KM
+                                  </span>
+                                </div>
+                              ) : null}
+
+                              {!notif.pumpPhotoUrl && !notif.odometerPhotoUrl && (
+                                <span className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                                  <Fuel size={14} />
+                                </span>
                               )}
                             </div>
-
-                            {/* Conteúdo */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="font-mono text-[10px] font-black text-amber-600 dark:text-amber-400 truncate">
-                                  {notif.orderNumber}
-                                </span>
-                                <span className="text-[9px] text-neutral-400 whitespace-nowrap">
-                                  {formatRelativeNotificationTime(notif.timestamp)}
-                                </span>
-                              </div>
-
-                              <h5 className={`text-xs leading-snug truncate ${
-                                isUnread 
-                                ? 'font-black text-neutral-900 dark:text-white' 
-                                : 'font-semibold text-neutral-700 dark:text-neutral-300'
-                              }`}>
-                                {notif.title}
-                              </h5>
-
-                              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-2 mt-0.5">
-                                {notif.message}
-                              </p>
-
-                              {/* Tags de Fotos / Detalhes */}
-                              <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                                {notif.hasPhotos && (
-                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                                    <Camera size={10} />
-                                    Fotos Recebidas
-                                  </span>
-                                )}
-                                {notif.plate && (
-                                  <span className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
-                                    {notif.plate}
-                                  </span>
-                                )}
-                                {notif.liters && (
-                                  <span className="text-[9px] font-bold text-neutral-400">
-                                    {Number(notif.liters).toFixed(1)} L
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Ponto indicador de não lida */}
-                            {isUnread && (
-                              <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0 mt-1.5 animate-pulse" />
-                            )}
                           </div>
                         );
                       })
                     )}
-                  </div>
-
-                  {/* Rodapé Informativo */}
-                  <div className="p-2.5 bg-neutral-50 dark:bg-neutral-800/50 border-t border-neutral-100 dark:border-neutral-800 text-center text-[10px] text-neutral-400">
-                    Clique em qualquer notificação para abrir os comprovantes e fotos da ordem
                   </div>
                 </motion.div>
               )}
@@ -2229,10 +2342,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         </div>
       </div>
 
-      {/* 2. KPIs de Auditoria e Conformidade */}
+      {/* 2. KPIs Interativos de Auditoria e Conformidade (Clique para Filtrar) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Total de Litros */}
-        <div className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+        {/* Card 1: Total de Litros & Despesa */}
+        <div
+          onClick={() => {
+            setActiveTab('orders');
+            setStatusFilter('all');
+            setDepartmentFilter('all');
+            setSearchTerm('');
+          }}
+          title="Clique para exibir todas as ordens do exercício"
+          className={`bg-white dark:bg-neutral-900 p-5 rounded-3xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${
+            statusFilter === 'all' && departmentFilter === 'all' && !searchTerm
+              ? 'border-amber-300 dark:border-amber-800/80 ring-1 ring-amber-500/20'
+              : 'border-neutral-100 dark:border-neutral-800'
+          }`}
+        >
           <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs font-bold uppercase tracking-wider mb-2">
             <span>Litros Fornecidos</span>
             <Fuel size={16} className="text-amber-500" />
@@ -2241,32 +2367,64 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             <h3 className="text-2xl font-black text-neutral-900 dark:text-white">
               {auditMetrics.totalLiters} <span className="text-sm font-semibold text-neutral-500">L</span>
             </h3>
-            <span className="text-xs font-bold text-neutral-500">
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
               {auditMetrics.totalSpent}
             </span>
           </div>
-          <p className="text-[11px] text-neutral-400 mt-1">Acumulado do exercício</p>
+          <p className="text-[11px] text-neutral-400 mt-1">
+            Acumulado em {auditMetrics.totalOrders} {auditMetrics.totalOrders === 1 ? 'ordem' : 'ordens'}
+          </p>
         </div>
 
-        {/* Card 2: Consumo Médio da Frota */}
-        <div className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+        {/* Card 2: Consumo Médio & Pendentes de Homologação */}
+        <div
+          onClick={() => {
+            setActiveTab('orders');
+            setStatusFilter(statusFilter === 'abastecido' ? 'all' : 'abastecido');
+          }}
+          title="Clique para filtrar ordens abastecidas pendentes de homologação"
+          className={`p-5 rounded-3xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${
+            statusFilter === 'abastecido'
+              ? 'ring-2 ring-blue-500 bg-blue-50/40 dark:bg-blue-950/30 border-blue-300 dark:border-blue-800'
+              : 'bg-white dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800'
+          }`}
+        >
           <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs font-bold uppercase tracking-wider mb-2">
-            <span>Rendimento Médio</span>
+            <span>Rendimento & Bomba</span>
             <Gauge size={16} className="text-emerald-500" />
           </div>
           <div className="flex items-baseline justify-between">
             <h3 className="text-2xl font-black text-neutral-900 dark:text-white">
               {auditMetrics.avgConsumption} <span className="text-sm font-semibold text-neutral-500">km/l</span>
             </h3>
-            <span className="inline-flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
-              <TrendingUp size={12} className="mr-1" /> Eficiente
-            </span>
+            {auditMetrics.pendingHomologationCount > 0 ? (
+              <span className="inline-flex items-center text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 rounded-full">
+                {auditMetrics.pendingHomologationCount} p/ homologar
+              </span>
+            ) : (
+              <span className="inline-flex items-center text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                <TrendingUp size={12} className="mr-1" /> Eficiente
+              </span>
+            )}
           </div>
-          <p className="text-[11px] text-neutral-400 mt-1">Conforme metas do TCE</p>
+          <p className="text-[11px] text-neutral-400 mt-1">
+            {statusFilter === 'abastecido' ? 'Exibindo pendentes de homologação' : 'Clique p/ ver abastecidos no posto'}
+          </p>
         </div>
 
-        {/* Card 3: Ordens Auditadas */}
-        <div className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm">
+        {/* Card 3: Ordens Homologadas */}
+        <div
+          onClick={() => {
+            setActiveTab('orders');
+            setStatusFilter(statusFilter === 'auditado' ? 'all' : 'auditado');
+          }}
+          title="Clique para filtrar as ordens já auditadas e homologadas"
+          className={`p-5 rounded-3xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${
+            statusFilter === 'auditado'
+              ? 'ring-2 ring-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800'
+              : 'bg-white dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800'
+          }`}
+        >
           <div className="flex items-center justify-between text-neutral-500 dark:text-neutral-400 text-xs font-bold uppercase tracking-wider mb-2">
             <span>Ordens Homologadas</span>
             <FileCheck size={16} className="text-blue-500" />
@@ -2279,15 +2437,26 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               {auditMetrics.totalOrders > 0 ? Math.round((auditMetrics.auditedCount / auditMetrics.totalOrders) * 100) : 0}%
             </span>
           </div>
-          <p className="text-[11px] text-neutral-400 mt-1">Prontas para liquidação</p>
+          <p className="text-[11px] text-neutral-400 mt-1">
+            {statusFilter === 'auditado' ? 'Exibindo apenas homologadas' : 'Prontas para liquidação (clique p/ filtrar)'}
+          </p>
         </div>
 
         {/* Card 4: Semáforo de Anomalias (Destaque Vermelho) */}
-        <div className={`p-5 rounded-3xl border shadow-sm transition-all ${
-          auditMetrics.anomalousCount > 0
-            ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50'
-            : 'bg-white dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800'
-        }`}>
+        <div 
+          onClick={() => {
+            setActiveTab('orders');
+            setStatusFilter(statusFilter === 'anomalia_critica' ? 'all' : 'anomalia_critica');
+          }}
+          title="Clique para filtrar apenas as ordens com anomalia no Semáforo TCE"
+          className={`p-5 rounded-3xl border shadow-sm transition-all cursor-pointer hover:shadow-md ${
+            statusFilter === 'anomalia_critica'
+              ? 'ring-2 ring-rose-500 bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800'
+              : auditMetrics.anomalousCount > 0
+              ? 'bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/50'
+              : 'bg-white dark:bg-neutral-900 border-neutral-100 dark:border-neutral-800'
+          }`}
+        >
           <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 text-xs font-bold uppercase tracking-wider mb-2">
             <span>Anomalias & Glosas</span>
             <AlertTriangle size={16} className={auditMetrics.anomalousCount > 0 ? 'text-rose-600 animate-bounce' : 'text-neutral-400'} />
@@ -2304,28 +2473,30 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               {auditMetrics.anomalousCount > 0 ? 'Ação Imediata' : 'Zero Riscos'}
             </span>
           </div>
-          <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80 mt-1">Desvios de tanque ou consumo</p>
+          <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80 mt-1">
+            {statusFilter === 'anomalia_critica' ? 'Filtro do semáforo ativo (clique para limpar)' : 'Desvios de tanque ou consumo (clique para filtrar)'}
+          </p>
         </div>
       </div>
 
-      {/* 3. Barra de Ações e Filtros */}
-      <div className="bg-white dark:bg-neutral-900 p-4 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
-        {/* Busca e Filtros */}
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+      {/* 3. Barra de Pesquisa e Ações Clean (Opções e Tabelas centralizadas em Janela Popup) */}
+      <div className="bg-white dark:bg-neutral-900 p-3.5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        {/* Pesquisa & Filtros */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 flex-1">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
             <input
               type="text"
-              placeholder="Buscar por placa, modelo, ordem ou motorista..."
+              placeholder="Pesquisar Ordem, Placa, Veículo, Motorista ou Secretaria..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white"
+              className="w-full pl-10 pr-8 py-2.5 bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
             />
             {searchTerm && (
               <button
                 type="button"
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-full cursor-pointer"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-full cursor-pointer"
                 title="Limpar pesquisa"
               >
                 <X size={14} />
@@ -2336,7 +2507,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           <select
             value={departmentFilter}
             onChange={e => setDepartmentFilter(e.target.value)}
-            className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer"
+            className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
           >
             <option value="all">Todas as Secretarias</option>
             {departments.map(dept => (
@@ -2344,143 +2515,160 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             ))}
           </select>
 
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none cursor-pointer"
-          >
-            <option value="all">Todos os Status</option>
-            {activeTab === 'drivers' ? (
-              <>
-                <option value="ativo">Ativo</option>
-                <option value="afastado">Afastado</option>
-                <option value="inativo">Inativo</option>
-              </>
-            ) : activeTab === 'vehicles' ? (
-              <>
-                <option value="ativo">Ativo</option>
-                <option value="manutencao">Em Manutenção</option>
-                <option value="inativo">Inativo</option>
-                <option value="baixado">Baixado</option>
-              </>
-            ) : (
-              <>
-                <option value="autorizado">Autorizado (Aguardando)</option>
-                <option value="abastecido">Abastecido (Pendente Auditoria)</option>
-                <option value="auditado">Auditado & Conforme</option>
-                <option value="glosado">Glosado (Bloqueado)</option>
-              </>
-            )}
-          </select>
-
-          <button
-            onClick={loadData}
-            title="Recarregar dados"
-            className="p-2 text-neutral-500 hover:text-neutral-900 dark:hover:text-white bg-neutral-100 dark:bg-neutral-800 rounded-xl cursor-pointer"
-          >
-            <RefreshCw size={15} />
-          </button>
+          {(searchTerm || departmentFilter !== 'all' || statusFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm('');
+                setDepartmentFilter('all');
+                setStatusFilter('all');
+              }}
+              className="flex items-center justify-center gap-1 px-3 py-2.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer border border-rose-200 dark:border-rose-800 shrink-0"
+              title="Limpar filtros ativos"
+            >
+              <X size={14} />
+              <span>Limpar</span>
+            </button>
+          )}
         </div>
 
-        {/* Botões Principais */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleSyncPatrimonio}
-            disabled={syncingPatrimonio}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
-            title="Importar/Atualizar veículos cadastrados no patrimônio municipal de Torixoréu"
-          >
-            <RefreshCw size={14} className={syncingPatrimonio ? 'animate-spin' : ''} />
-            <span>Sincronizar Patrimônio</span>
-          </button>
-
-          <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 rounded-xl transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800"
-          >
-            <FileSpreadsheet size={15} />
-            <span>Exportar Relatório TCE (Excel)</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setPriceEditForm(biddedPrices);
-              setIsPriceConfigModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 rounded-xl transition-all cursor-pointer border border-amber-200 dark:border-amber-800"
-            title="Tabela de Preços Licitados por Combustível e Aditivos de Reequilíbrio Contratual"
-          >
-            <Sliders size={14} />
-            <span>Preços Licitados / Reequilíbrio</span>
-          </button>
-
+        {/* Botões Principais Enxutos (Janelas Popup) */}
+        <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setIsBudgetClassificationsModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
-            title="Gerenciar Fichas Orçamentárias, Centros de Custo e Créditos Especiais"
+            onClick={() => setIsToolsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl transition-all cursor-pointer border border-neutral-200 dark:border-neutral-700"
+            title="Abrir janela com Preços Licitados, Fichas Orçamentárias, Canhotos Antigos e Exportação TCE"
           >
-            <Layers size={14} />
-            <span>Fichas Orçamentárias / Créditos</span>
+            <Sliders size={14} className="text-amber-600 dark:text-amber-400" />
+            <span>Opções & Ferramentas</span>
           </button>
 
           {activeTab === 'vehicles' ? (
             <button
               onClick={() => setIsNewVehicleModalOpen(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl hover:shadow-lg transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-black text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl hover:shadow-lg transition-all cursor-pointer"
             >
               <Plus size={15} />
               <span>Novo Veículo</span>
             </button>
           ) : (
-            <>
-              <button
-                onClick={() => setIsLegacyVoucherModalOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 rounded-xl hover:shadow-md transition-all cursor-pointer"
-                title="Lançar ou importar abastecimentos anteriores feitos em talão ou canhoto de papel"
-              >
-                <FileText size={15} />
-                <span>Lançar Canhoto Antigo</span>
-              </button>
-
-              <button
-                onClick={() => setIsNewOrderModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl hover:shadow-lg transition-all cursor-pointer"
-              >
-                <Plus size={15} />
-                <span>Emitir Ordem Digital</span>
-              </button>
-            </>
+            <button
+              onClick={() => setIsNewOrderModalOpen(true)}
+              className="flex items-center gap-2 px-5 py-2.5 text-xs font-black text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md shadow-amber-600/20 hover:shadow-lg transition-all cursor-pointer"
+            >
+              <Plus size={16} />
+              <span>Emitir Ordem Digital</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* 4. CONTEÚDO PRINCIPAL: ABA 1 (Ordens & Emissão) */}
+      {/* 4. CONTEÚDO PRINCIPAL: ABA 1 (Ordens, Emissão & Semáforo Integrado) */}
       {activeTab === 'orders' && (
         <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex justify-between items-center">
-            <div>
-              <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider">
-                Ordens de Fornecimento Emitidas
-              </h4>
-              <p className="text-neutral-400 text-xs">Acompanhamento e impressão de autorizações oficiais</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-neutral-500">
-                {filteredOrders.length} {filteredOrders.length === 1 ? 'ordem encontrada' : 'ordens encontradas'}
-              </span>
-              {orders.length > 0 && (
+          {/* Barra de Abas de Filtro Rápido & Homologação em Lote */}
+          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 w-full lg:w-auto">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border ${
+                  statusFilter === 'all'
+                    ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-950 border-transparent shadow-xs'
+                    : 'bg-neutral-50 dark:bg-neutral-800/70 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100'
+                }`}
+              >
+                <span>Todas</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  statusFilter === 'all' ? 'bg-white/20 text-white dark:bg-neutral-900/20 dark:text-neutral-900' : 'bg-neutral-200 dark:bg-neutral-700'
+                }`}>
+                  {auditMetrics.totalOrders}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === 'autorizado' ? 'all' : 'autorizado')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border ${
+                  statusFilter === 'autorizado'
+                    ? 'bg-amber-500 text-white border-transparent shadow-xs'
+                    : 'bg-amber-50/60 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300 border-amber-200/80 dark:border-amber-800/60 hover:bg-amber-100/70'
+                }`}
+              >
+                <span>⏳ Aguardando Posto</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  statusFilter === 'autorizado' ? 'bg-white/25 text-white' : 'bg-amber-200/70 dark:bg-amber-900/70'
+                }`}>
+                  {auditMetrics.waitingCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === 'abastecido' ? 'all' : 'abastecido')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border ${
+                  statusFilter === 'abastecido'
+                    ? 'bg-blue-600 text-white border-transparent shadow-xs'
+                    : 'bg-blue-50/60 dark:bg-blue-950/30 text-blue-800 dark:text-blue-300 border-blue-200/80 dark:border-blue-800/60 hover:bg-blue-100/70'
+                }`}
+              >
+                <span>⛽ Para Homologar</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  statusFilter === 'abastecido' ? 'bg-white/25 text-white' : 'bg-blue-200/70 dark:bg-blue-900/70'
+                }`}>
+                  {auditMetrics.pendingHomologationCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === 'auditado' ? 'all' : 'auditado')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border ${
+                  statusFilter === 'auditado'
+                    ? 'bg-emerald-600 text-white border-transparent shadow-xs'
+                    : 'bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border-emerald-200/80 dark:border-emerald-800/60 hover:bg-emerald-100/70'
+                }`}
+              >
+                <span>🟢 Homologadas</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  statusFilter === 'auditado' ? 'bg-white/25 text-white' : 'bg-emerald-200/70 dark:bg-emerald-900/70'
+                }`}>
+                  {auditMetrics.auditedCount}
+                </span>
+              </button>
+
+              {auditMetrics.anomalousCount > 0 && (
                 <button
                   type="button"
-                  onClick={handleClearAllOrders}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/40 rounded-xl transition-all cursor-pointer border border-rose-200 dark:border-rose-900/50 shadow-sm"
-                  title="Limpar todas as ordens de teste e reiniciar numeração em AUT-2026-0001"
+                  onClick={() => setStatusFilter(statusFilter === 'anomalia_critica' ? 'all' : 'anomalia_critica')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border ${
+                    statusFilter === 'anomalia_critica'
+                      ? 'bg-rose-600 text-white border-transparent shadow-xs'
+                      : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-800 hover:bg-rose-100'
+                  }`}
                 >
-                  <Trash2 size={13} />
-                  <span>Limpar Ordens</span>
+                  <span>🔴 Alertas / Glosas</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    statusFilter === 'anomalia_critica' ? 'bg-white/25 text-white' : 'bg-rose-200 dark:bg-rose-900 text-rose-900 dark:text-rose-200'
+                  }`}>
+                    {auditMetrics.anomalousCount}
+                  </span>
                 </button>
               )}
             </div>
+
+            {auditMetrics.conformePendingCount > 0 && (
+              <button
+                type="button"
+                onClick={handleBatchHomologateConformes}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-all cursor-pointer shadow-sm shadow-emerald-600/20 shrink-0"
+                title="Homologar de uma só vez todas as ordens abastecidas que estão 100% conformes no Semáforo TCE"
+              >
+                <ShieldCheck size={15} />
+                <span>Homologar Conformes ({auditMetrics.conformePendingCount})</span>
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto">
@@ -2494,299 +2682,177 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   >
                     <div className="flex items-center gap-1.5">
                       <span className={orderNumberSort !== 'none' ? 'text-amber-600 dark:text-amber-400 font-black' : ''}>
-                        Número da Ordem
+                        Ordem
                       </span>
                       {orderNumberSort === 'asc' ? (
-                        <span className="inline-flex items-center gap-0.5 text-blue-600 dark:text-blue-400 font-black text-[9px] bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800 shadow-xs">
-                          <ArrowUp size={11} />
-                          <span>1 → 9</span>
-                        </span>
+                        <ArrowUp size={11} className="text-blue-600" />
                       ) : orderNumberSort === 'desc' ? (
-                        <span className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400 font-black text-[9px] bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800 shadow-xs">
-                          <ArrowDown size={11} />
-                          <span>9 → 1</span>
-                        </span>
+                        <ArrowDown size={11} className="text-amber-600" />
                       ) : (
                         <ArrowUpDown size={11} className="text-neutral-400 opacity-60 group-hover:opacity-100 transition-opacity" />
                       )}
                     </div>
                   </th>
-                  <th className="px-4 py-3.5">Veículo / Placa</th>
-                  <th className="px-4 py-3.5">Secretaria</th>
+                  <th className="px-4 py-3.5">Veículo & Secretaria</th>
                   <th className="px-4 py-3.5">Condutor</th>
-                  <th className="px-4 py-3.5">Combustível</th>
-                  <th className="px-4 py-3.5">Litragem Autorizada</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5 text-right">Ações</th>
+                  <th className="px-4 py-3.5">Volume, Valor & KM</th>
+                  <th className="px-4 py-3.5">Semáforo TCE</th>
+                  <th className="px-4 py-3.5 text-right">Janela da Ordem</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
                 {filteredOrders.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-12 text-neutral-400">
+                    <td colSpan={6} className="text-center py-12 text-neutral-400">
                       <Fuel size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
-                      <p className="font-bold text-neutral-800 dark:text-white">Nenhuma ordem de abastecimento emitida ainda</p>
+                      <p className="font-bold text-neutral-800 dark:text-white">
+                        {orders.length === 0 ? 'Nenhuma ordem de abastecimento emitida ainda' : 'Nenhuma ordem encontrada para este filtro'}
+                      </p>
                       <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
-                        A frota real de {vehicles.length} veículos municipais está pronta. Clique no botão <strong>"Emitir Ordem Digital"</strong> acima para gerar a primeira autorização oficial com trava de tanque e QR Code.
+                        {orders.length === 0
+                          ? `A frota de ${vehicles.length} veículos está pronta. Clique em "Emitir Ordem Digital" para começar.`
+                          : 'Experimente limpar os filtros ou pesquisar por outro termo.'}
                       </p>
                     </td>
                   </tr>
                 ) : (
                   paginatedOrders.map(order => {
                     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
+                    const { effectiveLiters, formattedValue } = resolveOrderFinancials(order, biddedPrices);
+                    const isFirstRecord = !order.previous_odometer || order.previous_odometer <= 0;
+                    const deltaKm = (!isFirstRecord && order.current_odometer && order.previous_odometer && order.current_odometer > order.previous_odometer)
+                      ? order.current_odometer - order.previous_odometer
+                      : 0;
+                    const activeBc = resolveOrderBudget(order, v, budgetClassifications);
+
                     return (
-                      <tr key={order.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
-                        {/* Número */}
-                        <td className="px-4 py-3.5">
-                          <button
-                            type="button"
-                            onClick={() => setSearchTerm(order.order_number)}
-                            title={`Filtrar apenas a ordem ${order.order_number} na pesquisa`}
-                            className="font-mono font-bold text-neutral-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 hover:underline cursor-pointer text-left transition-colors"
-                          >
+                      <tr
+                        key={order.id}
+                        onClick={() => {
+                          if (order.status === 'autorizado' || order.status === 'autorizado_pendente') {
+                            handleOpenExecution(order);
+                          } else {
+                            handleOpenOrderHub(order);
+                          }
+                        }}
+                        className="hover:bg-neutral-50/90 dark:hover:bg-neutral-800/50 transition-colors cursor-pointer group"
+                      >
+                        {/* 1. Número da Ordem & Data */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="font-mono font-black text-sm text-neutral-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors block">
                             {order.order_number}
-                          </button>
-                          {(order as any).is_legacy_voucher || order.supply_mode === 'canhoto_legado' ? (
-                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800" title={(order as any).notes || 'Canhoto físico antigo'}>
-                              📑 {(order as any).voucher_number || 'Canhoto Antigo'}
-                            </span>
-                          ) : order.is_full_tank_order ? (
-                            <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                              🚨 Tanque Cheio (Prontidão)
-                            </span>
-                          ) : null}
-                          <div className="text-[10px] text-neutral-400 mt-0.5">
+                          </span>
+                          <span className="text-[11px] text-neutral-400">
                             {new Date(order.created_at).toLocaleDateString('pt-BR')}
-                          </div>
+                          </span>
                         </td>
 
-                        {/* Veículo */}
+                        {/* 2. Veículo & Secretaria */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2.5">
                             <MercosulPlate plate={v?.plate} size="xs" />
-                            <span className="font-semibold text-neutral-800 dark:text-neutral-200">
-                              {v?.model || 'Veículo Municipal'}
-                            </span>
-                            {v?.is_emergency_priority && (
-                              <span className="inline-flex items-center gap-0.5 text-[9px] font-black px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
-                                🚨 24h
+                            <div>
+                              <span className="font-bold text-neutral-900 dark:text-white block">
+                                {v?.model || 'Veículo Municipal'}
                               </span>
-                            )}
+                              <span className="text-[11px] text-neutral-400">
+                                {v?.department || '-'} {activeBc?.invoice_sheet ? `• Ficha ${activeBc.invoice_sheet}` : ''}
+                              </span>
+                            </div>
                           </div>
-                          {v?.prefix_code && (
-                            <span className="text-[10px] text-neutral-400 ml-0.5">
-                              Prefixo: {v.prefix_code}
-                            </span>
-                          )}
                         </td>
 
-                        {/* Secretaria & Ficha Orçamentária */}
-                        <td className="px-4 py-3.5">
-                          <div className="text-neutral-700 dark:text-neutral-300 font-medium">
-                            {v?.department || '-'}
-                          </div>
-                          {(() => {
-                            const activeBc = resolveOrderBudget(order, v, budgetClassifications);
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => handleOpenBudgetModal(order)}
-                                title="Clique para editar / alterar a ficha orçamentária"
-                                className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60 hover:bg-amber-100 dark:hover:bg-amber-900/40 cursor-pointer transition-colors"
-                              >
-                                <Layers size={10} className="text-amber-600" />
-                                <span>{activeBc?.invoice_sheet ? `Ficha ${activeBc.invoice_sheet}` : 'Definir Ficha'}</span>
-                              </button>
-                            );
-                          })()}
-                        </td>
-
-                        {/* Motorista */}
+                        {/* 3. Condutor */}
                         <td className="px-4 py-3.5">
                           <div className="text-neutral-900 dark:text-white font-semibold">
                             {order.driver_name}
                           </div>
-                          <div className="text-[10px] text-neutral-400">
-                            {order.driver_document || 'Sem documento'}
+                          {order.station_name && (
+                            <div className="text-[11px] text-neutral-400 truncate max-w-[160px]">
+                              {order.station_name}
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 4. Volume, Valor & KM */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <div className="font-mono font-black text-xs text-neutral-900 dark:text-white">
+                            {effectiveLiters.toFixed(1)} L <span className="text-neutral-400 font-normal">•</span>{' '}
+                            <span className="text-emerald-700 dark:text-emerald-400">
+                              {formattedValue}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-neutral-400 font-mono">
+                            {order.current_odometer && order.current_odometer > 0
+                              ? `KM ${formatThousands(order.current_odometer)}${deltaKm > 0 ? ` (+${formatThousands(deltaKm)})` : isFirstRecord ? ' (Base)' : ''}`
+                              : `${order.fuel_type.replace('_', ' ').toUpperCase()}`}
                           </div>
                         </td>
 
-                        {/* Combustível */}
-                        <td className="px-4 py-3.5">
-                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
-                            {order.fuel_type.replace('_', ' ')}
-                          </span>
-                        </td>
-
-                        {/* Litros Autorizados */}
-                        <td className="px-4 py-3.5">
-                          {order.supply_mode === 'encher_tanque' || order.is_full_tank_order ? (
-                            <div>
-                              <span className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 dark:text-emerald-400">
-                                ⛽ Completar Tanque
-                              </span>
-                              <span className="text-[10px] text-neutral-400 block">
-                                Teto: {v?.tank_capacity.toFixed(0) || order.liters_authorized.toFixed(0)} L (Top-Off)
-                              </span>
-                              <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 block">
-                                Valor a apurar na bomba
-                              </span>
-                            </div>
+                        {/* 5. Semáforo TCE Limpo */}
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          {order.status === 'glosado' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-600 text-white">
+                              <Ban size={12} /> Glosado
+                            </span>
+                          ) : order.anomaly_level === 'bloqueio_critico' || order.is_anomaly ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                              <AlertTriangle size={12} className="text-rose-600" /> Bloqueio TCE
+                            </span>
+                          ) : order.anomaly_level === 'alerta_amarelo' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                              <AlertTriangle size={12} className="text-amber-600" /> Alerta Consumo
+                            </span>
+                          ) : order.status === 'auditado' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                              <ShieldCheck size={12} className="text-emerald-600" /> Homologado
+                            </span>
+                          ) : order.status === 'abastecido' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                              <CheckCircle2 size={12} className="text-emerald-600" /> Pronto p/ Homologar
+                            </span>
                           ) : (
-                            <div>
-                              <span className="text-neutral-900 dark:text-white font-bold">
-                                {order.liters_authorized.toFixed(2)} L
-                              </span>
-                              <span className="text-[10px] text-neutral-400 block">
-                                Tanque: {v?.tank_capacity.toFixed(0)} L
-                              </span>
-                            </div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-amber-200/70 dark:border-amber-800/60">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" /> Aguardando Posto
+                            </span>
                           )}
                         </td>
 
-                        {/* Status */}
-                        <td className="px-4 py-3.5">
-                          {(order.status === 'autorizado' || order.status === 'autorizado_pendente') && (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                              Aguardando Abastecimento
-                            </span>
-                          )}
-                          {order.status === 'abastecido' && (
-                            <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                                Abastecido no Posto
-                              </span>
-                              {order.anomaly_level === 'alerta_amarelo' && (
-                                <span className="block text-[9px] font-bold text-amber-600 dark:text-amber-400">
-                                  ⚠️ Desvio moderado
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {order.status === 'auditado' && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                              <CheckCircle2 size={11} />
-                              Auditado & Homologado
-                            </span>
-                          )}
-                          {order.status === 'glosado' && (
-                            <div className="space-y-0.5">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">
-                                <Ban size={11} />
-                                Glosado (Bloqueio)
-                              </span>
-                              {order.anomaly_level === 'bloqueio_critico' && (
-                                <span className="block text-[9px] font-black text-rose-600 dark:text-rose-400">
-                                  🔴 Bloqueio Crítico TCE
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Ações */}
-                        <td className="px-4 py-3.5 text-right">
+                        {/* 6. Único Botão Principal que Abre a Janela Popup da Ordem */}
+                        <td className="px-4 py-3.5 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1.5">
+                            {(order.status === 'autorizado' || order.status === 'autorizado_pendente') ? (
+                              <button
+                                onClick={() => handleOpenExecution(order)}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                              >
+                                <Gauge size={13} />
+                                <span>Baixar / KM</span>
+                              </button>
+                            ) : order.status === 'abastecido' ? (
+                              <button
+                                onClick={() => handleOpenOrderHub(order)}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-xs"
+                              >
+                                <ShieldCheck size={13} />
+                                <span>Homologar / Abrir</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOpenOrderHub(order)}
+                                className="px-3 py-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1.5 border border-neutral-200 dark:border-neutral-700"
+                              >
+                                <Eye size={13} />
+                                <span>Gerenciar Ordem</span>
+                              </button>
+                            )}
+
                             <button
                               onClick={() => imprimirCanhotoDuasVias(order as any, v)}
-                              title="Imprimir Canhoto em Duas Vias (A4 Oficial com QR Code)"
-                              className="flex items-center gap-1 px-2 py-1 text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
+                              title="Imprimir Canhoto em 2 Vias (A4)"
+                              className="p-2 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
                             >
-                              <Printer size={13} />
-                              <span className="hidden sm:inline">2 Vias</span>
-                            </button>
-
-                            {(order.status === 'autorizado' || order.status === 'autorizado_pendente') && (
-                              <button
-                                onClick={() => handleOpenExecution(order)}
-                                title="Preencher Leitura do Odômetro e Baixar Ordem"
-                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-                              >
-                                <Gauge size={12} />
-                                <span>Odômetro</span>
-                              </button>
-                            )}
-
-                            {order.status === 'abastecido' && (
-                              <button
-                                onClick={() => handleOpenExecution(order)}
-                                title="Corrigir Odômetro ou Litros do Abastecimento"
-                                className="px-2.5 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-sm"
-                              >
-                                <Edit2 size={12} />
-                                <span>Editar</span>
-                              </button>
-                            )}
-
-                            {order.status === 'auditado' && (
-                              <>
-                                <button
-                                  onClick={() => handleCancelHomologation(order)}
-                                  title="Cancelar Homologação para permitir editar ou corrigir erros"
-                                  className="px-2 py-1 text-[10px] font-bold text-rose-700 hover:text-rose-900 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-rose-200 dark:border-rose-800 shadow-xs"
-                                >
-                                  <RotateCcw size={11} className="text-rose-600 dark:text-rose-400" />
-                                  <span>Cancelar Homologação</span>
-                                </button>
-                                <button
-                                  onClick={() => handleOpenExecution(order)}
-                                  title="Editar ordem homologada (reabre para edição)"
-                                  className="px-2 py-1 text-[11px] font-bold text-amber-800 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
-                                >
-                                  <Edit2 size={12} />
-                                  <span>Editar</span>
-                                </button>
-                              </>
-                            )}
-
-                            {order.status === 'glosado' && (
-                              <button
-                                onClick={() => handleCancelHomologation(order)}
-                                title="Cancelar Glosa e Reabrir Ordem para Edição"
-                                className="px-2 py-1 text-[10px] font-bold text-neutral-700 hover:text-neutral-900 dark:text-neutral-300 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex items-center gap-1 border border-neutral-300 dark:border-neutral-700 shadow-xs"
-                              >
-                                <RotateCcw size={11} />
-                                <span>Reabrir</span>
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => handleOpenBudgetModal(order)}
-                              title="Editar / Alterar Dotação Orçamentária"
-                              className="flex items-center gap-1 px-2 py-1 text-amber-800 dark:text-amber-200 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 rounded-lg text-[10px] font-bold transition-colors cursor-pointer border border-amber-200/70 dark:border-amber-900/40 shadow-sm"
-                            >
-                              <Layers size={12} className="text-amber-600 dark:text-amber-400" />
-                              <span>Dotação</span>
-                            </button>
-
-                            {(order.status === 'abastecido' || order.status === 'auditado' || order.status === 'glosado' || order.receipt_photo_url || order.receipt_attachment_url || order.odometer_photo_url || order.pump_photo_url) && (
-                              <button
-                                onClick={() => openAttachmentViewer(order)}
-                                title="Ver Fotos do Abastecimento (Bomba e Odômetro)"
-                                className="px-2 py-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 text-[11px] font-bold"
-                              >
-                                <Eye size={14} />
-                                {order.pump_photo_url && (
-                                  <Camera size={13} className="text-amber-500" title="Foto da Bomba Recebida" />
-                                )}
-                                {order.odometer_photo_url && (
-                                  <Gauge size={13} className="text-blue-500" title="Foto do Odômetro Recebida" />
-                                )}
-                                {(order.receipt_photo_url || order.receipt_attachment_url) && (
-                                  <FileCheck size={13} className="text-emerald-500" title="Canhoto Anexado" />
-                                )}
-                                <span>Fotos</span>
-                              </button>
-                            )}
-
-                            <button
-                              onClick={() => handleDeleteOrder(order)}
-                              title="Excluir Ordem / Auditoria"
-                              className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Trash2 size={15} />
+                              <Printer size={14} />
                             </button>
                           </div>
                         </td>
@@ -2959,9 +3025,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   ) : (
                     paginatedOrders.map(order => {
                       const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
-                      const deltaOdo = order.current_odometer && order.previous_odometer 
+                      const isFirstRecord = !order.previous_odometer || order.previous_odometer <= 0;
+                      const deltaOdo = (!isFirstRecord && order.current_odometer && order.previous_odometer && order.current_odometer > order.previous_odometer)
                         ? order.current_odometer - order.previous_odometer 
                         : 0;
+                      const rawConsump = Number(order.calculated_consumption ?? order.calculated_km_per_liter ?? 0);
+                      const isValidConsump = !isFirstRecord && deltaOdo > 0 && !isNaN(rawConsump) && rawConsump > 0 && rawConsump <= 50;
+                      const { formattedValue } = resolveOrderFinancials(order, biddedPrices);
 
                       return (
                         <tr 
@@ -3004,37 +3074,42 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 / {order.supply_mode === 'encher_tanque' || order.is_full_tank_order ? 'Top-Off' : `${order.liters_authorized.toFixed(0)} L`}
                               </span>
                             </div>
-                            {order.total_value ? (
-                              <div className="text-[10px] text-neutral-500 font-mono">
-                                Total: {order.total_value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                              </div>
-                            ) : (order.supply_mode === 'encher_tanque' || order.is_full_tank_order) ? (
-                              <div className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
-                                Valor a apurar na bomba
-                              </div>
-                            ) : null}
+                            <div className="text-[10px] text-neutral-500 font-mono">
+                              Total: {formattedValue}
+                            </div>
                           </td>
 
                           {/* Odômetro */}
                           <td className="px-4 py-3.5 font-mono">
-                            <div>Atual: <strong>{order.current_odometer}</strong></div>
-                            <div className="text-[10px] text-neutral-400">Ant.: {order.previous_odometer}</div>
+                            <div>Atual: <strong>{order.current_odometer ? formatThousands(order.current_odometer) : '-'}</strong></div>
+                            <div className="text-[10px] text-neutral-400">
+                              {isFirstRecord ? '1º Registro (Base)' : `Ant.: ${formatThousands(order.previous_odometer || 0)}`}
+                            </div>
                             {deltaOdo > 0 && (
                               <span className="text-[10px] font-bold text-emerald-600">
-                                +{deltaOdo} {v?.metric_type} rodados
+                                +{formatThousands(deltaOdo)} {v?.metric_type} rodados
                               </span>
                             )}
                           </td>
 
                           {/* Consumo */}
                           <td className="px-4 py-3.5">
-                            {(order.calculated_consumption || order.calculated_km_per_liter) ? (
+                            {isValidConsump ? (
                               <div>
                                 <span className="font-black text-xs text-neutral-900 dark:text-white">
-                                  {Number(order.calculated_consumption ?? order.calculated_km_per_liter ?? 0).toFixed(2)} km/l
+                                  {rawConsump.toFixed(2)} km/l
                                 </span>
                                 <span className="text-[10px] text-neutral-400 block">
                                   Ref.: {v?.expected_consumption?.toFixed(2) || '—'}
+                                </span>
+                              </div>
+                            ) : isFirstRecord ? (
+                              <div>
+                                <span className="text-xs font-bold text-neutral-600 dark:text-neutral-300">
+                                  Odômetro Base
+                                </span>
+                                <span className="text-[10px] text-neutral-400 block">
+                                  1º abastecimento
                                 </span>
                               </div>
                             ) : (
@@ -3285,7 +3360,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </p>
                       <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
                         {vehicles.length === 0
-                          ? 'A frota municipal está limpa. Clique em "Cadastrar Veículo" para adicionar os veículos da frota ou sincronize do patrimônio municipal.'
+                          ? 'A frota municipal está limpa. Clique em "Cadastrar Novo Veículo" para adicionar os veículos da frota.'
                           : 'Tente alterar os termos da pesquisa ou os filtros de secretaria/status acima.'}
                       </p>
                       <div className="mt-4 flex items-center justify-center gap-2">
@@ -3294,12 +3369,6 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           className="px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                         >
                           <Plus size={14} /> Cadastrar Novo Veículo
-                        </button>
-                        <button
-                          onClick={handleSyncPatrimonio}
-                          className="px-4 py-2 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <RefreshCw size={14} /> Sincronizar do Patrimônio
                         </button>
                       </div>
                     </td>
@@ -3751,7 +3820,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-2xl w-full p-6 overflow-hidden"
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-2xl w-full p-6 max-h-[92vh] overflow-y-auto"
             >
               {/* Header do Modal */}
               <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
@@ -3871,12 +3940,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               key={v.id}
                               onClick={() => {
                                 const isEmergency = !!v.is_emergency_priority;
+                                const lastOrder = orders.find(o => o.vehicle_id === v.id && o.driver_name);
                                 setNewOrderForm(prev => ({
                                   ...prev,
                                   vehicle_id: v.id,
                                   fuel_type: v.fuel_type,
                                   current_odometer: v.current_odometer || 0,
                                   budget_classification_id: v.budget_classification_id || prev.budget_classification_id || '',
+                                  driver_name: prev.driver_name || lastOrder?.driver_name || '',
+                                  driver_document: prev.driver_document || lastOrder?.driver_document || '',
                                   is_full_tank_order: isEmergency ? true : prev.is_full_tank_order,
                                   liters_authorized: isEmergency ? v.tank_capacity : Math.min(prev.liters_authorized, v.tank_capacity),
                                   emergency_call_reason: isEmergency && !prev.emergency_call_reason ? `Plantão de Prontidão 24h - ${v.model}` : prev.emergency_call_reason
@@ -4003,10 +4075,26 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             * Esta classificação oficial sairá impressa com destaque na 1ª e 2ª vias do canhoto de abastecimento.
                           </p>
                         </div>
+
+                        {newOrderForm.driver_name && (
+                          <div className="pt-2 border-t border-amber-200/60 dark:border-amber-900/40 flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-bold">
+                              <UserCheck size={14} />
+                              <span>Condutor habitual identificado: <strong>{newOrderForm.driver_name}</strong></span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setNewOrderStep(2)}
+                              className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer"
+                            >
+                              Trocar Condutor
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    <div className="flex justify-end gap-2 pt-2">
+                    <div className="flex flex-wrap justify-end gap-2 pt-2">
                       <button
                         type="button"
                         onClick={() => setIsNewOrderModalOpen(false)}
@@ -4018,11 +4106,22 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         type="button"
                         disabled={!newOrderForm.vehicle_id}
                         onClick={() => setNewOrderStep(2)}
-                        className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                        className="px-4 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer border border-amber-300 dark:border-amber-800"
                       >
-                        <span>Avançar: Condutor & Posto</span>
-                        <ArrowRight size={14} />
+                        <span>Passo 2: Condutor & Posto</span>
+                        <ArrowRight size={13} />
                       </button>
+                      {newOrderForm.vehicle_id && newOrderForm.driver_name && (
+                        <button
+                          type="button"
+                          onClick={() => setNewOrderStep(3)}
+                          className="px-5 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                          title="Condutor já preenchido — ir direto para litragem e emissão"
+                        >
+                          <span>⚡ Ir Direto p/ Litragem & Semáforo</span>
+                          <ArrowRight size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -4473,6 +4572,117 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </div>
                     </div>
 
+                    {/* 🚦 SEMÁFORO DE AUDITORIA PRÉVIA DA ORDEM (CONTROLE INTERNO TCE) */}
+                    <div className={`p-4 rounded-2xl border transition-all ${
+                      emissionSemaphore.level === 'critico'
+                        ? 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-300 dark:border-rose-800'
+                        : emissionSemaphore.level === 'alerta'
+                        ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-800'
+                        : 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800'
+                    }`}>
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">🚦</span>
+                          <div>
+                            <h5 className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white flex items-center gap-1.5">
+                              Semáforo de Auditoria Prévia
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300">
+                                Padrão TCE
+                              </span>
+                            </h5>
+                            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                              Validação em tempo real dos parâmetros fiscais e físicos antes da emissão
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Badge do Semáforo Consolidado */}
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide shadow-xs ${emissionSemaphore.badgeColor}`}>
+                          {emissionSemaphore.level === 'critico' ? (
+                            <AlertTriangle size={11} />
+                          ) : emissionSemaphore.level === 'alerta' ? (
+                            <AlertCircle size={11} />
+                          ) : (
+                            <ShieldCheck size={12} />
+                          )}
+                          {emissionSemaphore.level === 'critico' ? '🔴 ' : emissionSemaphore.level === 'alerta' ? '🟡 ' : '🟢 '}
+                          {emissionSemaphore.label}
+                        </span>
+                      </div>
+
+                      {/* Motivo do Bloqueio ou Alerta */}
+                      {emissionSemaphore.level !== 'conforme' && (
+                        <div className={`p-2 rounded-xl mb-2.5 text-xs font-bold flex items-start gap-1.5 ${
+                          emissionSemaphore.level === 'critico'
+                            ? 'bg-rose-100 text-rose-900 dark:bg-rose-900/60 dark:text-rose-100'
+                            : 'bg-amber-100 text-amber-900 dark:bg-amber-900/60 dark:text-amber-100'
+                        }`}>
+                          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                          <span>{emissionSemaphore.reason}</span>
+                        </div>
+                      )}
+
+                      {/* Grid dos 3 Pilares de Auditoria */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                        {/* Pilar 1: Trava Física de Tanque */}
+                        <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                          isLitersOverCapacity
+                            ? 'bg-rose-100/90 dark:bg-rose-900/50 border-rose-300 dark:border-rose-700 text-rose-950 dark:text-rose-100'
+                            : 'bg-white/90 dark:bg-neutral-900/70 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200'
+                        }`}>
+                          <span className="text-sm mt-0.5">{isLitersOverCapacity ? '🔴' : '🟢'}</span>
+                          <div className="min-w-0 flex-1">
+                            <strong className="text-[11px] block font-black uppercase tracking-tight">Trava de Tanque</strong>
+                            <span className="text-[10px] opacity-85 block leading-tight">
+                              {isLitersOverCapacity
+                                ? `Excede capacidade (${selectedVehicleForNewOrder?.tank_capacity}L)`
+                                : newOrderForm.supply_mode === 'encher_tanque'
+                                ? `Top-Off liberado (teto ${selectedVehicleForNewOrder?.tank_capacity}L)`
+                                : `${newOrderForm.liters_authorized}L ≤ ${selectedVehicleForNewOrder?.tank_capacity}L (Trava OK)`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Pilar 2: Coerência do Odômetro */}
+                        <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                          isOdometerInvalid
+                            ? 'bg-rose-100/90 dark:bg-rose-900/50 border-rose-300 dark:border-rose-700 text-rose-950 dark:text-rose-100'
+                            : 'bg-white/90 dark:bg-neutral-900/70 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200'
+                        }`}>
+                          <span className="text-sm mt-0.5">{isOdometerInvalid ? '🔴' : '🟢'}</span>
+                          <div className="min-w-0 flex-1">
+                            <strong className="text-[11px] block font-black uppercase tracking-tight">Odômetro do Painel</strong>
+                            <span className="text-[10px] opacity-85 block leading-tight">
+                              {isOdometerInvalid
+                                ? `KM menor que o anterior (${formatThousands(selectedVehicleForNewOrder?.current_odometer || 0)})`
+                                : `${formatThousands(newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0)} km (Coerente)`}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Pilar 3: Dotação Orçamentária */}
+                        <div className={`p-2.5 rounded-xl border flex items-start gap-2 ${
+                          !selectedVehicleForNewOrder?.budget_classification_id && !newOrderForm.budget_classification_id
+                            ? 'bg-amber-100/90 dark:bg-amber-900/50 border-amber-300 dark:border-amber-700 text-amber-950 dark:text-amber-100'
+                            : 'bg-white/90 dark:bg-neutral-900/70 border-neutral-200 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200'
+                        }`}>
+                          <span className="text-sm mt-0.5">
+                            {!selectedVehicleForNewOrder?.budget_classification_id && !newOrderForm.budget_classification_id ? '🟡' : '🟢'}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <strong className="text-[11px] block font-black uppercase tracking-tight">Dotação / Ficha</strong>
+                            <span className="text-[10px] opacity-85 block leading-tight truncate">
+                              {(() => {
+                                const bc = budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id || b.invoice_sheet === newOrderForm.budget_classification_id) || 
+                                  resolveOrderBudget(null, selectedVehicleForNewOrder, budgetClassifications);
+                                return bc ? `Ficha ${bc.invoice_sheet} (${bc.funding_source})` : 'Pendente de seleção';
+                              })()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Botões do Rodapé */}
                     <div className="flex justify-between items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                       <button
@@ -4485,9 +4695,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                       <button
                         type="submit"
-                        disabled={isLitersOverCapacity || !newOrderForm.vehicle_id || !newOrderForm.driver_name}
+                        disabled={!emissionSemaphore.canEmit || !newOrderForm.vehicle_id || !newOrderForm.driver_name}
                         className={`px-5 py-2.5 text-xs font-black text-white rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg ${
-                          isLitersOverCapacity 
+                          !emissionSemaphore.canEmit 
                             ? 'bg-neutral-400 cursor-not-allowed opacity-60' 
                             : 'bg-emerald-600 hover:bg-emerald-700'
                         }`}
@@ -4619,13 +4829,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       onChange={e => setExecutionForm({ ...executionForm, current_odometer: parseThousands(e.target.value) })}
                       required
                       className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 ${
-                        executionForm.current_odometer <= selectedOrderForAction.previous_odometer
-                          ? 'border-rose-500 text-rose-600 focus:ring-rose-500'
-                          : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500'
+                        (!selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0)
+                          ? (executionForm.current_odometer <= 0 ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500')
+                          : (executionForm.current_odometer <= selectedOrderForAction.previous_odometer ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500')
                       }`}
                     />
                     <span className="text-[10px] text-neutral-400">
-                      Anterior: {formatThousands(selectedOrderForAction.previous_odometer)} km
+                      {!selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0
+                        ? '1º Abastecimento (Definição de KM Base)'
+                        : `Anterior: ${formatThousands(selectedOrderForAction.previous_odometer)} km`}
                     </span>
                   </div>
                 </div>
@@ -4633,7 +4845,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                 {/* PAINEL MATEMÁTICO DE AUDITORIA EM TEMPO REAL (ANTIFRAUDE) */}
                 {(() => {
                   const v = selectedOrderForAction.vehicle || vehicles.find(item => item.id === selectedOrderForAction.vehicle_id);
-                  const deltaOdo = executionForm.current_odometer > selectedOrderForAction.previous_odometer
+                  const isFirstRecord = !selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0;
+                  const deltaOdo = (!isFirstRecord && executionForm.current_odometer > selectedOrderForAction.previous_odometer)
                     ? executionForm.current_odometer - selectedOrderForAction.previous_odometer
                     : 0;
                   const expectedLiters = (v && v.expected_consumption > 0 && deltaOdo > 0)
@@ -4642,8 +4855,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   const maxAllowed = expectedLiters * 1.30;
                   const isEmergencyOrFullTank = selectedOrderForAction.is_full_tank_order || v?.is_emergency_priority;
                   const excessLiters = executionForm.liters_supplied - maxAllowed;
-                  const isExcess = isEmergencyOrFullTank && deltaOdo > 0 && expectedLiters > 0 && executionForm.liters_supplied > maxAllowed && excessLiters > 8.0;
-                  const isStagnant = deltaOdo < 15 && executionForm.liters_supplied > 10;
+                  const isExcess = !isFirstRecord && isEmergencyOrFullTank && deltaOdo > 0 && expectedLiters > 0 && executionForm.liters_supplied > maxAllowed && excessLiters > 8.0;
+                  const isStagnant = !isFirstRecord && deltaOdo < 15 && executionForm.liters_supplied > 10;
 
                   return (
                     <div className={`p-3.5 rounded-2xl border text-xs space-y-2 transition-all ${
@@ -4886,92 +5099,471 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         )}
       </AnimatePresence>
 
-      {/* MODAL 3: AUDITORIA E GLOSA (CONTROLE INTERNO) */}
+      {/* MODAL 3: JANELA POPUP COMPLETA DA ORDEM (INSPEÇÃO, HOMOLOGAÇÃO EM 1 CLIQUE & GESTÃO) */}
       <AnimatePresence>
-        {isAuditModalOpen && selectedOrderForAction && (
+        {isAuditModalOpen && selectedOrderForAction && (() => {
+          const ord = selectedOrderForAction;
+          const v = ord.vehicle || vehicles.find(item => item.id === ord.vehicle_id);
+          const activeBc = resolveOrderBudget(ord, v, budgetClassifications);
+          const { unitPrice, effectiveLiters, effectiveValue, formattedValue, formattedUnitPrice } = resolveOrderFinancials(ord, biddedPrices);
+
+          const isFirstRecord = !ord.previous_odometer || ord.previous_odometer <= 0;
+          const deltaKm = (!isFirstRecord && ord.current_odometer && ord.previous_odometer && ord.current_odometer > ord.previous_odometer)
+            ? ord.current_odometer - ord.previous_odometer
+            : 0;
+
+          const rawConsumption = Number(ord.calculated_consumption ?? ord.calculated_km_per_liter ?? 0);
+          const isValidConsumption = !isFirstRecord && deltaKm > 0 && !isNaN(rawConsumption) && rawConsumption > 0 && rawConsumption <= 50;
+          const hasAnyPhoto = Boolean(ord.receipt_photo_url || ord.receipt_attachment_url || ord.odometer_photo_url || ord.pump_photo_url);
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-2xl w-full p-6 max-h-[92vh] overflow-y-auto space-y-5"
+              >
+                {/* Cabeçalho da Janela da Ordem */}
+                <div className="flex justify-between items-start gap-4 pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                      ord.status === 'glosado' || ord.is_anomaly
+                        ? 'bg-rose-500/10 text-rose-600'
+                        : ord.status === 'auditado'
+                        ? 'bg-emerald-500/10 text-emerald-600'
+                        : 'bg-blue-500/10 text-blue-600'
+                    }`}>
+                      {ord.status === 'glosado' ? <Ban size={24} /> : <ShieldCheck size={24} />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-black text-lg text-neutral-900 dark:text-white">
+                          {ord.order_number}
+                        </span>
+                        {ord.status === 'auditado' ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                            🟢 Homologada TCE
+                          </span>
+                        ) : ord.status === 'glosado' ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-rose-600 text-white">
+                            🔴 Glosada / Bloqueada
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300">
+                            ⛽ Aguardando Homologação
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-neutral-400 text-xs mt-0.5">
+                        Emitida em {new Date(ord.created_at).toLocaleString('pt-BR')} • {ord.station_name || 'Posto Credenciado'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsAuditModalOpen(false)}
+                    className="p-2 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Resumo do Veículo, Condutor e Dotação */}
+                <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/80 dark:border-neutral-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <MercosulPlate plate={v?.plate} size="sm" />
+                    <div>
+                      <h4 className="text-sm font-black text-neutral-900 dark:text-white">
+                        {v?.model || 'Veículo Municipal'}
+                      </h4>
+                      <p className="text-xs text-neutral-500">
+                        {v?.department || 'Secretaria Municipal'} • Condutor: <strong className="text-neutral-700 dark:text-neutral-200">{ord.driver_name}</strong>
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAuditModalOpen(false);
+                      handleOpenBudgetModal(ord);
+                    }}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-100/80 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-200 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Layers size={13} />
+                    <span>{activeBc?.invoice_sheet ? `Ficha ${activeBc.invoice_sheet}` : 'Definir Ficha'}</span>
+                  </button>
+                </div>
+
+                {/* 4 Cards de Conferência Rápida (Combustível, Valor, KM e Rendimento) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/70 dark:border-neutral-800">
+                    <span className="text-[10px] font-bold uppercase text-neutral-400 block">Combustível</span>
+                    <span className="text-sm font-black font-mono text-neutral-900 dark:text-white mt-0.5 block">
+                      {effectiveLiters.toFixed(2)} L
+                    </span>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase">
+                      {ord.fuel_type.replace('_', ' ')} (Tanque {v?.tank_capacity || 0}L)
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/70 dark:border-neutral-800">
+                    <span className="text-[10px] font-bold uppercase text-neutral-400 block">Valor Total</span>
+                    <span className="text-sm font-black font-mono text-emerald-700 dark:text-emerald-400 mt-0.5 block">
+                      {formattedValue}
+                    </span>
+                    <span className="text-[10px] text-neutral-400 font-mono">
+                      {formattedUnitPrice} / litro
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/70 dark:border-neutral-800">
+                    <span className="text-[10px] font-bold uppercase text-neutral-400 block">Odômetro (KM)</span>
+                    <span className="text-sm font-black font-mono text-neutral-900 dark:text-white mt-0.5 block">
+                      {ord.current_odometer ? formatThousands(ord.current_odometer) : '-'}
+                    </span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold font-mono">
+                      {deltaKm > 0 
+                        ? `+${formatThousands(deltaKm)} km rodados` 
+                        : isFirstRecord 
+                        ? 'Odômetro base inicial' 
+                        : `Ant: ${formatThousands(ord.previous_odometer || 0)}`}
+                    </span>
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/70 dark:border-neutral-800">
+                    <span className="text-[10px] font-bold uppercase text-neutral-400 block">Rendimento</span>
+                    <span className="text-sm font-black font-mono text-neutral-900 dark:text-white mt-0.5 block">
+                      {isValidConsumption 
+                        ? `${rawConsumption.toFixed(1)} km/l` 
+                        : isFirstRecord 
+                        ? 'Odômetro Base' 
+                        : 'Apurando'}
+                    </span>
+                    <span className="text-[10px] text-neutral-400">
+                      {isFirstRecord ? '1º registro do veículo' : `Meta: ${v?.target_consumption || 8.5} km/l`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Alerta do Semáforo TCE (se houver inconsistência) */}
+                {(ord.is_anomaly || ord.anomaly_level === 'bloqueio_critico' || ord.anomaly_level === 'alerta_amarelo') ? (
+                  <div className={`p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 ${
+                    ord.anomaly_level === 'alerta_amarelo'
+                      ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
+                      : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+                  }`}>
+                    <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="font-black block">Apontamento Automático do Semáforo TCE:</strong>
+                      <p className="mt-0.5">{ord.anomaly_reason}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-2.5">
+                    <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                    <div>
+                      <strong className="font-black">Semáforo TCE 100% Conforme:</strong> Litragem compatível com o tanque e odômetro validado sem divergências.
+                    </div>
+                  </div>
+                )}
+
+                {/* Área Principal de Homologação Rápida ou Reabertura */}
+                {ord.status === 'abastecido' && !showGlossReasonBox && (
+                  <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/80 dark:border-emerald-800/60 space-y-3">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                      <div>
+                        <h5 className="text-xs font-black text-emerald-950 dark:text-emerald-200 uppercase">
+                          Pronta para Homologação
+                        </h5>
+                        <p className="text-[11px] text-neutral-500">
+                          Aprove com 1 clique para liberar para liquidação ou glose se houver irregularidade.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAuditForm({
+                              status: 'glosado',
+                              justification: ord.anomaly_reason || ''
+                            });
+                            setShowGlossReasonBox(true);
+                          }}
+                          className="px-3.5 py-2.5 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-100/80 hover:bg-rose-200 dark:bg-rose-950/60 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Ban size={14} />
+                          <span>Glosar / Bloquear</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleInstantHomologate(ord)}
+                          className="px-5 py-2.5 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <ShieldCheck size={16} />
+                          <span>Homologar Ordem Agora</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Caixa de Justificativa caso o usuário clique em Glosar */}
+                {showGlossReasonBox && (
+                  <form onSubmit={handleSaveAudit} className="p-4 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs font-black text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                        <Ban size={14} /> Motivo da Glosa / Bloqueio do Pagamento *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowGlossReasonBox(false)}
+                        className="text-[11px] font-bold text-neutral-500 hover:underline cursor-pointer"
+                      >
+                        Cancelar Glosa
+                      </button>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={auditForm.justification}
+                      onChange={e => setAuditForm({ status: 'glosado', justification: e.target.value })}
+                      required
+                      placeholder="Descreva o motivo técnico para bloquear/glosar esta ordem..."
+                      className="w-full p-3 bg-white dark:bg-neutral-900 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-medium focus:outline-none"
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-4 py-2 text-xs font-black text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-md cursor-pointer"
+                      >
+                        Confirmar Glosa da Ordem
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Caso já esteja Homologada ou Glosada: Botão Direto de Cancelar Homologação */}
+                {(ord.status === 'auditado' || ord.status === 'glosado') && (
+                  <div className="p-4 rounded-2xl bg-neutral-100/80 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-black text-neutral-900 dark:text-white block">
+                        Precisa corrigir algum dado desta ordem?
+                      </span>
+                      <span className="text-[11px] text-neutral-500">
+                        Cancele a homologação com 1 clique para reabrir ou ir direto para a edição.
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleInstantCancelHomologation(ord, false)}
+                        className="px-3.5 py-2 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl cursor-pointer flex items-center gap-1.5"
+                      >
+                        <RotateCcw size={13} />
+                        <span>Cancelar Homologação</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInstantCancelHomologation(ord, true)}
+                        className="px-3.5 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 rounded-xl cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Edit2 size={13} />
+                        <span>Reabrir & Editar Agora</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Barra de Ferramentas da Ordem (Todas as Ações Reunidas na Janela) */}
+                <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAuditModalOpen(false);
+                        handleOpenExecution(ord);
+                      }}
+                      className="px-3 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100/80 hover:bg-amber-200 dark:bg-amber-950/60 rounded-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Edit2 size={13} />
+                      <span>Editar KM / Litros / Talão</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => imprimirCanhotoDuasVias(ord as any, v)}
+                      className="px-3 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-xl cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Printer size={13} />
+                      <span>Imprimir 2 Vias (A4)</span>
+                    </button>
+
+                    {hasAnyPhoto && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAuditModalOpen(false);
+                          openAttachmentViewer(ord);
+                        }}
+                        className="px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 rounded-xl cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Camera size={13} />
+                        <span>Ver Fotos Anexadas</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAuditModalOpen(false);
+                      handleDeleteOrder(ord);
+                    }}
+                    className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl cursor-pointer flex items-center gap-1"
+                  >
+                    <Trash2 size={13} />
+                    <span>Excluir Ordem</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
+      </AnimatePresence>
+
+      {/* JANELA POPUP: OPÇÕES, TABELAS & FERRAMENTAS DE GESTÃO */}
+      <AnimatePresence>
+        {isToolsModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden"
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-xl w-full p-6 space-y-4"
             >
-              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                    auditForm.status === 'glosado' ? 'bg-rose-500/10 text-rose-600' : 'bg-emerald-500/10 text-emerald-600'
-                  }`}>
-                    {auditForm.status === 'glosado' ? <Ban size={20} /> : <ShieldCheck size={20} />}
+              <div className="flex justify-between items-center pb-3 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                    <Sliders size={20} />
                   </div>
                   <div>
                     <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                      {auditForm.status === 'glosado' ? 'Glosar Pagamento do Fornecimento' : 'Homologar & Liberar para Liquidação'}
+                      Opções & Ferramentas da Frota
                     </h3>
-                    <p className="text-neutral-400 text-xs">Decisão formal do fiscal do contrato e auditoria</p>
+                    <p className="text-xs text-neutral-400">
+                      Tabelas contratuais, dotações orçamentárias, canhotos antigos e relatórios TCE
+                    </p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setIsAuditModalOpen(false)}
-                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                  onClick={() => setIsToolsModalOpen(false)}
+                  className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveAudit} className="mt-4 space-y-4">
-                {selectedOrderForAction.is_anomaly && (
-                  <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 rounded-2xl text-xs text-rose-800 dark:text-rose-300">
-                    <strong>Motivo da Inconsistência Detectada:</strong>
-                    <p className="mt-0.5">{selectedOrderForAction.anomaly_reason}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsToolsModalOpen(false);
+                    setPriceEditForm(biddedPrices);
+                    setIsPriceConfigModalOpen(true);
+                  }}
+                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-amber-400 dark:hover:border-amber-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
+                >
+                  <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                    <Sliders size={18} />
                   </div>
-                )}
+                  <div>
+                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Preços Licitados</h4>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Tabela de preços por litro e reequilíbrio contratual
+                    </p>
+                  </div>
+                </button>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Decisão Técnica do Controle Interno *
-                  </label>
-                  <select
-                    value={auditForm.status}
-                    onChange={e => setAuditForm({ ...auditForm, status: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none"
-                  >
-                    <option value="auditado">Homologado (Aprovado sem restrições para liquidação)</option>
-                    <option value="glosado">Glosado (Pagamento bloqueado pelo Controle Interno)</option>
-                  </select>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsToolsModalOpen(false);
+                    setIsBudgetClassificationsModalOpen(true);
+                  }}
+                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-blue-400 dark:hover:border-blue-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
+                >
+                  <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
+                    <Layers size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Fichas Orçamentárias</h4>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Centros de custo, fontes de recurso e dotações
+                    </p>
+                  </div>
+                </button>
 
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Justificativa / Parecer do Auditor *
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={auditForm.justification}
-                    onChange={e => setAuditForm({ ...auditForm, justification: e.target.value })}
-                    required
-                    placeholder="Descreva a fundamentação técnica do deferimento ou a base legal da glosa da despesa..."
-                    className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-white"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsToolsModalOpen(false);
+                    setIsLegacyVoucherModalOpen(true);
+                  }}
+                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-amber-400 dark:hover:border-amber-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
+                >
+                  <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
+                    <FileText size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Lançar Canhoto Antigo</h4>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Registrar ou importar talões de papel retroativos
+                    </p>
+                  </div>
+                </button>
 
-                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsToolsModalOpen(false);
+                    handleExportExcel();
+                  }}
+                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-emerald-400 dark:hover:border-emerald-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
+                >
+                  <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                    <FileSpreadsheet size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Exportar TCE (Excel)</h4>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Baixar planilha auditada para prestação de contas
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              {orders.length > 0 && (
+                <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
                   <button
                     type="button"
-                    onClick={() => setIsAuditModalOpen(false)}
-                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                    onClick={() => {
+                      setIsToolsModalOpen(false);
+                      handleClearAllOrders();
+                    }}
+                    className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl cursor-pointer flex items-center gap-1.5"
                   >
-                    Voltar
+                    <Trash2 size={14} />
+                    <span>Limpar Ordens de Teste</span>
                   </button>
+
                   <button
-                    type="submit"
-                    className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md transition-all cursor-pointer ${
-                      auditForm.status === 'glosado' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'
-                    }`}
+                    type="button"
+                    onClick={() => setIsToolsModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 rounded-xl cursor-pointer"
                   >
-                    Confirmar Decisão
+                    Fechar
                   </button>
                 </div>
-              </form>
+              )}
             </motion.div>
           </div>
         )}
@@ -5280,11 +5872,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
                       <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
                         <span className="text-neutral-400 block text-[10px] font-bold">Odômetro Anterior:</span>
-                        <strong className="font-mono text-xs">{viewingAttachmentOrder.previous_odometer} km</strong>
+                        <strong className="font-mono text-xs">
+                          {!viewingAttachmentOrder.previous_odometer || viewingAttachmentOrder.previous_odometer <= 0
+                            ? '0 km (Base Inicial)'
+                            : `${formatThousands(viewingAttachmentOrder.previous_odometer)} km`}
+                        </strong>
                       </div>
                       <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
                         <span className="text-neutral-400 block text-[10px] font-bold">Odômetro Atual Lido:</span>
-                        <strong className="font-mono text-xs text-blue-600 dark:text-blue-400">{viewingAttachmentOrder.current_odometer || '—'} km</strong>
+                        <strong className="font-mono text-xs text-blue-600 dark:text-blue-400">
+                          {viewingAttachmentOrder.current_odometer ? `${formatThousands(viewingAttachmentOrder.current_odometer)} km` : '—'}
+                        </strong>
                       </div>
                     </div>
 
@@ -5292,13 +5890,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
                         <span className="text-neutral-400 block text-[10px] font-bold">Litragem Faturada:</span>
                         <strong className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
-                          {Number(viewingAttachmentOrder.liters_supplied || viewingAttachmentOrder.liters_authorized).toFixed(2)} L
+                          {Number(viewingAttachmentOrder.liters_supplied || viewingAttachmentOrder.liters_authorized || 0).toFixed(2)} L
                         </strong>
                       </div>
                       <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
                         <span className="text-neutral-400 block text-[10px] font-bold">Consumo Apurado:</span>
                         <strong className="font-mono text-xs">
-                          {viewingAttachmentOrder.calculated_km_per_liter || viewingAttachmentOrder.calculated_consumption || '—'} km/l
+                          {(() => {
+                            const isFirst = !viewingAttachmentOrder.previous_odometer || viewingAttachmentOrder.previous_odometer <= 0;
+                            const c = Number(viewingAttachmentOrder.calculated_km_per_liter || viewingAttachmentOrder.calculated_consumption || 0);
+                            if (isFirst) return 'Odômetro Base';
+                            if (!isNaN(c) && c > 0 && c <= 50) return `${c.toFixed(1)} km/l`;
+                            return '—';
+                          })()}
                         </strong>
                       </div>
                     </div>

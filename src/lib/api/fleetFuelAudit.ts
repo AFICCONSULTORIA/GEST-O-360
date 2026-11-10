@@ -163,8 +163,10 @@ export interface TwoWayFuelOrder {
   station_name: string;
   fuel_type: FuelType;
   bidded_unit_price: number; // Preço unitário fixo da licitação
+  unit_price?: number;
   liters_authorized: number;
   total_authorized_value: number; // liters_authorized * bidded_unit_price
+  total_value?: number;
   liters_supplied?: number;
   previous_odometer: number;
   current_odometer?: number;
@@ -235,6 +237,8 @@ export interface IssueOrderPayload {
 export interface OrderCompletionPayload {
   current_odometer: number;
   liters_supplied?: number;
+  unit_price?: number;
+  total_value?: number;
   receipt_photo_url?: string;
   receipt_attachment_url?: string;
   odometer_photo_url?: string;
@@ -324,13 +328,14 @@ export function calculateRealtimeMetrics(
   expectedConsumption: number,
   tankCapacity: number
 ): ConsumptionAuditCalculation {
-  const delta_km = currentOdometer - previousOdometer;
+  const isFirstOdometerRecord = !previousOdometer || previousOdometer <= 0;
+  const delta_km = isFirstOdometerRecord ? 0 : Math.max(0, currentOdometer - previousOdometer);
   const effective_liters = liters > 0 ? liters : 1;
-  const raw_km_per_liter = Number((delta_km / effective_liters).toFixed(2));
-  const calculated_km_per_liter = Math.min(Math.max(raw_km_per_liter, -9999.99), 9999.99);
+  const raw_km_per_liter = isFirstOdometerRecord || delta_km <= 0 ? 0 : Number((delta_km / effective_liters).toFixed(2));
+  const calculated_km_per_liter = isFirstOdometerRecord ? 0 : Math.min(Math.max(raw_km_per_liter, 0), 99.99);
 
   let deviation_percent = 0;
-  if (expectedConsumption > 0) {
+  if (!isFirstOdometerRecord && expectedConsumption > 0 && calculated_km_per_liter > 0) {
     const raw_dev = Number(
       (((calculated_km_per_liter - expectedConsumption) / expectedConsumption) * 100).toFixed(2)
     );
@@ -341,8 +346,8 @@ export function calculateRealtimeMetrics(
   let anomaly_reason: string | undefined = undefined;
   let is_blocked = false;
 
-  // 1. Bloqueio Crítico: Odômetro regressivo ou igual
-  if (currentOdometer <= previousOdometer) {
+  // 1. Bloqueio Crítico: Odômetro regressivo ou igual (apenas se já houver odômetro anterior registrado)
+  if (!isFirstOdometerRecord && currentOdometer <= previousOdometer) {
     anomaly_level = 'bloqueio_critico';
     anomaly_reason = `Odômetro Regressivo ou Inconsistente: KM informado (${currentOdometer}) é menor ou igual ao anterior (${previousOdometer}).`;
     is_blocked = true;
@@ -354,13 +359,13 @@ export function calculateRealtimeMetrics(
     is_blocked = true;
   }
   // 3. Bloqueio Crítico: Desvio maior que -25% (consumo muito pior que o esperado - suspeita de dreno/desvio)
-  else if (deviation_percent < -25) {
+  else if (!isFirstOdometerRecord && deviation_percent < -25) {
     anomaly_level = 'bloqueio_critico';
     anomaly_reason = `Consumo Crítico: Suspeita de Dreno/Desvio. Consumo apurado de ${calculated_km_per_liter} km/l teve desvio de ${deviation_percent}% em relação ao esperado (${expectedConsumption} km/l).`;
     is_blocked = true;
   }
   // 4. Alerta Amarelo: Desvio entre -15% e -25%
-  else if (deviation_percent < -15 && deviation_percent >= -25) {
+  else if (!isFirstOdometerRecord && deviation_percent < -15 && deviation_percent >= -25) {
     anomaly_level = 'alerta_amarelo';
     anomaly_reason = `Consumo com Desvio Moderado: Rendimento de ${calculated_km_per_liter} km/l teve variação de ${deviation_percent}% da meta (${expectedConsumption} km/l). Justificativa formal exigida.`;
     is_blocked = false;
@@ -691,9 +696,12 @@ export async function validateAndCompleteFuelOrder(
 
   const clampedKmPerL = Math.min(Math.max(Number(audit.calculated_km_per_liter || 0), -9999.99), 9999.99);
   const clampedDev = Math.min(Math.max(Number(audit.deviation_percent || 0), -999.99), 999.99);
-  const finalTotalValue = order.supply_mode === 'encher_tanque' || order.is_full_tank_order
-    ? Number((suppliedLiters * Number(order.bidded_unit_price || 0)).toFixed(2))
-    : Number((suppliedLiters * Number(order.bidded_unit_price || 0)).toFixed(2)) || order.total_authorized_value;
+  const rawUnitPrice = Number(order.bidded_unit_price || completionData.unit_price || 6.19);
+  const safeUnitPrice = !isNaN(rawUnitPrice) && rawUnitPrice > 0 ? rawUnitPrice : 6.19;
+  const computedTotal = Number((suppliedLiters * safeUnitPrice).toFixed(2));
+  const finalTotalValue = !isNaN(computedTotal) && computedTotal > 0
+    ? computedTotal
+    : (Number(order.total_authorized_value) || Number(order.total_value) || 0);
 
   const customOrderNumber = completionData.custom_order_number?.trim() || completionData.order_number?.trim();
   const finalOrderNumber = customOrderNumber || order.order_number;
@@ -724,6 +732,8 @@ export async function validateAndCompleteFuelOrder(
     odometer_photo_url: completionData.odometer_photo_url || order.odometer_photo_url,
     pump_photo_url: completionData.pump_photo_url || order.pump_photo_url,
     total_authorized_value: finalTotalValue,
+    total_value: finalTotalValue,
+    unit_price: safeUnitPrice,
     invoice_coupon_number: completionData.invoice_coupon_number?.trim() || order.invoice_coupon_number,
     anomaly_level: audit.anomaly_level,
     anomaly_reason: audit.anomaly_reason,
@@ -782,7 +792,7 @@ export async function validateAndCompleteFuelOrder(
     pump_photo_url: updatedOrder.pump_photo_url || null,
     total_authorized_value: updatedOrder.total_authorized_value,
     total_value: updatedOrder.total_authorized_value,
-    unit_price: order.bidded_unit_price,
+    unit_price: safeUnitPrice,
     anomaly_level: updatedOrder.anomaly_level,
     anomaly_reason: updatedOrder.anomaly_reason || null,
     audit_justification: updatedOrder.audit_justification || null,

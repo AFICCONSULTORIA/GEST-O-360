@@ -17,6 +17,7 @@ export interface FuelVoucherOptions {
   estadoNome?: string;
   secretariaNome?: string;
   brasaoUrl?: string;
+  autoPrint?: boolean;
 }
 
 /**
@@ -552,23 +553,28 @@ export function gerarCanhotoDuasViasHtml(
           letter-spacing: 0.5px;
         }
       </style>
+      ${options.autoPrint !== false ? `
       <script>
-        window.addEventListener('load', function() {
-          if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(function() {
-              setTimeout(function() {
-                window.focus();
-                window.print();
-              }, 120);
-            });
-          } else {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 180);
+        (function() {
+          var printed = false;
+          function triggerSinglePrint() {
+            if (printed) return;
+            printed = true;
+            window.focus();
+            window.print();
           }
-        });
+          window.addEventListener('load', function() {
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function() {
+                setTimeout(triggerSinglePrint, 120);
+              });
+            } else {
+              setTimeout(triggerSinglePrint, 180);
+            }
+          });
+        })();
       </script>
+      ` : ''}
     </head>
     <body>
       <div class="page-container">
@@ -596,14 +602,14 @@ export function gerarCanhotoDuasViasHtml(
 }
 
 /**
- * Dispara impressão ou exportação em PDF da folha A4 com as 2 vias
+ * Dispara impressão ou exportação em PDF da folha A4 com as 2 vias (uma única vez)
  */
 export function imprimirCanhotoDuasVias(
   order: TwoWayFuelOrder,
   vehicle?: FleetVehicle,
   options: FuelVoucherOptions = {}
 ): void {
-  const html = gerarCanhotoDuasViasHtml(order, vehicle, options);
+  const html = gerarCanhotoDuasViasHtml(order, vehicle, { ...options, autoPrint: true });
   const printWindow = window.open('', '_blank', 'width=1000,height=900,top=30,left=30');
 
   if (!printWindow) {
@@ -615,14 +621,6 @@ export function imprimirCanhotoDuasVias(
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
-
-  // Fallback para caso evento onload não dispare no documento filho
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 200);
-  };
 }
 
 /**
@@ -666,7 +664,7 @@ export const FuelAuthorizationVoucherPDF: React.FC<{
       <div className="border border-neutral-300 dark:border-neutral-700 rounded-xl overflow-hidden bg-white shadow-inner">
         <iframe
           title="Pré-visualização do Canhoto"
-          srcDoc={gerarCanhotoDuasViasHtml(order, vehicle, options)}
+          srcDoc={gerarCanhotoDuasViasHtml(order, vehicle, { ...options, autoPrint: false })}
           className="w-full h-[600px] border-none"
         />
       </div>

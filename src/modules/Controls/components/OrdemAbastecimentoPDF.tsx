@@ -419,21 +419,24 @@ export function gerarOrdemAbastecimentoHtml(
         }
       </style>
       <script>
-        window.addEventListener('load', function() {
-          if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(function() {
-              setTimeout(function() {
-                window.focus();
-                window.print();
-              }, 120);
-            });
-          } else {
-            setTimeout(function() {
-              window.focus();
-              window.print();
-            }, 180);
+        (function() {
+          var printed = false;
+          function triggerSinglePrint() {
+            if (printed) return;
+            printed = true;
+            window.focus();
+            window.print();
           }
-        });
+          window.addEventListener('load', function() {
+            if (document.fonts && document.fonts.ready) {
+              document.fonts.ready.then(function() {
+                setTimeout(triggerSinglePrint, 120);
+              });
+            } else {
+              setTimeout(triggerSinglePrint, 180);
+            }
+          });
+        })();
       </script>
     </head>
     <body>
@@ -686,12 +689,4 @@ export function imprimirOrdemAbastecimento(
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
-
-  // Fallback para caso evento onload não dispare no documento filho
-  printWindow.onload = () => {
-    setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-    }, 200);
-  };
 }
