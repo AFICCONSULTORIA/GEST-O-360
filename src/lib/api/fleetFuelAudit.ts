@@ -1000,6 +1000,7 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
     return null;
   }
 
+  const clean7 = formatOrderNumber7Digits(clean);
   const cleanAlphanumeric = clean.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(clean);
 
@@ -1007,7 +1008,6 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
 
   // 1. CONSULTA DIRETA NO SUPABASE (Fonte Única da Verdade, com fallback para supabaseAnon)
   try {
-    const clean7 = formatOrderNumber7Digits(clean);
     const orderMatch = clean7 && clean7 !== clean
       ? `order_number.ilike.${clean},order_number.ilike.${clean7},order_number.ilike.%${clean}%`
       : `order_number.ilike.${clean},order_number.ilike.%${clean}%`;
