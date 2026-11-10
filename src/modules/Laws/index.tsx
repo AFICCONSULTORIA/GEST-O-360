@@ -48,13 +48,13 @@ import { DemoFillButton } from '../../components/DemoFillButton';
 import { isDemoEnvironment } from '../../lib/demoManager';
 
 // Subcomponentes e Dados Modulares
-import { INITIAL_MOCK_LAWS } from './data/mockLaws';
 import { LawCollectionsGrid } from './components/LawCollectionsGrid';
 import { LawReaderModal } from './components/LawReaderModal';
 import { LawFormModal, LAW_TYPES, LAW_CATEGORIES, LAW_STATUSES } from './components/LawFormModal';
 import { LawBatchImportModal } from './components/LawBatchImportModal';
 
-export { INITIAL_MOCK_LAWS };
+// Export vazio para garantir acervo real sem injeção de mocks legados
+export const INITIAL_MOCK_LAWS: MunicipalLaw[] = [];
 
 export const LawsModule = ({ 
   currentUser, 
@@ -84,10 +84,14 @@ export const LawsModule = ({
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(null);
   const [viewLayout, setViewLayout] = useState<'grid' | 'table'>('grid');
 
-  // Carregamento de Leis com Fallback Resiliente
+  // Carregamento de Leis Reais do Supabase (Sem mocks automáticos)
   const loadLaws = useCallback(async () => {
     setIsLoading(true);
-    const isDemo = isDemoEnvironment(institution);
+    // Limpar resíduos antigos de mock do localStorage
+    try {
+      localStorage.removeItem('gestao360_demo_laws');
+    } catch (e) {}
+
     try {
       let query = supabase.from('municipal_laws').select('*').order('publication_date', { ascending: false });
       
@@ -97,46 +101,39 @@ export const LawsModule = ({
       
       const { data, error } = await query;
       if (error) {
-        console.warn('Supabase municipal_laws offline ou tabela não migrada. Utilizando mock enriquecido:', error);
-        if (isDemo) {
-          const demoLaws = localStorage.getItem('gestao360_demo_laws');
-          if (demoLaws) {
-            try { 
-              const parsed = JSON.parse(demoLaws);
-              const existingIds = new Set((parsed || []).map((l: any) => l.id));
-              const missing = INITIAL_MOCK_LAWS.filter(l => !existingIds.has(l.id));
-              setLaws([...missing, ...parsed]);
-            } catch (e) { 
-              setLaws(INITIAL_MOCK_LAWS); 
-            }
-          } else {
-            setLaws(INITIAL_MOCK_LAWS);
+        console.warn('Erro ao carregar municipal_laws do Supabase:', error);
+        // Fallback apenas para cache local real salvo previamente
+        const cached = localStorage.getItem('gestao360_laws');
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            setLaws((parsed || []).filter((l: any) => !['law_1331_2026', 'law_1', 'law_2', 'law_3', 'law_4', 'law_5', 'law_6', 'law_7', 'law_8', 'law_9'].includes(l.id)));
+          } catch (e) {
+            setLaws([]);
           }
         } else {
-          setLaws(INITIAL_MOCK_LAWS);
+          setLaws([]);
         }
-      } else if (data && data.length > 0) {
-        setLaws(data as MunicipalLaw[]);
-      } else if (isDemo) {
-        const demoLaws = localStorage.getItem('gestao360_demo_laws');
-        if (demoLaws) {
-          try { 
-            const parsed = JSON.parse(demoLaws);
-            const existingIds = new Set((parsed || []).map((l: any) => l.id));
-            const missing = INITIAL_MOCK_LAWS.filter(l => !existingIds.has(l.id));
-            setLaws([...missing, ...parsed]);
-          } catch (e) { 
-            setLaws(INITIAL_MOCK_LAWS); 
-          }
-        } else {
-          setLaws(INITIAL_MOCK_LAWS);
+      } else if (data) {
+        const mockIds = new Set(['law_1331_2026', 'law_1', 'law_2', 'law_3', 'law_4', 'law_5', 'law_6', 'law_7', 'law_8', 'law_9']);
+        const realLaws = (data as MunicipalLaw[]).filter(l => !mockIds.has(l.id) && !l.id?.startsWith('law_mock'));
+        
+        // Se houver resquícios de mock no banco, expurgar em background
+        const foundMocks = (data as MunicipalLaw[]).filter(l => mockIds.has(l.id) || l.id?.startsWith('law_mock'));
+        if (foundMocks.length > 0) {
+          supabase.from('municipal_laws').delete().in('id', foundMocks.map(m => m.id)).then();
         }
+
+        setLaws(realLaws);
+        try {
+          localStorage.setItem('gestao360_laws', JSON.stringify(realLaws));
+        } catch (e) {}
       } else {
-        setLaws(INITIAL_MOCK_LAWS);
+        setLaws([]);
       }
     } catch (err) {
-      console.error(err);
-      setLaws(INITIAL_MOCK_LAWS);
+      console.error('Exceção ao buscar leis:', err);
+      setLaws([]);
     }
     setIsLoading(false);
   }, [institution]);
@@ -172,7 +169,7 @@ export const LawsModule = ({
     };
   }, [loadLaws, institution]);
 
-  // Salvar ou Atualizar Norma
+  // Salvar ou Atualizar Norma com Persistência Real no Supabase
   const handleSaveLaw = async (lawData: Partial<MunicipalLaw>, pdfFile?: File | null) => {
     let fileUrl = lawData.file_url;
 
@@ -194,69 +191,92 @@ export const LawsModule = ({
       }
     }
 
-    const payload = {
+    const isUpdating = Boolean(lawData.id);
+    const finalId = lawData.id || crypto.randomUUID();
+
+    const payload: any = {
       ...lawData,
-      file_url: fileUrl,
+      id: finalId,
+      number: lawData.number?.trim() || '',
+      title: lawData.title?.trim() || '',
+      type: lawData.type || 'Lei Ordinária',
+      category: lawData.category || 'Administração Geral',
+      ementa: lawData.ementa?.trim() || '',
+      publication_date: lawData.publication_date || new Date().toISOString().split('T')[0],
+      status: lawData.status || 'Em Vigor',
+      full_text: lawData.full_text || '',
+      compiled_text: lawData.compiled_text || null,
+      is_compiled: lawData.is_compiled || false,
+      author: lawData.author?.trim() || '',
+      origin_power: lawData.origin_power || 'executivo',
+      materia_id: lawData.materia_id || null,
+      materia_numero: lawData.materia_numero || null,
+      parent_law_id: lawData.parent_law_id || null,
+      parent_law_number: lawData.parent_law_number || null,
+      parent_law_title: lawData.parent_law_title || null,
+      revoked_by_id: lawData.revoked_by_id || null,
+      revoked_by_number: lawData.revoked_by_number || null,
+      file_url: fileUrl || null,
+      external_link: lawData.external_link || null,
+      tags: lawData.tags || [],
       institution_id: institution?.id || null
     };
 
-    if (lawData.id) {
+    if (isUpdating) {
       // Atualização
       try {
-        const { error } = await supabase.from('municipal_laws').update(payload).eq('id', lawData.id);
-        if (error) throw error;
-      } catch (err) {
-        console.warn('Erro ao atualizar no Supabase, atualizando localmente:', err);
+        const { data: updatedRecord, error } = await supabase
+          .from('municipal_laws')
+          .update(payload)
+          .eq('id', finalId)
+          .select()
+          .maybeSingle();
+
+        if (error) {
+          console.error('Erro ao atualizar lei no Supabase:', error);
+          showToast(`Erro ao gravar no banco: ${error.message}`, 'error');
+          return;
+        }
+
+        const savedLaw = (updatedRecord || payload) as MunicipalLaw;
+        setLaws(prev => {
+          const updated = prev.map(l => l.id === finalId ? savedLaw : l);
+          try { localStorage.setItem('gestao360_laws', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
+        showToast('Ato normativo atualizado com sucesso no banco de dados!', 'success');
+      } catch (err: any) {
+        console.error('Erro na atualização:', err);
+        showToast('Não foi possível atualizar o ato normativo.', 'error');
+        return;
       }
-      setLaws(prev => {
-        const updated = prev.map(l => l.id === lawData.id ? { ...l, ...payload } as MunicipalLaw : l);
-        try {
-          localStorage.setItem('gestao360_demo_laws', JSON.stringify(updated));
-        } catch (e) {}
-        return updated;
-      });
-      showToast('Ato normativo atualizado com sucesso!', 'success');
     } else {
-      // Criação
-      const newLaw: MunicipalLaw = {
-        id: `law_${Date.now()}`,
-        number: payload.number || '',
-        title: payload.title || '',
-        type: payload.type || 'Lei Ordinária',
-        category: payload.category || 'Administração Geral',
-        ementa: payload.ementa || '',
-        publication_date: payload.publication_date || new Date().toISOString().split('T')[0],
-        status: payload.status || 'Em Vigor',
-        full_text: payload.full_text,
-        compiled_text: payload.compiled_text,
-        is_compiled: payload.is_compiled,
-        author: payload.author,
-        origin_power: payload.origin_power || 'executivo',
-        materia_numero: payload.materia_numero,
-        parent_law_id: payload.parent_law_id,
-        parent_law_number: payload.parent_law_number,
-        parent_law_title: payload.parent_law_title,
-        file_url: payload.file_url,
-        external_link: payload.external_link,
-        tags: payload.tags,
-        created_at: new Date().toISOString()
-      };
-
+      // Criação Real no Banco
       try {
-        const { error } = await supabase.from('municipal_laws').insert([payload]);
-        if (error) throw error;
-      } catch (err) {
-        console.warn('Erro ao salvar no Supabase, adicionando localmente:', err);
-      }
+        const { data: insertedRecord, error } = await supabase
+          .from('municipal_laws')
+          .insert([payload])
+          .select()
+          .maybeSingle();
 
-      setLaws(prev => {
-        const updated = [newLaw, ...prev];
-        try {
-          localStorage.setItem('gestao360_demo_laws', JSON.stringify(updated));
-        } catch (e) {}
-        return updated;
-      });
-      showToast('Novo ato normativo publicado com sucesso no Repositório Oficial!', 'success');
+        if (error) {
+          console.error('Erro ao salvar nova lei no Supabase:', error);
+          showToast(`Erro ao salvar no banco: ${error.message}`, 'error');
+          return;
+        }
+
+        const savedLaw = (insertedRecord || payload) as MunicipalLaw;
+        setLaws(prev => {
+          const updated = [savedLaw, ...prev];
+          try { localStorage.setItem('gestao360_laws', JSON.stringify(updated)); } catch (e) {}
+          return updated;
+        });
+        showToast('Novo ato normativo publicado e salvo com sucesso!', 'success');
+      } catch (err: any) {
+        console.error('Erro na criação:', err);
+        showToast('Não foi possível cadastrar a nova lei no banco.', 'error');
+        return;
+      }
     }
 
     setIsFormOpen(false);
@@ -291,7 +311,7 @@ export const LawsModule = ({
       }
 
       const newLaw: MunicipalLaw = {
-        id: `law_batch_${Date.now()}_${i}`,
+        id: crypto.randomUUID(),
         number: data.number || '',
         title: data.title || '',
         type: data.type || 'Lei Ordinária',
@@ -299,12 +319,14 @@ export const LawsModule = ({
         ementa: data.ementa || '',
         publication_date: data.publication_date || new Date().toISOString().split('T')[0],
         status: data.status || 'Em Vigor',
-        full_text: data.full_text,
+        full_text: data.full_text || '',
+        compiled_text: data.compiled_text || undefined,
+        is_compiled: data.is_compiled || false,
         author: data.author,
         origin_power: data.origin_power || 'executivo',
         materia_numero: data.materia_numero,
         file_url: fileUrl,
-        tags: data.tags,
+        tags: data.tags || [],
         institution_id: institution?.id || null,
         created_at: new Date().toISOString()
       };
@@ -312,34 +334,74 @@ export const LawsModule = ({
       newlyCreatedLaws.push(newLaw);
     }
 
-    // Tenta persistir no Supabase se houver conexão
+    // Persiste lote no Supabase
     try {
-      await supabase.from('municipal_laws').insert(newlyCreatedLaws);
-    } catch (err) {
-      console.warn('Persistindo lote localmente:', err);
-    }
+      const { data: insertedList, error } = await supabase
+        .from('municipal_laws')
+        .insert(newlyCreatedLaws)
+        .select();
 
-    setLaws(prev => {
-      const updated = [...newlyCreatedLaws, ...prev];
-      try {
-        localStorage.setItem('gestao360_demo_laws', JSON.stringify(updated));
-      } catch (e) {}
-      return updated;
-    });
+      if (error) {
+        console.error('Erro ao gravar lote no Supabase:', error);
+        showToast(`Aviso: falha na persistência remota: ${error.message}`, 'error');
+      } else {
+        showToast(`${newlyCreatedLaws.length} leis importadas e salvas com sucesso no banco!`, 'success');
+      }
+
+      const finalLaws = (insertedList && insertedList.length > 0) ? (insertedList as MunicipalLaw[]) : newlyCreatedLaws;
+      setLaws(prev => {
+        const updated = [...finalLaws, ...prev];
+        try { localStorage.setItem('gestao360_laws', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    } catch (err: any) {
+      console.error('Erro ao salvar lote:', err);
+      showToast('Erro ao importar lote no banco de dados.', 'error');
+    }
   };
 
-  // Excluir Norma
+  // Excluir Norma do Banco
   const handleDeleteLaw = async (id: string) => {
-    if (!window.confirm('Tem certeza de que deseja remover esta lei do repositório?')) return;
+    if (!window.confirm('Tem certeza de que deseja remover esta lei do repositório oficial?')) return;
 
     try {
-      await supabase.from('municipal_laws').delete().eq('id', id);
-    } catch (e) {
-      console.warn('Erro ao deletar no Supabase:', e);
-    }
+      const { error } = await supabase.from('municipal_laws').delete().eq('id', id);
+      if (error) {
+        console.error('Erro ao deletar no Supabase:', error);
+        showToast(`Erro ao excluir no banco: ${error.message}`, 'error');
+        return;
+      }
 
-    setLaws(prev => prev.filter(l => l.id !== id));
-    showToast('Norma removida do repositório.', 'info');
+      setLaws(prev => {
+        const updated = prev.filter(l => l.id !== id);
+        try { localStorage.setItem('gestao360_laws', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      showToast('Norma removida do repositório oficial.', 'info');
+    } catch (e: any) {
+      console.error('Erro ao deletar:', e);
+      showToast('Erro ao excluir norma do banco.', 'error');
+    }
+  };
+
+  // Saneamento e Limpeza Forçada de Mocks Residuais
+  const handlePurgeMocks = async () => {
+    if (!window.confirm('Deseja limpar todos os registros de demonstração/mock do banco? As leis reais cadastradas serão preservadas.')) return;
+    setIsLoading(true);
+    try {
+      const mockIds = ['law_1331_2026', 'law_1', 'law_2', 'law_3', 'law_4', 'law_5', 'law_6', 'law_7', 'law_8', 'law_9'];
+      await supabase.from('municipal_laws').delete().in('id', mockIds);
+      try {
+        localStorage.removeItem('gestao360_demo_laws');
+      } catch (e) {}
+      showToast('Dados de demonstração removidos com sucesso!', 'success');
+      await loadLaws();
+    } catch (e: any) {
+      console.error(e);
+      showToast('Erro ao expurgar mocks.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Filtragem inteligente ampla
@@ -487,8 +549,18 @@ export const LawsModule = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <DemoFillButton moduleKey="laws" onSuccess={loadLaws} />
-          
+          {canAdmin && (
+            <button
+              type="button"
+              onClick={handlePurgeMocks}
+              className="px-3.5 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-neutral-500 hover:text-rose-600 hover:border-rose-300 dark:hover:border-rose-900/40 text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
+              title="Limpar registros de demonstração/mock residuais"
+            >
+              <Trash2 size={15} />
+              <span className="hidden sm:inline">Limpar Mocks</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={loadLaws}
@@ -767,14 +839,52 @@ export const LawsModule = ({
       {/* =========================================================================
           5. LISTAGEM DE LEIS (GRID OU TABELA EDITORIAL)
          ========================================================================= */}
-      {filteredLaws.length === 0 ? (
+      {laws.length === 0 ? (
+        <div className="p-12 sm:p-16 bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 rounded-3xl text-center space-y-4 max-w-2xl mx-auto shadow-xs my-6">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+            <Scale size={32} />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+              Repositório Oficial Pronto para Alimentação
+            </h3>
+            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+              O banco de leis está limpo e conectado à persistência oficial do Supabase. Comece cadastrando leis reais ou importando arquivos em lote com extração assistida por IA.
+            </p>
+          </div>
+          {canEdit && (
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingLaw(null);
+                  setInitialMateriaData(null);
+                  setIsFormOpen(true);
+                }}
+                className="px-5 py-3 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-2xl text-xs font-black uppercase tracking-wider hover:bg-neutral-800 transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Plus size={15} />
+                <span>Publicar Primeiro Ato</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBatchImportOpen(true)}
+                className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+              >
+                <Files size={15} />
+                <span>Importar em Lote (PDF)</span>
+              </button>
+            </div>
+          )}
+        </div>
+      ) : filteredLaws.length === 0 ? (
         <div className="p-12 bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 rounded-3xl text-center space-y-3">
           <FileSearch size={40} className="mx-auto text-neutral-400 opacity-60" />
           <h3 className="text-base font-bold text-neutral-800 dark:text-white">
             Nenhuma norma encontrada com os critérios informados
           </h3>
           <p className="text-xs text-neutral-500 max-w-md mx-auto">
-            Tente buscar por termos mais genéricos, limpar os filtros de poder ou ano, ou cadastre uma nova lei oficial.
+            Tente buscar por termos mais genéricos, limpar os filtros de poder ou ano.
           </p>
           <button
             type="button"

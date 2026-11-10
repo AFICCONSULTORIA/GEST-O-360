@@ -327,8 +327,8 @@ export const seedDemoDataForModule = async (
       }
 
       case 'laws': {
-        localStorage.setItem('gestao360_demo_laws', JSON.stringify(INITIAL_MOCK_LAWS));
-        syncBackground(() => supabase.from('municipal_laws').upsert(INITIAL_MOCK_LAWS.map(l => ({ ...l, institution_id: instId }))));
+        // Banco de leis mantido exclusivamente com atos oficiais reais
+        localStorage.removeItem('gestao360_demo_laws');
         break;
       }
 
