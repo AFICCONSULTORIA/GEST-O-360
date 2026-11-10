@@ -89,7 +89,9 @@ import {
   deleteFleetFuelStation,
   clearAllFleetFuelStations,
   syncLocalDriversAndStationsToSupabase,
-  toBudgetUUID
+  toBudgetUUID,
+  getNextOrderNumber7Digits,
+  formatOrderNumber7Digits
 } from '../../../lib/api/fleetFuel';
 import { imprimirOrdemAbastecimento } from './OrdemAbastecimentoPDF';
 import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVoucherPDF';
@@ -1761,6 +1763,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     showToast(`Condutor selecionado: ${driver.full_name}`, 'info');
   };
 
+  // Abertura do modal de nova ordem com numeração padrão de 7 dígitos pré-calculada
+  const handleOpenNewOrder = async () => {
+    try {
+      const nextNum = await getNextOrderNumber7Digits();
+      setNewOrderForm(prev => ({
+        ...prev,
+        custom_order_number: nextNum
+      }));
+    } catch (err) {
+      console.warn('Erro ao obter próximo número sequencial de 7 dígitos:', err);
+    }
+    setNewOrderStep(1);
+    setIsNewOrderModalOpen(true);
+  };
+
   // Envio de nova ordem com emissão em duas vias e parâmetros travados
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1791,14 +1808,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         authorized_by_role: newOrderForm.authorized_by_role,
         budget_classification_id: newOrderForm.budget_classification_id || selectedVehicleForNewOrder?.budget_classification_id,
         budget_classification: budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification,
-        custom_order_number: newOrderForm.custom_order_number?.trim() || undefined
+        custom_order_number: newOrderForm.custom_order_number?.trim() 
+          ? formatOrderNumber7Digits(newOrderForm.custom_order_number.trim()) 
+          : undefined
       });
 
       showToast(`Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`, 'success');
       setIsNewOrderModalOpen(false);
       setNewOrderStep(1);
+      
+      const nextNum = await getNextOrderNumber7Digits();
       setNewOrderForm({
-        custom_order_number: '',
+        custom_order_number: nextNum,
         vehicle_id: '',
         driver_name: '',
         driver_document: '',
@@ -1839,7 +1860,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         pump_photo_url: executionForm.pump_photo_url || undefined,
         invoice_coupon_number: executionForm.invoice_number?.trim() || undefined,
         audit_justification: executionForm.invoice_key?.trim() || undefined,
-        custom_order_number: executionForm.custom_order_number?.trim() || undefined,
+        custom_order_number: executionForm.custom_order_number?.trim() 
+          ? formatOrderNumber7Digits(executionForm.custom_order_number.trim()) 
+          : undefined,
         budget_classification_id: executionForm.budget_classification_id || undefined,
         allowAuditedEdit: true
       });
@@ -2554,7 +2577,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             </button>
           ) : (
             <button
-              onClick={() => setIsNewOrderModalOpen(true)}
+              onClick={handleOpenNewOrder}
               className="flex items-center gap-2 px-5 py-2.5 text-xs font-black text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md shadow-amber-600/20 hover:shadow-lg transition-all cursor-pointer"
             >
               <Plus size={16} />
@@ -4346,22 +4369,27 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </div>
                     </div>
 
-                    {/* NÚMERO PERSONALIZADO DA AUTORIZAÇÃO (SEGUIR TALÃO DE PAPEL) */}
+                    {/* NÚMERO DA ORDEM (PADRÃO OFICIAL 7 DÍGITOS) */}
                     <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-900/40">
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
                           <FileText size={13} className="text-amber-600 dark:text-amber-400" />
-                          Número da Autorização / Requisição (Opcional - talão físico)
+                          Número da Ordem (Padrão Oficial 7 Dígitos)
                         </label>
                         <span className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold">
-                          Deixe em branco para numeração automática
+                          Sequencial automático sugerido
                         </span>
                       </div>
                       <input
                         type="text"
                         value={newOrderForm.custom_order_number}
                         onChange={e => setNewOrderForm({ ...newOrderForm, custom_order_number: e.target.value.toUpperCase() })}
-                        placeholder="Ex: REQ-0412, 1024, AUT-2026-0005"
+                        onBlur={e => {
+                          if (e.target.value.trim()) {
+                            setNewOrderForm(prev => ({ ...prev, custom_order_number: formatOrderNumber7Digits(e.target.value) }));
+                          }
+                        }}
+                        placeholder="Ex: 0022464"
                         className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-800 rounded-lg text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-amber-500"
                       />
                     </div>
@@ -4755,6 +4783,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     type="text"
                     value={executionForm.custom_order_number}
                     onChange={e => setExecutionForm({ ...executionForm, custom_order_number: e.target.value.toUpperCase() })}
+                    onBlur={e => {
+                      if (e.target.value.trim()) {
+                        setExecutionForm(prev => ({ ...prev, custom_order_number: formatOrderNumber7Digits(e.target.value) }));
+                      }
+                    }}
                     placeholder={selectedOrderForAction.order_number}
                     className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />

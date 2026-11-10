@@ -9,7 +9,7 @@
 
 import { supabase, supabaseAnon } from '../supabase';
 import * as XLSX from 'xlsx';
-import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, getNextOrderNumber7Digits, formatOrderNumber7Digits, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
 export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'cancelado';
@@ -441,12 +441,12 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
 
   const delta_km = current_odometer > previous_odometer ? current_odometer - previous_odometer : 0;
 
-  // 4. Sequencial "AUT-YYYY-XXXX" ou número personalizado para seguir requisição em papel
+  // 4. Sequencial oficial padrão de 7 dígitos ou número personalizado normalizado
   let orderNumber = payload.custom_order_number?.trim();
-  if (!orderNumber) {
-    const currentYear = new Date().getFullYear();
-    const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
-    orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  if (orderNumber) {
+    orderNumber = formatOrderNumber7Digits(orderNumber);
+  } else {
+    orderNumber = await getNextOrderNumber7Digits();
   }
 
   const newOrder: TwoWayFuelOrder = {
@@ -704,7 +704,7 @@ export async function validateAndCompleteFuelOrder(
     : (Number(order.total_authorized_value) || Number(order.total_value) || 0);
 
   const customOrderNumber = completionData.custom_order_number?.trim() || completionData.order_number?.trim();
-  const finalOrderNumber = customOrderNumber || order.order_number;
+  const finalOrderNumber = customOrderNumber ? formatOrderNumber7Digits(customOrderNumber) : order.order_number;
 
   // Resolução de Ficha Orçamentária se fornecida na conclusão/edição
   let rawBudgetId = completionData.budget_classification_id !== undefined
@@ -1007,12 +1007,17 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
 
   // 1. CONSULTA DIRETA NO SUPABASE (Fonte Única da Verdade, com fallback para supabaseAnon)
   try {
+    const clean7 = formatOrderNumber7Digits(clean);
+    const orderMatch = clean7 && clean7 !== clean
+      ? `order_number.ilike.${clean},order_number.ilike.${clean7},order_number.ilike.%${clean}%`
+      : `order_number.ilike.${clean},order_number.ilike.%${clean}%`;
+
     const runOrderQuery = (client: any) => {
       let q = client.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
       if (isUUID) {
         q = q.or(`id.eq.${clean},order_number.ilike.${clean}`);
       } else {
-        q = q.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+        q = q.or(orderMatch);
       }
       return q.order('created_at', { ascending: false }).limit(1).maybeSingle();
     };
@@ -1038,7 +1043,7 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
           if (isUUID) {
             sq = sq.eq('id', clean);
           } else {
-            sq = sq.or(`order_number.ilike.${clean},order_number.ilike.%${clean}%`);
+            sq = sq.or(orderMatch);
           }
           return sq.order('created_at', { ascending: false }).limit(1).maybeSingle();
         };
@@ -1090,7 +1095,7 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
     const orders = getLocalOrders();
     const foundLocal = orders.find(o => {
       if (!o) return false;
-      if (o.order_number && o.order_number.toLowerCase() === clean.toLowerCase()) return true;
+      if (o.order_number && (o.order_number.toLowerCase() === clean.toLowerCase() || o.order_number === clean7)) return true;
       if (o.id === clean) return true;
       const orderNumAlpha = (o.order_number || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
       if (orderNumAlpha && orderNumAlpha === cleanAlphanumeric) return true;
@@ -1403,10 +1408,11 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
   const shouldUpdateVehicleOdo = odoReading > previousOdometer;
 
   const currentYear = new Date(payload.supplied_at || new Date()).getFullYear() || new Date().getFullYear();
-  let orderNumber = payload.custom_order_number?.trim();
-  if (!orderNumber) {
-    const nextSeq = await getNextFuelOrderSequence('AUT', currentYear);
-    orderNumber = `AUT-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  let orderNumber = payload.custom_order_number?.trim() || payload.voucher_number?.trim();
+  if (orderNumber) {
+    orderNumber = formatOrderNumber7Digits(orderNumber);
+  } else {
+    orderNumber = await getNextOrderNumber7Digits();
   }
 
   const resolvedBudgetId = payload.budget_classification_id || vehicle.budget_classification_id;

@@ -849,6 +849,90 @@ export async function getFuelSupplyOrders(filters?: {
 export const STORAGE_KEY_FUEL_MAX_SEQ = (prefix: string, year: number) => `gestao360_max_fuel_seq_${prefix}_${year}`;
 
 /**
+ * Formata um número de ordem no padrão oficial municipal de 7 dígitos (ex: 22464 -> "0022464")
+ */
+export function formatOrderNumber7Digits(val: string | number | null | undefined): string {
+  if (val === null || val === undefined) return '';
+  const str = String(val).trim();
+  if (!str) return '';
+  // Se for puramente numérico (com ou sem zeros à esquerda)
+  if (/^\d+$/.test(str)) {
+    const num = parseInt(str, 10);
+    if (!isNaN(num)) {
+      return String(num).padStart(7, '0');
+    }
+  }
+  return str.toUpperCase();
+}
+
+/**
+ * Obtém o próximo número de ordem na sequência oficial padrão de 7 dígitos.
+ * Ponto de partida estabelecido pela gestão municipal: 0022463 (o próximo será 0022464).
+ */
+export async function getNextOrderNumber7Digits(): Promise<string> {
+  let maxSeq = 22463; // Ponto de partida fixado pelo município (0022463)
+
+  // 1. Contador persistente salvo em localStorage
+  try {
+    const saved = localStorage.getItem('fleet_fuel_max_seq_7digits');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed > maxSeq) {
+        maxSeq = parsed;
+      }
+    }
+  } catch {}
+
+  // 2. Verifica ordens locais salvas em memória/cache
+  try {
+    const localOrders = getLocalRealOrders();
+    for (const ord of localOrders) {
+      if (ord.order_number) {
+        const clean = ord.order_number.trim();
+        if (/^\d+$/.test(clean)) {
+          const num = parseInt(clean, 10);
+          if (!isNaN(num) && num > maxSeq) {
+            maxSeq = num;
+          }
+        }
+      }
+    }
+  } catch {}
+
+  // 3. Consulta as ordens mais recentes no Supabase
+  try {
+    const { data } = await supabase
+      .from('fuel_supply_orders')
+      .select('order_number')
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (data && data.length > 0) {
+      for (const row of data) {
+        if (row.order_number) {
+          const clean = String(row.order_number).trim();
+          if (/^\d+$/.test(clean)) {
+            const num = parseInt(clean, 10);
+            if (!isNaN(num) && num > maxSeq) {
+              maxSeq = num;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Aviso ao consultar sequência de ordens de 7 dígitos no Supabase:', err);
+  }
+
+  const nextNumber = maxSeq + 1;
+  try {
+    localStorage.setItem('fleet_fuel_max_seq_7digits', String(nextNumber));
+  } catch {}
+
+  return String(nextNumber).padStart(7, '0');
+}
+
+/**
  * Obtém o próximo número sequencial de autorização para o ano corrente de forma estritamente crescente.
  * Mesmo se uma ordem anterior for excluída, a numeração nunca retrocede ou colide.
  */
@@ -933,10 +1017,8 @@ export async function createFuelOrder(orderData: NewFuelOrderPayload): Promise<F
     throw new Error('A litragem autorizada deve ser maior que zero.');
   }
 
-  // Gera número sequencial anual único contínuo ("ABAST-YYYY-XXXX")
-  const currentYear = new Date().getFullYear();
-  const nextSeq = await getNextFuelOrderSequence('ABAST', currentYear);
-  const orderNumber = `ABAST-${currentYear}-${String(nextSeq).padStart(4, '0')}`;
+  // Gera número sequencial oficial padrão de 7 dígitos contínuo ("0022464")
+  const orderNumber = await getNextOrderNumber7Digits();
 
   const newOrder: FuelSupplyOrder = {
     id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `ord-${Date.now()}`,
