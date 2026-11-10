@@ -404,7 +404,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       return;
     }
 
-    if (kmNumber < order.previous_odometer) {
+    if (order.previous_odometer > 0 && kmNumber < order.previous_odometer) {
       showToast(`A leitura atual (${formatThousands(kmNumber)}) não pode ser menor que a leitura anterior (${formatThousands(order.previous_odometer)}).`, 'error');
       return;
     }
