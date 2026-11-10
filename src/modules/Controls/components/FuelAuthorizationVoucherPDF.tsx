@@ -84,6 +84,7 @@ export function gerarCanhotoDuasViasHtml(
   const dotacaoCode = budget?.budget_code ? `Cód: ${budget.budget_code}` : '';
 
   const isTopOff = order.supply_mode === 'encher_tanque' || !!order.is_full_tank_order;
+  const isSupplied = !!order.liters_supplied && (order.status === 'abastecido' || order.status === 'auditado');
   const tankCapacity = Number(targetVehicle?.tank_capacity || 0);
 
   const gestorEmissor = order.authorized_by_name || 'Departamento de Frotas';
@@ -204,11 +205,37 @@ export function gerarCanhotoDuasViasHtml(
             <div class="act-fields-grid">
               <div class="act-field-box">
                 <span class="act-label">1. ODÔMETRO ATUAL NO PAINEL DO VEÍCULO (KM):</span>
-                <span class="act-blank-val">${order.current_odometer ? `${Number(order.current_odometer).toLocaleString('pt-BR')} KM` : '____________________________________ KM'}</span>
+                ${isSupplied && order.current_odometer ? `
+                  <div class="act-confirmed-row">
+                    <span class="act-confirmed-val">${Number(order.current_odometer).toLocaleString('pt-BR')} <span class="act-unit-sm">KM</span></span>
+                    <span class="act-confirmed-tag">✓ Painel Confirmado</span>
+                  </div>
+                ` : `
+                  <div class="act-write-box">
+                    <div class="act-handwrite-row">
+                      <span class="act-handwrite-line">&nbsp;</span>
+                      <span class="act-unit-badge">KM</span>
+                    </div>
+                    <div class="act-limit-hint">${order.previous_odometer ? `Anterior: ${Number(order.previous_odometer).toLocaleString('pt-BR')} KM` : 'Anotar Odômetro do Painel'}</div>
+                  </div>
+                `}
               </div>
               <div class="act-field-box">
                 <span class="act-label">2. LITRAGEM REAL FORNECIDA NA BOMBA (L):</span>
-                <span class="act-blank-val">${order.liters_supplied ? `${Number(order.liters_supplied).toFixed(2)} L` : (isTopOff ? '_______ Litros (Registro da Bomba)' : `${Number(order.liters_authorized).toFixed(2)} Litros`)}</span>
+                ${isSupplied && order.liters_supplied ? `
+                  <div class="act-confirmed-row">
+                    <span class="act-confirmed-val">${Number(order.liters_supplied).toFixed(2)} <span class="act-unit-sm">L</span></span>
+                    <span class="act-confirmed-tag">✓ Visor da Bomba</span>
+                  </div>
+                ` : `
+                  <div class="act-write-box">
+                    <div class="act-handwrite-row">
+                      <span class="act-handwrite-line">&nbsp;</span>
+                      <span class="act-unit-badge">LITROS</span>
+                    </div>
+                    <div class="act-limit-hint">${isTopOff ? 'Regime Tanque Cheio (Anotar visor da bomba)' : `Limite Autorizado: ${Number(order.liters_authorized).toFixed(2)} L`}</div>
+                  </div>
+                `}
               </div>
             </div>
             <div style="font-size: 7.5px; color: #475569; margin-top: 4px; line-height: 1.2;">
@@ -479,24 +506,85 @@ export function gerarCanhotoDuasViasHtml(
           gap: 6px;
         }
         .act-field-box {
-          border: 1px solid #94a3b8;
-          padding: 4px 6px;
-          border-radius: 3px;
-          background: #f8fafc;
+          border: 1.5px solid #64748b;
+          padding: 5px 8px;
+          border-radius: 4px;
+          background: #ffffff;
+          min-height: 48px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
         }
         .act-label {
           display: block;
-          font-size: 7px;
+          font-size: 7.5px;
           font-weight: 800;
           color: #1e293b;
+          letter-spacing: 0.2px;
+          text-transform: uppercase;
         }
-        .act-blank-val {
-          display: block;
-          font-size: 10.5px;
+        .act-write-box {
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          margin-top: 2px;
+        }
+        .act-handwrite-row {
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          border-bottom: 2px solid #0f172a;
+          padding-bottom: 2px;
+          margin: 3px 0 2px 0;
+          height: 20px;
+          background: #f8fafc;
+          border-radius: 2px 2px 0 0;
+          padding-left: 6px;
+          padding-right: 6px;
+        }
+        .act-handwrite-line {
+          flex: 1;
+        }
+        .act-unit-badge {
+          font-size: 9px;
           font-weight: 900;
-          color: #0f172a;
+          color: #334155;
           font-family: monospace;
-          margin-top: 1px;
+          letter-spacing: 0.5px;
+        }
+        .act-limit-hint {
+          font-size: 6.5px;
+          color: #64748b;
+          font-weight: 700;
+          text-transform: uppercase;
+        }
+        .act-confirmed-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-top: 3px;
+        }
+        .act-confirmed-val {
+          font-size: 13px;
+          font-weight: 900;
+          color: #047857;
+          font-family: monospace;
+          letter-spacing: 0.5px;
+        }
+        .act-unit-sm {
+          font-size: 9px;
+          font-weight: 800;
+          color: #059669;
+        }
+        .act-confirmed-tag {
+          font-size: 7px;
+          font-weight: 800;
+          color: #047857;
+          text-transform: uppercase;
+          background: #dcfce7;
+          border: 1px solid #86efac;
+          padding: 1.5px 5px;
+          border-radius: 3px;
         }
 
         .signatures-table {
