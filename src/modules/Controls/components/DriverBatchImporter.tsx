@@ -139,9 +139,9 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
         if (!fullName || fullName.length < 3) {
           isValid = false;
           errorReason = 'Nome incompleto ou não informado';
-        } else if (cleanCpfDigits.length !== 11) {
+        } else if (cpf.trim() !== '' && cleanCpfDigits.length !== 11) {
           isValid = false;
-          errorReason = 'CPF deve conter 11 dígitos';
+          errorReason = 'CPF deve conter 11 dígitos ou ficar em branco';
         }
 
         return {
@@ -366,7 +366,7 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
                           {row.fullName || <span className="text-red-500 italic">Não informado</span>}
                         </td>
                         <td className="p-3 font-mono text-neutral-700 dark:text-neutral-300">
-                          {row.cpf || <span className="text-red-500 italic">Vazio</span>}
+                          {row.cpf || <span className="text-neutral-400 italic font-sans">Não informado</span>}
                         </td>
                         <td className="p-3 text-neutral-600 dark:text-neutral-400">
                           {row.cnhNumber || '—'} <span className="font-semibold text-emerald-600 dark:text-emerald-400">({row.cnhCategory})</span>

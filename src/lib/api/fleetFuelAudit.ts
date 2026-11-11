@@ -542,6 +542,16 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
       error = retry.error;
     }
 
+    // Se ocorrer colisão simultânea no número sequencial (UNIQUE order_number), recalcula o próximo número livre
+    if (error && error.code === '23505') {
+      const freshNumber = await getNextOrderNumber7Digits();
+      newOrder.order_number = freshNumber;
+      orderRecord.order_number = freshNumber;
+      const retryDup = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
+      data = retryDup.data;
+      error = retryDup.error;
+    }
+
     if (!error && data) {
       newOrder.id = data.id;
     } else if (error) {

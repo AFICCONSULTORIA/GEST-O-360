@@ -129,7 +129,7 @@ export interface FleetDriver {
   id: string;
   institution_id: string;
   full_name: string;
-  cpf: string;
+  cpf?: string;
   birth_date?: string;
   department: string;
   cnh_number?: string;
@@ -143,7 +143,7 @@ export interface NewDriverPayload {
   id?: string;
   institution_id?: string;
   full_name: string;
-  cpf: string;
+  cpf?: string;
   birth_date?: string;
   department: string;
   cnh_number?: string;
@@ -865,71 +865,87 @@ export function formatOrderNumber7Digits(val: string | number | null | undefined
   return str.toUpperCase();
 }
 
+const BASE_ORDER_SEQ_7DIGITS = 22463; // Ponto de partida fixado pelo município (próximo inicial: 0022464)
+
 /**
- * Obtém o próximo número de ordem na sequência oficial padrão de 7 dígitos.
- * Ponto de partida estabelecido pela gestão municipal: 0022463 (o próximo será 0022464).
+ * Obtém o próximo número de ordem livre na sequência oficial padrão de 7 dígitos.
+ * Consulta exclusivamente as ordens ativas (sem incrementar contadores locais a cada leitura),
+ * retomando automaticamente a numeração quando uma ordem é excluída e preenchendo eventuais lacunas.
  */
 export async function getNextOrderNumber7Digits(): Promise<string> {
-  let maxSeq = 22463; // Ponto de partida fixado pelo município (0022463)
-
-  // 1. Contador persistente salvo em localStorage
+  // Limpa contador legado em localStorage que causava saltos na numeração ao abrir/cancelar modais
   try {
-    const saved = localStorage.getItem('fleet_fuel_max_seq_7digits');
-    if (saved) {
-      const parsed = parseInt(saved, 10);
-      if (!isNaN(parsed) && parsed > maxSeq) {
-        maxSeq = parsed;
-      }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('fleet_fuel_max_seq_7digits');
     }
   } catch {}
 
-  // 2. Verifica ordens locais salvas em memória/cache
-  try {
-    const localOrders = getLocalRealOrders();
-    for (const ord of localOrders) {
-      if (ord.order_number) {
-        const clean = ord.order_number.trim();
-        if (/^\d+$/.test(clean)) {
-          const num = parseInt(clean, 10);
-          if (!isNaN(num) && num > maxSeq) {
-            maxSeq = num;
-          }
-        }
-      }
-    }
-  } catch {}
+  const usedNumbers = new Set<number>();
+  let remoteResponded = false;
 
-  // 3. Consulta as ordens mais recentes no Supabase
+  // 1. Consulta as ordens ativas no Supabase (Fonte Única da Verdade)
   try {
-    const { data } = await supabase
+    let { data, error } = await supabase
       .from('fuel_supply_orders')
-      .select('order_number')
-      .order('created_at', { ascending: false })
-      .limit(100);
+      .select('order_number, anomaly_reason')
+      .limit(2000);
 
-    if (data && data.length > 0) {
+    if (error && isRlsError(error)) {
+      const retry = await supabaseAnon
+        .from('fuel_supply_orders')
+        .select('order_number, anomaly_reason')
+        .limit(2000);
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (!error && data) {
+      remoteResponded = true;
       for (const row of data) {
+        if (row.anomaly_reason === 'CANCELADO_EXCLUIDO') continue;
         if (row.order_number) {
           const clean = String(row.order_number).trim();
           if (/^\d+$/.test(clean)) {
             const num = parseInt(clean, 10);
-            if (!isNaN(num) && num > maxSeq) {
-              maxSeq = num;
+            if (!isNaN(num)) {
+              usedNumbers.add(num);
             }
           }
         }
       }
+    } else if (error) {
+      console.warn('[FleetFuel] Aviso ao consultar sequência de ordens de 7 dígitos no Supabase:', error);
     }
   } catch (err) {
     console.warn('[FleetFuel] Aviso ao consultar sequência de ordens de 7 dígitos no Supabase:', err);
   }
 
-  const nextNumber = maxSeq + 1;
-  try {
-    localStorage.setItem('fleet_fuel_max_seq_7digits', String(nextNumber));
-  } catch {}
+  // 2. Fallback offline: usa o cache local ativo somente se o Supabase não respondeu
+  if (!remoteResponded) {
+    try {
+      const localOrders = getLocalRealOrders();
+      for (const ord of localOrders) {
+        if (ord.anomaly_reason === 'CANCELADO_EXCLUIDO') continue;
+        if (ord.order_number) {
+          const clean = ord.order_number.trim();
+          if (/^\d+$/.test(clean)) {
+            const num = parseInt(clean, 10);
+            if (!isNaN(num)) {
+              usedNumbers.add(num);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
 
-  return String(nextNumber).padStart(7, '0');
+  // Encontra o primeiro número livre na sequência contínua a partir de 0022464
+  let candidate = BASE_ORDER_SEQ_7DIGITS + 1;
+  while (usedNumbers.has(candidate)) {
+    candidate++;
+  }
+
+  return String(candidate).padStart(7, '0');
 }
 
 /**
@@ -1468,21 +1484,24 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
     }
   } catch (e) {}
 
-  // 2. Tenta exclusão física direta via API REST
+  // 2. Tenta exclusão física direta via API REST (com fallback anon)
   try {
     if (isUuid) {
       await supabase.from('fuel_supply_orders').delete().eq('id', orderIdOrNumber);
+      await supabaseAnon.from('fuel_supply_orders').delete().eq('id', orderIdOrNumber);
     }
     await supabase.from('fuel_supply_orders').delete().eq('order_number', orderIdOrNumber);
+    await supabaseAnon.from('fuel_supply_orders').delete().eq('order_number', orderIdOrNumber);
     if (orderNumberFallback) {
       await supabase.from('fuel_supply_orders').delete().eq('order_number', orderNumberFallback);
+      await supabaseAnon.from('fuel_supply_orders').delete().eq('order_number', orderNumberFallback);
     }
   } catch (err) {
     console.warn('[FleetFuel] Erro ao excluir ordem no Supabase:', err);
   }
 
-  // 3. Salvaguarda imediata: caso o DELETE tenha sido retido por RLS antes da migração ser rodada no Supabase,
-  // aplicamos um UPDATE para 'glosado' / 'CANCELADO_EXCLUIDO' (UPDATE já possui permissão anônima ativa).
+  // 3. Salvaguarda imediata: caso o DELETE tenha sido retido por FK/RLS,
+  // aplicamos soft-delete liberando o order_number original para retomada da sequência.
   try {
     const filters: string[] = [];
     if (isUuid) filters.push(`id.eq.${orderIdOrNumber}`);
@@ -1490,6 +1509,7 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
     if (orderNumberFallback) filters.push(`order_number.eq.${orderNumberFallback}`);
 
     await supabase.from('fuel_supply_orders').update({
+      order_number: `DEL-${Date.now()}-${orderNumberFallback || orderIdOrNumber}`,
       status: 'glosado',
       anomaly_reason: 'CANCELADO_EXCLUIDO',
       is_anomaly: true,
@@ -1499,7 +1519,7 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
     console.warn('[FleetFuel] Aviso ao aplicar cancelamento da ordem no banco:', errSoft);
   }
 
-  // 4. Limpeza do cache local
+  // 4. Limpeza do cache local e contador sequencial legado
   const orders = getLocalRealOrders();
   const filtered = orders.filter(o => 
     o.id !== orderIdOrNumber && 
@@ -1507,6 +1527,11 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
     (!orderNumberFallback || o.order_number !== orderNumberFallback)
   );
   saveLocalRealOrders(filtered);
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('fleet_fuel_max_seq_7digits');
+    }
+  } catch {}
 
   // 5. Broadcast de evento para atualizar outras telas e modais
   try {
@@ -1559,6 +1584,7 @@ export async function clearAllFuelOrders(institutionId?: string, resetSequence: 
   if (resetSequence) {
     const currentYear = new Date().getFullYear();
     try {
+      localStorage.removeItem('fleet_fuel_max_seq_7digits');
       localStorage.removeItem(STORAGE_KEY_FUEL_MAX_SEQ('AUT', currentYear));
       localStorage.removeItem(STORAGE_KEY_FUEL_MAX_SEQ('ABAST', currentYear));
       localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ('AUT', currentYear), '0');
@@ -1672,7 +1698,7 @@ export async function ensureDriverExistsInSupabase(driver: {
   const hasValidCpf = isRealCpf(rawCpf);
   const formattedCpf = hasValidCpf
     ? `${cleanCpf.slice(0,3)}.${cleanCpf.slice(3,6)}.${cleanCpf.slice(6,9)}-${cleanCpf.slice(9,11)}`
-    : (rawCpf.trim() || '000.000.000-00');
+    : rawCpf.trim();
   const institutionId = driver.institution_id || 'inst_1';
   const department = driver.department?.trim() || 'Frota Municipal';
 
@@ -1957,7 +1983,7 @@ export async function getFleetDrivers(filters?: {
   }
   if (filters?.search) {
     const q = filters.search.toLowerCase().trim();
-    result = result.filter(d => d.full_name.toLowerCase().includes(q) || d.cpf.includes(q));
+    result = result.filter(d => d.full_name.toLowerCase().includes(q) || (d.cpf && d.cpf.includes(q)));
   }
   return result.sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
@@ -2013,7 +2039,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
   const birthDate = sanitizeDateToISO(payload.birth_date);
   const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
   const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : null;
-  const persistedCpf = rawCpf || '000.000.000-00';
+  const persistedCpf = rawCpf;
 
   const newDriver: FleetDriver = {
     id: driverId,
@@ -2092,7 +2118,7 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
     updated_at: new Date().toISOString()
   };
   if (updates.full_name) supabaseRecord.full_name = updates.full_name.trim();
-  if (updates.cpf) supabaseRecord.cpf = updates.cpf.trim();
+  if (updates.cpf !== undefined) supabaseRecord.cpf = updates.cpf.trim();
   if (updates.birth_date !== undefined) supabaseRecord.birth_date = birthDate;
   if (updates.department) supabaseRecord.department = updates.department.trim();
   if (updates.cnh_number !== undefined) supabaseRecord.cnh_number = cnhNumber;
@@ -2572,7 +2598,11 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
           const anonFetch = await supabaseAnon.from('fleet_drivers').select('id, cpf, full_name');
           remoteDrivers = anonFetch.data;
         }
-        const remoteCpfs = new Set((remoteDrivers || []).map(r => r.cpf?.replace(/\D/g, '')));
+        const remoteCpfs = new Set(
+          (remoteDrivers || [])
+            .filter(r => isRealCpf(r.cpf))
+            .map(r => (r.cpf || '').replace(/\D/g, ''))
+        );
         const remoteIds = new Set((remoteDrivers || []).map(r => r.id));
 
         const updatedLocalList: FleetDriver[] = [];
@@ -2581,16 +2611,17 @@ export async function syncLocalDriversAndStationsToSupabase(institutionId: strin
         for (const d of localDrivers) {
           if (isDriverTombstoned(d)) continue;
           const cleanCpf = (d.cpf || '').replace(/\D/g, '');
+          const hasValidLocalCpf = isRealCpf(d.cpf);
           const validId = isValidUUID(d.id) ? d.id : generateValidUUID();
           const updatedDriver: FleetDriver = { ...d, id: validId };
           updatedLocalList.push(updatedDriver);
 
-          if (!remoteCpfs.has(cleanCpf) && !remoteIds.has(validId)) {
+          if ((!hasValidLocalCpf || !remoteCpfs.has(cleanCpf)) && !remoteIds.has(validId)) {
             recordsToInsert.push({
               id: validId,
               institution_id: d.institution_id || institutionId,
               full_name: d.full_name.trim(),
-              cpf: d.cpf.trim(),
+              cpf: (d.cpf || '').trim(),
               birth_date: d.birth_date && d.birth_date.trim() !== '' ? d.birth_date.trim() : null,
               department: d.department?.trim() || 'Geral',
               cnh_number: d.cnh_number && d.cnh_number.trim() !== '' ? d.cnh_number.trim() : null,
@@ -3108,7 +3139,7 @@ export async function createDriversBatch(
       id: driverId,
       institution_id: payload.institution_id || institutionId,
       full_name: payload.full_name.trim(),
-      cpf: rawCpf || '000.000.000-00',
+      cpf: rawCpf,
       birth_date: birthDate || undefined,
       department: payload.department?.trim() || 'Geral',
       cnh_number: cnhNumber || undefined,

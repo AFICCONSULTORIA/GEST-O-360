@@ -921,7 +921,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setEditingDriver(driver);
     setDriverForm({
       full_name: driver.full_name,
-      cpf: driver.cpf,
+      cpf: driver.cpf || '',
       birth_date: driver.birth_date || '',
       department: driver.department,
       cnh_number: driver.cnh_number || '',
@@ -933,8 +933,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   const handleSaveDriver = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!driverForm.full_name.trim() || !driverForm.cpf.trim()) {
-      showToast('Preencha os campos obrigatórios (Nome Completo e CPF).', 'warning');
+    if (!driverForm.full_name.trim()) {
+      showToast('Preencha o Nome Completo do motorista.', 'warning');
       return;
     }
 
@@ -958,11 +958,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   };
 
   const handleDeleteDriver = async (driver: FleetDriver) => {
-    if (!confirm(`Deseja realmente remover o condutor ${driver.full_name} (CPF: ${driver.cpf})?\n\nEle será excluído definitivamente do banco de dados e do sistema.`)) {
+    const cpfLabel = driver.cpf ? ` (CPF: ${driver.cpf})` : '';
+    if (!confirm(`Deseja realmente remover o condutor ${driver.full_name}${cpfLabel}?\n\nEle será excluído definitivamente do banco de dados e do sistema.`)) {
       return;
     }
     try {
-      setDrivers(prev => prev.filter(d => d.id !== driver.id && (!driver.cpf || d.cpf !== driver.cpf)));
+      setDrivers(prev => prev.filter(d => d.id !== driver.id));
       await deleteFleetDriver(driver.id, driver.cpf);
       showToast(`Motorista ${driver.full_name} removido definitivamente com sucesso!`, 'success');
       loadData(true);
@@ -1214,7 +1215,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
       const matchesSearch = !q || 
         d.full_name.toLowerCase().includes(q) || 
-        d.cpf.includes(q) ||
+        (d.cpf && d.cpf.includes(q)) ||
         (cleanQ.length > 0 && cleanCpf.includes(cleanQ)) ||
         (d.cnh_number && d.cnh_number.toLowerCase().includes(q)) ||
         (d.department && d.department.toLowerCase().includes(q));
@@ -1707,8 +1708,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Identificação automática de motorista no passo 2 por Nome ou CPF
   const matchedDriverFromForm = useMemo(() => {
     const cleanDoc = newOrderForm.driver_document.replace(/\D/g, '');
-    if (cleanDoc.length === 11) {
-      return drivers.find(d => d.cpf.replace(/\D/g, '') === cleanDoc) || null;
+    if (cleanDoc.length === 11 && !/^0+$/.test(cleanDoc)) {
+      return drivers.find(d => (d.cpf || '').replace(/\D/g, '') === cleanDoc) || null;
     }
     if (newOrderForm.driver_name.trim().length >= 3) {
       return drivers.find(d => d.full_name.toLowerCase().trim() === newOrderForm.driver_name.toLowerCase().trim()) || null;
@@ -1722,8 +1723,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     const cleanDigits = term.replace(/\D/g, '');
     return drivers.filter(d => {
       const matchName = d.full_name.toLowerCase().includes(term);
-      const matchCpf = cleanDigits ? d.cpf.replace(/\D/g, '').includes(cleanDigits) : false;
-      const matchDept = d.department.toLowerCase().includes(term);
+      const matchCpf = cleanDigits ? (d.cpf || '').replace(/\D/g, '').includes(cleanDigits) : false;
+      const matchDept = (d.department || '').toLowerCase().includes(term);
       return matchName || matchCpf || matchDept;
     }).slice(0, 6);
   }, [drivers, driverSearchQuery, newOrderForm.driver_name]);
@@ -1731,7 +1732,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const handleDriverCpfChange = (raw: string) => {
     const formatted = formatCPF(raw);
     const clean = raw.replace(/\D/g, '');
-    const found = drivers.find(d => d.cpf.replace(/\D/g, '') === clean);
+    const found = (clean.length === 11 && !/^0+$/.test(clean))
+      ? drivers.find(d => (d.cpf || '').replace(/\D/g, '') === clean)
+      : undefined;
     setNewOrderForm(prev => ({
       ...prev,
       driver_document: formatted,
@@ -1748,7 +1751,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setNewOrderForm(prev => ({
       ...prev,
       driver_name: val,
-      driver_document: found ? formatCPF(found.cpf) : prev.driver_document
+      driver_document: found ? (found.cpf ? formatCPF(found.cpf) : '') : prev.driver_document
     }));
   };
 
@@ -1756,7 +1759,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setNewOrderForm(prev => ({
       ...prev,
       driver_name: driver.full_name,
-      driver_document: formatCPF(driver.cpf)
+      driver_document: driver.cpf ? formatCPF(driver.cpf) : ''
     }));
     setShowDriverSuggestions(false);
     setDriverSearchQuery('');
@@ -3626,7 +3629,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         {driver.full_name}
                       </td>
                       <td className="px-4 py-3.5 font-mono text-neutral-700 dark:text-neutral-300 font-semibold">
-                        {driver.cpf}
+                        {driver.cpf || <span className="text-neutral-400 italic font-sans font-normal">Não informado</span>}
                       </td>
                       <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
                         {driver.birth_date ? new Date(driver.birth_date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
@@ -4174,7 +4177,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             Puxar Motorista Oficial (por Nome ou CPF):
                           </label>
                           <select
-                            value={drivers.find(d => d.cpf.replace(/\D/g, '') === newOrderForm.driver_document.replace(/\D/g, ''))?.id || ''}
+                            value={matchedDriverFromForm?.id || ''}
                             onChange={e => {
                               const drvId = e.target.value;
                               const found = drivers.find(d => d.id === drvId);
@@ -4187,7 +4190,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             <option value="">Selecione na lista ou digite abaixo para busca instantânea...</option>
                             {drivers.map(d => (
                               <option key={d.id} value={d.id}>
-                                {d.full_name} • CPF: {formatCPF(d.cpf)} ({d.department})
+                                {d.full_name}{d.cpf ? ` • CPF: ${formatCPF(d.cpf)}` : ''} ({d.department})
                               </option>
                             ))}
                           </select>
@@ -4229,7 +4232,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                     </span>
                                   </div>
                                   <span className="font-mono text-[11px] font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                                    {formatCPF(drv.cpf)}
+                                    {drv.cpf ? formatCPF(drv.cpf) : 'Sem CPF'}
                                   </span>
                                 </button>
                               ))}
@@ -4240,15 +4243,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         {/* Campo CPF com Máscara e Detecção Instantânea */}
                         <div>
                           <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                            CPF do Condutor *
+                            CPF do Condutor <span className="text-neutral-400 font-normal">(Opcional)</span>
                           </label>
                           <input
                             type="text"
                             maxLength={14}
-                            placeholder="000.000.000-00"
+                            placeholder="000.000.000-00 (opcional)"
                             value={newOrderForm.driver_document}
                             onChange={e => handleDriverCpfChange(e.target.value)}
-                            required
                             className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-sm"
                           />
                           <span className="text-[10px] text-neutral-500 mt-0.5 block">
@@ -6529,14 +6531,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                   <div>
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      CPF *
+                      CPF <span className="text-neutral-400 font-normal">(Opcional)</span>
                     </label>
                     <input
                       type="text"
-                      placeholder="000.000.000-00"
+                      placeholder="000.000.000-00 (opcional)"
                       value={driverForm.cpf}
                       onChange={e => setDriverForm({ ...driverForm, cpf: formatCPF(e.target.value) })}
-                      required
                       className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
