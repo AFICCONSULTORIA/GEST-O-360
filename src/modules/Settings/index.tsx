@@ -13,6 +13,7 @@ import { showToast } from '../../components/ui/Toast';
 import { AdminUser, Institution, View, Department } from '../../types';
 import { isDemoEnvironment } from '../../lib/demoManager';
 import { GranularPermissionsModal } from './components/GranularPermissionsModal';
+import { dispatchDepartmentsUpdated } from '../../lib/api/departments';
 
 const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'home', label: 'Início (Dashboard)' },
@@ -330,14 +331,20 @@ export const SettingsModule = ({
     if (editingDept) {
       const updated = { ...editingDept, ...deptFormData };
       setDepartments(departments.map(d => d.id === editingDept.id ? updated : d));
-      await supabase.from('departments').update({ name: updated.name, institution_id: updated.institution_id }).eq('id', updated.id).then(({ error }) => { if (error) console.error(error) });
+      await supabase.from('departments').update({ name: updated.name, institution_id: updated.institution_id }).eq('id', updated.id).then(({ error }) => {
+        if (error) console.error(error);
+        else dispatchDepartmentsUpdated(updated.institution_id);
+      });
     } else {
       const newDept: Department = {
         ...deptFormData,
         id: crypto.randomUUID()
       };
       setDepartments([...departments, newDept]);
-      await supabase.from('departments').insert({ id: newDept.id, name: newDept.name, institution_id: newDept.institution_id }).then(({ error }) => { if (error) console.error(error) });
+      await supabase.from('departments').insert({ id: newDept.id, name: newDept.name, institution_id: newDept.institution_id }).then(({ error }) => {
+        if (error) console.error(error);
+        else dispatchDepartmentsUpdated(newDept.institution_id);
+      });
     }
     setIsDeptModalOpen(false);
     setEditingDept(null);
@@ -351,6 +358,7 @@ export const SettingsModule = ({
         console.error(error);
       } else {
         setDepartments(departments.filter(d => d.id !== id));
+        dispatchDepartmentsUpdated(currentUser?.institution_id);
         showToast('Secretaria removida com sucesso!', 'success');
       }
     }

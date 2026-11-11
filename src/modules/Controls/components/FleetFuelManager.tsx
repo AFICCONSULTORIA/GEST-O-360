@@ -99,6 +99,7 @@ import { DriverBatchImporter } from './DriverBatchImporter';
 import { BudgetClassificationsModal } from './BudgetClassificationsModal';
 import { LegacyVoucherModal } from './LegacyVoucherModal';
 import { MercosulPlate } from './MercosulPlate';
+import { useMunicipalDepartments, matchOfficialDepartmentName } from '../../../lib/api/departments';
 import { 
   CONTRACTUAL_BIDDED_PRICES, 
   issueFuelAuthorization,
@@ -454,6 +455,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     is_emergency_priority: false
   });
 
+  // Secretarias Oficiais do Município (Fonte única sincronizada com todo o sistema)
+  const {
+    departments: municipalDepartmentRecords,
+    departmentNames: officialDepartments,
+    addDepartment: addMunicipalDepartment,
+    removeDepartment: removeMunicipalDepartment
+  } = useMunicipalDepartments(currentUser?.institution_id);
+  const [isDepartmentsModalOpen, setIsDepartmentsModalOpen] = useState(false);
+  const [newDepartmentNameInput, setNewDepartmentNameInput] = useState('');
+  const [savingDepartment, setSavingDepartment] = useState(false);
+  const [standardizingDepartments, setStandardizingDepartments] = useState(false);
+
   // Estado para Gestão de Motoristas
   const [isNewDriverModalOpen, setIsNewDriverModalOpen] = useState(false);
   const [isEditDriverModalOpen, setIsEditDriverModalOpen] = useState(false);
@@ -462,11 +475,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     full_name: '',
     cpf: '',
     birth_date: '',
-    department: 'Saúde',
+    department: '',
     cnh_number: '',
     cnh_category: 'B',
     status: 'ativo' as 'ativo' | 'inativo' | 'afastado'
   });
+
+  useEffect(() => {
+    if (officialDepartments.length > 0) {
+      setDriverForm(prev => (!prev.department ? { ...prev, department: officialDepartments[0] } : prev));
+      setNewVehicleForm(prev => (!prev.department || prev.department === 'Saúde' ? { ...prev, department: officialDepartments[0] } : prev));
+    }
+  }, [officialDepartments]);
 
   // Estado para Gestão de Postos Credenciados
   const [isNewStationModalOpen, setIsNewStationModalOpen] = useState(false);
@@ -793,11 +813,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   const handleOpenEditVehicle = (vehicle: FleetVehicle) => {
     setEditingVehicle(vehicle);
+    const resolvedDept = matchOfficialDepartmentName(vehicle.department, officialDepartments) || vehicle.department || officialDepartments[0] || '';
     setEditVehicleForm({
       plate: vehicle.plate,
       prefix_code: vehicle.prefix_code || '',
       model: vehicle.model,
-      department: vehicle.department,
+      department: resolvedDept,
       fuel_type: vehicle.fuel_type,
       tank_capacity: vehicle.tank_capacity,
       metric_type: vehicle.metric_type,
@@ -908,7 +929,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       full_name: '',
       cpf: '',
       birth_date: '',
-      department: 'Saúde',
+      department: officialDepartments[0] || '',
       cnh_number: '',
       cnh_category: 'B',
       status: 'ativo'
@@ -919,16 +940,84 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   const handleOpenEditDriver = (driver: FleetDriver) => {
     setEditingDriver(driver);
+    const resolvedDept = matchOfficialDepartmentName(driver.department, officialDepartments) || driver.department || officialDepartments[0] || '';
     setDriverForm({
       full_name: driver.full_name,
       cpf: driver.cpf || '',
       birth_date: driver.birth_date || '',
-      department: driver.department,
+      department: resolvedDept,
       cnh_number: driver.cnh_number || '',
       cnh_category: driver.cnh_category || 'B',
       status: driver.status
     });
     setIsEditDriverModalOpen(true);
+  };
+
+  const handleAddMunicipalDepartment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDepartmentNameInput.trim()) return;
+    setSavingDepartment(true);
+    try {
+      const created = await addMunicipalDepartment(newDepartmentNameInput.trim());
+      setNewDepartmentNameInput('');
+      showToast(`Secretaria "${created.name}" cadastrada para o município!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao cadastrar secretaria.', 'error');
+    } finally {
+      setSavingDepartment(false);
+    }
+  };
+
+  const handleDeleteMunicipalDepartment = async (id: string, name: string) => {
+    if (!confirm(`Deseja excluir a secretaria "${name}" do município?\n\nEla deixará de aparecer nas opções de cadastro de todo o sistema deste município.`)) {
+      return;
+    }
+    try {
+      await removeMunicipalDepartment(id);
+      if (departmentFilter === name) {
+        setDepartmentFilter('all');
+      }
+      showToast(`Secretaria "${name}" removida com sucesso!`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao excluir secretaria.', 'error');
+    }
+  };
+
+  const handleStandardizeLegacyRecords = async (mappingOverrides?: Record<string, string>) => {
+    if (officialDepartments.length === 0) {
+      showToast('Cadastre ao menos uma secretaria oficial primeiro.', 'warning');
+      return;
+    }
+    setStandardizingDepartments(true);
+    let updatedCount = 0;
+    try {
+      for (const d of drivers) {
+        if (!d.department || officialDepartments.includes(d.department)) continue;
+        const target = mappingOverrides?.[d.department] || matchOfficialDepartmentName(d.department, officialDepartments);
+        if (target && target !== d.department) {
+          await updateFleetDriver(d.id, { department: target });
+          updatedCount++;
+        }
+      }
+      for (const v of vehicles) {
+        if (!v.department || officialDepartments.includes(v.department)) continue;
+        const target = mappingOverrides?.[v.department] || matchOfficialDepartmentName(v.department, officialDepartments);
+        if (target && target !== v.department) {
+          await updateFleetVehicle(v.id, { department: target });
+          updatedCount++;
+        }
+      }
+      if (updatedCount > 0) {
+        await loadData(true);
+        showToast(`${updatedCount} registros padronizados com as secretarias oficiais do município!`, 'success');
+      } else {
+        showToast('Nenhuma lotação pendente de correspondência automática.', 'info');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao padronizar secretarias.', 'error');
+    } finally {
+      setStandardizingDepartments(false);
+    }
   };
 
   const handleSaveDriver = async (e: React.FormEvent) => {
@@ -1198,14 +1287,45 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     };
   }, [isLitersOverCapacity, isOdometerInvalid, newOrderForm.liters_authorized, newOrderForm.current_odometer, newOrderForm.budget_classification_id, selectedVehicleForNewOrder]);
 
-  // Lista de Secretarias
+  // Lista oficial e padronizada de Secretarias do Município (e detecção de nomes legados fora do padrão)
   const departments = useMemo(() => {
+    if (officialDepartments.length > 0) {
+      return officialDepartments;
+    }
     const fromVehicles = vehicles.map(v => v.department).filter(Boolean);
     const fromDrivers = drivers.map(d => d.department).filter(Boolean);
-    const defaults = ['Gabinete do Prefeito', 'Administração', 'Educação', 'Saúde', 'Obras e Serviços Urbanos', 'Agricultura', 'Transportes'];
-    const list = Array.from(new Set([...fromVehicles, ...fromDrivers, ...defaults]));
-    return list.sort();
-  }, [vehicles, drivers]);
+    return Array.from(new Set([...fromVehicles, ...fromDrivers])).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [officialDepartments, vehicles, drivers]);
+
+  const legacyUnstandardizedDepartments = useMemo(() => {
+    if (officialDepartments.length === 0) return [];
+    const counts = new Map<string, { raw: string; drivers: number; vehicles: number; suggested: string | null }>();
+    for (const d of drivers) {
+      const dept = (d.department || '').trim();
+      if (!dept || officialDepartments.includes(dept)) continue;
+      const cur = counts.get(dept) || {
+        raw: dept,
+        drivers: 0,
+        vehicles: 0,
+        suggested: matchOfficialDepartmentName(dept, officialDepartments)
+      };
+      cur.drivers++;
+      counts.set(dept, cur);
+    }
+    for (const v of vehicles) {
+      const dept = (v.department || '').trim();
+      if (!dept || officialDepartments.includes(dept)) continue;
+      const cur = counts.get(dept) || {
+        raw: dept,
+        drivers: 0,
+        vehicles: 0,
+        suggested: matchOfficialDepartmentName(dept, officialDepartments)
+      };
+      cur.vehicles++;
+      counts.set(dept, cur);
+    }
+    return Array.from(counts.values()).sort((a, b) => a.raw.localeCompare(b.raw, 'pt-BR'));
+  }, [officialDepartments, drivers, vehicles]);
 
   const filteredDrivers = useMemo(() => {
     return drivers.filter(d => {
@@ -1220,8 +1340,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         (d.cnh_number && d.cnh_number.toLowerCase().includes(q)) ||
         (d.department && d.department.toLowerCase().includes(q));
 
+      const matchedOfficial = matchOfficialDepartmentName(d.department, officialDepartments);
       const matchesDept = departmentFilter === 'all' || 
         (d.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase() ||
+        matchedOfficial === departmentFilter ||
         (d.department || '').toLowerCase().includes(departmentFilter.toLowerCase()) ||
         departmentFilter.toLowerCase().includes((d.department || '').toLowerCase());
 
@@ -1295,8 +1417,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       if (!order) return false;
       const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
 
-      // Filtro de Secretaria
-      const matchesDept = departmentFilter === 'all' || (v?.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase();
+      // Filtro de Secretaria (inclui correspondência de abreviações legadas para secretaria oficial)
+      const vDept = (v?.department || '').trim();
+      const matchedOrderDept = matchOfficialDepartmentName(vDept, officialDepartments);
+      const matchesDept = departmentFilter === 'all' ||
+        vDept.toLowerCase() === departmentFilter.trim().toLowerCase() ||
+        matchedOrderDept === departmentFilter;
       if (!matchesDept) return false;
 
       // Filtro de Status e Semáforo
@@ -1383,8 +1509,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     return vehicles.filter(v => {
       if (!v) return false;
 
-      // Filtro de Secretaria
-      const matchesDept = departmentFilter === 'all' || (v.department || '').trim().toLowerCase() === departmentFilter.trim().toLowerCase();
+      // Filtro de Secretaria (inclui correspondência de abreviações legadas para secretaria oficial)
+      const vDept = (v.department || '').trim();
+      const matchedVehicleDept = matchOfficialDepartmentName(vDept, officialDepartments);
+      const matchesDept = departmentFilter === 'all' ||
+        vDept.toLowerCase() === departmentFilter.trim().toLowerCase() ||
+        matchedVehicleDept === departmentFilter;
       if (!matchesDept) return false;
 
       // Filtro de Status
@@ -3556,6 +3686,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               )}
               <button
                 type="button"
+                onClick={() => setIsDepartmentsModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl cursor-pointer shrink-0 border border-indigo-300 dark:border-indigo-800 transition"
+                title="Cadastrar, excluir e padronizar secretarias oficiais do município"
+              >
+                <Building2 size={14} className="text-indigo-600 dark:text-indigo-400" />
+                Secretarias ({officialDepartments.length})
+              </button>
+              <button
+                type="button"
                 onClick={() => setIsDriverBatchModalOpen(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl cursor-pointer shrink-0 border border-neutral-300 dark:border-neutral-700 transition"
               >
@@ -5680,17 +5819,32 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Secretaria / Lotação *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Saúde, Educação, Obras..."
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                        Secretaria / Lotação *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsDepartmentsModalOpen(true)}
+                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        + Gerenciar
+                      </button>
+                    </div>
+                    <select
                       value={newVehicleForm.department}
                       onChange={e => setNewVehicleForm({ ...newVehicleForm, department: e.target.value })}
                       required
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none"
-                    />
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="">Selecione a secretaria...</option>
+                      {newVehicleForm.department && !departments.includes(newVehicleForm.department) && (
+                        <option value={newVehicleForm.department}>{newVehicleForm.department} (Legado)</option>
+                      )}
+                      {departments.map(dept => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -6285,16 +6439,32 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Secretaria / Lotação *
-                    </label>
-                    <input
-                      type="text"
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                        Secretaria / Lotação *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsDepartmentsModalOpen(true)}
+                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        + Gerenciar
+                      </button>
+                    </div>
+                    <select
                       value={editVehicleForm.department}
                       onChange={e => setEditVehicleForm({ ...editVehicleForm, department: e.target.value })}
                       required
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none"
-                    />
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="">Selecione a secretaria...</option>
+                      {editVehicleForm.department && !departments.includes(editVehicleForm.department) && (
+                        <option value={editVehicleForm.department}>{editVehicleForm.department} (Legado)</option>
+                      )}
+                      {departments.map(dept => (
+                        <option key={dept} value={dept}>{dept}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -6557,15 +6727,28 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Secretaria de Lotação *
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                        Secretaria de Lotação *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setIsDepartmentsModalOpen(true)}
+                        className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                      >
+                        Cadastrar / Excluir Secretarias
+                      </button>
+                    </div>
                     <select
                       value={driverForm.department}
                       onChange={e => setDriverForm({ ...driverForm, department: e.target.value })}
                       required
                       className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
                     >
+                      <option value="">Selecione a secretaria oficial...</option>
+                      {driverForm.department && !departments.includes(driverForm.department) && (
+                        <option value={driverForm.department}>{driverForm.department} (Fora do padrão)</option>
+                      )}
                       {departments.map(dept => (
                         <option key={dept} value={dept}>{dept}</option>
                       ))}
@@ -7210,6 +7393,154 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         )}
       </AnimatePresence>
 
+      {/* MODAL DE GERENCIAMENTO E PADRONIZAÇÃO DAS SECRETARIAS DO MUNICÍPIO */}
+      <AnimatePresence>
+        {isDepartmentsModalOpen && (
+          <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 8 }}
+              className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+            >
+              <div className="p-5 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between bg-neutral-50 dark:bg-neutral-950/60">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                    <Building2 size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      Secretarias Oficiais do Município
+                    </h3>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Cadastre ou exclua as secretarias criadas pelo município para padronizar todo o sistema.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDepartmentsModalOpen(false)}
+                  className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-lg cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4 overflow-y-auto">
+                <form onSubmit={handleAddMunicipalDepartment} className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ex: Secretaria Municipal de Administração e Finanças"
+                    value={newDepartmentNameInput}
+                    onChange={e => setNewDepartmentNameInput(e.target.value)}
+                    required
+                    className="flex-1 px-3.5 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingDepartment || !newDepartmentNameInput.trim()}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-sm"
+                  >
+                    <Plus size={15} />
+                    {savingDepartment ? 'Salvando...' : 'Cadastrar Secretaria'}
+                  </button>
+                </form>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+                      Secretarias Ativas no Município ({municipalDepartmentRecords.length})
+                    </span>
+                    <span className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
+                      Sincronizado com Frotas, Motoristas, Protocolo, Ouvidoria e Configurações
+                    </span>
+                  </div>
+
+                  {municipalDepartmentRecords.length === 0 ? (
+                    <div className="p-6 text-center border border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl text-xs text-neutral-500">
+                      Nenhuma secretaria cadastrada ainda para este município. Cadastre acima a primeira secretaria oficial.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-neutral-100 dark:divide-neutral-800 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                      {municipalDepartmentRecords.map(dept => (
+                        <div
+                          key={dept.id}
+                          className="flex items-center justify-between px-3.5 py-2.5 bg-white dark:bg-neutral-900 hover:bg-neutral-50 dark:hover:bg-neutral-800/50"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Building2 size={14} className="text-indigo-500 shrink-0" />
+                            <span className="text-xs font-bold text-neutral-900 dark:text-white truncate">
+                              {dept.name}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMunicipalDepartment(dept.id, dept.name)}
+                            className="p-1.5 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer shrink-0"
+                            title={`Excluir ${dept.name}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {legacyUnstandardizedDepartments.length > 0 && (
+                  <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <h4 className="text-xs font-black text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                          <AlertTriangle size={14} className="text-amber-600" />
+                          Lotações fora do padrão encontradas ({legacyUnstandardizedDepartments.length})
+                        </h4>
+                        <p className="text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                          Existem motoristas ou veículos com nomes abreviados/antigos. Você pode padronizá-los automaticamente para as secretarias oficiais.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={standardizingDepartments || !legacyUnstandardizedDepartments.some(i => i.suggested)}
+                        onClick={() => handleStandardizeLegacyRecords()}
+                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-[11px] font-bold shrink-0 cursor-pointer"
+                      >
+                        {standardizingDepartments ? 'Padronizando...' : 'Padronizar Correspondências'}
+                      </button>
+                    </div>
+                    <div className="space-y-1 max-h-36 overflow-y-auto text-[11px]">
+                      {legacyUnstandardizedDepartments.map(item => (
+                        <div key={item.raw} className="flex items-center justify-between bg-white/80 dark:bg-neutral-900/70 px-2.5 py-1.5 rounded-lg border border-amber-200/70 dark:border-amber-900/50">
+                          <span className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">
+                            {item.raw}{' '}
+                            <span className="text-neutral-500 font-sans font-normal">
+                              ({item.drivers} mot., {item.vehicles} veíc.)
+                            </span>
+                          </span>
+                          <span className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                            {item.suggested ? `→ ${item.suggested}` : 'Sem vínculo automático'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950/60 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setIsDepartmentsModalOpen(false)}
+                  className="px-4 py-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  Concluir
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* IMPORTADOR EM LOTE DE MOTORISTAS (.XLSX / .CSV) */}
       <DriverBatchImporter
         isOpen={isDriverBatchModalOpen}
@@ -7219,6 +7550,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           loadData();
         }}
         institutionId={currentUser?.institution_id}
+        officialDepartments={officialDepartments}
       />
 
       {/* CRUD DE CLASSIFICAÇÕES ORÇAMENTÁRIAS, CENTROS DE CUSTO E CRÉDITOS ESPECIAIS */}

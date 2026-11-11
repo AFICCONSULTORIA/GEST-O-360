@@ -570,7 +570,14 @@ export default function App() {
       }
     };
     window.addEventListener('gestao360:reload-module', handleReload);
-    return () => window.removeEventListener('gestao360:reload-module', handleReload);
+    const handleDeptsUpdated = () => {
+      fetchGlobalData();
+    };
+    window.addEventListener('gestao360:departments-updated', handleDeptsUpdated);
+    return () => {
+      window.removeEventListener('gestao360:reload-module', handleReload);
+      window.removeEventListener('gestao360:departments-updated', handleDeptsUpdated);
+    };
   }, [isAuthenticated, currentInstitution, currentUser?.id]);
   const [protocols, setProtocols] = React.useState<Protocol[]>([]);
   const [editingControl, setEditingControl] = React.useState<CheckItem | null>(null);

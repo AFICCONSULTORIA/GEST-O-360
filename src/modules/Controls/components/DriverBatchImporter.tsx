@@ -14,12 +14,14 @@ import {
 } from 'lucide-react';
 import { formatCPF } from '../../../lib/masks';
 import { createDriversBatch, NewDriverPayload } from '../../../lib/api/fleetFuel';
+import { matchOfficialDepartmentName } from '../../../lib/api/departments';
 
 interface DriverBatchImporterProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: (count: number) => void;
   institutionId?: string;
+  officialDepartments?: string[];
 }
 
 interface ParsedDriverRow {
@@ -38,7 +40,8 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  institutionId = 'inst_1'
+  institutionId = 'inst_1',
+  officialDepartments = []
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -122,7 +125,7 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
           } else if (norm.includes('cat') || norm.includes('categoriacnh')) {
             cnhCategory = strVal.toUpperCase() || 'B';
           } else if (norm.includes('sec') || norm.includes('dep') || norm.includes('lotac') || norm.includes('orgao') || norm.includes('secretaria')) {
-            department = strVal || 'Secretaria Geral';
+            department = (strVal ? (matchOfficialDepartmentName(strVal, officialDepartments) || strVal) : '') || officialDepartments[0] || 'Geral';
           } else if (norm.includes('nasc') || norm.includes('data')) {
             birthDate = strVal;
           }
@@ -150,7 +153,7 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
           cpf: formattedCpf,
           cnhNumber,
           cnhCategory: cnhCategory || 'B',
-          department: department || 'Frota Municipal',
+          department: department || officialDepartments[0] || 'Geral',
           birthDate,
           isValid,
           errorReason

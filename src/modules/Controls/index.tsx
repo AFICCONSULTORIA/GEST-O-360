@@ -12,6 +12,7 @@ import { showToast } from '../../components/ui/Toast';
 import { AccountingChangesControl } from './components/AccountingChangesControl';
 import { VerbasIndenizatoriasControl } from './components/VerbasIndenizatoriasControl';
 import { hasPermission } from '../../lib/permissions';
+import { useMunicipalDepartments } from '../../lib/api/departments';
 
 // Destructure common icons to avoid changing code
 const { 
@@ -56,10 +57,14 @@ const ControlsModule = ({
   const completedControls = controls.filter(c => c.status === 'completed').length;
   const complianceRate = totalControls === 0 ? 0 : Math.round((completedControls / totalControls) * 100);
 
-  // Departments for dropdown
+  // Secretarias oficiais do município integradas com controles existentes
+  const { departmentNames: officialDepartments } = useMunicipalDepartments(currentInstitution?.id || currentUser?.institution_id);
   const departments = useMemo(() => {
-    return Array.from(new Set(controls.map(c => c.department))).sort();
-  }, [controls]);
+    const merged = officialDepartments.length > 0
+      ? Array.from(new Set([...officialDepartments, ...controls.map(c => c.department).filter(Boolean)]))
+      : Array.from(new Set(controls.map(c => c.department).filter(Boolean)));
+    return merged.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [officialDepartments, controls]);
 
   // Filtering
   const filteredControls = useMemo(() => {

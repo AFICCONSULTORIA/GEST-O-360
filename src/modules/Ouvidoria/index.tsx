@@ -10,6 +10,7 @@ import {
   Paperclip, Upload, Trash2, Maximize2, File
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useMunicipalDepartments } from '../../lib/api/departments';
 import { OuvidoriaManifestacao, OuvidoriaStatus, OuvidoriaTipo, AdminUser, Institution, OuvidoriaAnexo } from '../../types';
 import { DEMO_OUVIDORIA_MANIFESTACOES } from './demoData';
 import { showToast } from '../../components/ui/Toast';
@@ -52,6 +53,8 @@ const MODELOS_RESPOSTA = [
 ];
 
 export function OuvidoriaModule({ currentInstitution, currentUser }: OuvidoriaModuleProps) {
+  const { departmentNames: officialDepartments } = useMunicipalDepartments(currentUser?.institution_id || currentInstitution?.id);
+  const secretariasOpcoes = officialDepartments.length > 0 ? officialDepartments : SECRETARIAS_OPCOES;
   const isSuperAdmin = currentUser?.role === 'Super Admin' || (currentUser?.role as string)?.toLowerCase() === 'super admin' || (currentUser?.role as string)?.toLowerCase() === 'super_admin';
   const [manifestacoes, setManifestacoes] = useState<OuvidoriaManifestacao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1597,7 +1600,7 @@ export function OuvidoriaModule({ currentInstitution, currentUser }: OuvidoriaMo
                           className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-sm font-medium"
                         >
                           <option value="">Selecione a Secretaria...</option>
-                          {SECRETARIAS_OPCOES.map((sec) => (
+                          {secretariasOpcoes.map((sec) => (
                             <option key={sec} value={sec}>{sec}</option>
                           ))}
                         </select>

@@ -10,6 +10,7 @@ import {
   Upload, Trash2, ExternalLink, File, ImageIcon, X, Maximize2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useMunicipalDepartments } from '../../lib/api/departments';
 import { Institution, OuvidoriaTipo, OuvidoriaPrivacidade, OuvidoriaManifestacao, OuvidoriaAnexo } from '../../types';
 
 interface PublicPortalProps {
@@ -111,6 +112,10 @@ export function PublicOuvidoriaPortal({
   currentInstitution,
   onNavigateHome
 }: PublicPortalProps) {
+  const { departmentNames: officialDepartments } = useMunicipalDepartments(currentInstitution?.id);
+  const secretariasLista = officialDepartments.length > 0
+    ? (officialDepartments.includes('Não sei informar / Outro') ? officialDepartments : [...officialDepartments, 'Não sei informar / Outro'])
+    : SECRETARIAS_LISTA;
   // Acessibilidade: Alto Contraste & Tamanho da Fonte com persistência e aplicação real
   const [highContrast, setHighContrast] = useState<boolean>(() => {
     return localStorage.getItem('gestao360_ouvidoria_contrast') === 'true';
@@ -876,7 +881,7 @@ export function PublicOuvidoriaPortal({
                         className="w-full px-4 py-3.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                       >
                         <option value="">Selecione uma área (opcional)</option>
-                        {SECRETARIAS_LISTA.map((sec) => (
+                        {secretariasLista.map((sec) => (
                           <option key={sec} value={sec}>{sec}</option>
                         ))}
                       </select>

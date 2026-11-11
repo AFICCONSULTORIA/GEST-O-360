@@ -38,6 +38,7 @@ import { generateSRCDossierHtml } from './SRCDossierImpressao';
 import { LivroAlteracoesContabeis } from './LivroAlteracoesContabeis';
 import { AdminUser } from '../../../types';
 import { hasPermission } from '../../../lib/permissions';
+import { useMunicipalDepartments } from '../../../lib/api/departments';
 
 interface AccountingChangesControlProps {
   searchQuery?: string;
@@ -118,6 +119,13 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
   const canView = !currentUser || hasPermission(currentUser, 'accounting_changes', 'view');
   const canEdit = !currentUser || hasPermission(currentUser, 'accounting_changes', 'edit');
   const canAdmin = !currentUser || hasPermission(currentUser, 'accounting_changes', 'admin');
+  const { departmentNames: officialDepartments } = useMunicipalDepartments(currentUser?.institution_id);
+  const availableDepartments = useMemo(() => {
+    if (officialDepartments.length === 0) return MUNICIPAL_DEPARTMENTS;
+    return officialDepartments.includes('Outro Órgão / Autarquia')
+      ? officialDepartments
+      : [...officialDepartments, 'Outro Órgão / Autarquia'];
+  }, [officialDepartments]);
   const [changes, setChanges] = useState<AccountingChange[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [localSearch, setLocalSearch] = useState('');
@@ -149,7 +157,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
   const [formRequesterName, setFormRequesterName] = useState('');
   const [formRequesterRole, setFormRequesterRole] = useState(REQUESTER_ROLES[0]);
   const [formCustomRole, setFormCustomRole] = useState('');
-  const [formRequesterDepartment, setFormRequesterDepartment] = useState(MUNICIPAL_DEPARTMENTS[1]); // Finanças
+  const [formRequesterDepartment, setFormRequesterDepartment] = useState(availableDepartments[1] || availableDepartments[0] || ''); // Secretaria padrão
   const [formCustomDepartment, setFormCustomDepartment] = useState('');
   const [formRequesterEmail, setFormRequesterEmail] = useState('');
   const [formRequesterPhone, setFormRequesterPhone] = useState('');
@@ -385,7 +393,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
     setFormRequesterName(currentUser?.name || '');
     setFormRequesterRole(REQUESTER_ROLES[0]);
     setFormCustomRole('');
-    setFormRequesterDepartment(MUNICIPAL_DEPARTMENTS[1]);
+    setFormRequesterDepartment(availableDepartments[1] || availableDepartments[0] || '');
     setFormCustomDepartment('');
     setFormRequesterEmail(currentUser?.email || '');
     setFormRequesterPhone('');
@@ -433,7 +441,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
       setFormCustomRole(item.requesterRole);
     }
 
-    if (MUNICIPAL_DEPARTMENTS.includes(item.requesterDepartment)) {
+    if (availableDepartments.includes(item.requesterDepartment)) {
       setFormRequesterDepartment(item.requesterDepartment);
       setFormCustomDepartment('');
     } else {
@@ -1083,7 +1091,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
               className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold text-neutral-700 dark:text-neutral-300 focus:outline-none cursor-pointer"
             >
               <option value="all">Todas as Secretarias</option>
-              {MUNICIPAL_DEPARTMENTS.map(d => (
+              {availableDepartments.map(d => (
                 <option key={d} value={d}>{d}</option>
               ))}
             </select>
@@ -1502,7 +1510,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                       onChange={(e) => setFormRequesterDepartment(e.target.value)}
                       className="w-full px-4 py-3 bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer shadow-sm"
                     >
-                      {MUNICIPAL_DEPARTMENTS.map(d => (
+                      {availableDepartments.map(d => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
@@ -2778,7 +2786,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
                     className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl text-xs font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
                   >
                     <option value="all">Todas as Secretarias</option>
-                    {MUNICIPAL_DEPARTMENTS.map(d => (
+                    {availableDepartments.map(d => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>
