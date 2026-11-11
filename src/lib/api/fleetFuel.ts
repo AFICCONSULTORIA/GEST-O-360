@@ -1669,27 +1669,84 @@ export async function ensureDriverExistsInSupabase(driver: {
 
   const rawCpf = driver.cpf || '';
   const cleanCpf = rawCpf.replace(/\D/g, '');
-  const formattedCpf = cleanCpf.length === 11 
+  const hasValidCpf = isRealCpf(rawCpf);
+  const formattedCpf = hasValidCpf
     ? `${cleanCpf.slice(0,3)}.${cleanCpf.slice(3,6)}.${cleanCpf.slice(6,9)}-${cleanCpf.slice(9,11)}`
     : (rawCpf.trim() || '000.000.000-00');
   const institutionId = driver.institution_id || 'inst_1';
   const department = driver.department?.trim() || 'Frota Municipal';
 
   try {
-    // 1. Verifica se já existe por CPF ou Nome
+    // 1. Verifica se já existe por CPF real ou Nome (nunca cruza CPF genérico 000.000.000-00)
+    const safeNameForOr = name.replace(/["\\]/g, '');
     let query = supabase.from('fleet_drivers').select('*');
-    if (cleanCpf.length === 11) {
-      query = query.or(`cpf.eq.${formattedCpf},full_name.ilike.${name}`);
+    if (hasValidCpf) {
+      query = query.or(`cpf.eq.${formattedCpf},full_name.ilike."${safeNameForOr}"`);
     } else {
       query = query.ilike('full_name', name);
     }
 
-    const { data: existing } = await query.limit(1).maybeSingle();
-    if (existing && existing.department !== '__EXCLUIDO__') {
+    let { data: existing, error: findErr } = await query.limit(1).maybeSingle();
+    if (findErr && isRlsError(findErr)) {
+      let anonQuery = supabaseAnon.from('fleet_drivers').select('*');
+      if (hasValidCpf) {
+        anonQuery = anonQuery.or(`cpf.eq.${formattedCpf},full_name.ilike."${safeNameForOr}"`);
+      } else {
+        anonQuery = anonQuery.ilike('full_name', name);
+      }
+      const anonRes = await anonQuery.limit(1).maybeSingle();
+      existing = anonRes.data;
+    }
+
+    if (existing) {
+      if (existing.department === TOMBSTONE_MARKER) {
+        return null;
+      }
       return existing as FleetDriver;
     }
-    // Não auto-cria condutores fantasmas no banco para não ressuscitar registros excluídos
-    return null;
+
+    // Não recria automaticamente se estiver na blacklist explícita de excluídos
+    if (isDriverBlacklisted({ full_name: name, cpf: hasValidCpf ? formattedCpf : undefined })) {
+      return null;
+    }
+
+    // 2. Insere novo condutor diretamente no Supabase e atualiza cache local
+    const newId = generateValidUUID();
+    const supabaseRecord = {
+      id: newId,
+      institution_id: institutionId,
+      full_name: name,
+      cpf: formattedCpf,
+      department,
+      status: 'ativo'
+    };
+
+    let { data: inserted, error: insertErr } = await supabase
+      .from('fleet_drivers')
+      .upsert([supabaseRecord], { onConflict: 'id' })
+      .select()
+      .single();
+
+    if (insertErr && isRlsError(insertErr)) {
+      const retry = await supabaseAnon
+        .from('fleet_drivers')
+        .upsert([supabaseRecord], { onConflict: 'id' })
+        .select()
+        .single();
+      inserted = retry.data;
+      insertErr = retry.error;
+    }
+
+    if (!insertErr && inserted) {
+      const created = inserted as FleetDriver;
+      const list = getLocalDrivers().filter(d => !isDriverTombstoned(d) && d.id !== created.id);
+      list.unshift(created);
+      saveLocalDrivers(list);
+      if (typeof window !== 'undefined') {
+        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+      }
+      return created;
+    }
   } catch (err) {
     console.warn('[FleetFuel] Aviso ao auto-salvar motorista:', err);
   }
@@ -1749,10 +1806,29 @@ function isStationBlacklisted(s?: Partial<FleetFuelStation> | null): boolean {
   return false;
 }
 
+function isRealCpf(cpf?: string | null): boolean {
+  if (!cpf) return false;
+  const digits = cpf.replace(/\D/g, '');
+  return digits.length === 11 && !/^0+$/.test(digits);
+}
+
 function getDeletedDriverBlacklist(): Set<string> {
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_DRIVERS_BLACKLIST) : null;
-    if (raw) return new Set(JSON.parse(raw));
+    if (raw) {
+      const parsed: string[] = JSON.parse(raw);
+      return new Set(
+        parsed.filter(entry => {
+          if (!entry || entry.trim() === '') return false;
+          const digitsOnly = entry.replace(/\D/g, '');
+          // Nunca bloqueia CPF zerado/placeholder (000.000.000-00 / 00000000000)
+          if (digitsOnly.length > 0 && digitsOnly.length === entry.replace(/[\s.\-]/g, '').length && /^0+$/.test(digitsOnly)) {
+            return false;
+          }
+          return true;
+        })
+      );
+    }
   } catch {}
   return new Set();
 }
@@ -1762,23 +1838,26 @@ function addDriverToBlacklist(id?: string, cpf?: string, name?: string) {
     if (typeof window === 'undefined') return;
     const set = getDeletedDriverBlacklist();
     if (id) set.add(id.toLowerCase());
-    if (cpf) {
+    if (cpf && isRealCpf(cpf)) {
       set.add(cpf.trim());
       set.add(cpf.replace(/\D/g, ''));
     }
-    if (name) set.add(name.toLowerCase().trim());
+    if (name && name.trim()) set.add(name.toLowerCase().trim());
     localStorage.setItem(STORAGE_KEY_DRIVERS_BLACKLIST, JSON.stringify(Array.from(set)));
   } catch {}
 }
 
-function removeDriverFromBlacklist(id?: string, cpf?: string) {
+function removeDriverFromBlacklist(id?: string, cpf?: string, name?: string) {
   try {
     if (typeof window === 'undefined') return;
     const set = getDeletedDriverBlacklist();
     if (id) set.delete(id.toLowerCase());
-    if (cpf) {
+    if (cpf && isRealCpf(cpf)) {
       set.delete(cpf.trim());
       set.delete(cpf.replace(/\D/g, ''));
+    }
+    if (name && name.trim()) {
+      set.delete(name.toLowerCase().trim());
     }
     localStorage.setItem(STORAGE_KEY_DRIVERS_BLACKLIST, JSON.stringify(Array.from(set)));
   } catch {}
@@ -1788,7 +1867,7 @@ function isDriverBlacklisted(d?: Partial<FleetDriver> | null): boolean {
   if (!d) return false;
   const set = getDeletedDriverBlacklist();
   if (d.id && set.has(d.id.toLowerCase())) return true;
-  if (d.cpf) {
+  if (d.cpf && isRealCpf(d.cpf)) {
     if (set.has(d.cpf.trim())) return true;
     if (set.has(d.cpf.replace(/\D/g, ''))) return true;
   }
@@ -1885,22 +1964,48 @@ export async function getFleetDrivers(filters?: {
 
 export async function createFleetDriver(payload: NewDriverPayload): Promise<FleetDriver> {
   let driverId = isValidUUID(payload.id) ? payload.id! : generateValidUUID();
-  const rawCpf = payload.cpf.trim();
+  const rawCpf = (payload.cpf || '').trim();
   const digitsCpf = rawCpf.replace(/\D/g, '');
+  const hasValidCpf = isRealCpf(rawCpf);
+  const fullNameTrimmed = payload.full_name.trim();
 
-  // Se já existir registro no Supabase com o mesmo CPF (mesmo que excluído/tombstone), reutiliza o UUID para reativar sem duplicar
+  // Se já existir registro no Supabase com o mesmo CPF real (nunca CPF zerado 000.000.000-00)
+  // ou exatamente o mesmo nome (quando sem CPF real), reutiliza o UUID para reativar sem duplicar ou sobrescrever terceiros
   try {
-    const cpfFilters: string[] = [];
-    if (rawCpf) cpfFilters.push(`cpf.eq.${rawCpf}`);
-    if (digitsCpf && digitsCpf !== rawCpf) cpfFilters.push(`cpf.eq.${digitsCpf}`);
-    if (cpfFilters.length > 0) {
-      let { data: existing, error: exErr } = await supabase.from('fleet_drivers').select('id').or(cpfFilters.join(',')).limit(1).maybeSingle();
-      if (exErr && isRlsError(exErr)) {
-        const anonEx = await supabaseAnon.from('fleet_drivers').select('id').or(cpfFilters.join(',')).limit(1).maybeSingle();
-        existing = anonEx.data;
+    if (hasValidCpf) {
+      const cpfFilters: string[] = [];
+      if (rawCpf) cpfFilters.push(`cpf.eq.${rawCpf}`);
+      if (digitsCpf && digitsCpf !== rawCpf) cpfFilters.push(`cpf.eq.${digitsCpf}`);
+      if (cpfFilters.length > 0) {
+        let { data: existing, error: exErr } = await supabase.from('fleet_drivers').select('id').or(cpfFilters.join(',')).limit(1).maybeSingle();
+        if (exErr && isRlsError(exErr)) {
+          const anonEx = await supabaseAnon.from('fleet_drivers').select('id').or(cpfFilters.join(',')).limit(1).maybeSingle();
+          existing = anonEx.data;
+        }
+        if (existing?.id) {
+          driverId = existing.id;
+        }
       }
-      if (existing?.id) {
-        driverId = existing.id;
+    } else if (fullNameTrimmed && !isValidUUID(payload.id)) {
+      let { data: existingByName, error: nameErr } = await supabase
+        .from('fleet_drivers')
+        .select('id')
+        .eq('institution_id', payload.institution_id || 'inst_1')
+        .ilike('full_name', fullNameTrimmed)
+        .limit(1)
+        .maybeSingle();
+      if (nameErr && isRlsError(nameErr)) {
+        const anonName = await supabaseAnon
+          .from('fleet_drivers')
+          .select('id')
+          .eq('institution_id', payload.institution_id || 'inst_1')
+          .ilike('full_name', fullNameTrimmed)
+          .limit(1)
+          .maybeSingle();
+        existingByName = anonName.data;
+      }
+      if (existingByName?.id) {
+        driverId = existingByName.id;
       }
     }
   } catch {}
@@ -1908,12 +2013,13 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
   const birthDate = sanitizeDateToISO(payload.birth_date);
   const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
   const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : null;
+  const persistedCpf = rawCpf || '000.000.000-00';
 
   const newDriver: FleetDriver = {
     id: driverId,
     institution_id: payload.institution_id || 'inst_1',
-    full_name: payload.full_name.trim(),
-    cpf: rawCpf,
+    full_name: fullNameTrimmed,
+    cpf: persistedCpf,
     birth_date: birthDate || undefined,
     department: payload.department?.trim() || 'Geral',
     cnh_number: cnhNumber || undefined,
@@ -1925,8 +2031,8 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
   const supabaseRecord = {
     id: driverId,
     institution_id: payload.institution_id || 'inst_1',
-    full_name: payload.full_name.trim(),
-    cpf: rawCpf,
+    full_name: fullNameTrimmed,
+    cpf: persistedCpf,
     birth_date: birthDate,
     department: payload.department?.trim() || 'Geral',
     cnh_number: cnhNumber,
@@ -1942,14 +2048,14 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
       error = retry.error;
     }
     if (!error && data) {
+      removeDriverFromBlacklist(driverId, persistedCpf, fullNameTrimmed);
       const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
-      const existingIdx = list.findIndex(d => d.id === driverId || d.cpf === newDriver.cpf);
+      const existingIdx = list.findIndex(d => d.id === driverId || (hasValidCpf && d.cpf === newDriver.cpf));
       if (existingIdx !== -1) {
         list[existingIdx] = data as FleetDriver;
       } else {
         list.unshift(data as FleetDriver);
       }
-      removeDriverFromBlacklist(driverId, rawCpf);
       saveLocalDrivers(list);
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
@@ -1967,9 +2073,9 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
     throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  removeDriverFromBlacklist(driverId, persistedCpf, fullNameTrimmed);
   const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   list.unshift(newDriver);
-  removeDriverFromBlacklist(driverId, rawCpf);
   saveLocalDrivers(list);
   if (typeof window !== 'undefined') {
     try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
@@ -2002,19 +2108,22 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
         error = retry.error;
       }
       if (!error && data) {
+        const updated = data as FleetDriver;
+        removeDriverFromBlacklist(id, updated.cpf, updated.full_name);
         const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
         const idx = list.findIndex(d => d.id === id);
         if (idx !== -1) {
-          list[idx] = { ...list[idx], ...data };
+          list[idx] = { ...list[idx], ...updated };
           saveLocalDrivers(list);
         }
-        return data as FleetDriver;
+        return updated;
       }
     } catch (err) {
       console.warn('[FleetFuel] Erro ao atualizar motorista no Supabase:', err);
     }
   }
 
+  removeDriverFromBlacklist(id, updates.cpf, updates.full_name);
   const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
   const idx = list.findIndex(d => d.id === id);
   if (idx !== -1) {
@@ -2032,15 +2141,16 @@ export async function updateFleetDriver(id: string, updates: Partial<FleetDriver
  */
 export async function deleteFleetDriver(id: string, cpf?: string): Promise<boolean> {
   const rawCpf = cpf ? cpf.trim() : null;
-  const digitsCpf = rawCpf ? rawCpf.replace(/\D/g, '') : null;
+  const hasRealCpf = isRealCpf(rawCpf);
+  const digitsCpf = hasRealCpf && rawCpf ? rawCpf.replace(/\D/g, '') : null;
   const tombstonePayload = {
     department: TOMBSTONE_MARKER,
     status: 'inativo',
     updated_at: new Date().toISOString()
   };
 
-  // 1. Registra no blacklist persistente imediatamente
-  addDriverToBlacklist(id, rawCpf || undefined);
+  // 1. Registra no blacklist persistente imediatamente (nunca blacklista CPF zerado)
+  addDriverToBlacklist(id, hasRealCpf ? rawCpf || undefined : undefined);
 
   // 2. DELETE direto no Supabase por ID
   try {
@@ -2052,8 +2162,8 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
     console.warn('[FleetFuel] Erro ao deletar motorista por ID no Supabase:', err);
   }
 
-  // 3. DELETE direto no Supabase por CPF
-  if (rawCpf) {
+  // 3. DELETE direto no Supabase por CPF (somente se for CPF real, nunca 000.000.000-00)
+  if (hasRealCpf && rawCpf) {
     try {
       await supabase.from('fleet_drivers').delete().eq('cpf', rawCpf);
       await supabaseAnon.from('fleet_drivers').delete().eq('cpf', rawCpf);
@@ -2074,8 +2184,8 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
     console.warn('[FleetFuel] Erro ao marcar tombstone em motorista por ID no Supabase:', err);
   }
 
-  // 5. Marcar Tombstone no Supabase por CPF
-  if (rawCpf || digitsCpf) {
+  // 5. Marcar Tombstone no Supabase por CPF (somente se for CPF real)
+  if (hasRealCpf && (rawCpf || digitsCpf)) {
     try {
       const filters: string[] = [];
       if (rawCpf) filters.push(`cpf.eq.${rawCpf}`);
@@ -2094,8 +2204,8 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
   const filtered = list.filter(d => {
     if (isDriverTombstoned(d)) return false;
     if (d.id === id) return false;
-    if (rawCpf && d.cpf === rawCpf) return false;
-    if (digitsCpf && d.cpf && d.cpf.replace(/\D/g, '') === digitsCpf) return false;
+    if (hasRealCpf && rawCpf && d.cpf === rawCpf) return false;
+    if (hasRealCpf && digitsCpf && d.cpf && d.cpf.replace(/\D/g, '') === digitsCpf) return false;
     return true;
   });
   saveLocalDrivers(filtered);
@@ -2961,7 +3071,7 @@ export async function createDriversBatch(
   driversList: NewDriverPayload[],
   institutionId: string = 'inst_1'
 ): Promise<{ count: number; saved: FleetDriver[] }> {
-  // Mapeia CPFs já existentes no banco (inclusive excluídos/tombstone) para reutilizar o mesmo UUID e reativá-los sem duplicar
+  // Mapeia CPFs reais já existentes no banco (inclusive excluídos/tombstone) para reutilizar o mesmo UUID sem colidir CPFs zerados (000.000.000-00)
   const existingCpfMap = new Map<string, string>();
   try {
     let { data: existingRows, error: exErr } = await supabase.from('fleet_drivers').select('id, cpf');
@@ -2970,7 +3080,7 @@ export async function createDriversBatch(
       existingRows = anonEx.data;
     }
     (existingRows || []).forEach(r => {
-      if (r.cpf && r.id) {
+      if (r.cpf && r.id && isRealCpf(r.cpf)) {
         existingCpfMap.set(r.cpf.trim(), r.id);
         const clean = r.cpf.replace(/\D/g, '');
         if (clean) existingCpfMap.set(clean, r.id);
@@ -2979,10 +3089,17 @@ export async function createDriversBatch(
   } catch {}
 
   const newDrivers: FleetDriver[] = driversList.map((payload) => {
-    const rawCpf = payload.cpf.trim();
+    const rawCpf = (payload.cpf || '').trim();
     const digitsCpf = rawCpf.replace(/\D/g, '');
-    const matchedId = existingCpfMap.get(rawCpf) || (digitsCpf ? existingCpfMap.get(digitsCpf) : undefined);
+    const hasValidCpf = isRealCpf(rawCpf);
+    const matchedId = hasValidCpf
+      ? (existingCpfMap.get(rawCpf) || (digitsCpf ? existingCpfMap.get(digitsCpf) : undefined))
+      : undefined;
     const driverId = isValidUUID(payload.id) ? payload.id! : (matchedId || generateValidUUID());
+    if (hasValidCpf) {
+      if (rawCpf) existingCpfMap.set(rawCpf, driverId);
+      if (digitsCpf) existingCpfMap.set(digitsCpf, driverId);
+    }
     const birthDate = sanitizeDateToISO(payload.birth_date);
     const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
     const cnhCat = payload.cnh_category && payload.cnh_category.trim() !== '' ? payload.cnh_category.trim() : 'B';
@@ -2991,7 +3108,7 @@ export async function createDriversBatch(
       id: driverId,
       institution_id: payload.institution_id || institutionId,
       full_name: payload.full_name.trim(),
-      cpf: rawCpf,
+      cpf: rawCpf || '000.000.000-00',
       birth_date: birthDate || undefined,
       department: payload.department?.trim() || 'Geral',
       cnh_number: cnhNumber || undefined,
@@ -3001,7 +3118,10 @@ export async function createDriversBatch(
     };
   });
 
-  const supabaseRecords = newDrivers.map(d => ({
+  // Deduplica por ID para evitar erro do PostgreSQL "ON CONFLICT DO UPDATE command cannot affect row a second time"
+  const dedupedDrivers = Array.from(new Map(newDrivers.map(d => [d.id, d])).values());
+
+  const supabaseRecords = dedupedDrivers.map(d => ({
     id: d.id,
     institution_id: d.institution_id,
     full_name: d.full_name,
@@ -3024,6 +3144,7 @@ export async function createDriversBatch(
       if (typeof window !== 'undefined') {
         try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
       }
+      (data as FleetDriver[]).forEach(d => removeDriverFromBlacklist(d.id, d.cpf, d.full_name));
       const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
       const savedMap = new Map(list.map(d => [d.id, d]));
       (data as FleetDriver[]).forEach(d => savedMap.set(d.id, d));
@@ -3042,10 +3163,11 @@ export async function createDriversBatch(
     throw new Error(`Erro ao conectar com Supabase: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  dedupedDrivers.forEach(d => removeDriverFromBlacklist(d.id, d.cpf, d.full_name));
   const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));
-  const combined = [...newDrivers, ...list];
+  const combined = [...dedupedDrivers, ...list];
   saveLocalDrivers(combined);
-  return { count: newDrivers.length, saved: newDrivers };
+  return { count: dedupedDrivers.length, saved: dedupedDrivers };
 }
 
 

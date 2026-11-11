@@ -32,8 +32,11 @@ import {
   parseLawDocument, 
   paginateLawDocument, 
   BudgetTableBlock, 
+  DataTableBlock,
   budgetTableToTSV, 
-  budgetTableToText 
+  budgetTableToText,
+  dataTableToTSV,
+  dataTableToText
 } from '../utils/lawFormatter';
 import { LAW_TYPES, LAW_CATEGORIES } from './LawFormModal';
 import { showToast } from '../../../components/ui/Toast';
@@ -145,7 +148,7 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
             progressStep: step
           } : it));
         },
-        institution?.name
+        institution?.name ? { municipio: institution.name } : undefined
       );
 
       const elapsedMs = Date.now() - startTime;
@@ -335,12 +338,19 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
     return paginateLawDocument(parsedSelectedDoc);
   }, [parsedSelectedDoc]);
 
-  const handleCopyBudgetTable = (block: BudgetTableBlock, idx: number, asExcel: boolean) => {
-    const content = asExcel ? budgetTableToTSV(block) : budgetTableToText(block);
+  const handleCopyBudgetTable = (block: BudgetTableBlock | DataTableBlock, idx: number, asExcel: boolean) => {
+    const content =
+      block.type === 'data_table'
+        ? asExcel
+          ? dataTableToTSV(block)
+          : dataTableToText(block)
+        : asExcel
+        ? budgetTableToTSV(block)
+        : budgetTableToText(block);
     navigator.clipboard.writeText(content);
     setCopiedTableIdx(idx);
     showToast(
-      asExcel ? 'Tabela copiada para Excel / Planilhas!' : 'Dotação orçamentária copiada!',
+      asExcel ? 'Tabela copiada para Excel / Planilhas!' : 'Tabela copiada para a área de transferência!',
       'success'
     );
     setTimeout(() => setCopiedTableIdx(null), 2000);
@@ -443,7 +453,7 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
           </div>
 
           {/* =========================================================================
-              ESTADO INICIAL VAZIO: DROPZONE AMPLO E PRODUTIVO
+              ESTADO INICIAL VAZIO: DROPZONE AMPLO E PRODUTIVO PARA PDFs
              ========================================================================= */}
           {items.length === 0 && activeMode === 'pdf_batch' ? (
             <div 
@@ -456,7 +466,8 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                 handleAddFiles(e.dataTransfer.files);
               }}
             >
-              <label 
+              <div 
+                onClick={() => fileInputRef.current?.click()}
                 className={`w-full max-w-3xl p-8 sm:p-12 rounded-3xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center text-center space-y-4 ${
                   isDraggingOver 
                     ? 'border-emerald-500 bg-emerald-50/60 dark:bg-emerald-950/30 scale-[1.01]' 
@@ -468,26 +479,27 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                 </div>
                 <div className="space-y-1.5">
                   <h3 className="text-lg sm:text-xl font-black text-neutral-900 dark:text-white">
-                    Clique para selecionar ou arraste os PDFs das Leis aqui
+                    Clique aqui ou arraste os arquivos PDF das Leis
                   </h3>
                   <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 max-w-xl mx-auto leading-relaxed">
-                    Suporta tanto <strong>Diários Oficiais vetoriais (AMM-MT)</strong> e <strong>leis antigas escaneadas</strong> quanto PDFs digitais. 
-                    O sistema extrai o texto integral, separa todas as tabelas de dotação orçamentária e monta as folhas A4 automaticamente.
+                    Selecione um ou múltiplos arquivos PDF de uma só vez (Leis Ordinárias, Decretos, Portarias ou Diários Oficiais).
+                    O leitor transcreve o texto integral, separa todas as tabelas orçamentárias e monta a folha A4 oficial.
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
-                  <span className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md shadow-emerald-600/20">
-                    <Sparkles size={15} />
-                    <span>Escolher Arquivos PDF no Computador</span>
-                  </span>
+                <div className="flex flex-wrap items-center justify-center gap-3 pt-2" onClick={e => e.stopPropagation()}>
                   <button
                     type="button"
-                    onClick={e => {
-                      e.preventDefault();
-                      setActiveMode('paste_text');
-                    }}
-                    className="px-4 py-2.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-md shadow-emerald-600/20 cursor-pointer transition-all"
+                  >
+                    <Sparkles size={15} />
+                    <span>Escolher Arquivos PDF no Computador</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveMode('paste_text')}
+                    className="px-4 py-3 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all"
                   >
                     <Edit3 size={14} />
                     <span>Ou Colar Texto Copiado</span>
@@ -497,10 +509,10 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full pt-4 border-t border-neutral-100 dark:border-neutral-800 text-left">
                   <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/60 dark:border-neutral-700/60">
                     <div className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                      <Zap size={12} /> 1. Leitura Ultrarrápida (~5s)
+                      <Zap size={12} /> 1. Leitura em Lote
                     </div>
                     <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-                      Processamento paralelo de múltiplos PDFs sem travar a tela.
+                      Processamento paralelo de múltiplos arquivos simultaneamente.
                     </p>
                   </div>
                   <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/60 dark:border-neutral-700/60">
@@ -508,15 +520,15 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                       <Newspaper size={12} /> 2. Padrão Diário A4
                     </div>
                     <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-                      Epígrafe, ementa recuada, artigos e tabelas por Órgão paginados.
+                      Diagramação oficial com epígrafe, ementa e tabelas por Órgão.
                     </p>
                   </div>
                   <div className="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/60 dark:border-neutral-700/60">
                     <div className="text-[11px] font-black text-purple-700 dark:text-purple-400 flex items-center gap-1">
-                      <Columns size={12} /> 3. Conferência Lado a Lado
+                      <Columns size={12} /> 3. Comparação Lado a Lado
                     </div>
                     <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-                      Compare o PDF original anexado com a transcrição antes de publicar.
+                      Confira o PDF original anexado lado a lado com a transcrição.
                     </p>
                   </div>
                 </div>
@@ -527,9 +539,70 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                   multiple 
                   accept=".pdf,application/pdf" 
                   className="hidden" 
-                  onChange={e => handleAddFiles(e.target.files)}
+                  onChange={e => {
+                    handleAddFiles(e.target.files);
+                    e.target.value = '';
+                  }}
                 />
-              </label>
+              </div>
+            </div>
+          ) : items.length === 0 && activeMode === 'paste_text' ? (
+            /* =========================================================================
+               ESTADO INICIAL: MODO COLAR TEXTO BRUTO
+               ========================================================================= */
+            <div className="flex-1 p-6 sm:p-10 flex flex-col items-center justify-center bg-neutral-50/50 dark:bg-neutral-950/30 overflow-y-auto">
+              <div className="w-full max-w-3xl p-6 sm:p-8 rounded-3xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950 text-purple-600 flex items-center justify-center">
+                      <Edit3 size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                        Colar Texto Copiado de Norma ou Diário Oficial
+                      </h3>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Cole o texto da lei copiado de arquivo Word, Diário Oficial ou site da AMM
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveMode('pdf_batch')}
+                    className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 rounded-xl text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Files size={13} />
+                    <span>Voltar para Envio de PDFs</span>
+                  </button>
+                </div>
+
+                <textarea
+                  rows={10}
+                  value={pastedText}
+                  onChange={e => setPastedText(e.target.value)}
+                  placeholder="Cole aqui o texto da norma (ex: LEI Nº 1.331/2026 ... O Prefeito Municipal sanciona a seguinte lei: Art. 1º...)"
+                  className="w-full bg-neutral-50 dark:bg-neutral-800/80 border border-neutral-200 dark:border-neutral-700 rounded-2xl p-4 text-xs font-mono text-neutral-800 dark:text-neutral-200 outline-none focus:ring-2 focus:ring-purple-500 resize-none leading-relaxed"
+                />
+
+                <div className="flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveMode('pdf_batch')}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleProcessPastedText}
+                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                  >
+                    <Sparkles size={14} />
+                    <span>Estruturar Norma em Folha A4</span>
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             /* =========================================================================
@@ -547,12 +620,14 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                       <UploadCloud size={16} className="text-emerald-600" />
                       <span>+ Adicionar Mais Arquivos PDF</span>
                       <input 
-                        ref={fileInputRef}
                         type="file" 
                         multiple 
                         accept=".pdf,application/pdf" 
                         className="hidden" 
-                        onChange={e => handleAddFiles(e.target.files)}
+                        onChange={e => {
+                          handleAddFiles(e.target.files);
+                          e.target.value = '';
+                        }}
                       />
                     </label>
                   ) : (
@@ -870,6 +945,68 @@ export const LawBatchImportModal: React.FC<LawBatchImportModalProps> = ({
                                                             <span className={r.isOrgao ? 'font-bold' : ''}>{r.value}</span>
                                                           )}
                                                         </td>
+                                                      </tr>
+                                                    ))}
+                                                  </tbody>
+                                                </table>
+                                              </div>
+                                            </div>
+                                          );
+                                        }
+                                        if (block.type === 'data_table') {
+                                          const dTable = block as DataTableBlock;
+                                          return (
+                                            <div key={`dtable-${bIdx}`} className="my-4 font-sans">
+                                              <div className="flex items-center justify-between mb-1">
+                                                <span className="text-[11px] font-bold text-neutral-800">
+                                                  {dTable.title || 'Tabela / Quadro Demonstrativo'}
+                                                </span>
+                                                <div className="flex items-center gap-1.5">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleCopyBudgetTable(dTable, bIdx, false)}
+                                                    className="px-2 py-0.5 rounded bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-[10px] font-bold flex items-center gap-1 border border-neutral-300 cursor-pointer"
+                                                  >
+                                                    {copiedTableIdx === bIdx ? <Check size={10} className="text-emerald-600" /> : <Copy size={10} />}
+                                                    <span>Copiar</span>
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleCopyBudgetTable(dTable, bIdx, true)}
+                                                    className="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center gap-1 border border-emerald-300 cursor-pointer"
+                                                  >
+                                                    <FileSpreadsheet size={10} className="text-emerald-600" />
+                                                    <span>Excel</span>
+                                                  </button>
+                                                </div>
+                                              </div>
+                                              <div className="border border-neutral-400 rounded-md overflow-x-auto bg-white">
+                                                <table className="w-full text-[11px] border-collapse">
+                                                  {dTable.headers.length > 0 && (
+                                                    <thead>
+                                                      <tr className="bg-neutral-100 border-b border-neutral-400">
+                                                        {dTable.headers.map((h, hIdx) => (
+                                                          <th
+                                                            key={hIdx}
+                                                            className="font-bold text-left px-2.5 py-1.5 border-r border-neutral-300 last:border-r-0 text-neutral-900"
+                                                          >
+                                                            {h}
+                                                          </th>
+                                                        ))}
+                                                      </tr>
+                                                    </thead>
+                                                  )}
+                                                  <tbody>
+                                                    {dTable.rows.map((row, rIdx) => (
+                                                      <tr key={rIdx} className="border-b border-neutral-300 last:border-b-0 even:bg-neutral-50/60">
+                                                        {row.map((cell, cIdx) => (
+                                                          <td
+                                                            key={cIdx}
+                                                            className="px-2.5 py-1.5 border-r border-neutral-300 last:border-r-0 text-neutral-900"
+                                                          >
+                                                            {cell}
+                                                          </td>
+                                                        ))}
                                                       </tr>
                                                     ))}
                                                   </tbody>

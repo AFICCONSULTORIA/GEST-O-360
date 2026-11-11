@@ -38,8 +38,11 @@ import {
   ParsedLawStructure, 
   ParsedLawPage,
   BudgetTableBlock,
+  DataTableBlock,
   budgetTableToTSV,
   budgetTableToText,
+  dataTableToTSV,
+  dataTableToText,
   allBudgetTablesToTSV
 } from '../utils/lawFormatter';
 
@@ -48,6 +51,7 @@ interface LawReaderModalProps {
   allLaws?: MunicipalLaw[];
   onClose: () => void;
   onEdit?: (law: MunicipalLaw) => void;
+  onDelete?: (law: MunicipalLaw) => void;
   onSelectRelatedLaw?: (law: MunicipalLaw) => void;
 }
 
@@ -64,6 +68,7 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
   allLaws = [],
   onClose,
   onEdit,
+  onDelete,
   onSelectRelatedLaw
 }) => {
   // Modo de redação: compilado vs original
@@ -103,9 +108,9 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
     return paginateLawDocument(parsedDoc);
   }, [parsedDoc]);
 
-  // Contagem de tabelas orçamentárias na lei
+  // Contagem de tabelas orçamentárias e demonstrativas na lei
   const budgetTablesCount = useMemo(() => {
-    return parsedDoc.blocks.filter(b => b.type === 'budget_table').length;
+    return parsedDoc.blocks.filter(b => b.type === 'budget_table' || b.type === 'data_table').length;
   }, [parsedDoc]);
 
   // Parser dos artigos para o sumário lateral do Leitor LexML
@@ -189,8 +194,15 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
   };
 
   // Copiar Tabela Individual (Texto ou Excel/TSV)
-  const handleCopyTable = (block: BudgetTableBlock, index: number, asTSV = false) => {
-    const textToCopy = asTSV ? budgetTableToTSV(block) : budgetTableToText(block);
+  const handleCopyTable = (block: BudgetTableBlock | DataTableBlock, index: number, asTSV = false) => {
+    const textToCopy =
+      block.type === 'data_table'
+        ? asTSV
+          ? dataTableToTSV(block)
+          : dataTableToText(block)
+        : asTSV
+        ? budgetTableToTSV(block)
+        : budgetTableToText(block);
     navigator.clipboard.writeText(textToCopy);
     setCopiedTableIndex(index);
     showToast(
@@ -437,6 +449,95 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
     );
   };
 
+  // Renderiza tabela em grade/colunas (cargos, vencimentos, anexos, quadros gerais)
+  const renderDataTableBlock = (block: DataTableBlock, index: number, isGazetteMode = false) => {
+    const isCopied = copiedTableIndex === index;
+
+    return (
+      <div key={`datatable-${index}`} className={`my-4 group ${isGazetteMode ? 'text-black' : ''}`}>
+        <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+          <div className={`text-xs font-bold font-sans ${isGazetteMode ? 'text-neutral-900' : 'text-neutral-800 dark:text-neutral-200'}`}>
+            {block.title || 'Tabela / Quadro Demonstrativo'}
+          </div>
+
+          <div className="opacity-80 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 no-print">
+            <button
+              type="button"
+              onClick={() => handleCopyTable(block, index, false)}
+              className="px-2 py-0.5 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer border border-neutral-300 dark:border-neutral-700"
+              title="Copiar tabela formatada para texto / parecer"
+            >
+              {isCopied ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+              <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleCopyTable(block, index, true)}
+              className="px-2 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer border border-emerald-300 dark:border-emerald-800"
+              title="Copiar dados para colar no Excel ou Google Sheets (colunas separadas)"
+            >
+              <FileSpreadsheet size={11} className="text-emerald-600 dark:text-emerald-400" />
+              <span>Excel (TSV)</span>
+            </button>
+          </div>
+        </div>
+
+        <div className={`border rounded-lg overflow-x-auto text-xs font-sans select-text cursor-text ${
+          isGazetteMode 
+            ? 'border-neutral-300 bg-white shadow-xs' 
+            : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/90 shadow-xs'
+        }`}>
+          <table className="w-full border-collapse select-text">
+            {block.headers.length > 0 && (
+              <thead>
+                <tr className={`border-b ${
+                  isGazetteMode
+                    ? 'bg-neutral-100 border-neutral-300 text-neutral-900'
+                    : 'bg-neutral-100/80 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100'
+                }`}>
+                  {block.headers.map((header, hIdx) => (
+                    <th
+                      key={hIdx}
+                      className="font-bold text-left p-2.5 border-r last:border-r-0 border-neutral-300 dark:border-neutral-700 select-text"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody>
+              {block.rows.map((row, rIdx) => (
+                <tr 
+                  key={rIdx} 
+                  className={`border-b last:border-b-0 ${
+                    isGazetteMode 
+                      ? 'border-neutral-300 even:bg-neutral-50/70' 
+                      : 'border-neutral-100 dark:border-neutral-800/80 even:bg-neutral-50/40 dark:even:bg-neutral-800/30'
+                  }`}
+                >
+                  {row.map((cell, cIdx) => (
+                    <td
+                      key={cIdx}
+                      className={`p-2.5 border-r last:border-r-0 align-top select-text ${
+                        isGazetteMode
+                          ? 'border-neutral-300 text-neutral-900'
+                          : 'border-neutral-100 dark:border-neutral-800 text-neutral-900 dark:text-neutral-100'
+                      }`}
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
   return createPortal(
     <>
       {/* Estilos específicos para impressão fiel ao Diário Oficial e Modelo Próprio com Gestão 360 */}
@@ -655,9 +756,24 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
                       onClose();
                       onEdit(law);
                     }}
-                    className="px-2.5 py-1.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Editar Atributos e Conteúdo da Norma"
                   >
-                    Editar
+                    <span>Editar Norma</span>
+                  </button>
+                )}
+
+                {onDelete && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onDelete(law);
+                    }}
+                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                    title="Excluir esta norma do acervo"
+                  >
+                    <span>Excluir</span>
                   </button>
                 )}
               </div>
@@ -736,6 +852,10 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
                       {page.blocks.map((block, bIdx) => {
                         if (block.type === 'budget_table') {
                           return renderBudgetTableBlock(block as BudgetTableBlock, bIdx, true);
+                        }
+
+                        if (block.type === 'data_table') {
+                          return renderDataTableBlock(block as DataTableBlock, bIdx, true);
                         }
 
                         if (block.type === 'article') {
@@ -990,6 +1110,10 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
                         return renderBudgetTableBlock(block as BudgetTableBlock, idx, false);
                       }
 
+                      if (block.type === 'data_table') {
+                        return renderDataTableBlock(block as DataTableBlock, idx, false);
+                      }
+
                       if (block.type === 'article') {
                         return (
                           <div 
@@ -1145,6 +1269,9 @@ export const LawReaderModal: React.FC<LawReaderModalProps> = ({
                     {parsedDoc.blocks.map((block, bIdx) => {
                       if (block.type === 'budget_table') {
                         return renderBudgetTableBlock(block as BudgetTableBlock, bIdx, true);
+                      }
+                      if (block.type === 'data_table') {
+                        return renderDataTableBlock(block as DataTableBlock, bIdx, true);
                       }
                       if (block.type === 'article') {
                         return (

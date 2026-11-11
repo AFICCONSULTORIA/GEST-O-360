@@ -2,15 +2,24 @@ import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore - Vite resolves ?url imports to local static asset path
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { extractLawFromPdf, buildDescriptiveLawTitle } from './lawOcrService';
-import { parseLawDocument, ParsedLawStructure } from '../utils/lawFormatter';
+import {
+  parseLawDocument,
+  ParsedLawStructure,
+  cleanAndNormalizeLawText,
+  isRepeatedHeaderNoiseLine,
+  isRepeatedFooterNoiseLine,
+  extractRealLawDateAndYear
+} from '../utils/lawFormatter';
 import { LawCategory } from '../../../types';
 
-// Configura o worker local do PDF.js empacotado pelo Vite (sem erro de CORS!)
+// Configura o worker do PDF.js de forma resiliente
 if (typeof window !== 'undefined') {
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      pdfWorkerUrl ||
+      `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.5.438'}/build/pdf.worker.min.mjs`;
   } catch (e) {
-    console.warn('Erro ao configurar worker local do PDF.js:', e);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.5.438'}/build/pdf.worker.min.mjs`;
   }
 }
 
@@ -87,73 +96,362 @@ function inferTagsFromText(text: string, type: string, category: string): string
 }
 
 /**
+ * Renderiza as páginas de um documento PDF em imagens JPEG otimizadas (escala 1.55x)
+ * sem cortar conteúdo útil nas margens (usado sob demanda como contingência de OCR).
+ */
+async function renderPdfPagesToImages(
+  pdfDoc: any,
+  maxPages = 12,
+  onProgress?: (status: string) => void
+): Promise<Array<{ mimeType: string; data: string }>> {
+  const images: Array<{ mimeType: string; data: string }> = [];
+  if (typeof document === 'undefined' || !pdfDoc) return images;
+
+  const totalToRender = Math.min(pdfDoc.numPages || 1, maxPages);
+
+  for (let pageNum = 1; pageNum <= totalToRender; pageNum++) {
+    try {
+      onProgress?.(`Renderizando página ${pageNum}/${totalToRender} para leitura óptica...`);
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.55 });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) continue;
+
+      // Fundo branco puro para maximizar contraste de textos escaneados
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      await page.render({
+        canvasContext: ctx,
+        viewport
+      }).promise;
+
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      const base64Clean = dataUrl.includes(',') ? dataUrl.split(',')[1] : dataUrl;
+      if (base64Clean) {
+        images.push({
+          mimeType: 'image/jpeg',
+          data: base64Clean
+        });
+      }
+    } catch (renderErr) {
+      console.warn(`Aviso ao renderizar página ${pageNum} para imagem:`, renderErr);
+    }
+  }
+
+  return images;
+}
+
+/**
+ * Detecta se a camada de texto nativa do PDF possui fontes corrompidas (CMap ToUnicode quebrado,
+ * glifos na Private Use Area \uE000-\uF8FF, caracteres de substituição \uFFFD ou excesso de lixo)
+ */
+function hasCorruptedFontCharacters(raw: string): boolean {
+  if (!raw || raw.length === 0) return false;
+
+  // Glifos PUA (Private Use Area) ou Replacement Character são sinal inequívoco de fonte PDF corrompida
+  const puaOrReplacementMatches = raw.match(/[\uE000-\uF8FF\uFFFD]/g);
+  if (puaOrReplacementMatches && puaOrReplacementMatches.length >= 3) {
+    return true;
+  }
+
+  // Verifica proporção de caracteres legíveis (letras latinas, números, pontuação e símbolos jurídicos comuns)
+  const nonWhitespace = raw.replace(/\s+/g, '');
+  if (nonWhitespace.length < 30) return false;
+
+  const weirdChars = nonWhitespace.replace(
+    /[a-zA-Z0-9À-ÿ.,;:!?()"“”'‘’\-–—/$%ºª°§|\[\]{}+=*&@#ºª]/g,
+    ''
+  );
+  if (weirdChars.length / nonWhitespace.length > 0.06) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Extrai texto completo de um arquivo PDF:
- * 1) Tenta extração nativa ultrarrápida (< 0.5s) para PDFs com camada de texto selecionável.
- * 2) Para PDFs de Diário Oficial vetorizados/rasterizados (ex: AMM-MT) ou digitalizados,
- *    aciona automaticamente o motor Gemini 3.5 Flash Lite (~4-5s) com transcrição integral.
+ * 1) Tenta extração nativa ultrarrápida (< 0.5s) com ordenação geométrica (Y/X), reconstrução de tabelas
+ *    e remoção automática de cabeçalhos/rodapés repetidos entre páginas.
+ * 2) Para PDFs escaneados (imagem/assinatura física), fontes corrompidas ou Diário Oficial vetorizado,
+ *    renderiza as páginas em alta definição e aciona transcrição multimodal (Gemini Vision / OCR Local).
  */
 export async function extractLawTextFromPdf(
   file: File,
   onProgress?: (status: string) => void,
-  institutionContext?: { municipio?: string; estado?: string }
+  institutionContext?: { municipio?: string; estado?: string } | string
 ): Promise<ExtractedLawResult> {
   onProgress?.('Inspecionando camadas do arquivo PDF...');
 
+  const contextObj = typeof institutionContext === 'string'
+    ? { municipio: institutionContext }
+    : institutionContext;
+
   const arrayBuffer = await file.arrayBuffer();
 
+  let rawNativeBeforeClean = '';
   let nativeText = '';
   let pageCount = 0;
+  let hasImageOnlyPages = false;
+  let loadedPdfDoc: any = null;
+
+  const extractFromDoc = async (pdfDoc: any) => {
+    loadedPdfDoc = pdfDoc;
+    pageCount = pdfDoc.numPages;
+    hasImageOnlyPages = false;
+
+    interface ExtractedPageLine {
+      y: number;
+      text: string;
+      hasMultiColumns: boolean;
+      columnCells: string[];
+      isTopMargin: boolean;
+      isBottomMargin: boolean;
+      normSignature: string;
+    }
+
+    const allPagesLines: ExtractedPageLine[][] = [];
+    const marginFrequency = new Map<string, number>();
+
+    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+      const page = await pdfDoc.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 1.0 });
+      const pageHeight = viewport.height || 842;
+      const textContent = await page.getTextContent();
+
+      interface RawItem {
+        str: string;
+        x: number;
+        y: number;
+        width: number;
+      }
+
+      const rawItems: RawItem[] = [];
+      for (const item of textContent.items as any[]) {
+        if ('str' in item && typeof item.str === 'string' && item.str.length > 0) {
+          const x = item.transform ? Number(item.transform[4]) || 0 : 0;
+          const y = item.transform ? Number(item.transform[5]) || 0 : 0;
+          const width = typeof item.width === 'number' ? item.width : item.str.length * 4.8;
+          rawItems.push({ str: item.str, x, y, width });
+        }
+      }
+
+      const rawPageChars = rawItems.map(i => i.str).join('').replace(/\s+/g, '');
+      if (rawPageChars.length < 35) {
+        hasImageOnlyPages = true;
+      }
+      rawNativeBeforeClean += rawItems.map(i => i.str).join(' ') + '\n';
+
+      // Agrupa itens por coordenada Y (tolerância de 3.5pt para itens na mesma linha horizontal)
+      const lineGroups: Array<{ y: number; items: RawItem[] }> = [];
+      for (const item of rawItems) {
+        let foundGroup = lineGroups.find(g => Math.abs(g.y - item.y) <= 3.5);
+        if (!foundGroup) {
+          foundGroup = { y: item.y, items: [] };
+          lineGroups.push(foundGroup);
+        }
+        foundGroup.items.push(item);
+      }
+
+      // Ordena linhas do topo para a base da página (Y decrescente no sistema de coordenadas PDF)
+      lineGroups.sort((a, b) => b.y - a.y);
+
+      const pageLines: ExtractedPageLine[] = [];
+
+      for (const group of lineGroups) {
+        // Ordena fragmentos da esquerda para a direita (X crescente)
+        group.items.sort((a, b) => a.x - b.x);
+
+        const cells: string[] = [];
+        let currentCell = '';
+        let plainLine = '';
+        let prevRight: number | null = null;
+
+        for (const item of group.items) {
+          const piece = item.str;
+          if (!piece.trim() && currentCell.length === 0) continue;
+
+          if (prevRight === null) {
+            currentCell = piece;
+            plainLine = piece;
+          } else {
+            const gap = item.x - prevRight;
+            // Se houver espaçamento horizontal tabular (> 12pt), representa outra coluna de tabela
+            if (gap > 12 && currentCell.trim().length > 0 && piece.trim().length > 0) {
+              cells.push(currentCell.trim());
+              currentCell = piece;
+              plainLine += '   ' + piece;
+            } else if (gap < 1.3) {
+              // Letras coladas da mesma palavra
+              currentCell += piece;
+              plainLine += piece;
+            } else {
+              // Espaço normal entre palavras
+              const needsSpace = !currentCell.endsWith(' ') && !piece.startsWith(' ');
+              currentCell += (needsSpace ? ' ' : '') + piece;
+              plainLine += (needsSpace ? ' ' : '') + piece;
+            }
+          }
+          prevRight = Math.max(prevRight ?? 0, item.x + Math.max(item.width, 0));
+        }
+
+        if (currentCell.trim().length > 0) {
+          cells.push(currentCell.trim());
+        }
+
+        const cleanLineText = plainLine.replace(/\s+/g, ' ').trim();
+        if (!cleanLineText) continue;
+
+        const isTopMargin = group.y >= pageHeight * 0.86;
+        const isBottomMargin = group.y <= pageHeight * 0.13;
+        const normSignature = cleanLineText
+          .toLowerCase()
+          .replace(/\d+/g, '#')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if ((isTopMargin || isBottomMargin) && normSignature.length >= 4) {
+          marginFrequency.set(normSignature, (marginFrequency.get(normSignature) || 0) + 1);
+        }
+
+        pageLines.push({
+          y: group.y,
+          text: cleanLineText,
+          hasMultiColumns: cells.length >= 2,
+          columnCells: cells,
+          isTopMargin,
+          isBottomMargin,
+          normSignature
+        });
+      }
+
+      allPagesLines.push(pageLines);
+    }
+
+    // Reconstrói o texto de cada página filtrando cabeçalhos/rodapés repetidos e preservando tabelas
+    const renderedPages: string[] = [];
+
+    for (let pageIdx = 0; pageIdx < allPagesLines.length; pageIdx++) {
+      const pLines = allPagesLines[pageIdx];
+      const filteredLines: ExtractedPageLine[] = [];
+
+      for (const line of pLines) {
+        // Remove qualquer linha de cabeçalho ou rodapé institucional/endereço/paginação
+        if (isRepeatedHeaderNoiseLine(line.text) || isRepeatedFooterNoiseLine(line.text)) {
+          continue;
+        }
+
+        // Se o documento tem 2+ páginas e a linha está na margem superior/inferior repetindo entre páginas, descarta
+        if (
+          pageCount > 1 &&
+          (line.isTopMargin || line.isBottomMargin) &&
+          (marginFrequency.get(line.normSignature) || 0) >= 2 &&
+          !/^(?:LEI|DECRETO|PORTARIA|RESOLUÇÃO|EMENDA|Art\.|Artigo|§|Parágrafo)/i.test(line.text)
+        ) {
+          continue;
+        }
+
+        filteredLines.push(line);
+      }
+
+      // Converte linhas com múltiplas colunas alinhadas em formato de tabela Markdown (Col 1 | Col 2 | Col 3)
+      const outputLines: string[] = [];
+      for (let i = 0; i < filteredLines.length; i++) {
+        const curr = filteredLines[i];
+        const prev = i > 0 ? filteredLines[i - 1] : null;
+        const next = i < filteredLines.length - 1 ? filteredLines[i + 1] : null;
+
+        const isArticleOrClause = /^(?:Art\.|Artigo|§|Parágrafo|[IVXLCDM]+\s*[-–—]|[a-z]\)|LEI\s+|DECRETO\s+|PORTARIA\s+)/i.test(curr.text);
+        const isBudgetKeyValue = /^(?:Órgão|Orgao|Unidade|Função|Funcao|Subfunção|Subfuncao|Programa|Projeto|Atividade|Elemento|Natureza|Fonte|Ficha)\s*[:.-]/i.test(curr.text);
+        const isBudgetNaturezaDots = /\.{3,}\s*R\$\s*[\d.,]+/i.test(curr.text);
+
+        const adjacentMultiColumn = (prev && prev.hasMultiColumns) || (next && next.hasMultiColumns);
+
+        if (
+          curr.hasMultiColumns &&
+          !isArticleOrClause &&
+          !isBudgetKeyValue &&
+          !isBudgetNaturezaDots &&
+          (curr.columnCells.length >= 3 || adjacentMultiColumn)
+        ) {
+          outputLines.push(curr.columnCells.join(' | '));
+        } else {
+          outputLines.push(curr.text);
+        }
+      }
+
+      if (outputLines.length > 0) {
+        renderedPages.push(outputLines.join('\n'));
+      }
+    }
+
+    nativeText = cleanAndNormalizeLawText(renderedPages.join('\n\n'));
+  };
 
   try {
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.5.438'}/build/pdf.worker.min.mjs`;
+    }
+
     const loadingTask = pdfjsLib.getDocument({
-      data: new Uint8Array(arrayBuffer),
+      data: new Uint8Array(arrayBuffer.slice(0)),
       useSystemFonts: true
     });
 
     const pdfDoc = await loadingTask.promise;
-    pageCount = pdfDoc.numPages;
-
-    for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
-      const page = await pdfDoc.getPage(pageNum);
-      const textContent = await page.getTextContent();
-
-      let lastY: number | null = null;
-      let pageText = '';
-
-      for (const item of textContent.items as any[]) {
-        if ('str' in item) {
-          const currentY = item.transform ? item.transform[5] : null;
-          if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 5) {
-            pageText += '\n';
-          } else if (pageText.length > 0 && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
-            pageText += ' ';
-          }
-          pageText += item.str;
-          lastY = currentY;
-        }
-      }
-
-      if (pageText.trim()) {
-        nativeText += pageText.trim() + '\n\n';
-      }
-    }
+    await extractFromDoc(pdfDoc);
   } catch (nativeErr) {
-    console.warn('Camada de texto nativa indisponível, prosseguindo com transcrição IA:', nativeErr);
+    console.warn('Tentativa com worker local falhou, tentando fallback com CDN:', nativeErr);
+    try {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.5.438'}/build/pdf.worker.min.mjs`;
+      const fallbackTask = pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer.slice(0)),
+        useSystemFonts: true
+      });
+      const pdfDoc = await fallbackTask.promise;
+      await extractFromDoc(pdfDoc);
+    } catch (cdnErr) {
+      console.warn('Camada nativa indisponível, prosseguindo para transcrição via IA:', cdnErr);
+    }
   }
 
   const cleanNative = nativeText.trim();
+  const isCorruptedFont = hasCorruptedFontCharacters(rawNativeBeforeClean);
 
-  // Caso 1: O PDF possui camada de texto selecionável real (>= 80 caracteres)
-  if (cleanNative.length >= 80) {
+  // Verifica se o texto nativo realmente contém o corpo normativo íntegro, sem páginas escaneadas/imagem e sem fontes corrompidas
+  const hasSubstantiveLegalBody =
+    !isCorruptedFont &&
+    !hasImageOnlyPages &&
+    cleanNative.length >= 180 &&
+    /(?:\bArt\.\s*1|\bART\.\s*1|\bArtigo\s*1|\b(?:DECRETA|RESOLVE|SANCIONA)\b)/.test(cleanNative);
+
+  // Caso 1: O PDF possui camada de texto selecionável real, limpa e íntegra em todas as páginas
+  if (hasSubstantiveLegalBody) {
     onProgress?.('Estruturando técnica legislativa, artigos e tabelas...');
     return buildResultFromRawText(cleanNative, 'native_pdf', pageCount || 1, file.name);
   }
 
-  // Caso 2: PDF de Diário Oficial vetorizado em curvas (ex: AMM-MT) ou documento escaneado
-  onProgress?.(`Transcrevendo ${pageCount || ''} página(s) do Diário Oficial com IA rápida (~5s)...`);
-  const aiResult = await extractLawFromPdf(file, institutionContext);
+  // Caso 2: PDF escaneado (imagem), híbrido (páginas de tabela em imagem), fonte corrompida (PUA) ou vetorizado em curvas
+  const ensurePageImages = () =>
+    loadedPdfDoc ? renderPdfPagesToImages(loadedPdfDoc, 12, onProgress) : Promise.resolve([]);
 
-  const parsedAI = parseLawDocument(aiResult.texto_integral, aiResult.ementa, {
+  onProgress?.(`Transcrevendo ${pageCount || 1} página(s) do documento via leitura óptica...`);
+  const aiResult = await extractLawFromPdf(file, contextObj, {
+    ensurePageImages,
+    nativeTextHint: isCorruptedFont ? '' : cleanNative,
+    onProgress
+  });
+
+  const cleanAiText = cleanAndNormalizeLawText(aiResult.texto_integral || '');
+  const cleanAiEmenta = cleanAndNormalizeLawText(aiResult.ementa || '');
+
+  const parsedAI = parseLawDocument(cleanAiText, cleanAiEmenta, {
     type: aiResult.tipo,
     number: aiResult.numero,
     publication_date: aiResult.data_publicacao,
@@ -165,15 +463,15 @@ export async function extractLawTextFromPdf(
 
   return {
     source: 'ai_ocr',
-    rawText: aiResult.texto_integral,
+    rawText: cleanAiText,
     pageCount: pageCount || 1,
     structuredData: {
       type: aiResult.tipo || 'Lei Ordinária',
       number: aiResult.numero || `1/${yearNum}`,
       year: yearNum,
       title: aiResult.titulo,
-      category: aiResult.categoria || inferCategoryFromText(aiResult.texto_integral + ' ' + aiResult.ementa),
-      ementa: aiResult.ementa || parsedAI.ementa,
+      category: aiResult.categoria || inferCategoryFromText(cleanAiText + ' ' + cleanAiEmenta),
+      ementa: cleanAiEmenta || parsedAI.ementa,
       preambulo: parsedAI.preambulo,
       publication_date: aiResult.data_publicacao,
       author: aiResult.autor,
@@ -181,7 +479,7 @@ export async function extractLawTextFromPdf(
       materia_numero: aiResult.materia_numero,
       tags: aiResult.tags,
       valor_total_credito: aiResult.valor_total_credito,
-      full_text: aiResult.texto_integral,
+      full_text: cleanAiText,
       budget_tables: budgetTables.length > 0 ? budgetTables : aiResult.tabelas_orcamento
     },
     parsedDoc: parsedAI
@@ -197,7 +495,7 @@ function buildResultFromRawText(
   pageCount: number,
   fileNameFallback?: string
 ): ExtractedLawResult {
-  const clean = rawText.trim();
+  const clean = cleanAndNormalizeLawText(rawText).trim();
   const parsed = parseLawDocument(clean, '', {
     author: 'Prefeito Municipal'
   });
@@ -207,37 +505,37 @@ function buildResultFromRawText(
   let numOnly = '';
   let year = new Date().getFullYear();
 
-  if (/decreto/i.test(tipoNumero)) type = 'Decreto';
-  else if (/complementar|\blc\b/i.test(tipoNumero)) type = 'Lei Complementar';
+  if (/decreto/i.test(tipoNumero) || /^decreto/i.test(clean)) type = 'Decreto';
+  else if (/complementar|\blc\b/i.test(tipoNumero) || /LEI\s+COMPLEMENTAR/i.test(clean)) type = 'Lei Complementar';
   else if (/portaria/i.test(tipoNumero)) type = 'Portaria';
   else if (/resolu/i.test(tipoNumero)) type = 'Resolução';
   else if (/emenda/i.test(tipoNumero)) type = 'Emenda à LOM';
 
-  const numMatch = tipoNumero.match(/(\d+)\s*[/_.-]\s*(\d{2,4})/);
-  if (numMatch) {
-    numOnly = numMatch[1];
-    const y = parseInt(numMatch[2], 10);
+  // Extrai número e ano da epígrafe (ex: "LEI COMPLEMENTAR N.º 107/2026" ou "LEI Nº 1.378 DE 13 DE OUTUBRO DE 2026")
+  const slashMatch = tipoNumero.match(/([\d.]+)\s*[/]\s*(\d{2,4})/);
+  if (slashMatch) {
+    numOnly = slashMatch[1].replace(/\./g, '');
+    const y = parseInt(slashMatch[2].replace(/\./g, ''), 10);
     year = y < 100 ? (y > 50 ? 1900 + y : 2000 + y) : y;
   } else {
-    const singleNum = tipoNumero.match(/(\d+)/);
-    if (singleNum) numOnly = singleNum[1];
-    const yearInText = clean.match(/\b(19\d\d|20\d\d)\b/);
+    const epNumMatch = tipoNumero.match(/(?:Nº|N°|N\.º|N\.°|NUM|LEI|DECRETO|PORTARIA|COMPLEMENTAR)\s*([\d.]+)/i);
+    if (epNumMatch) {
+      numOnly = epNumMatch[1].replace(/\./g, '');
+    } else {
+      const singleNum = tipoNumero.match(/(\d+)/);
+      if (singleNum) numOnly = singleNum[1];
+    }
+    const yearInText = clean.replace(/(\d)\.(\d{3})\b/g, '$1$2').match(/\b(19\d\d|20\d\d)\b/);
     if (yearInText) year = parseInt(yearInText[1], 10);
   }
 
-  let pubDate = `${year}-01-01`;
-  const dateMatch = clean.match(/(\d{1,2})\s+de\s+([a-zA-ZçÇ]+)\s+de\s+(\d{4})/i);
-  if (dateMatch) {
-    const monthNames: Record<string, string> = {
-      janeiro: '01', fevereiro: '02', marco: '03', março: '03', abril: '04',
-      maio: '05', junho: '06', julho: '07', agosto: '08',
-      setembro: '09', outubro: '10', novembro: '11', dezembro: '12'
-    };
-    const m = monthNames[dateMatch[2].toLowerCase()] || '01';
-    const d = dateMatch[1].padStart(2, '0');
-    const y = dateMatch[3];
-    pubDate = `${y}-${m}-${d}`;
-    year = parseInt(y, 10);
+  const realDateInfo = extractRealLawDateAndYear(clean, tipoNumero);
+  let pubDate = realDateInfo.isoDate || `${year}-01-01`;
+  if (realDateInfo.year && (!slashMatch || year === realDateInfo.year)) {
+    year = realDateInfo.year;
+    if (!realDateInfo.isoDate) {
+      pubDate = `${year}-01-01`;
+    }
   }
 
   const numberFormatted = `${numOnly || '1'}/${year}`;
@@ -249,6 +547,10 @@ function buildResultFromRawText(
 
   const valMatch = clean.match(/no\s+valor\s+de\s+(R\$\s*[\d.,]+)/i);
   const valorTotalCredito = valMatch ? valMatch[1] : undefined;
+
+  const isLegislativo =
+    /câmara|legislativ|resolução/i.test(tipoNumero) ||
+    /MESA\s+DIRETORA\s+DA\s+CÂMARA|CÂMARA\s+MUNICIPAL[^.]*FAZ\s+SABER/i.test(clean);
 
   return {
     source,
@@ -263,8 +565,8 @@ function buildResultFromRawText(
       ementa,
       preambulo: parsed.preambulo,
       publication_date: pubDate,
-      author: parsed.assinatura?.nome || 'Poder Executivo Municipal',
-      origin_power: /câmara|legislativ|resolução/i.test(tipoNumero) ? 'legislativo' : 'executivo',
+      author: parsed.assinatura?.nome || 'Thiago Timo Oliveira - Prefeito Municipal',
+      origin_power: isLegislativo ? 'legislativo' : 'executivo',
       tags,
       valor_total_credito: valorTotalCredito,
       full_text: clean,

@@ -1,5 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
 
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req: any, res: any) {
   // Configuração de CORS para segurança de endpoints de API
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,21 +19,25 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const { mode, base64Data, presetId, customColumns, userInstructions, systemInstruction } = req.body || {};
+    const { mode, base64Data, mimeType, pageImages, customColumns, userInstructions, systemInstruction } = req.body || {};
 
-    if (!base64Data) {
-      return res.status(400).json({ error: 'Parâmetro base64Data é obrigatório.' });
+    if (!base64Data && (!Array.isArray(pageImages) || pageImages.length === 0)) {
+      return res.status(400).json({ error: 'Parâmetro base64Data ou pageImages é obrigatório.' });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.VITE_GEMINI_API_KEY ||
+      process.env.GOOGLE_API_KEY;
+
     if (!apiKey) {
       return res.status(500).json({ 
-        error: 'Chave GEMINI_API_KEY não configurada no servidor. Configure a variável de ambiente na Vercel ou no arquivo .env do backend.' 
+        error: 'Chave GEMINI_API_KEY / VITE_GEMINI_API_KEY não configurada no servidor.' 
       });
     }
 
     // Limpa possível cabeçalho data:application/pdf;base64,
-    const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    const cleanBase64 = base64Data && base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
 
     let prompt = '';
 
@@ -158,7 +166,23 @@ REGRAS OBRIGATÓRIAS:
 
     const genAI = new GoogleGenAI({ apiKey });
     let rawText = '';
-    const models = ['gemini-3.5-flash-lite', 'gemini-3.8-flash'];
+    const models = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash'];
+
+    const mediaParts = (Array.isArray(pageImages) && pageImages.length > 0)
+      ? pageImages.map((img: { mimeType?: string; data: string }) => ({
+          inlineData: {
+            mimeType: img.mimeType || 'image/jpeg',
+            data: img.data.includes(',') ? img.data.split(',')[1] : img.data
+          }
+        }))
+      : [
+          {
+            inlineData: {
+              mimeType: mimeType || 'application/pdf',
+              data: cleanBase64
+            }
+          }
+        ];
 
     for (const modelName of models) {
       try {
@@ -168,12 +192,7 @@ REGRAS OBRIGATÓRIAS:
             {
               role: "user",
               parts: [
-                {
-                  inlineData: {
-                    mimeType: "application/pdf",
-                    data: cleanBase64
-                  }
-                },
+                ...mediaParts,
                 {
                   text: prompt
                 }

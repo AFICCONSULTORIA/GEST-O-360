@@ -14,6 +14,19 @@ ALTER TABLE public.municipal_laws ADD COLUMN IF NOT EXISTS revoked_by_id TEXT;
 ALTER TABLE public.municipal_laws ADD COLUMN IF NOT EXISTS revoked_by_number TEXT;
 ALTER TABLE public.municipal_laws ADD COLUMN IF NOT EXISTS institution_id TEXT;
 
+-- Garantir tipo TEXT nas colunas de identificação para suportar IDs textuais como 'inst_1' e UUIDs
+DO $$ 
+BEGIN
+  BEGIN
+    ALTER TABLE public.municipal_laws ALTER COLUMN institution_id TYPE TEXT USING institution_id::text;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+  BEGIN
+    ALTER TABLE public.municipal_laws ALTER COLUMN id TYPE TEXT USING id::text;
+  EXCEPTION WHEN OTHERS THEN NULL;
+  END;
+END $$;
+
 -- 2. Limpeza dos dados de mock da tabela (remover registros de demonstração)
 DELETE FROM public.municipal_laws 
 WHERE id::text IN ('law_1331_2026', 'law_1', 'law_2', 'law_3', 'law_4', 'law_5', 'law_6', 'law_7', 'law_8', 'law_9')

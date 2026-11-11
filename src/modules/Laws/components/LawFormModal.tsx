@@ -31,8 +31,11 @@ import {
   parseLawDocument, 
   paginateLawDocument, 
   BudgetTableBlock, 
+  DataTableBlock,
   budgetTableToTSV, 
-  budgetTableToText 
+  budgetTableToText,
+  dataTableToTSV,
+  dataTableToText
 } from '../utils/lawFormatter';
 
 export const LAW_TYPES: LawType[] = [
@@ -223,11 +226,18 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
 
   const [copiedTableIndex, setCopiedTableIndex] = useState<number | null>(null);
 
-  const handleCopyTable = (block: BudgetTableBlock, idx: number, asTSV: boolean) => {
-    const text = asTSV ? budgetTableToTSV(block) : budgetTableToText(block);
+  const handleCopyTable = (block: BudgetTableBlock | DataTableBlock, idx: number, asTSV: boolean) => {
+    const text =
+      block.type === 'data_table'
+        ? asTSV
+          ? dataTableToTSV(block)
+          : dataTableToText(block)
+        : asTSV
+        ? budgetTableToTSV(block)
+        : budgetTableToText(block);
     navigator.clipboard.writeText(text);
     setCopiedTableIndex(idx);
-    showToast(asTSV ? 'Dotação copiada no formato Excel!' : 'Dotação copiada!', 'success');
+    showToast(asTSV ? 'Tabela copiada no formato Excel!' : 'Tabela copiada!', 'success');
     setTimeout(() => setCopiedTableIndex(null), 2500);
   };
 
@@ -906,6 +916,63 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
                                     ))}
                                   </tbody>
                                 </table>
+                              </div>
+                            );
+                          }
+
+                          if (block.type === 'data_table') {
+                            const isCopied = copiedTableIndex === bIdx;
+                            return (
+                              <div key={`prev-data-${bIdx}`} className="my-4 border border-neutral-300 rounded-lg p-3 bg-neutral-50/60 font-sans">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-bold text-neutral-800">
+                                    {block.title || 'Tabela / Quadro Demonstrativo'}
+                                  </span>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyTable(block, bIdx, false)}
+                                      className="px-2 py-0.5 rounded bg-white border border-neutral-300 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      {isCopied ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                                      <span>Copiar</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCopyTable(block, bIdx, true)}
+                                      className="px-2 py-0.5 rounded bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <FileSpreadsheet size={11} className="text-emerald-600" />
+                                      <span>Excel (TSV)</span>
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full border-collapse text-xs">
+                                    {block.headers.length > 0 && (
+                                      <thead>
+                                        <tr className="bg-neutral-100 border-b border-neutral-300">
+                                          {block.headers.map((h, hIdx) => (
+                                            <th key={hIdx} className="font-bold text-left p-1.5 border-r border-neutral-200 last:border-r-0">
+                                              {h}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                    )}
+                                    <tbody>
+                                      {block.rows.map((row, rIdx) => (
+                                        <tr key={rIdx} className="border-b border-neutral-200 last:border-b-0">
+                                          {row.map((cell, cIdx) => (
+                                            <td key={cIdx} className="p-1.5 border-r border-neutral-200 last:border-r-0">
+                                              {cell}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
                               </div>
                             );
                           }
