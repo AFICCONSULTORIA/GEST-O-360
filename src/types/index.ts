@@ -1,4 +1,4 @@
-export type View = 'home' | 'mayor' | 'controls' | 'accounting_changes' | 'fleet_fuel' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'consultorio_medico' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms' | 'noticias' | 'ouvidoria' | 'notafiscal' | 'course_certificates';
+export type View = 'home' | 'mayor' | 'controls' | 'accounting_changes' | 'fleet_fuel' | 'calendar' | 'norms' | 'risk' | 'pntp' | 'protocol' | 'contracts' | 'education' | 'orders' | 'doc_numbers' | 'reports' | 'certificates' | 'laws' | 'diario_oficial' | 'obras' | 'admin_financas' | 'administracao' | 'financas' | 'saude' | 'consultorio_medico' | 'servicos_publicos' | 'meio_ambiente' | 'tributos' | 'agricultura' | 'assistencia_social' | 'esporte' | 'planejamento' | 'settings' | 'patrimonio' | 'templates' | 'camara' | 'support' | 'communication' | 'forms' | 'noticias' | 'ouvidoria' | 'notafiscal' | 'course_certificates' | 'institutional_site';
 
 export type LawType = 
   | 'Lei Orgânica' 
@@ -55,8 +55,64 @@ export interface MunicipalLaw {
   file_url?: string;
   external_link?: string;
   tags?: string[];
+  publish_on_site?: boolean;       // Exibe a norma na seção de Legislação do Site Institucional
+  site_featured?: boolean;         // Fixa a norma em destaque no topo do Site Institucional
   institution_id?: string;
   created_at?: string;
+}
+
+export type GazetteEditionType = 'Ordinária' | 'Extraordinária';
+export type GazetteEditionStatus = 'draft' | 'published';
+export type GazetteActStatus = 'draft' | 'queued' | 'published';
+export type GazetteActCategory =
+  | 'Decreto'
+  | 'Portaria'
+  | 'Lei'
+  | 'Licitação & Edital'
+  | 'Contrato & Extrato'
+  | 'Nomeação & RH'
+  | 'Resolução & Instrução'
+  | 'Aviso & Comunicado';
+
+export interface OfficialGazetteEdition {
+  id: string;
+  institution_id?: string;
+  edition_number: string;
+  sequence_number: number;
+  year: number;
+  edition_type: GazetteEditionType;
+  publication_date: string;
+  title: string;
+  summary?: string;
+  status: GazetteEditionStatus;
+  pdf_url?: string;
+  verification_code: string;
+  signed_by?: string;
+  signed_role?: string;
+  published_at?: string;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OfficialGazetteAct {
+  id: string;
+  institution_id?: string;
+  edition_id?: string | null;
+  category: GazetteActCategory;
+  department?: string;
+  act_number: string;
+  title: string;
+  summary?: string;
+  content: string;
+  attachment_url?: string;
+  status: GazetteActStatus;
+  order_index?: number;
+  created_by?: string;
+  updated_by?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 
@@ -286,6 +342,7 @@ export interface Institution {
   id: string;
   name: string;
   subdomain?: string;
+  custom_domain?: string;
   logo_url?: string;
   theme_color?: string;
   cert_links?: any;

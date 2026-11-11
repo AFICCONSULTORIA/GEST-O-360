@@ -1,4 +1,5 @@
 import { Institution } from '../types';
+import { isDedicatedTenantHost } from './subdomain';
 import { isDemoEnvironment } from './demoManager';
 
 // Módulos que ainda são apenas Placeholders ("Em Desenvolvimento") e nunca devem aparecer para prefeituras reais
@@ -75,19 +76,56 @@ export function isInstitutionModuleActive(
   return normalizedSet.has(moduleId.toLowerCase().trim());
 }
 
-// Preserva o parâmetro ?inst= nos links públicos quando o acesso não for via subdomínio direto
+// Organiza links públicos de município por caminho limpo no '/' (ex: /torixoreu, /torixoreu/diario)
+// quando no domínio principal, mantendo rotas raiz quando em subdomínio ou domínio próprio.
 export function withInstitutionQuery(path: string, institution?: Institution | null): string {
-  if (typeof window === 'undefined') return path;
-  const params = new URLSearchParams(window.location.search);
-  const instParam = params.get('inst') || params.get('subdomain') || params.get('municipio');
-  if (!instParam && !institution?.subdomain) return path;
+  const [rawPathPart, rawSearchPart] = path.split('?');
+  const normalizedPath = rawPathPart
+    ? rawPathPart.startsWith('/')
+      ? rawPathPart
+      : `/${rawPathPart}`
+    : '/';
 
-  // Se o acesso atual usa ?inst= na URL, preserva no link de destino
-  if (instParam) {
-    const separator = path.includes('?') ? '&' : '?';
-    return `${path}${separator}inst=${encodeURIComponent(instParam)}`;
+  if (typeof window === 'undefined') return path;
+
+  const currentParams = new URLSearchParams(window.location.search);
+  const instParam =
+    currentParams.get('inst') || currentParams.get('subdomain') || currentParams.get('municipio');
+  const isDemoQuery = currentParams.get('demo') === 'true';
+
+  const appendParams = (targetPath: string) => {
+    const outParams = new URLSearchParams(rawSearchPart || '');
+    if (isDemoQuery && !outParams.has('demo')) {
+      outParams.set('demo', 'true');
+    }
+    const qs = outParams.toString();
+    return qs ? `${targetPath}?${qs}` : targetPath;
+  };
+
+  if (isDedicatedTenantHost()) {
+    return appendParams(normalizedPath);
   }
 
-  return path;
+  const slug = (institution?.subdomain || institution?.id || instParam || '').trim().toLowerCase();
+  if (!slug || slug === 'demo') {
+    if (instParam) {
+      const outParams = new URLSearchParams(rawSearchPart || '');
+      outParams.set('inst', instParam);
+      if (isDemoQuery) outParams.set('demo', 'true');
+      return `${normalizedPath}?${outParams.toString()}`;
+    }
+    return appendParams(normalizedPath);
+  }
+
+  const tenantPrefix = `/${encodeURIComponent(slug)}`;
+  if (normalizedPath === '/' || normalizedPath === '/site' || normalizedPath === '/portal-oficial') {
+    return appendParams(tenantPrefix);
+  }
+
+  if (normalizedPath === tenantPrefix || normalizedPath.startsWith(`${tenantPrefix}/`)) {
+    return appendParams(normalizedPath);
+  }
+
+  return appendParams(`${tenantPrefix}${normalizedPath}`);
 }
 

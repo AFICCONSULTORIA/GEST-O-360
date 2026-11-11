@@ -99,27 +99,14 @@ export const MunicipalityPortalHub: React.FC<MunicipalityPortalHubProps> = ({
       const port = window.location.port ? `:${window.location.port}` : '';
       const protocol = window.location.protocol;
 
-      // Se estiver em produção no domínio oficial (gestao360sistema.com.br)
-      // Direciona para a raiz do subdomínio: Portal do Cidadão
-      if (hostname.includes('gestao360sistema.com.br')) {
-        window.location.href = `${protocol}//${m.subdomain}.gestao360sistema.com.br/`;
-        return;
-      }
-
-      // Se estiver em ambiente local com subdomínio habilitado (.localhost)
+      // Em desenvolvimento com subdomínio .localhost já ativo
       if (hostname.endsWith('.localhost')) {
         window.location.href = `${protocol}//${m.subdomain}.localhost${port}/`;
         return;
       }
-
-      // Se estiver em localhost simples
-      if (hostname === 'localhost') {
-        window.location.href = `${protocol}//localhost${port}/?inst=${m.subdomain}`;
-        return;
-      }
     }
 
-    // Fallback integrado via componente interno
+    // No domínio principal (gestao360sistema.com.br, vercel.app ou localhost), navega via caminho organizado no '/'
     onSelectMunicipality(targetInst);
   };
 
@@ -252,7 +239,7 @@ export const MunicipalityPortalHub: React.FC<MunicipalityPortalHubProps> = ({
                       <span>{m.state}</span>
                       <span className="text-slate-300 dark:text-neutral-700">•</span>
                       <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-bold lowercase">
-                        {m.subdomain}.gestao360
+                        /{m.subdomain}
                       </span>
                     </div>
 

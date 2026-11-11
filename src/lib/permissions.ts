@@ -24,6 +24,26 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
 
   // Auto-grant 'noticias' for users who already have 'communication' (backward compatibility)
   const effectivePermissions: string[] = [...permissions];
+  if (
+    effectivePermissions.some(
+      p =>
+        p === 'laws' ||
+        p.startsWith('laws:') ||
+        p === 'institutional_site' ||
+        p.startsWith('institutional_site:') ||
+        p === 'noticias' ||
+        p.startsWith('noticias:')
+    ) &&
+    !effectivePermissions.some(p => p === 'diario_oficial' || p.startsWith('diario_oficial:'))
+  ) {
+    effectivePermissions.push('diario_oficial:admin');
+  }
+  if (
+    effectivePermissions.some(p => p === 'noticias' || p.startsWith('noticias:') || p === 'settings' || p.startsWith('settings:')) &&
+    !effectivePermissions.some(p => p === 'institutional_site' || p.startsWith('institutional_site:'))
+  ) {
+    effectivePermissions.push('institutional_site:admin');
+  }
   if (effectivePermissions.includes('communication') && !effectivePermissions.includes('noticias')) {
     effectivePermissions.push('noticias');
   }

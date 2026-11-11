@@ -125,6 +125,8 @@ const ALL_SYSTEM_MODULES: ModulePermissionItem[] = [
   { id: 'camara', label: 'Câmara Municipal Legislativa', category: 'social' },
 
   // Cidadania & Comunicação
+  { id: 'institutional_site', label: 'Site Institucional Oficial (.gov.br)', category: 'citizenship' },
+  { id: 'diario_oficial', label: 'Diário Oficial Eletrônico (DOM)', category: 'citizenship' },
   { id: 'noticias', label: 'Notícias & Divulgação Institucional', category: 'citizenship' },
   { id: 'forms', label: 'Formulários & Consultas Populares', category: 'citizenship' },
   { id: 'communication', label: 'Comunicação Oficial WhatsApp', category: 'citizenship' },
@@ -779,8 +781,8 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-4">
                       <div className="flex flex-col gap-1">
-                        <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-lg uppercase tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 w-fit">
-                          {tenant.subdomain || tenant.id}.gestao360.app
+                        <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-lg tracking-wider bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 w-fit">
+                          /{tenant.subdomain || tenant.id}
                         </span>
                         {tenant.cnpj && (
                           <span className="text-[10px] text-neutral-400 font-mono">
@@ -894,7 +896,7 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
                         Configurar
                       </button>
                       <a
-                        href={`/?inst=${tenant.subdomain || tenant.id}`}
+                        href={`/${encodeURIComponent(tenant.subdomain || tenant.id)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 transition border border-emerald-200 dark:border-emerald-500/20"

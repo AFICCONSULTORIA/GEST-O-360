@@ -40,6 +40,8 @@ html.ouvidoria-high-contrast body,
 
 .ouvidoria-high-contrast [class*="bg-white"],
 .ouvidoria-high-contrast [class*="bg-neutral-"],
+.ouvidoria-high-contrast [class*="bg-slate-"],
+.ouvidoria-high-contrast [class*="bg-teal-"],
 .ouvidoria-high-contrast [class*="bg-emerald-"],
 .ouvidoria-high-contrast [class*="bg-amber-"],
 .ouvidoria-high-contrast [class*="bg-sky-"],
@@ -48,6 +50,38 @@ html.ouvidoria-high-contrast body,
 .ouvidoria-high-contrast [class*="bg-indigo-"] {
   background-color: #000000 !important;
   border-color: #FFFF00 !important;
+}
+
+.ouvidoria-high-contrast a {
+  color: #FFFF00 !important;
+  text-decoration: underline !important;
+}
+
+.ouvidoria-high-contrast a:focus-visible,
+.ouvidoria-high-contrast button:focus-visible {
+  outline: 3px solid #FFFF00 !important;
+  outline-offset: 2px !important;
+}
+
+/* Leitura ampliada para dislexia e baixa visão */
+html.emag-readable-spacing body {
+  letter-spacing: 0.035em !important;
+  word-spacing: 0.1em !important;
+  line-height: 1.75 !important;
+}
+
+/* Cores dinâmicas escolhidas no Círculo Cromático do Site Institucional */
+.site-accent-text {
+  color: var(--site-accent, #059669);
+}
+
+.site-accent-bg {
+  background-color: var(--site-accent, #059669);
+}
+
+.site-accent-soft {
+  background-color: var(--site-accent-soft, rgba(5, 150, 105, 0.12));
+  color: var(--site-accent, #059669);
 }
 
 .ouvidoria-high-contrast h1,

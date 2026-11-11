@@ -6,7 +6,15 @@ import { LawsModule } from './modules/Laws';
 import { SettingsModule } from './modules/Settings';
 import { ProtocolModule } from './modules/Protocol';
 import { hasPermission } from './lib/permissions';
-import { getSubdomain, fetchInstitutionBySubdomain } from './lib/subdomain';
+import {
+  getSubdomain,
+  getPortalHostPrefix,
+  stripTenantFromPath,
+  fetchInstitutionBySubdomain,
+  fetchInstitutionByCustomDomain,
+  isCustomMunicipalDomain,
+} from './lib/subdomain';
+import { extractSiteConfigFromInstitution } from './lib/api/institutionalSite';
 import { SaaSControlCenter } from './modules/SaaSControlCenter';
 
 import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
@@ -68,6 +76,10 @@ import { Dashboard } from './components/Dashboard';
 import { MayorDashboard } from './components/MayorDashboard';
 import { SalesLandingPage } from './components/SalesLandingPage';
 import { LandingPage } from './components/LandingPage';
+import { InstitutionalSite } from './components/InstitutionalSite';
+import { SiteInstitucionalModule } from './modules/SiteInstitucional';
+import { DiarioOficialModule } from './modules/DiarioOficial';
+import { PublicGazettePortal } from './modules/DiarioOficial/PublicGazettePortal';
 import { MunicipalityPortalHub } from './components/MunicipalityPortalHub';
 import { Login } from './components/Login';
 import { ProposalModal } from './components/ProposalModal';
@@ -111,7 +123,7 @@ const PlaceholderModule = ({ title }: { title: string }) => (
 export default function App() {
   React.useEffect(() => {
     const hostname = window.location.hostname;
-    if (hostname.startsWith('www.')) {
+    if (hostname.startsWith('www.') && !isCustomMunicipalDomain(hostname)) {
       const parts = hostname.split('.');
       const isComBr = hostname.endsWith('.com.br');
       const baseDomainParts = isComBr ? 3 : 2;
@@ -148,7 +160,15 @@ export default function App() {
       const subdomain = getSubdomain();
       let isSaaS = false;
 
-      if (subdomain) {
+      if (isCustomMunicipalDomain()) {
+        activeInst = await fetchInstitutionByCustomDomain();
+        if (activeInst) {
+          setCurrentInstitution(activeInst);
+          document.title = `${activeInst.name} · Portal Oficial`;
+        }
+      }
+
+      if (!activeInst && !isSaaS && subdomain) {
         if (subdomain.toLowerCase() === 'admin') {
           isSaaS = true;
           setIsSuperAdminPortal(true);
@@ -671,8 +691,9 @@ export default function App() {
     );
   }
 
-  const currentPath = window.location.pathname;
   const currentSubdomain = getSubdomain();
+  const portalHostPrefix = getPortalHostPrefix();
+  const currentPath = stripTenantFromPath(window.location.pathname, currentInstitution?.subdomain || currentSubdomain);
   const isPublicPortal = currentPath === '/agendamento';
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
@@ -691,7 +712,14 @@ export default function App() {
     currentPath === '/ouvidoria' || 
     currentPath.startsWith('/ouvidoria/') || 
     (currentSubdomain && currentSubdomain.toLowerCase() === 'ouvidoria');
-  const cleanPath = decodedPath.replace(/\/+$/, '');
+  const cleanPath = decodedPath.replace(/\/+$/, '') || '/';
+  const isGazettePortal =
+    cleanPath === '/diario' ||
+    cleanPath === '/diario-oficial' ||
+    cleanPath.startsWith('/diario/') ||
+    cleanPath.startsWith('/diario-oficial/') ||
+    portalHostPrefix === 'diario' ||
+    (currentSubdomain && (currentSubdomain.toLowerCase() === 'diario' || currentSubdomain.toLowerCase() === 'diariooficial'));
   const isCertificateValidatorPortal = 
     cleanPath === '/validar-documento' || 
     cleanPath === '/validar-certificado' || 
@@ -722,7 +750,8 @@ export default function App() {
     currentPath.startsWith('/servidores/') ||
     cleanPath === '/login' ||
     cleanPath === '/entrar';
-  const isLandingPage = currentPath === '/';
+  const isLandingPage = currentPath === '/' || cleanPath === '/site' || cleanPath === '/portal-oficial';
+  const isSitePreviewRoute = cleanPath === '/site' || cleanPath === '/portal-oficial';
   const isLandingPageRoute = 
     cleanPath === '/landingpage' || 
     cleanPath === '/lanningpage' || 
@@ -855,10 +884,14 @@ export default function App() {
     );
   }
 
+  const resolvedPublicInstitution =
+    currentInstitution || (institutions.length === 1 ? institutions[0] : null);
+
   // Página inicial padrão (link sem subdomínio gestao360sistema.com.br):
   // Exibe o Menu Principal Clean de Municípios Clientes com logos visíveis
   if (isLandingPage) {
-    if (!currentInstitution) {
+    const landingInst = isSitePreviewRoute ? resolvedPublicInstitution : currentInstitution;
+    if (!landingInst) {
       return (
         <MunicipalityPortalHub 
           darkMode={darkMode} 
@@ -875,11 +908,25 @@ export default function App() {
         />
       );
     }
+    const siteCfg = extractSiteConfigFromInstitution(landingInst);
+    const shouldRenderFullSite = isSitePreviewRoute || (siteCfg.enabled !== false && isInstitutionModuleActive(landingInst, 'institutional_site'));
+    if (shouldRenderFullSite) {
+      return (
+        <InstitutionalSite
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          currentInstitution={landingInst}
+          onReturnToHome={handleReturnToSales}
+          isAuthenticated={isAuthenticated}
+          currentUser={currentUser}
+        />
+      );
+    }
     return (
       <LandingPage 
         darkMode={darkMode} 
         setDarkMode={setDarkMode} 
-        currentInstitution={currentInstitution} 
+        currentInstitution={landingInst} 
         onReturnToHome={handleReturnToSales}
         isAuthenticated={isAuthenticated}
         currentUser={currentUser}
@@ -1030,6 +1077,33 @@ export default function App() {
       <div className={darkMode ? 'dark' : ''}>
         <PublicNewsPortal darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
       </div>
+    );
+  }
+
+  if (isGazettePortal) {
+    if (!resolvedPublicInstitution) {
+      return (
+        <MunicipalityPortalHub
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          institutions={institutions}
+          onSelectMunicipality={(inst) => {
+            window.location.href = withInstitutionQuery('/diario', inst);
+          }}
+          onNavigateToLandingPage={() => { window.location.href = '/landingpage'; }}
+          onNavigateToDemo={() => {
+            window.location.href = withInstitutionQuery('/diario', DEMO_INSTITUTION);
+          }}
+        />
+      );
+    }
+    if (!isInstitutionModuleActive(resolvedPublicInstitution, 'diario_oficial')) return redirectInactivePublicPortal();
+    return (
+      <PublicGazettePortal
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        currentInstitution={resolvedPublicInstitution}
+      />
     );
   }
 
@@ -1806,6 +1880,7 @@ export default function App() {
             {activeView === 'certificates' && <CertificatesModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'course_certificates' && <EducationCertificatesManager currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'laws' && <LawsModule currentUser={currentUser} institution={currentInstitution} />}
+            {activeView === 'diario_oficial' && <DiarioOficialModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <FinanceModules currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'administracao' && <AdministracaoModule />}
@@ -1826,11 +1901,21 @@ export default function App() {
             {activeView === 'communication' && <CommunicationCenter />}
             {activeView === 'forms' && <PublicFormsModule currentUser={currentUser} institution={currentInstitution} />}
             {activeView === 'noticias' && <NoticiasModule currentUser={currentUser} currentInstitution={currentInstitution} />}
+            {activeView === 'institutional_site' && (
+              <SiteInstitucionalModule
+                currentUser={currentUser}
+                currentInstitution={currentInstitution}
+                onInstitutionUpdated={(updated) => {
+                  setCurrentInstitution(updated);
+                  setInstitutions((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+                }}
+              />
+            )}
             {activeView === 'ouvidoria' && <OuvidoriaModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'notafiscal' && <PublicNotaFiscalAuditor />}
 
             {/* Trava Anti-Tela-Branca: Redirecionamento seguro para tela inicial */}
-            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
+            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'diario_oficial', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'institutional_site', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
               <div className="bg-white dark:bg-neutral-900 p-8 sm:p-12 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
                 <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto">
                   <AlertTriangle size={32} />

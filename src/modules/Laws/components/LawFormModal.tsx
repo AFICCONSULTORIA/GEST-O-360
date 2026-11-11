@@ -101,6 +101,8 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
   const [isCompiled, setIsCompiled] = useState(lawToEdit?.is_compiled || false);
   const [externalLink, setExternalLink] = useState(lawToEdit?.external_link || '');
   const [tagsInput, setTagsInput] = useState(lawToEdit?.tags?.join(', ') || '');
+  const [publishOnSite, setPublishOnSite] = useState<boolean>(lawToEdit?.publish_on_site ?? true);
+  const [siteFeatured, setSiteFeatured] = useState<boolean>(Boolean(lawToEdit?.site_featured));
   const [file, setFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'dados' | 'texto' | 'compilado' | 'previa'>('dados');
@@ -272,7 +274,9 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
         compiled_text: isCompiled && compiledText ? compiledText : undefined,
         is_compiled: isCompiled && !!compiledText,
         external_link: externalLink.trim(),
-        tags
+        tags,
+        publish_on_site: publishOnSite,
+        site_featured: publishOnSite ? siteFeatured : false,
       }, file);
     } catch (err) {
       console.error(err);
@@ -286,7 +290,7 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
       initial={{ opacity: 0 }} 
       animate={{ opacity: 1 }} 
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 bg-neutral-950/80 backdrop-blur-md"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-neutral-950/80 backdrop-blur-md"
     >
       <motion.div 
         initial={{ scale: 0.95, y: 15 }} 
@@ -729,6 +733,43 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
                     className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-3 py-2 text-xs font-medium outline-none dark:text-white"
                   />
                 </div>
+              </div>
+
+              {/* Publicação no Site Institucional */}
+              <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={publishOnSite}
+                    onChange={(e) => setPublishOnSite(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-black text-neutral-800 dark:text-neutral-100 block">
+                      Exibir no Site Institucional (Portal do Cidadão)
+                    </span>
+                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      Desmarque se quiser manter este ato apenas no controle interno.
+                    </span>
+                  </div>
+                </label>
+
+                <label
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-bold transition ${
+                    publishOnSite
+                      ? 'bg-white dark:bg-neutral-900 border-amber-300/80 dark:border-amber-700 text-amber-700 dark:text-amber-300 cursor-pointer'
+                      : 'opacity-45 bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-400 cursor-not-allowed'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={siteFeatured}
+                    disabled={!publishOnSite}
+                    onChange={(e) => setSiteFeatured(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer"
+                  />
+                  <span>Fixar em destaque</span>
+                </label>
               </div>
 
             </div>

@@ -6,7 +6,7 @@ import {
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge,
   BookOpen, Calendar, Building2, HeartPulse, GraduationCap, Wrench,
   HardHat, Leaf, Tractor, HeartHandshake, Trophy, Map, Home, Settings, KeyRound, Scale, Activity,
-  ClipboardList, Headphones, Fuel, Stethoscope
+  ClipboardList, Headphones, Fuel, Stethoscope, Globe
 } from 'lucide-react';
 import { supabase, signUpNewUser } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
@@ -50,6 +50,8 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'templates', label: 'Modelos de Documentos' },
   { id: 'camara', label: 'Câmara Municipal' },
   { id: 'forms', label: 'Formulários & Consultas Públicas' },
+  { id: 'institutional_site', label: 'Site Institucional Oficial (.gov.br)' },
+  { id: 'diario_oficial', label: 'Diário Oficial Eletrônico' },
   { id: 'ouvidoria', label: 'Ouvidoria Municipal' }
 ];
 
@@ -77,6 +79,7 @@ const PERMISSION_GROUPS: {
       { id: 'camara', label: 'Câmara Municipal', desc: 'Atividades legislativas, projetos de lei e indicações', icon: Landmark },
       { id: 'norms', label: 'Atos Normativos', desc: 'Publicação de decretos, portarias e resoluções', icon: BookText },
       { id: 'laws', label: 'Banco de Leis', desc: 'Repositório de leis municipais, decretos e portarias', icon: Scale },
+      { id: 'diario_oficial', label: 'Diário Oficial Eletrônico', desc: 'Publicação de edições oficiais, decretos e editais', icon: BookOpen },
       { id: 'reports', label: 'Relatórios', desc: 'Relatórios e análises de desempenho municipal', icon: PieChart },
     ]
   },
@@ -85,6 +88,7 @@ const PERMISSION_GROUPS: {
     desc: 'Operações administrativas fundamentais e logística.',
     items: [
       { id: 'forms', label: 'Formulários & Consultas', desc: 'Criação e divulgação de pesquisas para a população', icon: ClipboardList },
+      { id: 'institutional_site', label: 'Site Institucional Oficial', desc: 'Configuração do portal oficial .gov.br, contato, cores e seções públicas', icon: Globe },
       { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites', icon: FileText },
       { id: 'mayor', label: 'Visão do Prefeito', desc: 'Painel gerencial e indicadores estratégicos', icon: Activity },
       { id: 'contracts', label: 'Contratos & Licitações', desc: 'Contratos administrativos e licitações', icon: Briefcase },

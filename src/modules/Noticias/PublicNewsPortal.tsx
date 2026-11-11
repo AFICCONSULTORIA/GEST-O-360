@@ -27,11 +27,11 @@ import {
 } from 'lucide-react';
 import { MunicipalNews, Institution, NewsCategory } from '../../types';
 import { CATEGORY_META_LIST, PROJECT_STATUS_META } from './types';
-import { MOCK_MUNICIPAL_NEWS } from './mockNews';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { LogoCompass } from '../../components/LogoCompass';
-import { isDemoEnvironment } from '../../lib/demoManager';
+import { fetchInstitutionNews } from '../../lib/api/municipalNews';
+import { withInstitutionQuery } from '../../lib/institutionModules';
 
 interface PublicNewsPortalProps {
   darkMode: boolean;
@@ -59,42 +59,9 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
   const fetchNews = async () => {
     setLoading(true);
-    const isDemo = isDemoEnvironment(currentInstitution);
     try {
-      let query = supabase
-        .from('municipal_news')
-        .select('*')
-        .eq('status', 'published')
-        .order('published_at', { ascending: false });
-
-      if (currentInstitution?.id) {
-        query = query.eq('institution_id', currentInstitution.id);
-      }
-
-      const { data, error } = await query;
-
-      if (!error && data && data.length > 0) {
-        setNews(data as MunicipalNews[]);
-      } else if (isDemo) {
-        // Fallback para localStorage ou Mocks locais apenas em ambiente Demo
-        const saved = localStorage.getItem('gestao360_municipal_news');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          setNews(parsed.filter((n: MunicipalNews) => n.status === 'published'));
-        } else {
-          setNews(MOCK_MUNICIPAL_NEWS);
-          localStorage.setItem('gestao360_municipal_news', JSON.stringify(MOCK_MUNICIPAL_NEWS));
-        }
-      } else {
-        setNews([]);
-      }
-    } catch (err) {
-      console.error('Erro ao buscar notícias:', err);
-      if (isDemo) {
-        setNews(MOCK_MUNICIPAL_NEWS);
-      } else {
-        setNews([]);
-      }
+      const list = await fetchInstitutionNews(currentInstitution, { onlyPublished: true });
+      setNews(list);
     } finally {
       setLoading(false);
     }
@@ -116,7 +83,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
   // Abrir matéria e registrar contagem de visualização
   const handleOpenArticle = (item: MunicipalNews) => {
-    window.history.pushState({}, '', `/noticias?id=${item.id}`);
+    window.history.pushState({}, '', withInstitutionQuery(`/noticias?id=${item.id}`, currentInstitution));
     setSelectedNews(item);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -132,7 +99,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
   };
 
   const handleCloseArticle = () => {
-    window.history.pushState({}, '', '/noticias');
+    window.history.pushState({}, '', withInstitutionQuery('/noticias', currentInstitution));
     setSelectedNews(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -189,12 +156,13 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
 
   // Compartilhar notícia
   const handleShareWhatsApp = (item: MunicipalNews) => {
-    const text = encodeURIComponent(`📰 *${item.title}*\n\nConfira as ações da Prefeitura Municipal:\n${window.location.origin}/noticias?id=${item.id}`);
+    const url = `${window.location.origin}${withInstitutionQuery(`/noticias?id=${item.id}`, currentInstitution)}`;
+    const text = encodeURIComponent(`📰 *${item.title}*\n\nConfira as ações da Prefeitura Municipal:\n${url}`);
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };
 
   const handleCopyLink = (item: MunicipalNews) => {
-    const url = `${window.location.origin}/noticias?id=${item.id}`;
+    const url = `${window.location.origin}${withInstitutionQuery(`/noticias?id=${item.id}`, currentInstitution)}`;
     navigator.clipboard.writeText(url);
     showToast('Link da notícia copiado para a área de transferência!', 'success');
   };
@@ -214,6 +182,8 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
+  const siteHomeUrl = withInstitutionQuery('/', currentInstitution);
+
   return (
     <div className={`min-h-[100dvh] bg-[#F8F9FA] dark:bg-neutral-950 font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}>
       
@@ -226,8 +196,8 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
       {/* Top Navbar */}
       <header className="relative z-40 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-200/60 dark:border-neutral-800/80 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a href="/" className="flex items-center gap-3.5 group">
+          <div className="flex items-center gap-3 min-w-0">
+            <a href={siteHomeUrl} className="flex items-center gap-3.5 group min-w-0">
               <div className="w-12 h-12 bg-white dark:bg-neutral-900 p-1.5 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm flex items-center justify-center group-hover:scale-105 transition-transform shrink-0">
                 <img 
                   src={currentInstitution?.logo_url || '/brasao-municipio.png'} 
@@ -254,13 +224,14 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
             </a>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <a 
-              href="/"
-              className="hidden md:inline-flex items-center gap-2 px-4 py-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold transition-all"
+              href={siteHomeUrl}
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95"
+              title="Voltar para o site institucional"
             >
-              <Home size={14} />
-              <span>Portal do Cidadão</span>
+              <ArrowLeft size={14} />
+              <span>Voltar para o site</span>
             </a>
 
             <button
@@ -279,7 +250,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
         <main className="relative z-10 w-full max-w-4xl lg:max-w-5xl mx-auto px-0 sm:px-6 lg:px-8 py-2 sm:py-8 animate-in fade-in duration-500">
            
            {/* Barra de Retorno Superior */}
-           <div className="px-4 sm:px-0 mb-4 sm:mb-6">
+           <div className="px-4 sm:px-0 mb-4 sm:mb-6 flex flex-wrap items-center gap-3">
              <button
                onClick={handleCloseArticle}
                className="inline-flex items-center gap-2.5 px-5 py-3 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-2xl text-sm sm:text-base font-bold transition-all border border-neutral-200 dark:border-neutral-800 shadow-sm active:scale-95"
@@ -287,6 +258,13 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
                <ArrowLeft size={20} className="text-emerald-500" />
                <span>Voltar para todas as notícias</span>
              </button>
+             <a
+               href={siteHomeUrl}
+               className="inline-flex items-center gap-2 px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm sm:text-base font-bold transition-all shadow-sm active:scale-95"
+             >
+               <Home size={18} />
+               <span>Voltar para o site</span>
+             </a>
            </div>
 
            {/* Cartão / Artigo Principal */}
@@ -815,12 +793,15 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
         <p className="text-xs text-neutral-400 max-w-md mx-auto">
           Canal oficial de divulgação das ações, atos e projetos do município cliente do Gestão 360.
         </p>
-        <div className="flex items-center justify-center gap-6 text-xs font-bold text-neutral-500">
-          <a href="/servicos" className="hover:text-emerald-600">Serviços Públicos</a>
-          <a href="/agendamento" className="hover:text-emerald-600">Agendamento SUS</a>
-          <a href="/farmaciasus" className="hover:text-emerald-600">Farmácia</a>
-          <a href="/educacao" className="hover:text-emerald-600">Educação</a>
-          <a href="/servidores" className="hover:text-emerald-600">Acesso Restrito</a>
+        <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-bold text-neutral-500">
+          <a href={siteHomeUrl} className="hover:text-emerald-600 inline-flex items-center gap-1">
+            <ArrowLeft size={12} /> Voltar para o site
+          </a>
+          <a href={withInstitutionQuery('/servicos', currentInstitution)} className="hover:text-emerald-600">Serviços Públicos</a>
+          <a href={withInstitutionQuery('/agendamento', currentInstitution)} className="hover:text-emerald-600">Agendamento SUS</a>
+          <a href={withInstitutionQuery('/farmaciasus', currentInstitution)} className="hover:text-emerald-600">Farmácia</a>
+          <a href={withInstitutionQuery('/educacao', currentInstitution)} className="hover:text-emerald-600">Educação</a>
+          <a href={withInstitutionQuery('/servidores', currentInstitution)} className="hover:text-emerald-600">Acesso Restrito</a>
         </div>
       </footer>
 

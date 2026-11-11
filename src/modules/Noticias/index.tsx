@@ -26,13 +26,19 @@ import {
 } from 'lucide-react';
 import { MunicipalNews, Institution, AdminUser, NewsCategory, NewsStatus } from '../../types';
 import { CATEGORY_META_LIST, PROJECT_STATUS_META } from './types';
-import { MOCK_MUNICIPAL_NEWS } from './mockNews';
 import { NewsEditor } from './NewsEditor';
-import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
 import { DemoFillButton } from '../../components/DemoFillButton';
-import { isDemoEnvironment } from '../../lib/demoManager';
+import { withInstitutionQuery } from '../../lib/institutionModules';
+import {
+  fetchInstitutionNews,
+  saveInstitutionNewsItem,
+  deleteInstitutionNewsItem,
+  updateInstitutionNewsPartial,
+  getNextNewsStatus,
+  NEWS_UPDATED_EVENT,
+} from '../../lib/api/municipalNews';
 
 interface NoticiasModuleProps {
   currentUser?: AdminUser | null;
@@ -61,54 +67,28 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
     const handleReload = (e: any) => {
       const mod = e.detail?.moduleKey || e.detail?.module;
       if (!mod || mod === 'noticias' || mod === 'all') {
-        if (isDemoEnvironment(currentInstitution)) {
-          const saved = localStorage.getItem('gestao360_municipal_news');
-          if (saved) {
-            try { setNews(JSON.parse(saved)); } catch (e) {}
-          }
-        }
+        fetchNews();
+      }
+    };
+    const onUpdated = (ev: Event) => {
+      const detail = (ev as CustomEvent)?.detail;
+      if (!detail?.institutionId || detail.institutionId === currentInstitution?.id) {
         fetchNews();
       }
     };
     window.addEventListener('gestao360:reload-module', handleReload);
-    return () => window.removeEventListener('gestao360:reload-module', handleReload);
+    window.addEventListener(NEWS_UPDATED_EVENT, onUpdated);
+    return () => {
+      window.removeEventListener('gestao360:reload-module', handleReload);
+      window.removeEventListener(NEWS_UPDATED_EVENT, onUpdated);
+    };
   }, [currentInstitution?.id]);
 
   const fetchNews = async () => {
     setLoading(true);
-    const isDemo = isDemoEnvironment(currentInstitution);
     try {
-      let query = supabase
-        .from('municipal_news')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (currentInstitution?.id) {
-        query = query.eq('institution_id', currentInstitution.id);
-      }
-
-      const { data, error } = await query;
-
-      if (!error && data && data.length > 0) {
-        setNews(data as MunicipalNews[]);
-      } else if (isDemo) {
-        const saved = localStorage.getItem('gestao360_municipal_news');
-        if (saved) {
-          setNews(JSON.parse(saved));
-        } else {
-          setNews(MOCK_MUNICIPAL_NEWS);
-          localStorage.setItem('gestao360_municipal_news', JSON.stringify(MOCK_MUNICIPAL_NEWS));
-        }
-      } else {
-        setNews([]);
-      }
-    } catch (err) {
-      console.error('Erro ao carregar notícias:', err);
-      if (isDemo) {
-        setNews(MOCK_MUNICIPAL_NEWS);
-      } else {
-        setNews([]);
-      }
+      const list = await fetchInstitutionNews(currentInstitution);
+      setNews(list);
     } finally {
       setLoading(false);
     }
@@ -117,99 +97,16 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
   // Salvar notícia (Criação ou Edição)
   const handleSaveNews = async (newsData: Partial<MunicipalNews>) => {
     try {
-      if (editingNews) {
-        // Atualização
-        const updatedItem = {
-          ...editingNews,
-          ...newsData,
-          updated_at: new Date().toISOString()
-        } as MunicipalNews;
-
-        const { error } = await supabase
-          .from('municipal_news')
-          .update({
-            title: updatedItem.title,
-            subtitle: updatedItem.subtitle,
-            content: updatedItem.content,
-            category: updatedItem.category,
-            department: updatedItem.department,
-            author_name: updatedItem.author_name,
-            published_at: updatedItem.published_at,
-            status: updatedItem.status,
-            is_featured: updatedItem.is_featured,
-            badge: updatedItem.badge,
-            cover_image_url: updatedItem.cover_image_url,
-            gallery_urls: updatedItem.gallery_urls,
-            project_status: updatedItem.project_status,
-            project_budget: updatedItem.project_budget,
-            updated_at: updatedItem.updated_at
-          })
-          .eq('id', editingNews.id);
-
-        if (error) {
-          console.warn('Erro ao atualizar no Supabase, salvando localmente:', error);
-        }
-
-        const nextList = news.map(n => n.id === editingNews.id ? updatedItem : n);
-        setNews(nextList);
-        localStorage.setItem('gestao360_municipal_news', JSON.stringify(nextList));
-        showToast('Notícia atualizada com sucesso!', 'success');
-      } else {
-        // Criação
-        const newItem: MunicipalNews = {
-          id: crypto.randomUUID(),
-          title: newsData.title!,
-          subtitle: newsData.subtitle,
-          content: newsData.content!,
-          category: newsData.category || 'Obras & Infraestrutura',
-          department: newsData.department,
-          author_name: newsData.author_name || currentUser?.name || 'Assessoria de Comunicação',
-          published_at: newsData.published_at || new Date().toISOString(),
-          status: newsData.status || 'published',
-          is_featured: newsData.is_featured || false,
-          badge: newsData.badge,
-          cover_image_url: newsData.cover_image_url,
-          gallery_urls: newsData.gallery_urls || [],
-          project_status: newsData.project_status,
-          project_budget: newsData.project_budget,
-          institution_id: currentInstitution?.id,
-          views_count: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        const { error } = await supabase
-          .from('municipal_news')
-          .insert({
-            id: newItem.id,
-            institution_id: newItem.institution_id,
-            title: newItem.title,
-            subtitle: newItem.subtitle,
-            content: newItem.content,
-            category: newItem.category,
-            department: newItem.department,
-            author_name: newItem.author_name,
-            published_at: newItem.published_at,
-            status: newItem.status,
-            is_featured: newItem.is_featured,
-            badge: newItem.badge,
-            cover_image_url: newItem.cover_image_url,
-            gallery_urls: newItem.gallery_urls,
-            project_status: newItem.project_status,
-            project_budget: newItem.project_budget,
-            views_count: 0
-          });
-
-        if (error) {
-          console.warn('Erro ao inserir no Supabase, salvando localmente:', error);
-        }
-
-        const nextList = [newItem, ...news];
-        setNews(nextList);
-        localStorage.setItem('gestao360_municipal_news', JSON.stringify(nextList));
-        showToast('Notícia publicada com sucesso!', 'success');
-      }
-
+      const res = await saveInstitutionNewsItem(currentInstitution, newsData, editingNews);
+      await fetchNews();
+      showToast(
+        res.syncedToCloud
+          ? editingNews
+            ? 'Notícia atualizada com sucesso!'
+            : 'Notícia publicada com sucesso!'
+          : `Notícia salva localmente${res.error ? ` (${res.error})` : ''}.`,
+        res.syncedToCloud ? 'success' : 'warning'
+      );
       setIsEditorOpen(false);
       setEditingNews(null);
     } catch (err) {
@@ -221,12 +118,8 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
   // Exclusão de notícia
   const handleDeleteNews = async (id: string) => {
     try {
-      const { error } = await supabase.from('municipal_news').delete().eq('id', id);
-      if (error) console.warn('Erro ao excluir no Supabase:', error);
-
-      const nextList = news.filter(n => n.id !== id);
-      setNews(nextList);
-      localStorage.setItem('gestao360_municipal_news', JSON.stringify(nextList));
+      await deleteInstitutionNewsItem(currentInstitution, id);
+      await fetchNews();
       showToast('Notícia excluída com sucesso!', 'success');
       setNewsToDelete(null);
     } catch (err) {
@@ -238,40 +131,16 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
   // Alternar Destaque
   const handleToggleFeatured = async (item: MunicipalNews) => {
     const nextState = !item.is_featured;
-    const updated = { ...item, is_featured: nextState };
-    
-    // Se marcou como destaque, desmarca os outros para manter 1 principal
-    const nextList = news.map(n => {
-      if (n.id === item.id) return updated;
-      if (nextState && n.is_featured) return { ...n, is_featured: false };
-      return n;
-    });
-
-    setNews(nextList);
-    localStorage.setItem('gestao360_municipal_news', JSON.stringify(nextList));
-
-    await supabase
-      .from('municipal_news')
-      .update({ is_featured: nextState })
-      .eq('id', item.id);
-
+    await updateInstitutionNewsPartial(currentInstitution, item, { is_featured: nextState });
+    await fetchNews();
     showToast(nextState ? 'Notícia definida como destaque principal!' : 'Destaque removido.');
   };
 
   // Alternar Status (Publicado / Rascunho)
   const handleToggleStatus = async (item: MunicipalNews) => {
-    const nextStatus: NewsStatus = item.status === 'published' ? 'draft' : 'published';
-    const updated = { ...item, status: nextStatus };
-
-    const nextList = news.map(n => n.id === item.id ? updated : n);
-    setNews(nextList);
-    localStorage.setItem('gestao360_municipal_news', JSON.stringify(nextList));
-
-    await supabase
-      .from('municipal_news')
-      .update({ status: nextStatus })
-      .eq('id', item.id);
-
+    const nextStatus: NewsStatus = getNextNewsStatus(item.status);
+    await updateInstitutionNewsPartial(currentInstitution, item, { status: nextStatus });
+    await fetchNews();
     showToast(nextStatus === 'published' ? 'Notícia publicada no portal!' : 'Notícia movida para rascunho.');
   };
 
@@ -356,7 +225,7 @@ export const NoticiasModule: React.FC<NoticiasModuleProps> = ({
         <div className="flex items-center gap-3">
           <DemoFillButton moduleKey="noticias" onSuccess={fetchNews} />
           <a
-            href="/noticias"
+            href={withInstitutionQuery('/noticias', currentInstitution)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-4 py-3 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 rounded-2xl text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-all flex items-center gap-2 shadow-sm"

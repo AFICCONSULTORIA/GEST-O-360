@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { 
   X, 
@@ -21,6 +22,8 @@ import { MunicipalNews, NewsCategory, ProjectStatus, NewsStatus } from '../../ty
 import { CATEGORY_META_LIST, POPULAR_BADGES, PROJECT_STATUS_META } from './types';
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
+import { useMunicipalDepartments } from '../../lib/api/departments';
+import { isValidUuid } from '../../lib/api/municipalNews';
 
 interface NewsEditorProps {
   initialNews?: MunicipalNews | null;
@@ -30,8 +33,32 @@ interface NewsEditorProps {
   institutionId?: string;
 }
 
+/** Sanitizes a filename into an ASCII-safe slug without accents or spaces for Supabase Storage keys. */
+const sanitizeStorageFileName = (rawName: string): string => {
+  const withoutExt = rawName.replace(/\.[^/.]+$/, '');
+  const asciiSlug = withoutExt
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
+
+  return asciiSlug || 'imagem';
+};
+
+/** Reads a File/Blob as a local Data URL when offline/demo or when remote storage is unavailable. */
+const readFileAsDataUrl = (file: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Falha ao ler imagem localmente'));
+    reader.readAsDataURL(file);
+  });
+
 // Compressão de imagem automática client-side
 const compressImage = async (file: File): Promise<File> => {
+  const safeBaseName = sanitizeStorageFileName(file.name);
   try {
     const bitmap = await createImageBitmap(file);
     const MAX_DIM = 1600;
@@ -59,7 +86,7 @@ const compressImage = async (file: File): Promise<File> => {
     return new Promise((resolve) => {
       canvas.toBlob((blob) => {
         if (blob) {
-          const compressed = new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", {
+          const compressed = new File([blob], `${safeBaseName}.webp`, {
             type: 'image/webp',
             lastModified: Date.now()
           });
@@ -75,6 +102,44 @@ const compressImage = async (file: File): Promise<File> => {
   }
 };
 
+/** Compresses and uploads a news image using a sanitized Storage key, falling back cleanly to Data URL. */
+const uploadOrInlineNewsImage = async (
+  file: File,
+  folder: 'noticias' | 'noticias/galeria',
+  institutionId?: string
+): Promise<{ url: string; uploadedToStorage: boolean }> => {
+  const compressed = await compressImage(file);
+
+  if (!isValidUuid(institutionId)) {
+    return {
+      url: await readFileAsDataUrl(compressed),
+      uploadedToStorage: false,
+    };
+  }
+
+  const extMatch = compressed.name.match(/\.([a-zA-Z0-9]+)$/);
+  const ext = extMatch ? extMatch[1].toLowerCase() : 'webp';
+  const uniqueSuffix = Math.random().toString(36).substring(2, 8);
+  const storageKey = `${folder}/${Date.now()}-${uniqueSuffix}-${sanitizeStorageFileName(compressed.name)}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('certidoes')
+    .upload(storageKey, compressed, { upsert: true, contentType: compressed.type || 'image/webp' });
+
+  if (uploadError) {
+    return {
+      url: await readFileAsDataUrl(compressed),
+      uploadedToStorage: false,
+    };
+  }
+
+  const { data: publicData } = supabase.storage.from('certidoes').getPublicUrl(storageKey);
+  return {
+    url: publicData.publicUrl,
+    uploadedToStorage: true,
+  };
+};
+
 export const NewsEditor: React.FC<NewsEditorProps> = ({
   initialNews,
   onSave,
@@ -85,6 +150,7 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const { departmentNames } = useMunicipalDepartments(institutionId);
 
   // Form State
   const [title, setTitle] = useState(initialNews?.title || '');
@@ -121,30 +187,17 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
     showToast('Otimizando imagem de capa...', 'info');
 
     try {
-      const compressed = await compressImage(file);
-      const filename = `noticias/${Date.now()}-${compressed.name}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('certidoes')
-        .upload(filename, compressed, { upsert: true });
-
-      if (uploadError) {
-        // Se houver restrição de storage, fazemos fallback para Data URL local
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setCoverImageUrl(reader.result as string);
-          showToast('Imagem carregada com sucesso!', 'success');
-        };
-        reader.readAsDataURL(compressed);
-      } else {
-        const { data: publicData } = supabase.storage.from('certidoes').getPublicUrl(filename);
-        setCoverImageUrl(publicData.publicUrl);
-        showToast('Foto de capa salva e otimizada!', 'success');
-      }
+      const { url, uploadedToStorage } = await uploadOrInlineNewsImage(file, 'noticias', institutionId);
+      setCoverImageUrl(url);
+      showToast(
+        uploadedToStorage ? 'Foto de capa salva e otimizada!' : 'Imagem carregada com sucesso!',
+        'success'
+      );
     } catch (err) {
       console.error('Erro no upload:', err);
       showToast('Erro ao processar imagem', 'error');
     } finally {
+      e.target.value = '';
       setIsUploading(false);
     }
   };
@@ -158,32 +211,17 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
     showToast(`Otimizando ${files.length} imagens...`, 'info');
 
     try {
-      const newUrls = await Promise.all(files.map(async (file) => {
-        const compressed = await compressImage(file);
-        const filename = `noticias/galeria/${Date.now()}-${Math.random().toString(36).substring(7)}-${compressed.name}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('certidoes')
-          .upload(filename, compressed, { upsert: true });
+      const results = await Promise.all(
+        files.map((file) => uploadOrInlineNewsImage(file, 'noticias/galeria', institutionId))
+      );
 
-        if (uploadError) {
-          return new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(compressed);
-          });
-        } else {
-          const { data: publicData } = supabase.storage.from('certidoes').getPublicUrl(filename);
-          return publicData.publicUrl;
-        }
-      }));
-
-      setGalleryUrls(prev => [...prev, ...newUrls]);
+      setGalleryUrls(prev => [...prev, ...results.map((r) => r.url)]);
       showToast('Imagens adicionadas à galeria!', 'success');
     } catch (err) {
       console.error('Erro no upload da galeria:', err);
       showToast('Erro ao processar imagens', 'error');
     } finally {
+      e.target.value = '';
       setIsUploading(false);
     }
   };
@@ -199,14 +237,15 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
     setGalleryUrls(galleryUrls.filter((_, i) => i !== index));
   };
 
-  // Submissão do Formulário
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Submissão do Formulário (funciona tanto na aba Edição quanto na Pré-visualização)
+  const executeSave = async () => {
     if (!title.trim()) {
+      setActiveTab('editor');
       showToast('O título da notícia é obrigatório', 'error');
       return;
     }
     if (!content.trim()) {
+      setActiveTab('editor');
       showToast('O conteúdo da notícia é obrigatório', 'error');
       return;
     }
@@ -237,8 +276,13 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-neutral-950/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await executeSave();
+  };
+
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-neutral-950/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
       <motion.div
         initial={{ scale: 0.96, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -355,11 +399,17 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: Secretaria de Obras"
+                    list="news-editor-departments"
+                    placeholder="Ex: Secretaria Municipal de Obras"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     className="w-full px-4 py-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-sm text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
+                  <datalist id="news-editor-departments">
+                    {departmentNames.map((dep) => (
+                      <option key={dep} value={dep} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div>
@@ -406,8 +456,8 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
                       <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
                         {isUploading ? 'Otimizando foto...' : 'Carregar foto do computador/celular'}
                       </span>
-                      <span className="text-[10px] text-neutral-400 mt-1">
-                        JPG, PNG ou WebP (compressão automática inclusa)
+                      <span className="text-[10px] text-neutral-400 mt-1 text-center">
+                        Ideal para o carrossel: <strong>1200 × 675 px</strong> (16:9 · JPG, PNG ou WebP)
                       </span>
                       <input 
                         type="file" 
@@ -713,10 +763,10 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
           </button>
           
           <button
-            type="submit"
-            form="news-form"
+            type="button"
+            onClick={executeSave}
             disabled={isSaving}
-            className="px-7 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50"
+            className="px-7 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-lg shadow-emerald-500/20 hover:scale-105 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
           >
             {isSaving ? (
               <span>Salvando...</span>
@@ -732,4 +782,7 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
       </motion.div>
     </div>
   );
+
+  if (typeof document === 'undefined') return modalContent;
+  return createPortal(modalContent, document.body);
 };
