@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Shield, X, Search, Filter, Sparkles, Copy, Check, CheckCircle2, 
@@ -7,7 +7,8 @@ import {
   FileText, Briefcase, Package, ShoppingCart, Calculator, FileBadge, 
   BookOpen, Calendar, GraduationCap, Wrench, HardHat, Leaf, Tractor, 
   HeartHandshake, Trophy, Map, Home, Settings, ClipboardList, Headphones, 
-  Users2, RefreshCw, AlertCircle, ArrowRight, Pill, UserCheck
+  Users2, RefreshCw, AlertCircle, ArrowRight, Pill, UserCheck,
+  Globe, Newspaper, MessageSquare, Receipt, Award, LifeBuoy, Wallet
 } from 'lucide-react';
 import { AdminUser, View } from '../../../types';
 import { showToast } from '../../../components/ui/Toast';
@@ -26,7 +27,9 @@ export interface PermissionDef {
 export interface PermissionGroup {
   id: string;
   title: string;
+  shortTitle: string;
   desc: string;
+  icon: React.ComponentType<any>;
   items: PermissionDef[];
 }
 
@@ -34,7 +37,9 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   {
     id: 'secretarias',
     title: 'Secretarias Temáticas & Atendimento',
+    shortTitle: 'Secretarias',
     desc: 'Módulos operacionais de secretarias específicas e atendimento ao cidadão.',
+    icon: Building2,
     items: [
       { 
         id: 'saude', 
@@ -52,28 +57,30 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
         badge: 'Área Clínica',
         highlight: true
       },
-      { id: 'administracao', label: 'Administração Geral', desc: 'Portal administrativo de RH e gestão interna.', icon: Building2 },
-      { id: 'financas', label: 'Finanças & Orçamento', desc: 'Orçamentário, despesas e arrecadação municipal.', icon: Landmark },
-      { id: 'education', label: 'Educação Municipal', desc: 'Controle de matrículas, transporte escolar e merenda.', icon: GraduationCap },
-      { id: 'servicos_publicos', label: 'Serviços Públicos', desc: 'Ouvidoria de reclamações e manutenção urbana.', icon: Wrench },
-      { id: 'obras', label: 'Obras e Infraestrutura', desc: 'Acompanhamento físico e financeiro de obras públicas.', icon: HardHat },
-      { id: 'meio_ambiente', label: 'Meio Ambiente', desc: 'Licenciamento ambiental, denúncias e fiscalização.', icon: Leaf },
-      { id: 'tributos', label: 'Tributos e Arrecadação', desc: 'Acompanhamento fiscal e impostos municipais.', icon: Calculator },
-      { id: 'agricultura', label: 'Agricultura & Apoio Rural', desc: 'Apoio ao produtor rural e frotas agrícolas.', icon: Tractor },
+      { id: 'education', label: 'Educação Municipal', desc: 'Controle de matrículas, transporte escolar, diários e SAEB.', icon: GraduationCap },
       { id: 'assistencia_social', label: 'Assistência Social', desc: 'Cadastro único e programas assistenciais.', icon: HeartHandshake },
+      { id: 'obras', label: 'Obras e Infraestrutura', desc: 'Acompanhamento físico e financeiro de obras públicas.', icon: HardHat },
+      { id: 'servicos_publicos', label: 'Serviços Públicos', desc: 'Ouvidoria de reclamações e manutenção urbana.', icon: Wrench },
+      { id: 'meio_ambiente', label: 'Meio Ambiente', desc: 'Licenciamento ambiental, denúncias e fiscalização.', icon: Leaf },
+      { id: 'agricultura', label: 'Agricultura & Apoio Rural', desc: 'Apoio ao produtor rural e frotas agrícolas.', icon: Tractor },
       { id: 'esporte', label: 'Esportes e Lazer', desc: 'Eventos esportivos e praças de esportes.', icon: Trophy },
       { id: 'planejamento', label: 'Planejamento Urbano', desc: 'Plano diretor, zoneamento e diretrizes urbanas.', icon: Map },
+      { id: 'administracao', label: 'Administração Geral', desc: 'Portal administrativo de RH e gestão interna.', icon: Building2 },
+      { id: 'financas', label: 'Finanças & Orçamento', desc: 'Orçamentário, despesas e arrecadação municipal.', icon: Landmark },
+      { id: 'tributos', label: 'Tributos e Arrecadação', desc: 'Acompanhamento fiscal e impostos municipais.', icon: Calculator },
       { id: 'ouvidoria', label: 'Ouvidoria Municipal', desc: 'Gestão, triagem e resposta de manifestações dos cidadãos.', icon: Headphones },
     ]
   },
   {
     id: 'governanca',
-    title: 'Governança, Controle & Transparência',
-    desc: 'Controle de conformidade, riscos, auditoria e atividades legislativas.',
+    title: 'Governança, Controle & Legislativo',
+    shortTitle: 'Governança & Controle',
+    desc: 'Controle de conformidade, riscos, frotas, auditoria e atividades legislativas.',
+    icon: Shield,
     items: [
       { id: 'controls', label: 'Controles Internos', desc: 'Monitoramento de procedimentos, prazos e apontamentos TCE.', icon: ClipboardList },
+      { id: 'fleet_fuel', label: 'Frotas & Abastecimento', desc: 'Ordens digitais de combustível, adiantamentos, conferência e auditoria TCE.', icon: Fuel, badge: 'Frotas', highlight: true },
       { id: 'accounting_changes', label: 'Alterações na Contabilidade', desc: 'Controle de solicitações, trilha de auditoria contábil e pareceres.', icon: Scale },
-      { id: 'fleet_fuel', label: 'Frotas & Abastecimento', desc: 'Ordens digitais de combustível, conferência de canhotos e auditoria TCE.', icon: Fuel, highlight: true },
       { id: 'risk', label: 'Gestão de Riscos', desc: 'Identificação e matriz de tratamento de riscos da gestão.', icon: Shield },
       { id: 'pntp', label: 'Radar PNTP', desc: 'Evidências do PNTP e conformidade do portal de transparência.', icon: Compass },
       { id: 'camara', label: 'Câmara Municipal (Poder Legislativo)', desc: 'Atividades legislativas, projetos de lei e indicações.', icon: Landmark },
@@ -84,27 +91,48 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
   },
   {
     id: 'administracao',
-    title: 'Administração & Operações Centrais',
-    desc: 'Operações administrativas centrais, protocolo e logística.',
+    title: 'Operações Centrais, Contratos & Fiscal',
+    shortTitle: 'Operações & Fiscal',
+    desc: 'Operações administrativas centrais, protocolo, patrimônio e emissão fiscal.',
+    icon: Briefcase,
     items: [
-      { id: 'forms', label: 'Formulários & Consultas', desc: 'Criação e divulgação de pesquisas para a população.', icon: ClipboardList },
-      { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites oficiais.', icon: FileText },
       { id: 'mayor', label: 'Visão do Prefeito', desc: 'Painel gerencial executivo e indicadores estratégicos.', icon: Sparkles },
+      { id: 'admin_financas', label: 'Administração & Finanças Integradas', desc: 'Painel integrado administrativo, financeiro e de execução orçamentária.', icon: Wallet },
       { id: 'contracts', label: 'Contratos & Licitações', desc: 'Contratos administrativos e processos licitatórios (Lei 14.133).', icon: Briefcase },
+      { id: 'notafiscal', label: 'Nota Fiscal Eletrônica (NFS-e)', desc: 'Emissão, consulta e acompanhamento fiscal de notas de serviço.', icon: Receipt },
       { id: 'patrimonio', label: 'Patrimônio Municipal', desc: 'Controle de bens móveis, imóveis e inventários.', icon: Package },
       { id: 'orders', label: 'Pedidos (Obras/Veículos)', desc: 'Solicitações internas de veículos e materiais de obras.', icon: ShoppingCart },
+      { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites oficiais.', icon: FileText },
       { id: 'doc_numbers', label: 'Controle de Numeração', desc: 'Reserva e emissão de numeração oficial de documentos.', icon: Calculator },
       { id: 'certificates', label: 'Banco de Certidões', desc: 'Certidões negativas de empresas e pessoas físicas.', icon: FileBadge },
+      { id: 'course_certificates', label: 'Certificados de Cursos & Eventos', desc: 'Emissão e validação de certificados de capacitações e eventos.', icon: Award },
+    ]
+  },
+  {
+    id: 'comunicacao',
+    title: 'Comunicação, Portal & Publicações',
+    shortTitle: 'Portal & Imprensa',
+    desc: 'Diário Oficial, Site Institucional, Notícias, Comunicação e Consultas Públicas.',
+    icon: Globe,
+    items: [
+      { id: 'diario_oficial', label: 'Diário Oficial Eletrônico', desc: 'Publicação de edições oficiais, decretos, leis e editais municipais.', icon: BookOpen, badge: 'Imprensa Oficial', highlight: true },
+      { id: 'institutional_site', label: 'Site Institucional Oficial', desc: 'Gestão do portal oficial do município, secretarias, links e identidade visual.', icon: Globe, badge: 'Portal Público' },
+      { id: 'noticias', label: 'Portal de Notícias', desc: 'Redação, edição e publicação de notícias e comunicados oficiais.', icon: Newspaper },
+      { id: 'communication', label: 'Comunicação Interna & Avisos', desc: 'Murais, circulares e comunicados entre setores da prefeitura.', icon: MessageSquare },
+      { id: 'forms', label: 'Formulários & Consultas', desc: 'Criação e divulgação de pesquisas e formulários para a população.', icon: ClipboardList },
       { id: 'templates', label: 'Modelos de Documentos', desc: 'Repositório de minutas e arquivos modelo oficiais.', icon: BookOpen },
-      { id: 'calendar', label: 'Calendário Oficial', desc: 'Calendário de obrigações e eventos municipais.', icon: Calendar },
     ]
   },
   {
     id: 'sistema',
-    title: 'Sistema & Configurações',
-    desc: 'Acesso às configurações globais e tela de início.',
+    title: 'Sistema, Agenda & Suporte',
+    shortTitle: 'Sistema & Suporte',
+    desc: 'Tela inicial, calendário oficial, suporte técnico e configurações globais.',
+    icon: Settings,
     items: [
       { id: 'home', label: 'Painel Principal (Início)', desc: 'Dashboard geral, avisos rápidos e atalhos.', icon: Home },
+      { id: 'calendar', label: 'Calendário Oficial', desc: 'Calendário de obrigações e eventos municipais.', icon: Calendar },
+      { id: 'support', label: 'Suporte & Chamados Técnicos', desc: 'Abertura e acompanhamento de chamados de atendimento do sistema.', icon: LifeBuoy },
       { id: 'settings', label: 'Configurações do Sistema', desc: 'Gerenciamento de usuários, instituições e permissões.', icon: Settings },
     ]
   }
@@ -277,7 +305,16 @@ export const GranularPermissionsModal: React.FC<GranularPermissionsModalProps> =
   const [selectedGroupTab, setSelectedGroupTab] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'blocked'>('all');
   const [copyFromUserId, setCopyFromUserId] = useState<string>('');
+  const [showPresetsBar, setShowPresetsBar] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setPermissionsData((user.permissions as unknown as string[]) || []);
+      setSearchTerm('');
+      setCopyFromUserId('');
+    }
+  }, [isOpen, user.id]);
 
   // Retorna o nível de permissão de um determinado módulo
   const getLevel = (moduleId: View): PermissionLevel => {
@@ -444,7 +481,7 @@ export const GranularPermissionsModal: React.FC<GranularPermissionsModalProps> =
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.94, y: 20 }}
           transition={{ duration: 0.2 }}
-          className="bg-white dark:bg-neutral-900 w-full max-w-5xl rounded-[32px] sm:rounded-[40px] shadow-2xl flex flex-col max-h-[92vh] border border-neutral-200/80 dark:border-neutral-800 overflow-hidden"
+          className="bg-white dark:bg-neutral-900 w-full max-w-6xl rounded-[32px] sm:rounded-[40px] shadow-2xl flex flex-col max-h-[92vh] border border-neutral-200/80 dark:border-neutral-800 overflow-hidden"
           onClick={e => e.stopPropagation()}
         >
           {/* Header Superior Executivo */}
@@ -538,22 +575,49 @@ export const GranularPermissionsModal: React.FC<GranularPermissionsModalProps> =
             </div>
           </div>
 
-          {/* Barra de Presets de Cargos (Modelos Rápidos com 1 clique) */}
-          <div className="p-4 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 shrink-0 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase tracking-widest text-neutral-400 flex items-center gap-1.5">
-                <Sparkles size={12} className="text-indigo-500" /> Modelos de Perfil de 1 Clique (Presets):
-              </span>
-              
-              {/* Clonagem de Outro Usuário */}
-              <div className="flex items-center gap-2">
-                <Users2 size={13} className="text-neutral-400 hidden sm:inline" />
+          {/* Barra Compacta de Ações Rápidas, Presets e Clonagem */}
+          <div className="px-6 py-3 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-800 shrink-0 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              {/* Busca Rápida */}
+              <div className="relative flex-1 min-w-[220px] max-w-md">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder="Buscar módulo (ex: diário, frotas, saúde, nota fiscal)..."
+                  className="w-full pl-9 pr-8 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Filtro por Ativo / Bloqueado */}
+                <select
+                  value={statusFilter}
+                  onChange={e => setStatusFilter(e.target.value as any)}
+                  className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-2.5 py-2 text-[11px] font-bold text-neutral-700 dark:text-neutral-300 focus:outline-none"
+                >
+                  <option value="all">Status: Todos</option>
+                  <option value="active">Com Acesso ({stats.admin + stats.edit + stats.view})</option>
+                  <option value="blocked">Bloqueados ({stats.none})</option>
+                </select>
+
+                {/* Clonagem de Outro Usuário */}
                 <select
                   value={copyFromUserId}
                   onChange={(e) => handleCopyFromUser(e.target.value)}
-                  className="bg-neutral-100 dark:bg-neutral-800 text-[11px] font-bold text-neutral-700 dark:text-neutral-300 px-3 py-1.5 rounded-xl border border-neutral-200/50 dark:border-neutral-700/50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="bg-neutral-50 dark:bg-neutral-800 text-[11px] font-bold text-neutral-700 dark:text-neutral-300 px-2.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 max-w-[210px]"
                 >
-                  <option value="">Copiar permissões de outro usuário...</option>
+                  <option value="">Copiar de outro usuário...</option>
                   {allUsers
                     .filter(u => u.id !== user.id)
                     .map(u => (
@@ -563,112 +627,168 @@ export const GranularPermissionsModal: React.FC<GranularPermissionsModalProps> =
                     ))
                   }
                 </select>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPresetsBar(v => !v)}
+                  className={`px-3 py-2 rounded-xl text-[11px] font-black flex items-center gap-1.5 border transition-all cursor-pointer ${
+                    showPresetsBar
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                      : 'bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200/70 dark:border-indigo-800/60 hover:bg-indigo-100'
+                  }`}
+                >
+                  <Sparkles size={13} />
+                  <span>Modelos Prontos</span>
+                </button>
               </div>
             </div>
 
-            {/* Chips Roláveis de Presets */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none custom-scrollbar">
-              {ROLE_PRESETS.map(preset => {
-                const IconComp = preset.icon;
+            {showPresetsBar && (
+              <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none custom-scrollbar">
+                {ROLE_PRESETS.map(preset => {
+                  const IconComp = preset.icon;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-neutral-100/80 dark:bg-neutral-800 hover:bg-neutral-200/80 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-all shrink-0 border border-neutral-200/50 dark:border-neutral-700/50 cursor-pointer"
+                      title={preset.description}
+                    >
+                      <div className={`w-5 h-5 rounded-md bg-gradient-to-tr ${preset.color} text-white flex items-center justify-center shrink-0`}>
+                        <IconComp size={12} />
+                      </div>
+                      <span>{preset.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Navegação por Categorias (Mobile/Tablet horizontal + Desktop Sidebar lateral) */}
+          <div className="lg:hidden px-4 py-2.5 bg-neutral-50/80 dark:bg-neutral-900/80 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-1.5 overflow-x-auto shrink-0">
+            <button
+              type="button"
+              onClick={() => setSelectedGroupTab('all')}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all cursor-pointer ${
+                selectedGroupTab === 'all'
+                  ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900'
+                  : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700'
+              }`}
+            >
+              Todos ({ALL_PERMISSIONS_LIST.length})
+            </button>
+            {PERMISSION_GROUPS.map(g => {
+              const activeInGroup = g.items.filter(i => getLevel(i.id) !== 'none').length;
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setSelectedGroupTab(g.id)}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                    selectedGroupTab === g.id
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700'
+                  }`}
+                >
+                  <span>{g.shortTitle}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${
+                    selectedGroupTab === g.id ? 'bg-white/25 text-white' : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
+                  }`}>
+                    {activeInGroup}/{g.items.length}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Corpo Principal em 2 Colunas (Sidebar de Categorias + Lista de Módulos) */}
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            <aside className="hidden lg:flex flex-col w-64 shrink-0 border-r border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-950/30 p-4 gap-1.5 overflow-y-auto">
+              <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 px-2 mb-1">
+                Categorias de Módulos
+              </p>
+              <button
+                type="button"
+                onClick={() => setSelectedGroupTab('all')}
+                className={`w-full px-3 py-2.5 rounded-2xl text-left text-xs font-bold flex items-center justify-between transition-all cursor-pointer ${
+                  selectedGroupTab === 'all'
+                    ? 'bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 shadow-sm'
+                    : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/70'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <Layers size={15} />
+                  <span>Todos os Módulos</span>
+                </span>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  selectedGroupTab === 'all' ? 'bg-white/20 text-white dark:bg-neutral-900/15 dark:text-neutral-900' : 'bg-neutral-200/70 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+                }`}>
+                  {stats.admin + stats.edit + stats.view}/{ALL_PERMISSIONS_LIST.length}
+                </span>
+              </button>
+
+              {PERMISSION_GROUPS.map(g => {
+                const GroupIcon = g.icon;
+                const activeInGroup = g.items.filter(i => getLevel(i.id) !== 'none').length;
+                const isSelected = selectedGroupTab === g.id;
                 return (
                   <button
-                    key={preset.id}
-                    onClick={() => applyPreset(preset)}
-                    className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold bg-neutral-100/80 dark:bg-neutral-800 hover:bg-neutral-200/80 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-all shrink-0 hover:scale-[1.02] border border-neutral-200/50 dark:border-neutral-700/50 active:scale-95"
-                    title={preset.description}
+                    key={g.id}
+                    type="button"
+                    onClick={() => setSelectedGroupTab(g.id)}
+                    className={`w-full px-3 py-2.5 rounded-2xl text-left text-xs font-bold flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                        : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800/70'
+                    }`}
                   >
-                    <div className={`w-5 h-5 rounded-md bg-gradient-to-tr ${preset.color} text-white flex items-center justify-center shrink-0`}>
-                      <IconComp size={12} />
-                    </div>
-                    <span>{preset.name}</span>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <GroupIcon size={15} className="shrink-0" />
+                      <span className="truncate">{g.shortTitle}</span>
+                    </span>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full shrink-0 ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : activeInGroup > 0
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-neutral-200/70 dark:bg-neutral-800 text-neutral-500'
+                    }`}>
+                      {activeInGroup}/{g.items.length}
+                    </span>
                   </button>
                 );
               })}
-            </div>
-          </div>
 
-          {/* Barra de Filtros & Busca */}
-          <div className="px-6 py-3 bg-neutral-50/60 dark:bg-neutral-900/60 border-b border-neutral-100 dark:border-neutral-800 flex flex-col md:flex-row items-center justify-between gap-3 shrink-0">
-            {/* Input de Busca */}
-            <div className="relative w-full md:w-80">
-              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                placeholder="Buscar módulo (ex: saúde, frotas, contrato)..."
-                className="w-full pl-9 pr-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              {searchTerm && (
-                <button 
-                  onClick={() => setSearchTerm('')} 
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-
-            {/* Abas de Categoria e Filtro de Status */}
-            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-              <div className="flex bg-neutral-200/60 dark:bg-neutral-800 p-0.5 rounded-xl border border-neutral-200 dark:border-neutral-700 shrink-0">
+              <div className="mt-auto pt-4 border-t border-neutral-200/70 dark:border-neutral-800 space-y-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400 px-2">
+                  Ação Global Rápida
+                </p>
                 <button
-                  onClick={() => setSelectedGroupTab('all')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                    selectedGroupTab === 'all'
-                      ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setPermissionsData(ALL_PERMISSIONS_LIST.map(p => `${p.id}:view`));
+                    showToast('Visualização liberada em todos os módulos!', 'info');
+                  }}
+                  className="w-full px-3 py-2 rounded-xl text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100 transition-colors cursor-pointer text-left flex items-center gap-2"
                 >
-                  Todas
+                  <Eye size={13} /> Liberar Ver em Tudo
                 </button>
                 <button
-                  onClick={() => setSelectedGroupTab('secretarias')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                    selectedGroupTab === 'secretarias'
-                      ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setPermissionsData([]);
+                    showToast('Todas as permissões foram bloqueadas.', 'info');
+                  }}
+                  className="w-full px-3 py-2 rounded-xl text-[11px] font-bold text-rose-700 dark:text-rose-300 bg-rose-50/80 dark:bg-rose-950/40 hover:bg-rose-100 transition-colors cursor-pointer text-left flex items-center gap-2"
                 >
-                  Secretarias
-                </button>
-                <button
-                  onClick={() => setSelectedGroupTab('governanca')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                    selectedGroupTab === 'governanca'
-                      ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                  }`}
-                >
-                  Governança
-                </button>
-                <button
-                  onClick={() => setSelectedGroupTab('administracao')}
-                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                    selectedGroupTab === 'administracao'
-                      ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                  }`}
-                >
-                  Administração
+                  <Lock size={13} /> Bloquear Tudo
                 </button>
               </div>
+            </aside>
 
-              {/* Filtro por Ativo / Bloqueado */}
-              <select
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value as any)}
-                className="bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl px-2.5 py-1.5 text-[11px] font-bold text-neutral-700 dark:text-neutral-300 focus:outline-none shrink-0"
-              >
-                <option value="all">Status: Todos</option>
-                <option value="active">Com Acesso (Ativos)</option>
-                <option value="blocked">Bloqueados</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Corpo Rolável com os Grupos e Módulos */}
-          <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-5 md:p-7 space-y-8 custom-scrollbar">
             {filteredGroups.length === 0 ? (
               <div className="text-center py-12">
                 <AlertCircle size={32} className="mx-auto text-neutral-400 mb-2" />
@@ -833,6 +953,7 @@ export const GranularPermissionsModal: React.FC<GranularPermissionsModalProps> =
                 </div>
               ))
             )}
+            </div>
           </div>
 
           {/* Footer com Ações */}

@@ -299,7 +299,8 @@ function isAdvanceTravelOrder(order?: Partial<FuelSupplyOrder> | null): boolean 
   return (
     anyOrder.supply_mode === 'adiantamento_viagem' ||
     anyOrder.authorized_by_role === 'Adiantamento de Viagem' ||
-    String(anyOrder.notes || '').includes('[Adiantamento de Viagem]')
+    String(anyOrder.notes || '').includes('[Adiantamento de Viagem]') ||
+    String(anyOrder.audit_justification || '').includes('[Adiantamento de Viagem]')
   );
 }
 

@@ -1661,10 +1661,12 @@ export async function registerAdvanceTravelFuelOrder(
     odometer_photo_url: newOrder.odometer_photo_url,
     pump_photo_url: newOrder.pump_photo_url,
     receipt_photo_url: newOrder.receipt_photo_url,
-    supply_mode: newOrder.supply_mode,
+    // Mantém 'litragem_fixa' por compatibilidade com constraint CHECK do banco remoto,
+    // identificando o adiantamento via authorized_by_role e audit_justification.
+    supply_mode: 'litragem_fixa',
     audit_justification: newOrder.notes,
     authorized_by_name: newOrder.authorized_by_name,
-    authorized_by_role: newOrder.authorized_by_role,
+    authorized_by_role: 'Adiantamento de Viagem',
     status: 'abastecido',
     created_at: newOrder.created_at,
     supplied_at: newOrder.supplied_at
@@ -1707,6 +1709,7 @@ export async function registerAdvanceTravelFuelOrder(
       newOrder.id = data.id;
     } else if (error) {
       console.error('[FleetFuelAudit] Erro ao gravar adiantamento no Supabase:', error);
+      throw new Error(`Falha ao gravar adiantamento no Supabase: ${error.message}`);
     }
 
     if (shouldUpdateVehicleOdo) {
@@ -1716,6 +1719,9 @@ export async function registerAdvanceTravelFuelOrder(
     }
   } catch (errDb) {
     console.warn('[FleetFuelAudit] Aviso ao persistir abastecimento de adiantamento no Supabase:', errDb);
+    if (errDb instanceof Error && errDb.message.includes('Supabase:')) {
+      throw errDb;
+    }
   }
 
   if (shouldUpdateVehicleOdo) {
