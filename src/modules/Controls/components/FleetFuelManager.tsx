@@ -110,7 +110,9 @@ import {
   BiddedPricesMap,
   validateAndCompleteFuelOrder,
   calculateRealtimeMetrics,
+  compressFuelPhoto,
   uploadFuelDocumentPhoto,
+  registerAdvanceTravelFuelOrder,
   linkInvoiceToFuelOrder,
   syncLocalOrdersToSupabase,
   updateFuelOrderBudgetClassification,
@@ -363,6 +365,22 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Modais
   const [isNewOrderModalOpen, setIsNewOrderModalOpen] = useState(false);
   const [isLegacyVoucherModalOpen, setIsLegacyVoucherModalOpen] = useState(false);
+  const [isAdvanceFuelModalOpen, setIsAdvanceFuelModalOpen] = useState(false);
+  const [savingAdvanceFuel, setSavingAdvanceFuel] = useState(false);
+  const [advanceFuelForm, setAdvanceFuelForm] = useState({
+    vehicle_id: '',
+    driver_name: '',
+    station_name: '',
+    supplied_at: new Date().toISOString().slice(0, 10),
+    odometer_reading: '',
+    liters_supplied: '',
+    total_value: '',
+    notes: ''
+  });
+  const [advanceOdometerPhotoFile, setAdvanceOdometerPhotoFile] = useState<File | null>(null);
+  const [advanceOdometerPhotoPreview, setAdvanceOdometerPhotoPreview] = useState<string>('');
+  const [advancePumpPhotoFile, setAdvancePumpPhotoFile] = useState<File | null>(null);
+  const [advancePumpPhotoPreview, setAdvancePumpPhotoPreview] = useState<string>('');
   const [newOrderStep, setNewOrderStep] = useState<1 | 2 | 3>(1);
   const [vehicleSearchFilter, setVehicleSearchFilter] = useState('');
   const [driverSearchQuery, setDriverSearchQuery] = useState('');
@@ -1753,7 +1771,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         fraudClearObservation,
         currentUser?.name || currentUser?.id || 'Responsável pela Frota'
       );
-      setSelectedOrderForAction(updated);
+      setIsAuditModalOpen(false);
       setShowFraudClearBox(false);
       setFraudClearObservation('');
       showToast(`Risco de Fraude retirado da ordem ${updated.order_number} com observação registrada!`, 'success');
@@ -1762,6 +1780,89 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       showToast(err.message || 'Erro ao retirar o Risco de Fraude.', 'error');
     } finally {
       setClearingFraudRisk(false);
+    }
+  };
+
+  // Lançamento simples de Abastecimento por Adiantamento de Viagem
+  const handleOpenAdvanceFuelModal = () => {
+    setAdvanceFuelForm({
+      vehicle_id: '',
+      driver_name: '',
+      station_name: '',
+      supplied_at: new Date().toISOString().slice(0, 10),
+      odometer_reading: '',
+      liters_supplied: '',
+      total_value: '',
+      notes: ''
+    });
+    setAdvanceOdometerPhotoFile(null);
+    setAdvanceOdometerPhotoPreview('');
+    setAdvancePumpPhotoFile(null);
+    setAdvancePumpPhotoPreview('');
+    setIsAdvanceFuelModalOpen(true);
+  };
+
+  const handleSaveAdvanceFuel = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!advanceFuelForm.vehicle_id) {
+      showToast('Selecione o veículo da viagem.', 'warning');
+      return;
+    }
+    if (!advanceFuelForm.driver_name.trim()) {
+      showToast('Informe o motorista responsável.', 'warning');
+      return;
+    }
+    const liters = parseFloat(advanceFuelForm.liters_supplied);
+    const odo = parseFloat(advanceFuelForm.odometer_reading);
+    const totalPaid = parseFloat(advanceFuelForm.total_value);
+    if (!liters || liters <= 0 || !odo || odo <= 0) {
+      showToast('Informe o odômetro (KM) e a litragem válidos.', 'warning');
+      return;
+    }
+    if (!totalPaid || totalPaid <= 0) {
+      showToast('Informe o valor total pago (R$) na bomba do posto da viagem.', 'warning');
+      return;
+    }
+
+    setSavingAdvanceFuel(true);
+    try {
+      let odoUrl: string | undefined;
+      let pumpUrl: string | undefined;
+
+      if (advanceOdometerPhotoFile) {
+        const compressedOdo = await compressFuelPhoto(advanceOdometerPhotoFile);
+        odoUrl = await uploadFuelDocumentPhoto(compressedOdo, 'odometers');
+      }
+      if (advancePumpPhotoFile) {
+        const compressedPump = await compressFuelPhoto(advancePumpPhotoFile);
+        pumpUrl = await uploadFuelDocumentPhoto(compressedPump, 'pumps');
+      }
+
+      const created = await registerAdvanceTravelFuelOrder({
+        vehicle_id: advanceFuelForm.vehicle_id,
+        driver_name: advanceFuelForm.driver_name,
+        station_name: advanceFuelForm.station_name || 'Posto em Viagem (Não Credenciado)',
+        liters_supplied: liters,
+        odometer_reading: odo,
+        total_value: totalPaid,
+        supplied_at: advanceFuelForm.supplied_at,
+        odometer_photo_url: odoUrl,
+        pump_photo_url: pumpUrl,
+        notes: advanceFuelForm.notes,
+        authorized_by_name: currentUser?.name || 'Responsável pela Frota',
+        institution_id: currentUser?.institution_id
+      });
+
+      const avgMsg = created.calculated_km_per_liter
+        ? ` Média apurada: ${created.calculated_km_per_liter} km/L.`
+        : '';
+      showToast(`Abastecimento de adiantamento ${created.order_number} lançado!${avgMsg}`, 'success');
+      setIsAdvanceFuelModalOpen(false);
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao lançar abastecimento de adiantamento.', 'error');
+    } finally {
+      setSavingAdvanceFuel(false);
     }
   };
 
@@ -5814,6 +5915,25 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   type="button"
                   onClick={() => {
                     setIsToolsModalOpen(false);
+                    handleOpenAdvanceFuelModal();
+                  }}
+                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-cyan-400 dark:hover:border-cyan-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
+                >
+                  <div className="p-2.5 rounded-xl bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300">
+                    <Fuel size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Abastecimento de Adiantamento</h4>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Lançar abastecimento de viagem com fotos do odômetro e bomba
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsToolsModalOpen(false);
                     handleExportExcel();
                   }}
                   className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-emerald-400 dark:hover:border-emerald-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
@@ -7693,6 +7813,275 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         }}
         institutionId={currentUser?.institution_id}
       />
+
+      {/* MODAL SIMPLES: LANÇAR ABASTECIMENTO DE ADIANTAMENTO (VIAGENS) */}
+      <AnimatePresence>
+        {isAdvanceFuelModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 my-8"
+            >
+              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 text-cyan-600 flex items-center justify-center">
+                    <Fuel size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      Abastecimento de Adiantamento (Viagem)
+                    </h3>
+                    <p className="text-xs text-neutral-400">
+                      Registre o abastecimento em viagem para manter o odômetro e a média km/L corretos
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAdvanceFuelModalOpen(false)}
+                  className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveAdvanceFuel} className="mt-4 space-y-3.5">
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Veículo *
+                  </label>
+                  <select
+                    required
+                    value={advanceFuelForm.vehicle_id}
+                    onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, vehicle_id: e.target.value })}
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  >
+                    <option value="">Selecione o veículo...</option>
+                    {vehicles.map(v => (
+                      <option key={v.id} value={v.id}>
+                        {v.plate} • {v.model} ({formatThousands(v.current_odometer || 0)} km)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Motorista *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      list="advance-drivers-list"
+                      value={advanceFuelForm.driver_name}
+                      onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, driver_name: e.target.value })}
+                      placeholder="Nome do motorista"
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                    <datalist id="advance-drivers-list">
+                      {drivers.map(d => (
+                        <option key={d.id} value={d.full_name} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Data do Abastecimento *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={advanceFuelForm.supplied_at}
+                      onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, supplied_at: e.target.value })}
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Odômetro (KM) *
+                    </label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={advanceFuelForm.odometer_reading}
+                      onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, odometer_reading: e.target.value })}
+                      placeholder="Ex: 68420"
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Litros (L) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.1"
+                      required
+                      value={advanceFuelForm.liters_supplied}
+                      onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, liters_supplied: e.target.value })}
+                      placeholder="Ex: 45.5"
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                      Valor Pago (R$) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      required
+                      value={advanceFuelForm.total_value}
+                      onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, total_value: e.target.value })}
+                      placeholder="Ex: 289.50"
+                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                {(() => {
+                  const selV = vehicles.find(v => v.id === advanceFuelForm.vehicle_id);
+                  const prevKm = Number(selV?.current_odometer || 0);
+                  const newKm = parseFloat(advanceFuelForm.odometer_reading) || 0;
+                  const lts = parseFloat(advanceFuelForm.liters_supplied) || 0;
+                  const tot = parseFloat(advanceFuelForm.total_value) || 0;
+                  const delta = selV && newKm > prevKm ? newKm - prevKm : 0;
+                  const avg = delta > 0 && lts > 0 ? (delta / lts).toFixed(2) : null;
+                  const realUnitPrice = tot > 0 && lts > 0 ? (tot / lts).toFixed(3) : null;
+                  if (!selV && !realUnitPrice) return null;
+                  return (
+                    <div className="px-3 py-2 rounded-xl bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="text-cyan-900 dark:text-cyan-200 font-semibold">
+                        {selV && (
+                          <>
+                            KM Anterior: <strong>{formatThousands(prevKm)} km</strong>
+                            {delta > 0 && <> • Rodados: <strong>+{formatThousands(delta)} km</strong></>}
+                          </>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {realUnitPrice && (
+                          <span className="font-bold text-neutral-700 dark:text-neutral-200">
+                            Preço/L pago (sem licitação): <strong>R$ {realUnitPrice}</strong>
+                          </span>
+                        )}
+                        {avg && (
+                          <span className="font-black text-cyan-700 dark:text-cyan-300">
+                            Média: {avg} km/L
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Posto / Local da Viagem
+                  </label>
+                  <input
+                    type="text"
+                    value={advanceFuelForm.station_name}
+                    onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, station_name: e.target.value })}
+                    placeholder="Ex: Auto Posto Rodovia BR-158 / Cuiabá"
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+
+                {/* Fotos do Odômetro e da Bomba */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="block p-3 rounded-2xl border border-dashed border-neutral-300 dark:border-neutral-700 hover:border-cyan-500 bg-neutral-50/70 dark:bg-neutral-800/40 cursor-pointer transition-colors">
+                    <span className="text-[11px] font-black text-neutral-700 dark:text-neutral-200 flex items-center gap-1.5 mb-1">
+                      <Camera size={14} className="text-cyan-600" />
+                      Foto do Odômetro
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] || null;
+                        setAdvanceOdometerPhotoFile(file);
+                        setAdvanceOdometerPhotoPreview(file ? URL.createObjectURL(file) : '');
+                      }}
+                    />
+                    {advanceOdometerPhotoPreview ? (
+                      <img src={advanceOdometerPhotoPreview} alt="Prévia Odômetro" className="w-full h-24 object-cover rounded-xl border border-neutral-200 dark:border-neutral-700 mt-1" />
+                    ) : (
+                      <span className="text-[10px] text-neutral-400 block">Clique para anexar a foto do painel</span>
+                    )}
+                  </label>
+
+                  <label className="block p-3 rounded-2xl border border-dashed border-neutral-300 dark:border-neutral-700 hover:border-cyan-500 bg-neutral-50/70 dark:bg-neutral-800/40 cursor-pointer transition-colors">
+                    <span className="text-[11px] font-black text-neutral-700 dark:text-neutral-200 flex items-center gap-1.5 mb-1">
+                      <Camera size={14} className="text-cyan-600" />
+                      Foto da Bomba
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0] || null;
+                        setAdvancePumpPhotoFile(file);
+                        setAdvancePumpPhotoPreview(file ? URL.createObjectURL(file) : '');
+                      }}
+                    />
+                    {advancePumpPhotoPreview ? (
+                      <img src={advancePumpPhotoPreview} alt="Prévia Bomba" className="w-full h-24 object-cover rounded-xl border border-neutral-200 dark:border-neutral-700 mt-1" />
+                    ) : (
+                      <span className="text-[10px] text-neutral-400 block">Clique para anexar a foto da bomba</span>
+                    )}
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                    Observação / Destino da Viagem
+                  </label>
+                  <input
+                    type="text"
+                    value={advanceFuelForm.notes}
+                    onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, notes: e.target.value })}
+                    placeholder="Ex: Viagem para Barra do Garças - Adiantamento"
+                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsAdvanceFuelModalOpen(false)}
+                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingAdvanceFuel}
+                    className="px-5 py-2 text-xs font-black text-white bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 rounded-xl shadow-md shadow-cyan-600/20 cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>{savingAdvanceFuel ? 'Salvando...' : 'Registrar Abastecimento'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

@@ -180,7 +180,7 @@ export interface TwoWayFuelOrder {
   anomaly_level: AnomalyLevel;
   anomaly_reason?: string;
   audit_justification?: string;
-  supply_mode: 'litragem_fixa' | 'encher_tanque' | 'canhoto_legado';
+  supply_mode: 'litragem_fixa' | 'encher_tanque' | 'canhoto_legado' | 'adiantamento_viagem';
   is_full_tank_order?: boolean;
   emergency_call_reason?: string;
   is_legacy_voucher?: boolean;
@@ -1513,6 +1513,176 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
   }
 
   // 3. Atualizar lista de ordens local
+  const currentOrders = getLocalOrders();
+  currentOrders.unshift(newOrder);
+  saveLocalOrders(currentOrders);
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+        detail: { order: newOrder }
+      }));
+    }
+  } catch { }
+
+  return newOrder;
+}
+
+export interface AdvanceTravelFuelPayload {
+  vehicle_id: string;
+  driver_name: string;
+  station_name?: string;
+  liters_supplied: number;
+  odometer_reading: number;
+  total_value?: number;
+  unit_price?: number;
+  supplied_at?: string;
+  odometer_photo_url?: string;
+  pump_photo_url?: string;
+  notes?: string;
+  authorized_by_name?: string;
+  institution_id?: string;
+}
+
+/**
+ * Lançamento de Abastecimento por Adiantamento de Viagem
+ * Registra abastecimentos pagos via adiantamento ao motorista durante viagens,
+ * preservando as fotos do odômetro e da bomba e atualizando a quilometragem do veículo
+ * para não distorcer a média de consumo (km/L).
+ */
+export async function registerAdvanceTravelFuelOrder(
+  payload: AdvanceTravelFuelPayload
+): Promise<TwoWayFuelOrder> {
+  let vehicles = getLocalVehicles();
+  let vehicle = vehicles.find(v => v.id === payload.vehicle_id);
+
+  if (!vehicle) {
+    try {
+      const { data } = await supabase
+        .from('fleet_vehicles')
+        .select('*')
+        .eq('id', payload.vehicle_id)
+        .maybeSingle();
+      if (data) vehicle = data as FleetVehicle;
+    } catch { }
+  }
+
+  if (!vehicle) {
+    throw new Error('Veículo não localizado na frota municipal.');
+  }
+
+  const litersSupplied = Number(payload.liters_supplied);
+  if (isNaN(litersSupplied) || litersSupplied <= 0) {
+    throw new Error('Informe uma litragem válida maior que zero.');
+  }
+
+  const odoReading = Number(payload.odometer_reading);
+  if (isNaN(odoReading) || odoReading <= 0) {
+    throw new Error('Informe o odômetro (KM) registrado na viagem.');
+  }
+
+  const previousOdometer = Number(vehicle.current_odometer || 0);
+  const shouldUpdateVehicleOdo = odoReading > previousOdometer;
+  const deltaKm = odoReading > previousOdometer ? odoReading - previousOdometer : 0;
+  const calculatedKmPerLiter = deltaKm > 0 && litersSupplied > 0
+    ? Number((deltaKm / litersSupplied).toFixed(2))
+    : undefined;
+
+  const totalInput = Number(payload.total_value || 0);
+  const unitInput = Number(payload.unit_price || 0);
+  if (totalInput <= 0 && unitInput <= 0) {
+    throw new Error('Informe o valor total pago (R$) ou o preço por litro praticado no posto da viagem.');
+  }
+  const unitPrice = totalInput > 0
+    ? Number((totalInput / litersSupplied).toFixed(3))
+    : Number(unitInput.toFixed(3));
+  const totalValue = totalInput > 0
+    ? Number(totalInput.toFixed(2))
+    : Number((litersSupplied * unitPrice).toFixed(2));
+
+  const orderNumber = await getNextOrderNumber7Digits();
+  const suppliedDate = payload.supplied_at
+    ? (payload.supplied_at.includes('T') ? payload.supplied_at : `${payload.supplied_at}T12:00:00.000Z`)
+    : new Date().toISOString();
+
+  const resolvedBudgetId = vehicle.budget_classification_id;
+  const localBudgets = getLocalBudgetClassifications();
+  const resolvedBudget = localBudgets.find(b => b.id === resolvedBudgetId) || vehicle.budget_classification;
+
+  const newOrder: TwoWayFuelOrder = {
+    id: generateUUID(),
+    institution_id: payload.institution_id || vehicle.institution_id || 'inst_1',
+    order_number: orderNumber,
+    vehicle_id: vehicle.id,
+    vehicle,
+    driver_name: payload.driver_name?.trim() || 'Motorista em Viagem',
+    station_name: payload.station_name?.trim() || 'Posto em Viagem (Adiantamento)',
+    fuel_type: vehicle.fuel_type,
+    bidded_unit_price: unitPrice,
+    liters_authorized: litersSupplied,
+    liters_supplied: litersSupplied,
+    total_authorized_value: totalValue,
+    previous_odometer: previousOdometer,
+    current_odometer: odoReading,
+    calculated_km_per_liter: calculatedKmPerLiter,
+    odometer_photo_url: payload.odometer_photo_url || undefined,
+    pump_photo_url: payload.pump_photo_url || undefined,
+    receipt_photo_url: payload.pump_photo_url || payload.odometer_photo_url || undefined,
+    anomaly_level: 'none',
+    supply_mode: 'adiantamento_viagem',
+    notes: payload.notes?.trim()
+      ? `[Adiantamento de Viagem] ${payload.notes.trim()}`
+      : '[Adiantamento de Viagem] Abastecimento em viagem com adiantamento ao motorista.',
+    authorized_by_name: payload.authorized_by_name?.trim() || 'Responsável pela Frota',
+    authorized_by_role: 'Adiantamento de Viagem',
+    budget_classification_id: resolvedBudgetId,
+    budget_classification: resolvedBudget,
+    status: 'abastecido',
+    created_at: suppliedDate,
+    supplied_at: suppliedDate
+  };
+
+  try {
+    await supabase.from('fuel_supply_orders').insert([{
+      id: newOrder.id,
+      institution_id: newOrder.institution_id,
+      order_number: newOrder.order_number,
+      vehicle_id: newOrder.vehicle_id,
+      driver_name: newOrder.driver_name,
+      station_name: newOrder.station_name,
+      fuel_type: newOrder.fuel_type,
+      liters_authorized: newOrder.liters_authorized,
+      liters_supplied: newOrder.liters_supplied,
+      unit_price: newOrder.bidded_unit_price,
+      total_value: newOrder.total_authorized_value,
+      previous_odometer: newOrder.previous_odometer,
+      current_odometer: newOrder.current_odometer,
+      odometer_photo_url: newOrder.odometer_photo_url,
+      pump_photo_url: newOrder.pump_photo_url,
+      receipt_photo_url: newOrder.receipt_photo_url,
+      status: 'abastecido',
+      created_at: newOrder.created_at,
+      supplied_at: newOrder.supplied_at
+    }]);
+
+    if (shouldUpdateVehicleOdo) {
+      await supabase.from('fleet_vehicles').update({
+        current_odometer: odoReading
+      }).eq('id', vehicle.id);
+    }
+  } catch (errDb) {
+    console.warn('[FleetFuelAudit] Aviso ao persistir abastecimento de adiantamento no Supabase:', errDb);
+  }
+
+  if (shouldUpdateVehicleOdo) {
+    const localVehicles = getLocalVehicles();
+    const vIdx = localVehicles.findIndex(v => v.id === vehicle!.id);
+    if (vIdx !== -1) {
+      localVehicles[vIdx].current_odometer = odoReading;
+      saveLocalVehicles(localVehicles);
+    }
+  }
+
   const currentOrders = getLocalOrders();
   currentOrders.unshift(newOrder);
   saveLocalOrders(currentOrders);
