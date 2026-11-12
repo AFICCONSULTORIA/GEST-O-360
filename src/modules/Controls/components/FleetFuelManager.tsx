@@ -367,6 +367,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [isLegacyVoucherModalOpen, setIsLegacyVoucherModalOpen] = useState(false);
   const [isAdvanceFuelModalOpen, setIsAdvanceFuelModalOpen] = useState(false);
   const [savingAdvanceFuel, setSavingAdvanceFuel] = useState(false);
+  const [advanceVehicleSearch, setAdvanceVehicleSearch] = useState('');
+  const [showAdvanceVehicleList, setShowAdvanceVehicleList] = useState(false);
+  const [showAdvanceDriverList, setShowAdvanceDriverList] = useState(false);
   const [advanceFuelForm, setAdvanceFuelForm] = useState({
     vehicle_id: '',
     driver_name: '',
@@ -1799,6 +1802,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setAdvanceOdometerPhotoPreview('');
     setAdvancePumpPhotoFile(null);
     setAdvancePumpPhotoPreview('');
+    setAdvanceVehicleSearch('');
+    setShowAdvanceVehicleList(false);
+    setShowAdvanceDriverList(false);
     setIsAdvanceFuelModalOpen(true);
   };
 
@@ -7848,44 +7854,152 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <form onSubmit={handleSaveAdvanceFuel} className="mt-4 space-y-3.5">
-                <div>
+                <div className="relative">
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Veículo *
+                    Veículo (Buscar pela Placa ou Modelo) *
                   </label>
-                  <select
-                    required
-                    value={advanceFuelForm.vehicle_id}
-                    onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, vehicle_id: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  >
-                    <option value="">Selecione o veículo...</option>
-                    {vehicles.map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.plate} • {v.model} ({formatThousands(v.current_odometer || 0)} km)
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={advanceVehicleSearch}
+                      onFocus={() => setShowAdvanceVehicleList(true)}
+                      onChange={e => {
+                        setAdvanceVehicleSearch(e.target.value);
+                        setShowAdvanceVehicleList(true);
+                        if (advanceFuelForm.vehicle_id) {
+                          setAdvanceFuelForm({ ...advanceFuelForm, vehicle_id: '' });
+                        }
+                      }}
+                      placeholder="Digite a placa (ex: ABC1D23) ou modelo..."
+                      className="w-full pl-9 pr-8 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                    {(advanceVehicleSearch || advanceFuelForm.vehicle_id) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdvanceVehicleSearch('');
+                          setAdvanceFuelForm({ ...advanceFuelForm, vehicle_id: '' });
+                          setShowAdvanceVehicleList(true);
+                        }}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white cursor-pointer"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {showAdvanceVehicleList && (
+                    <div className="absolute z-30 mt-1 w-full max-h-48 overflow-y-auto bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl divide-y divide-neutral-100 dark:divide-neutral-800">
+                      {(() => {
+                        const q = advanceVehicleSearch.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+                        const matches = vehicles.filter(v => {
+                          if (!q) return true;
+                          const plateClean = (v.plate || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                          const modelClean = (v.model || '').toLowerCase();
+                          const deptClean = (v.department || '').toLowerCase();
+                          return plateClean.includes(q) || modelClean.includes(advanceVehicleSearch.trim().toLowerCase()) || deptClean.includes(advanceVehicleSearch.trim().toLowerCase());
+                        });
+                        if (matches.length === 0) {
+                          return (
+                            <div className="px-3 py-2.5 text-xs text-neutral-400 text-center">
+                              Nenhum veículo encontrado para "{advanceVehicleSearch}"
+                            </div>
+                          );
+                        }
+                        return matches.slice(0, 30).map(v => (
+                          <button
+                            key={v.id}
+                            type="button"
+                            onClick={() => {
+                              setAdvanceFuelForm({ ...advanceFuelForm, vehicle_id: v.id });
+                              setAdvanceVehicleSearch(`${v.plate} • ${v.model}`);
+                              setShowAdvanceVehicleList(false);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-cyan-50 dark:hover:bg-cyan-950/40 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                          >
+                            <div>
+                              <span className="text-xs font-black font-mono text-neutral-900 dark:text-white">{v.plate}</span>
+                              <span className="text-xs font-semibold text-neutral-600 dark:text-neutral-300 ml-2">{v.model}</span>
+                            </div>
+                            <span className="text-[11px] font-mono font-bold text-cyan-700 dark:text-cyan-400 shrink-0">
+                              {formatThousands(v.current_odometer || 0)} km
+                            </span>
+                          </button>
+                        ));
+                      })()}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Motorista *
+                      Motorista (Buscar pelo Nome) *
                     </label>
-                    <input
-                      type="text"
-                      required
-                      list="advance-drivers-list"
-                      value={advanceFuelForm.driver_name}
-                      onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, driver_name: e.target.value })}
-                      placeholder="Nome do motorista"
-                      className="w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                    />
-                    <datalist id="advance-drivers-list">
-                      {drivers.map(d => (
-                        <option key={d.id} value={d.full_name} />
-                      ))}
-                    </datalist>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        required
+                        value={advanceFuelForm.driver_name}
+                        onFocus={() => setShowAdvanceDriverList(true)}
+                        onBlur={() => setTimeout(() => setShowAdvanceDriverList(false), 160)}
+                        onChange={e => {
+                          setAdvanceFuelForm({ ...advanceFuelForm, driver_name: e.target.value });
+                          setShowAdvanceDriverList(true);
+                        }}
+                        placeholder="Digite o nome do motorista..."
+                        className="w-full pl-9 pr-7 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      />
+                      {advanceFuelForm.driver_name && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAdvanceFuelForm({ ...advanceFuelForm, driver_name: '' });
+                            setShowAdvanceDriverList(true);
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white cursor-pointer"
+                        >
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+
+                    {showAdvanceDriverList && drivers.length > 0 && (
+                      <div className="absolute z-30 mt-1 w-full max-h-44 overflow-y-auto bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl divide-y divide-neutral-100 dark:divide-neutral-800">
+                        {(() => {
+                          const q = advanceFuelForm.driver_name.trim().toLowerCase();
+                          const matches = drivers.filter(d =>
+                            !q || (d.full_name || '').toLowerCase().includes(q)
+                          );
+                          if (matches.length === 0) {
+                            return (
+                              <div className="px-3 py-2 text-[11px] text-neutral-400">
+                                Nenhum motorista cadastrado encontrado (será salvo o nome digitado).
+                              </div>
+                            );
+                          }
+                          return matches.slice(0, 25).map(d => (
+                            <button
+                              key={d.id}
+                              type="button"
+                              onMouseDown={e => {
+                                e.preventDefault();
+                                setAdvanceFuelForm({ ...advanceFuelForm, driver_name: d.full_name });
+                                setShowAdvanceDriverList(false);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-cyan-50 dark:hover:bg-cyan-950/40 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                            >
+                              <span className="text-xs font-semibold text-neutral-900 dark:text-white truncate">{d.full_name}</span>
+                              {d.department && (
+                                <span className="text-[10px] text-neutral-400 shrink-0">{d.department}</span>
+                              )}
+                            </button>
+                          ));
+                        })()}
+                      </div>
+                    )}
                   </div>
 
                   <div>
