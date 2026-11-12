@@ -304,6 +304,18 @@ function isAdvanceTravelOrder(order?: Partial<FuelSupplyOrder> | null): boolean 
   );
 }
 
+function getOrderTimestamp(order: FuelSupplyOrder): number {
+  const anyOrder = order as any;
+  const raw = anyOrder.fueling_date || order.supplied_at || order.created_at;
+  if (!raw) return 0;
+  if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const t = new Date(raw + 'T12:00:00').getTime();
+    if (!isNaN(t)) return t;
+  }
+  const parsed = new Date(raw).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
 }
@@ -349,13 +361,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [driverSearchTerm, setDriverSearchTerm] = useState('');
   const [stationSearchTerm, setStationSearchTerm] = useState('');
 
-  // Ordenação por Número da Ordem ('none' | 'asc' | 'desc')
+  // Ordenação por Número da Ordem ('none' | 'asc' | 'desc') e por Data ('none' | 'desc' | 'asc')
   const [orderNumberSort, setOrderNumberSort] = useState<'none' | 'asc' | 'desc'>('none');
+  const [orderDateSort, setOrderDateSort] = useState<'none' | 'desc' | 'asc'>('desc');
 
   const toggleOrderNumberSort = () => {
+    setOrderDateSort('none');
     setOrderNumberSort(prev => {
       if (prev === 'none') return 'asc';
       if (prev === 'asc') return 'desc';
+      return 'none';
+    });
+  };
+
+  const toggleOrderDateSort = () => {
+    setOrderNumberSort('none');
+    setOrderDateSort(prev => {
+      if (prev === 'none') return 'desc';
+      if (prev === 'desc') return 'asc';
       return 'none';
     });
   };
@@ -1544,18 +1567,27 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       });
     });
 
+    let sorted = [...result];
+
     if (orderNumberSort === 'asc') {
-      return [...result].sort((a, b) => 
+      sorted.sort((a, b) => 
         (a.order_number || '').localeCompare(b.order_number || '', undefined, { numeric: true, sensitivity: 'base' })
       );
     } else if (orderNumberSort === 'desc') {
-      return [...result].sort((a, b) => 
+      sorted.sort((a, b) => 
         (b.order_number || '').localeCompare(a.order_number || '', undefined, { numeric: true, sensitivity: 'base' })
       );
+    } else if (orderDateSort === 'asc') {
+      sorted.sort((a, b) => getOrderTimestamp(a) - getOrderTimestamp(b));
+    } else if (orderDateSort === 'desc') {
+      sorted.sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+    } else {
+      // Fallback padrão: Mais recentes primeiro
+      sorted.sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
     }
 
-    return result;
-  }, [orders, vehicles, searchTerm, departmentFilter, statusFilter, orderNumberSort]);
+    return sorted;
+  }, [orders, vehicles, searchTerm, departmentFilter, statusFilter, orderNumberSort, orderDateSort]);
 
   // Filtragem ampla de veículos para a aba de Veículos (utiliza a barra de pesquisa principal)
   const filteredVehiclesList = useMemo(() => {
@@ -1607,7 +1639,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Reseta para página 1 ao alterar filtros de busca ou aba
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, driverSearchTerm, departmentFilter, statusFilter, activeTab, orderNumberSort]);
+  }, [searchTerm, driverSearchTerm, departmentFilter, statusFilter, activeTab, orderNumberSort, orderDateSort]);
 
   // Paginação para Ordens (Aba 1 e Aba 3 - 30 itens por página)
   const totalPagesOrders = Math.ceil(filteredOrders.length / ITEMS_PER_PAGE) || 1;
@@ -2855,13 +2887,52 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             ))}
           </select>
 
-          {(searchTerm || departmentFilter !== 'all' || statusFilter !== 'all') && (
+          <select
+            value={
+              orderDateSort === 'desc'
+                ? 'date_desc'
+                : orderDateSort === 'asc'
+                ? 'date_asc'
+                : orderNumberSort === 'desc'
+                ? 'order_desc'
+                : orderNumberSort === 'asc'
+                ? 'order_asc'
+                : 'date_desc'
+            }
+            onChange={e => {
+              const val = e.target.value;
+              if (val === 'date_desc') {
+                setOrderDateSort('desc');
+                setOrderNumberSort('none');
+              } else if (val === 'date_asc') {
+                setOrderDateSort('asc');
+                setOrderNumberSort('none');
+              } else if (val === 'order_desc') {
+                setOrderNumberSort('desc');
+                setOrderDateSort('none');
+              } else if (val === 'order_asc') {
+                setOrderNumberSort('asc');
+                setOrderDateSort('none');
+              }
+            }}
+            className="px-3 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            title="Organizar ordens por Data ou Número da Ordem"
+          >
+            <option value="date_desc">📅 Data (Mais Recentes)</option>
+            <option value="date_asc">📅 Data (Mais Antigas)</option>
+            <option value="order_desc">🔢 Nº Ordem (Decrescente)</option>
+            <option value="order_asc">🔢 Nº Ordem (Crescente)</option>
+          </select>
+
+          {(searchTerm || departmentFilter !== 'all' || statusFilter !== 'all' || orderNumberSort !== 'none' || orderDateSort !== 'desc') && (
             <button
               type="button"
               onClick={() => {
                 setSearchTerm('');
                 setDepartmentFilter('all');
                 setStatusFilter('all');
+                setOrderDateSort('desc');
+                setOrderNumberSort('none');
               }}
               className="flex items-center justify-center gap-1 px-3 py-2.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer border border-rose-200 dark:border-rose-800 shrink-0"
               title="Limpar filtros ativos"
@@ -3032,22 +3103,43 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             <table className="w-full text-left text-xs">
               <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
                 <tr>
-                  <th 
-                    className="px-4 py-3.5 cursor-pointer select-none group hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                    onClick={toggleOrderNumberSort}
-                    title="Clique para ordenar por Número da Ordem (Crescente / Decrescente)"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <span className={orderNumberSort !== 'none' ? 'text-amber-600 dark:text-amber-400 font-black' : ''}>
-                        Ordem
-                      </span>
-                      {orderNumberSort === 'asc' ? (
-                        <ArrowUp size={11} className="text-blue-600" />
-                      ) : orderNumberSort === 'desc' ? (
-                        <ArrowDown size={11} className="text-amber-600" />
-                      ) : (
-                        <ArrowUpDown size={11} className="text-neutral-400 opacity-60 group-hover:opacity-100 transition-opacity" />
-                      )}
+                  <th className="px-4 py-3.5 select-none">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={toggleOrderNumberSort}
+                        className="flex items-center gap-1 hover:text-amber-600 transition-colors cursor-pointer group"
+                        title="Clique para ordenar por Número da Ordem (Crescente / Decrescente)"
+                      >
+                        <span className={orderNumberSort !== 'none' ? 'text-amber-600 dark:text-amber-400 font-black' : ''}>
+                          Ordem
+                        </span>
+                        {orderNumberSort === 'asc' ? (
+                          <ArrowUp size={11} className="text-blue-600" />
+                        ) : orderNumberSort === 'desc' ? (
+                          <ArrowDown size={11} className="text-amber-600" />
+                        ) : (
+                          <ArrowUpDown size={11} className="text-neutral-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                        )}
+                      </button>
+                      <span className="text-neutral-300 dark:text-neutral-700">|</span>
+                      <button
+                        type="button"
+                        onClick={toggleOrderDateSort}
+                        className="flex items-center gap-1 hover:text-amber-600 transition-colors cursor-pointer group"
+                        title="Clique para ordenar por Data do Abastecimento / Emissão (Mais Recentes / Mais Antigas)"
+                      >
+                        <span className={orderDateSort !== 'none' ? 'text-amber-600 dark:text-amber-400 font-black' : ''}>
+                          Data
+                        </span>
+                        {orderDateSort === 'asc' ? (
+                          <ArrowUp size={11} className="text-blue-600" />
+                        ) : orderDateSort === 'desc' ? (
+                          <ArrowDown size={11} className="text-amber-600" />
+                        ) : (
+                          <ArrowUpDown size={11} className="text-neutral-400 opacity-60 group-hover:opacity-100 transition-opacity" />
+                        )}
+                      </button>
                     </div>
                   </th>
                   <th className="px-4 py-3.5">Veículo & Secretaria</th>
@@ -3099,8 +3191,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <span className="font-mono font-black text-sm text-neutral-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors block">
                             {order.order_number}
                           </span>
-                          <span className="text-[11px] text-neutral-400">
-                            {new Date(order.created_at).toLocaleDateString('pt-BR')}
+                          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-semibold mt-0.5">
+                            <Calendar size={11} className="text-amber-500 shrink-0" />
+                            {(() => {
+                              const anyOrder = order as any;
+                              const rawDate = anyOrder.fueling_date || order.supplied_at || order.created_at;
+                              if (!rawDate) return '-';
+                              if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+                                const parts = rawDate.split('-');
+                                return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                              }
+                              return new Date(rawDate).toLocaleDateString('pt-BR');
+                            })()}
                           </span>
                         </td>
 
@@ -3419,7 +3521,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               {v?.model}
                             </div>
                             <div className="text-[10px] text-neutral-400">
-                              {v?.department} • {order.order_number}
+                              {v?.department} • {order.order_number} • {(() => {
+                                const anyOrder = order as any;
+                                const rawDate = anyOrder.fueling_date || order.supplied_at || order.created_at;
+                                if (!rawDate) return '-';
+                                if (typeof rawDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+                                  const parts = rawDate.split('-');
+                                  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                                }
+                                return new Date(rawDate).toLocaleDateString('pt-BR');
+                              })()}
                             </div>
                             {order.is_full_tank_order && (
                               <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800">

@@ -1096,7 +1096,7 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
                             onMouseEnter={() => setNewsCarouselPaused(true)}
                             onMouseLeave={() => setNewsCarouselPaused(false)}
                           >
-                            <div className="relative h-[280px] sm:h-[380px] lg:h-[430px] w-full">
+                            <div className="relative w-full aspect-[5/3] min-h-[260px] max-h-[720px]">
                               <AnimatePresence mode="wait">
                                 <motion.div
                                   key={activeSlide.id}
@@ -1110,7 +1110,7 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
                                     <img
                                       src={activeSlide.cover_image_url}
                                       alt={activeSlide.title}
-                                      className="w-full h-full object-cover"
+                                      className="w-full h-full object-cover object-center"
                                     />
                                   ) : (
                                     <div
@@ -1120,7 +1120,7 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
                                       <Newspaper size={64} className="text-white/40" />
                                     </div>
                                   )}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-black/20" />
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 via-35% to-transparent pointer-events-none" />
                                 </motion.div>
                               </AnimatePresence>
 
@@ -1248,11 +1248,11 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
                               className="group bg-neutral-50 dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 rounded-3xl overflow-hidden flex flex-col hover:shadow-lg transition-all"
                             >
                               {item.cover_image_url ? (
-                                <div className="aspect-[16/10] overflow-hidden bg-neutral-200 dark:bg-neutral-800">
+                                <div className="aspect-[5/3] overflow-hidden bg-neutral-200 dark:bg-neutral-800">
                                   <img
                                     src={item.cover_image_url}
                                     alt={item.title}
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                                   />
                                 </div>
                               ) : (
@@ -2057,15 +2057,18 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
           />
         )}
 
-        <CookieConsentBanner
-          institution={currentInstitution}
-          visible={config.sections.showCookieBanner !== false && showCookieBanner}
-          accentHex={accentHex}
-          darkMode={darkMode}
-          isMourning={isMourning}
-          onAcceptedOrDismissed={() => setShowCookieBanner(false)}
-          onOpenPrivacy={() => setComplianceDialog('privacy')}
-        />
+        {config.sections.showCookieBanner !== false && (
+          <CookieConsentBanner
+            institution={currentInstitution}
+            visible={showCookieBanner}
+            accentHex={accentHex}
+            darkMode={darkMode}
+            isMourning={isMourning}
+            onAcceptedOrDismissed={() => setShowCookieBanner(false)}
+            onOpenPrivacy={() => setComplianceDialog('privacy')}
+            onRequestOpen={() => setShowCookieBanner(true)}
+          />
+        )}
 
         <SiteComplianceModals
           activeDialog={complianceDialog}

@@ -3,7 +3,7 @@ import {
   FileBadge, Plus, Upload, Download, Search, CheckCircle2, 
   AlertTriangle, Eye, Copy, RefreshCw, Sparkles, FileText, 
   Calendar, Clock, User, ShieldCheck, ChevronRight, ChevronLeft, 
-  FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer
+  FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer, X
 } from 'lucide-react';
 import { 
   CertificateTemplate, 
@@ -11,7 +11,8 @@ import {
   ParsedRecipient, 
   CertificatePresetTheme,
   CertificateEventType,
-  CertificateBackgroundMode
+  CertificateBackgroundMode,
+  getActivityTypeLabel
 } from '../types/certificates';
 import { 
   parseRecipientsSpreadsheet, 
@@ -40,6 +41,19 @@ interface EducationCertificatesManagerProps {
   currentInstitution?: Institution | null;
   currentUser?: AdminUser | null;
 }
+
+const BASE_ACTIVITY_TYPES = [
+  { value: 'curso', label: 'Curso' },
+  { value: 'palestra', label: 'Palestra' },
+  { value: 'formacao', label: 'Formação Continuada' },
+  { value: 'oficina', label: 'Oficina Pedagógica' },
+  { value: 'workshop', label: 'Workshop' },
+  { value: 'seminario', label: 'Seminário' },
+  { value: 'simposio', label: 'Simpósio' },
+  { value: 'capacitacao', label: 'Capacitação' },
+  { value: 'congresso', label: 'Congresso' },
+  { value: 'treinamento', label: 'Treinamento' },
+];
 
 export const EducationCertificatesManager: React.FC<EducationCertificatesManagerProps> = ({
   currentInstitution,
@@ -77,6 +91,58 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   }, [currentUser?.department_id, departments]);
   const [courseTitle, setCourseTitle] = useState('');
   const [eventType, setEventType] = useState<CertificateEventType>('curso');
+  const [customActivityTypes, setCustomActivityTypes] = useState<Array<{ value: string; label: string }>>(() => {
+    if (typeof window === 'undefined' || !currentInstitution?.id) return [];
+    try {
+      const saved = localStorage.getItem(`gestao360_activity_types_${currentInstitution.id}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showAddTypeModal, setShowAddTypeModal] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+
+  const activityTypes = useMemo(() => {
+    const list = [...BASE_ACTIVITY_TYPES];
+    for (const custom of customActivityTypes) {
+      if (!list.some((item) => item.value.toLowerCase() === custom.value.toLowerCase())) {
+        list.push(custom);
+      }
+    }
+    return list;
+  }, [customActivityTypes]);
+
+  const handleAddCustomType = () => {
+    const trimmed = newTypeName.trim();
+    if (!trimmed) return;
+    const label = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+    const value = label.toLowerCase();
+
+    const existing = activityTypes.find(
+      (t) => t.value.toLowerCase() === value || t.label.toLowerCase() === label.toLowerCase()
+    );
+
+    if (existing) {
+      setEventType(existing.value);
+      showToast(`Tipo "${existing.label}" selecionado`, 'info');
+    } else {
+      const newEntry = { value, label };
+      const updatedCustom = [...customActivityTypes, newEntry];
+      setCustomActivityTypes(updatedCustom);
+      if (currentInstitution?.id) {
+        try {
+          localStorage.setItem(`gestao360_activity_types_${currentInstitution.id}`, JSON.stringify(updatedCustom));
+        } catch (err) {
+          console.error('Erro ao salvar tipo de atividade personalizado:', err);
+        }
+      }
+      setEventType(value);
+      showToast(`Tipo de atividade "${label}" adicionado com sucesso!`, 'success');
+    }
+    setNewTypeName('');
+    setShowAddTypeModal(false);
+  };
   const [workloadHours, setWorkloadHours] = useState<number>(40);
   const [dateStart, setDateStart] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [dateEnd, setDateEnd] = useState<string>(() => new Date().toISOString().split('T')[0]);
@@ -963,21 +1029,91 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                   </p>
                 </div>
 
-                {/* Tipo de Evento */}
+                {/* Tipo de Atividade */}
                 <div>
-                  <label className="font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                    Tipo de Atividade
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-neutral-700 dark:text-neutral-300">
+                      Tipo de Atividade *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddTypeModal((v) => !v)}
+                      className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={13} />
+                      <span>Adicionar Tipo</span>
+                    </button>
+                  </div>
+
                   <select
                     value={eventType}
-                    onChange={(e) => setEventType(e.target.value as any)}
+                    onChange={(e) => {
+                      if (e.target.value === '__add_new__') {
+                        setShowAddTypeModal(true);
+                      } else {
+                        setEventType(e.target.value);
+                      }
+                    }}
                     className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white font-medium focus:border-amber-500 focus:outline-none"
                   >
-                    <option value="curso">Curso</option>
-                    <option value="palestra">Palestra</option>
-                    <option value="formacao">Formação Continuada</option>
-                    <option value="oficina">Oficina Pedagógica</option>
+                    {activityTypes.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                    <option value="__add_new__" className="font-bold text-amber-600 dark:text-amber-400">
+                      + Adicionar outro tipo...
+                    </option>
                   </select>
+
+                  {/* Campo inline para adicionar novo tipo de atividade */}
+                  {showAddTypeModal && (
+                    <div className="mt-2.5 p-3 rounded-2xl border border-amber-500/40 bg-amber-50/80 dark:bg-amber-950/30 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                          Novo Tipo de Atividade
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAddTypeModal(false);
+                            setNewTypeName('');
+                          }}
+                          className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 p-0.5 rounded-lg"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={newTypeName}
+                          onChange={(e) => setNewTypeName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddCustomType();
+                            } else if (e.key === 'Escape') {
+                              setShowAddTypeModal(false);
+                              setNewTypeName('');
+                            }
+                          }}
+                          placeholder="Ex: Workshop, Mesa Redonda, Encontro, Simpósio..."
+                          className="flex-1 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-neutral-900 text-xs text-neutral-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleAddCustomType}
+                          disabled={!newTypeName.trim()}
+                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1 shadow-xs shrink-0"
+                        >
+                          <Check size={14} />
+                          <span>Salvar</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Carga Horária */}
@@ -1105,7 +1241,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 <div>
                   <span className="text-neutral-400 font-bold uppercase block text-[10px]">Curso / Evento</span>
                   <span className="font-bold text-neutral-900 dark:text-white text-sm block mt-0.5">{courseTitle}</span>
-                  <span className="text-neutral-500 font-mono text-[11px] block">{eventType.toUpperCase()} · {workloadHours} Horas</span>
+                  <span className="text-neutral-500 font-mono text-[11px] block">{getActivityTypeLabel(eventType).toUpperCase()} · {workloadHours} Horas</span>
                 </div>
 
                 <div>
@@ -1283,10 +1419,11 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 className="px-3 py-2 rounded-xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-900 dark:text-white focus:outline-none focus:border-amber-500 font-medium"
               >
                 <option value="all">Todas as Modalidades</option>
-                <option value="curso">Cursos</option>
-                <option value="palestra">Palestras</option>
-                <option value="formacao">Formação Continuada</option>
-                <option value="oficina">Oficinas</option>
+                {activityTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
               </select>
 
               <a
@@ -1405,7 +1542,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                             {cert.template?.title || 'Curso de Capacitação'}
                           </span>
                           <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 mt-1 inline-block">
-                            {cert.template?.event_type || 'Curso'}
+                            {getActivityTypeLabel(cert.template?.event_type)}
                           </span>
                         </td>
 

@@ -458,7 +458,7 @@ export const NewsEditor: React.FC<NewsEditorProps> = ({
                         {isUploading ? 'Otimizando foto...' : 'Carregar foto do computador/celular'}
                       </span>
                       <span className="text-[10px] text-neutral-400 mt-1 text-center">
-                        Ideal para o carrossel: <strong>1200 × 675 px</strong> (16:9 · JPG, PNG ou WebP)
+                        Tamanho ideal para preenchimento total: <strong>1200 × 720 px</strong> (Proporção 5:3 · JPG, PNG ou WebP)
                       </span>
                       <input 
                         type="file" 

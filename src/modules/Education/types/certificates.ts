@@ -1,4 +1,44 @@
-export type CertificateEventType = 'curso' | 'palestra' | 'formacao' | 'oficina';
+export type CertificateEventType = 'curso' | 'palestra' | 'formacao' | 'oficina' | string;
+
+export function getActivityTypeLabel(type?: string | null): string {
+  if (!type) return 'Curso';
+  const norm = type.toLowerCase().trim();
+  switch (norm) {
+    case 'curso':
+      return 'Curso';
+    case 'palestra':
+      return 'Palestra';
+    case 'formacao':
+    case 'formação':
+    case 'formacao continuada':
+    case 'formação continuada':
+      return 'Formação Continuada';
+    case 'oficina':
+    case 'oficina pedagogica':
+    case 'oficina pedagógica':
+      return 'Oficina Pedagógica';
+    case 'workshop':
+      return 'Workshop';
+    case 'seminario':
+    case 'seminário':
+      return 'Seminário';
+    case 'simposio':
+    case 'simpósio':
+      return 'Simpósio';
+    case 'capacitacao':
+    case 'capacitação':
+      return 'Capacitação';
+    case 'congresso':
+      return 'Congresso';
+    case 'conferencia':
+    case 'conferência':
+      return 'Conferência';
+    case 'treinamento':
+      return 'Treinamento';
+    default:
+      return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+}
 export type CertificatePresetTheme = 'classico_azul' | 'verde_institucional' | 'elegante_dourado';
 export type CertificateBackgroundMode = 'preset' | 'custom_upload';
 export type CertificateRecipientRole = 'participante' | 'palestrante' | 'monitor';

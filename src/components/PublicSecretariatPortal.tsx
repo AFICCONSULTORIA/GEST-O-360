@@ -1296,11 +1296,11 @@ export const PublicSecretariatPortal: React.FC<PublicSecretariatPortalProps> = (
                           className="group text-left bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 rounded-3xl overflow-hidden flex flex-col hover:shadow-lg transition cursor-pointer"
                         >
                           {item.cover_image_url ? (
-                            <div className="aspect-[16/10] overflow-hidden bg-neutral-200 dark:bg-neutral-800">
+                            <div className="aspect-[5/3] overflow-hidden bg-neutral-200 dark:bg-neutral-800">
                               <img
                                 src={item.cover_image_url}
                                 alt={item.title}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500"
                               />
                             </div>
                           ) : (
@@ -1603,11 +1603,11 @@ export const PublicSecretariatPortal: React.FC<PublicSecretariatPortalProps> = (
             className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl max-w-2xl w-full max-h-[88vh] overflow-y-auto shadow-2xl"
           >
             {selectedNews.cover_image_url && (
-              <div className="aspect-[16/9] w-full overflow-hidden bg-neutral-200 dark:bg-neutral-800">
+              <div className="aspect-[5/3] w-full overflow-hidden bg-neutral-200 dark:bg-neutral-800">
                 <img
                   src={selectedNews.cover_image_url}
                   alt={selectedNews.title}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover object-center"
                 />
               </div>
             )}
@@ -1694,6 +1694,7 @@ export const PublicSecretariatPortal: React.FC<PublicSecretariatPortalProps> = (
           isMourning={isMourning}
           onAcceptedOrDismissed={() => setShowCookieBanner(false)}
           onOpenPrivacy={() => setComplianceDialog('privacy')}
+          onRequestOpen={() => setShowCookieBanner(true)}
         />
       )}
     </div>

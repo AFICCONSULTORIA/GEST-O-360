@@ -77,6 +77,7 @@ interface CookieBannerProps {
   isMourning: boolean;
   onAcceptedOrDismissed: () => void;
   onOpenPrivacy: () => void;
+  onRequestOpen?: () => void;
 }
 
 export const CookieConsentBanner: React.FC<CookieBannerProps> = ({
@@ -87,20 +88,48 @@ export const CookieConsentBanner: React.FC<CookieBannerProps> = ({
   isMourning,
   onAcceptedOrDismissed,
   onOpenPrivacy,
+  onRequestOpen,
 }) => {
-  if (!visible || typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') return null;
 
   const handleConsent = (allowOptional: boolean) => {
     saveCookieConsent(institution.id, allowOptional, allowOptional);
     onAcceptedOrDismissed();
   };
 
+  // Se o banner não estiver visível e houver callback para reabrir, exibe o ícone flutuante de cookies no canto inferior direito
+  if (!visible) {
+    if (!onRequestOpen) return null;
+    return createPortal(
+      <div className={`${darkMode ? 'dark' : ''} ${isMourning ? 'grayscale' : ''}`}>
+        <button
+          type="button"
+          onClick={onRequestOpen}
+          aria-label="Gerenciar Cookies e Privacidade LGPD"
+          title="Ver preferências de cookies e privacidade LGPD"
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-[9980] flex items-center gap-2 p-2 sm:px-3 sm:py-2 rounded-full bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md text-neutral-700 dark:text-neutral-200 border border-neutral-200/90 dark:border-neutral-700 shadow-xl hover:shadow-2xl hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer group"
+        >
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 shadow-xs group-hover:rotate-12 transition-transform duration-300"
+            style={{ backgroundColor: accentHex }}
+          >
+            <Cookie size={16} />
+          </div>
+          <span className="hidden sm:inline-block text-xs font-bold text-neutral-800 dark:text-neutral-200 pr-1 select-none">
+            Cookies
+          </span>
+        </button>
+      </div>,
+      document.body
+    );
+  }
+
   return createPortal(
     <div className={`${darkMode ? 'dark' : ''} ${isMourning ? 'grayscale' : ''}`}>
       <div
         role="region"
         aria-label="Aviso de Cookies e Privacidade LGPD"
-        className="fixed bottom-3 left-3 right-3 sm:left-6 sm:right-6 lg:left-auto lg:right-6 lg:max-w-xl z-[9990] bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-700 rounded-3xl shadow-2xl p-4 sm:p-5"
+        className="fixed bottom-3 left-3 right-3 sm:left-6 sm:right-6 lg:left-auto lg:right-6 lg:max-w-xl z-[9990] bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md text-neutral-900 dark:text-neutral-100 border border-neutral-200 dark:border-neutral-700 rounded-3xl shadow-2xl p-4 sm:p-5 animate-in slide-in-from-bottom-5 duration-300"
       >
         <div className="flex items-start gap-3">
           <div
@@ -110,13 +139,24 @@ export const CookieConsentBanner: React.FC<CookieBannerProps> = ({
             <Cookie size={18} />
           </div>
           <div className="flex-1 min-w-0 space-y-2.5">
-            <div>
-              <p className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">
-                Privacidade, Cookies & LGPD
-              </p>
-              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 leading-relaxed">
-                Este portal oficial da <strong>{institution.name}</strong> utiliza cookies e armazenamento local estritamente necessários para acessibilidade (eMAG/VLibras), tema visual e segurança de navegação, sem rastreadores publicitários de terceiros.
-              </p>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wider text-neutral-900 dark:text-white">
+                  Privacidade, Cookies & LGPD
+                </p>
+                <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 leading-relaxed">
+                  Este portal oficial da <strong>{institution.name}</strong> utiliza cookies e armazenamento local estritamente necessários para acessibilidade (eMAG/VLibras), tema visual e segurança de navegação, sem rastreadores publicitários de terceiros.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onAcceptedOrDismissed}
+                aria-label="Fechar aviso de cookies"
+                title="Fechar e manter preferências atuais"
+                className="p-1 rounded-xl text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition cursor-pointer shrink-0"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2 pt-0.5">
@@ -152,30 +192,33 @@ export const CookieConsentBanner: React.FC<CookieBannerProps> = ({
 };
 
 interface SiteComplianceModalsProps {
-  activeDialog: ComplianceDialogType;
+  activeDialog?: ComplianceDialogType;
+  openType?: ComplianceDialogType;
   onClose: () => void;
   institution: Institution;
   config: InstitutionalSiteConfig;
   accentHex: string;
   darkMode: boolean;
   isMourning: boolean;
-  showOuvidoria: boolean;
-  showNoticias: boolean;
+  showOuvidoria?: boolean;
+  showNoticias?: boolean;
   onConsentSaved?: () => void;
 }
 
 export const SiteComplianceModals: React.FC<SiteComplianceModalsProps> = ({
-  activeDialog,
+  activeDialog: propActiveDialog,
+  openType,
   onClose,
   institution,
   config,
   accentHex,
   darkMode,
   isMourning,
-  showOuvidoria,
-  showNoticias,
+  showOuvidoria = true,
+  showNoticias = true,
   onConsentSaved,
 }) => {
+  const activeDialog = propActiveDialog !== undefined ? propActiveDialog : (openType ?? null);
   const existingConsent = readCookieConsent(institution.id);
   const [prefCookies, setPrefCookies] = useState<boolean>(
     existingConsent ? existingConsent.preferences : true

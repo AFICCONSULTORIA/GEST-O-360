@@ -2,7 +2,7 @@ import React, { forwardRef, useState } from 'react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
-import { CertificateTemplate, IssuedCertificate } from '../types/certificates';
+import { CertificateTemplate, IssuedCertificate, getActivityTypeLabel } from '../types/certificates';
 import { Institution } from '../../../types';
 
 export interface CertificateDocumentPDFProps {
@@ -374,7 +374,7 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
             </p>
 
             <p className="text-base leading-relaxed max-w-4xl mx-auto font-normal" style={{ color: '#374151' }}>
-              concluiu com aproveitamento a atividade formativa na modalidade <strong>{template.event_type.toUpperCase()}</strong>:
+              concluiu com aproveitamento a atividade formativa na modalidade <strong>{getActivityTypeLabel(template.event_type).toUpperCase()}</strong>:
             </p>
 
             <p className="text-xl font-bold mt-2 mb-3" style={{ color: '#0f172a' }}>
