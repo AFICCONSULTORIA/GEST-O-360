@@ -26,18 +26,31 @@ export async function createBatchCertificates({
       created_at: new Date().toISOString()
     };
 
-    // 1. Salva Template no Supabase (com upsert seguro)
-    const { data: dbTemplate, error: tmplError } = await supabase
+    // 1. Salva Template no Supabase (com upsert seguro e fallback caso coluna secretariat_name não exista)
+    let { data: dbTemplate, error: tmplError } = await supabase
       .from('education_certificate_templates')
       .upsert([createdTemplate], { onConflict: 'id' })
       .select()
       .maybeSingle();
 
+    if (tmplError && (tmplError.code === 'PGRST204' || tmplError.message?.includes('secretariat_name'))) {
+      const { secretariat_name: _ignored, ...fallbackTemplate } = createdTemplate as any;
+      const retryRes = await supabase
+        .from('education_certificate_templates')
+        .upsert([fallbackTemplate], { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+      dbTemplate = retryRes.data;
+      tmplError = retryRes.error;
+    }
+
     if (tmplError) {
       console.warn('[CertificateService] Aviso ao persistir template no Supabase:', tmplError.message);
     }
 
-    const finalTemplate = dbTemplate || createdTemplate;
+    const finalTemplate: CertificateTemplate = dbTemplate
+      ? { ...dbTemplate, secretariat_name: (dbTemplate as any).secretariat_name || createdTemplate.secretariat_name || null }
+      : createdTemplate;
 
     // 2. Prepara Certificados Individuais com Hash e QR Code únicos
     const issuedList: IssuedCertificate[] = recipients.map(r => {

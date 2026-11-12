@@ -301,9 +301,9 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
                     overflow: 'visible'
                   }}
                 >
-                  {template.issuer_role.toLowerCase().includes('secret') 
-                    ? template.issuer_role 
-                    : 'Administração & Políticas Públicas Municipais'}
+                  {template.secretariat_name?.trim()
+                    || (template.issuer_role.toLowerCase().includes('secret') ? template.issuer_role : '')
+                    || 'Administração & Políticas Públicas Municipais'}
                 </p>
                 <p 
                   className="text-[10px] uppercase font-mono tracking-widest" 
@@ -417,18 +417,35 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
               </div>
             </div>
 
-            {/* Assinatura do Emissor Oficial */}
-            <div className="text-center min-w-[260px]">
-              <div 
-                className="w-64 mb-2 mx-auto" 
-                style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#1e293b' }}
-              />
-              <p className="text-sm font-bold leading-tight" style={{ color: '#0f172a' }}>
-                {template.issuer_name}
-              </p>
-              <p className="text-xs font-medium" style={{ color: '#6b7280' }}>
-                {template.issuer_role}
-              </p>
+            {/* Assinaturas Obrigatórias: Formador(a) e Secretaria Responsável pela Formação */}
+            <div className="flex items-end gap-8">
+              <div className="text-center min-w-[200px]">
+                <div 
+                  className="w-48 mb-2 mx-auto" 
+                  style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#1e293b' }}
+                />
+                <p className="text-xs font-bold leading-tight" style={{ color: '#0f172a' }}>
+                  {template.issuer_name}
+                </p>
+                <p className="text-[11px] font-medium uppercase" style={{ color: '#6b7280' }}>
+                  {template.issuer_role || 'Formador(a)'}
+                </p>
+              </div>
+
+              <div className="text-center min-w-[220px]">
+                <div 
+                  className="w-56 mb-2 mx-auto" 
+                  style={{ borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#1e293b' }}
+                />
+                <p className="text-xs font-bold leading-tight uppercase" style={{ color: '#0f172a' }}>
+                  {template.secretariat_name?.trim()
+                    || (template.issuer_role.toLowerCase().includes('secret') ? template.issuer_role : '')
+                    || 'Secretaria Responsável'}
+                </p>
+                <p className="text-[11px] font-medium" style={{ color: '#6b7280' }}>
+                  Secretaria Responsável pela Formação
+                </p>
+              </div>
             </div>
           </div>
         </div>

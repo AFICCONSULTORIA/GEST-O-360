@@ -14,6 +14,7 @@ export interface CertificateTemplate {
   event_date_end?: string | null;
   issuer_name: string;
   issuer_role: string;
+  secretariat_name?: string | null;
   background_mode: CertificateBackgroundMode;
   preset_theme: CertificatePresetTheme;
   custom_background_url?: string | null;

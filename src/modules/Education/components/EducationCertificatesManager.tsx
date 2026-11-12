@@ -29,6 +29,7 @@ import {
   deleteIssuedCertificate,
   deleteBatchIssuedCertificates
 } from '../services/certificateService';
+import { useMunicipalDepartments } from '../../../lib/api/departments';
 import { Institution, AdminUser } from '../../../types';
 import { showToast } from '../../../components/ui/Toast';
 import { supabase } from '../../../lib/supabase';
@@ -65,13 +66,22 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   const [manualEmail, setManualEmail] = useState('');
 
   // Passo 3: Dados do Curso/Palestra
+  const { departments } = useMunicipalDepartments(currentInstitution?.id);
+  const secretariatName = useMemo(() => {
+    const deptRef = (currentUser?.department_id || '').trim();
+    if (!deptRef) return 'Secretaria Municipal de Educação';
+    const matched = departments.find(
+      d => d.id === deptRef || d.name.toLowerCase() === deptRef.toLowerCase()
+    );
+    return matched?.name || deptRef;
+  }, [currentUser?.department_id, departments]);
   const [courseTitle, setCourseTitle] = useState('');
   const [eventType, setEventType] = useState<CertificateEventType>('curso');
   const [workloadHours, setWorkloadHours] = useState<number>(40);
   const [dateStart, setDateStart] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [dateEnd, setDateEnd] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [issuerName, setIssuerName] = useState<string>(currentUser?.name || 'Coordenação Pedagógica Municipal');
-  const [issuerRole, setIssuerRole] = useState<string>('Secretário(a) Municipal de Educação');
+  const [issuerRole, setIssuerRole] = useState<string>('Formador(a)');
   const [programContent, setProgramContent] = useState<string>('');
 
   // Passo 4: Processamento & Lote
@@ -275,6 +285,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
         event_date_end: dateEnd || null,
         issuer_name: issuerName.trim(),
         issuer_role: issuerRole.trim(),
+        secretariat_name: secretariatName.trim() || null,
         background_mode: backgroundMode,
         preset_theme: presetTheme,
         custom_background_url: customBackgroundUrl || null,
@@ -933,6 +944,23 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                     onChange={(e) => setCourseTitle(e.target.value)}
                     className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white font-medium focus:border-amber-500 focus:outline-none"
                   />
+                </div>
+
+                {/* Secretaria / Órgão Emissor (Travado pela lotação do usuário) */}
+                <div className="md:col-span-2">
+                  <label className="font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
+                    Secretaria Responsável pela Formação (Lotação do Usuário)
+                  </label>
+                  <input
+                    type="text"
+                    readOnly
+                    disabled
+                    value={secretariatName}
+                    className="w-full p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 font-bold cursor-not-allowed"
+                  />
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Preenchida automaticamente pela secretaria em que seu usuário está lotado (alteração bloqueada).
+                  </p>
                 </div>
 
                 {/* Tipo de Evento */}
