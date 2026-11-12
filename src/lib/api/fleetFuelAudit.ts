@@ -1660,6 +1660,10 @@ export async function registerAdvanceTravelFuelOrder(
       odometer_photo_url: newOrder.odometer_photo_url,
       pump_photo_url: newOrder.pump_photo_url,
       receipt_photo_url: newOrder.receipt_photo_url,
+      supply_mode: newOrder.supply_mode,
+      notes: newOrder.notes,
+      authorized_by_name: newOrder.authorized_by_name,
+      authorized_by_role: newOrder.authorized_by_role,
       status: 'abastecido',
       created_at: newOrder.created_at,
       supplied_at: newOrder.supplied_at

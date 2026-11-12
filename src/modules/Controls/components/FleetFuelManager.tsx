@@ -293,6 +293,16 @@ function resolveFleetAuthorizedIssuer(user?: AdminUser | null): { name: string; 
   return { name, role };
 }
 
+function isAdvanceTravelOrder(order?: Partial<FuelSupplyOrder> | null): boolean {
+  if (!order) return false;
+  const anyOrder = order as any;
+  return (
+    anyOrder.supply_mode === 'adiantamento_viagem' ||
+    anyOrder.authorized_by_role === 'Adiantamento de Viagem' ||
+    String(anyOrder.notes || '').includes('[Adiantamento de Viagem]')
+  );
+}
+
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
 }
@@ -3129,8 +3139,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               <AlertTriangle size={12} className="text-amber-600" /> Alerta Consumo
                             </span>
                           ) : order.status === 'auditado' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                              <ShieldCheck size={12} className="text-emerald-600" /> Homologado
+                            <div className="flex flex-wrap items-center gap-1">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                <ShieldCheck size={12} className="text-emerald-600" /> Homologado
+                              </span>
+                              {isAdvanceTravelOrder(order) && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-cyan-100 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800">
+                                  <Fuel size={10} /> Adiantamento
+                                </span>
+                              )}
+                            </div>
+                          ) : order.status === 'abastecido' && isAdvanceTravelOrder(order) ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-cyan-50 text-cyan-800 dark:bg-cyan-950/60 dark:text-cyan-300 border border-cyan-300 dark:border-cyan-800">
+                              <Fuel size={12} className="text-cyan-600" /> Abastecimento Adiantamento
                             </span>
                           ) : order.status === 'abastecido' ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
