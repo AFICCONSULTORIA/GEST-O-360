@@ -595,6 +595,7 @@ export const SiteLawsManagerPanel: React.FC<SiteLawsManagerPanelProps> = ({
         <LawReaderModal
           law={readingLaw}
           allLaws={laws}
+          institution={currentInstitution}
           onClose={() => setReadingLaw(null)}
           onEdit={(law) => {
             setReadingLaw(null);

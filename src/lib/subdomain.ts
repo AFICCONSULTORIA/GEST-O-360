@@ -7,6 +7,8 @@ const RESERVED_PATH_PREFIXES = new Set([
   'diario',
   'diario-oficial',
   'noticias',
+  'secretaria',
+  'secretarias',
   'agendamento',
   'farmaciasus',
   'servicos',

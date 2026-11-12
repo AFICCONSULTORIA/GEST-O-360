@@ -77,6 +77,7 @@ import { MayorDashboard } from './components/MayorDashboard';
 import { SalesLandingPage } from './components/SalesLandingPage';
 import { LandingPage } from './components/LandingPage';
 import { InstitutionalSite } from './components/InstitutionalSite';
+import { PublicSecretariatPortal } from './components/PublicSecretariatPortal';
 import { SiteInstitucionalModule } from './modules/SiteInstitucional';
 import { DiarioOficialModule } from './modules/DiarioOficial';
 import { PublicGazettePortal } from './modules/DiarioOficial/PublicGazettePortal';
@@ -713,6 +714,19 @@ export default function App() {
     currentPath.startsWith('/ouvidoria/') || 
     (currentSubdomain && currentSubdomain.toLowerCase() === 'ouvidoria');
   const cleanPath = decodedPath.replace(/\/+$/, '') || '/';
+  const isSecretariatPortal =
+    cleanPath === '/secretaria' ||
+    cleanPath === '/secretarias' ||
+    cleanPath.startsWith('/secretaria/') ||
+    cleanPath.startsWith('/secretarias/');
+  const secretariatSlug = isSecretariatPortal
+    ? (cleanPath
+        .replace(/^\/secretarias?\//, '')
+        .replace(/^\/secretarias?$/, '')
+        .split('/')[0] ||
+        new URLSearchParams(window.location.search).get('sec') ||
+        null)
+    : null;
   const isGazettePortal =
     cleanPath === '/diario' ||
     cleanPath === '/diario-oficial' ||
@@ -750,8 +764,8 @@ export default function App() {
     currentPath.startsWith('/servidores/') ||
     cleanPath === '/login' ||
     cleanPath === '/entrar';
-  const isLandingPage = currentPath === '/' || cleanPath === '/site' || cleanPath === '/portal-oficial';
-  const isSitePreviewRoute = cleanPath === '/site' || cleanPath === '/portal-oficial';
+  const isLandingPage = currentPath === '/' || cleanPath === '/site' || cleanPath === '/portal-oficial' || portalHostPrefix === 'site';
+  const isSitePreviewRoute = cleanPath === '/site' || cleanPath === '/portal-oficial' || portalHostPrefix === 'site';
   const isLandingPageRoute = 
     cleanPath === '/landingpage' || 
     cleanPath === '/lanningpage' || 
@@ -909,7 +923,7 @@ export default function App() {
       );
     }
     const siteCfg = extractSiteConfigFromInstitution(landingInst);
-    const shouldRenderFullSite = isSitePreviewRoute || (siteCfg.enabled !== false && isInstitutionModuleActive(landingInst, 'institutional_site'));
+    const shouldRenderFullSite = isSitePreviewRoute && siteCfg.enabled !== false;
     if (shouldRenderFullSite) {
       return (
         <InstitutionalSite
@@ -1077,6 +1091,37 @@ export default function App() {
       <div className={darkMode ? 'dark' : ''}>
         <PublicNewsPortal darkMode={darkMode} setDarkMode={setDarkMode} currentInstitution={currentInstitution} />
       </div>
+    );
+  }
+
+  if (isSecretariatPortal) {
+    if (!resolvedPublicInstitution) {
+      return (
+        <MunicipalityPortalHub
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          institutions={institutions}
+          onSelectMunicipality={(inst) => {
+            const suffix = secretariatSlug ? `/secretaria/${secretariatSlug}` : '/secretaria';
+            window.location.href = withInstitutionQuery(suffix, inst);
+          }}
+          onNavigateToLandingPage={() => { window.location.href = '/landingpage'; }}
+          onNavigateToDemo={() => {
+            const suffix = secretariatSlug ? `/secretaria/${secretariatSlug}` : '/secretaria';
+            window.location.href = withInstitutionQuery(suffix, DEMO_INSTITUTION);
+          }}
+        />
+      );
+    }
+    return (
+      <PublicSecretariatPortal
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        currentInstitution={resolvedPublicInstitution}
+        secretariatSlug={secretariatSlug}
+        isAuthenticated={isAuthenticated}
+        currentUser={currentUser}
+      />
     );
   }
 

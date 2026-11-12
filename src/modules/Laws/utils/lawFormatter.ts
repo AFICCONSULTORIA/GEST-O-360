@@ -372,23 +372,24 @@ export function parseLawDocument(
 ): ParsedLawStructure {
   const sanitizedFullText = cleanAndNormalizeLawText(fullText || '');
   const lines = sanitizedFullText.split('\n').map(l => l.trim());
-  
+  const defaultEntidade = meta?.institution_name ? meta.institution_name.toUpperCase() : 'PREFEITURA MUNICIPAL';
+
   const structure: ParsedLawStructure = {
     diarioHeader: {
-      diario: 'AMM-MT',
-      edicaoData: meta?.publication_date ? `Disponível na edição de ${formatLegalDate(meta.publication_date)}` : 'Edição Oficial',
-      estado: 'Mato Grosso'
+      diario: meta?.institution_name ? meta.institution_name.toUpperCase() : 'PORTAL DA LEGISLAÇÃO',
+      edicaoData: meta?.publication_date ? `Publicação de ${formatLegalDate(meta.publication_date)}` : 'Texto Legislativo',
+      estado: 'Transparência Municipal'
     },
     epigrafe: {
       tipoNumero: `${(meta?.type || 'LEI').toUpperCase()} Nº ${meta?.number || ''}`,
       data: formatLegalDate(meta?.publication_date),
-      entidade: 'PREF. TORIXORÉU'
+      entidade: defaultEntidade
     },
     ementa: defaultEmenta ? cleanAndNormalizeLawText(defaultEmenta) : '',
     blocks: [],
     assinatura: {
-      nome: 'THIAGO TIMO OLIVEIRA',
-      cargo: 'Prefeito Municipal'
+      nome: meta?.author?.trim() || 'Conforme documento oficial assinado',
+      cargo: 'Autoridade Signatária'
     }
   };
 
@@ -460,7 +461,7 @@ export function parseLawDocument(
   // Pula linhas em branco ou timbres de cabeçalho institucional antes da Epígrafe
   while (i < n && (!lines[i] || ((isHeaderNoiseLine(lines[i]) || isFooterContactLine(lines[i])) && !isEpigrafeLine(lines[i])))) {
     if (/CÂMARA\s+MUNICIPAL|PODER\s+LEGISLATIVO/i.test(lines[i])) {
-      structure.epigrafe.entidade = 'CÂMARA MUNICIPAL DE TORIXORÉU';
+      structure.epigrafe.entidade = 'CÂMARA MUNICIPAL';
     }
     i++;
   }
@@ -490,12 +491,12 @@ export function parseLawDocument(
     while (i < n && (!lines[i] || isHeaderNoiseLine(lines[i]) || isFooterContactLine(lines[i]))) i++;
     const entidade = (i < n && /^(PREF|PREFEITURA|CÂMARA|CAMARA|MUNICÍPIO|MUNICIPIO)/i.test(lines[i]) && !/FAZ\s+SABER|uso\s+de\s+suas/i.test(lines[i]))
       ? lines[i++]
-      : structure.epigrafe.entidade || 'PREF. TORIXORÉU';
+      : structure.epigrafe.entidade || defaultEntidade;
     
     structure.epigrafe = {
       tipoNumero: rawEpigrafe,
       data: dataEpigrafe,
-      entidade: entidade || 'PREF. TORIXORÉU'
+      entidade: entidade || defaultEntidade
     };
   }
 
@@ -893,7 +894,7 @@ export function parseLawDocument(
   flushBudgetTable();
 
   if (!structure.fecho && meta?.publication_date) {
-    structure.fecho = `Gabinete do Prefeito Municipal de Torixoréu/MT, ${formatLegalDate(meta.publication_date)}.`;
+    structure.fecho = `${meta?.institution_name || 'Município'}, ${formatLegalDate(meta.publication_date)}.`;
   }
 
   return structure;

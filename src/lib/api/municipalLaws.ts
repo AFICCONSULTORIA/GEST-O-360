@@ -296,15 +296,19 @@ export const fetchInstitutionLaws = async (
       const realLaws = (data as MunicipalLaw[]).filter((item) => !isLegacyMockLaw(item));
 
       if (realLaws.length === 0) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const hasSession = Boolean(sessionData?.session);
         const cached = readLawsCache(instId);
         if (cached.length > 0) {
-          // Promove para a nuvem as leis que estavam presas apenas no cache local
-          const syncPayloads = cached.map((law) => {
-            const p = buildLawSupabasePayload({ ...law, institution_id: instId }, true);
-            p.id = isValidUuid(law.id) ? law.id : crypto.randomUUID();
-            return p;
-          });
-          supabase.from('municipal_laws').upsert(syncPayloads, { onConflict: 'id' }).then(() => {});
+          if (hasSession) {
+            // Promove para a nuvem as leis que estavam presas apenas no cache local (somente autenticado)
+            const syncPayloads = cached.map((law) => {
+              const p = buildLawSupabasePayload({ ...law, institution_id: instId }, true);
+              p.id = isValidUuid(law.id) ? law.id : crypto.randomUUID();
+              return p;
+            });
+            supabase.from('municipal_laws').upsert(syncPayloads, { onConflict: 'id' }).then(() => {});
+          }
           return applyFilters(cached);
         }
         if (options.seedIfEmpty && !cleared && isTorixoreuTenant) {
@@ -314,15 +318,20 @@ export const fetchInstitutionLaws = async (
             publish_on_site: true,
           }));
           writeLawsCache(seeded, instId);
-          for (const seedLaw of seeded) {
-            const payload = buildLawSupabasePayload(seedLaw, false);
-            payload.id = seedLaw.id;
-            supabase.from('municipal_laws').insert([payload]).then();
+          if (hasSession) {
+            for (const seedLaw of seeded) {
+              const payload = buildLawSupabasePayload(seedLaw, false);
+              payload.id = seedLaw.id;
+              supabase.from('municipal_laws').insert([payload]).then();
+            }
           }
           return applyFilters(seeded);
         }
         return [];
       }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const hasSession = Boolean(sessionData?.session);
 
       // Enriquecer registros legados com texto incompleto usando sementes oficiais correspondentes
       const enrichedLaws = realLaws.map((existing) => {
@@ -349,9 +358,11 @@ export const fetchInstitutionLaws = async (
             full_text: matchedSeed.full_text,
             tags: matchedSeed.tags,
           };
-          const updatePayload = buildLawSupabasePayload(repaired, false);
-          delete updatePayload.id;
-          supabase.from('municipal_laws').update(updatePayload).eq('id', existing.id).then();
+          if (hasSession) {
+            const updatePayload = buildLawSupabasePayload(repaired, false);
+            delete updatePayload.id;
+            supabase.from('municipal_laws').update(updatePayload).eq('id', existing.id).then();
+          }
           return repaired;
         }
         return existing;

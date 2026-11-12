@@ -7,11 +7,13 @@ interface LogoCompassProps {
   size?: number;
   className?: string;
   variant?: 'emerald' | 'indigo' | 'blue';
+  disableExpand?: boolean;
 }
 
 export const LogoCompass: React.FC<LogoCompassProps> = ({ 
   size = 32, 
-  className = ''
+  className = '',
+  disableExpand = false,
 }) => {
   const [hasError, setHasError] = React.useState(false);
   const [isExpanded, setIsExpanded] = React.useState(false);
@@ -57,7 +59,7 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
     );
   }
 
-  const modal = typeof document !== 'undefined' && createPortal(
+  const modal = !disableExpand && typeof document !== 'undefined' && createPortal(
     <AnimatePresence>
       {isExpanded && (
         <motion.div 
@@ -96,9 +98,9 @@ export const LogoCompass: React.FC<LogoCompassProps> = ({
   return (
     <>
       <div 
-        onClick={() => setIsExpanded(true)}
+        onClick={disableExpand ? undefined : () => setIsExpanded(true)}
         style={{ width: displaySize, height: displaySize }}
-        className={`relative overflow-hidden rounded-2xl shrink-0 cursor-pointer flex items-center justify-center group bg-neutral-950 shadow-md ${className}`}
+        className={`relative overflow-hidden rounded-2xl shrink-0 ${disableExpand ? '' : 'cursor-pointer'} flex items-center justify-center group bg-neutral-950 shadow-md ${className}`}
         title="Gestão 360"
       >
         <img 

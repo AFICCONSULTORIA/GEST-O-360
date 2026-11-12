@@ -1027,6 +1027,7 @@ export const LawsModule = ({
           <LawReaderModal
             law={selectedLaw}
             allLaws={laws}
+            institution={institution}
             onClose={() => setSelectedLaw(null)}
             onEdit={canEdit ? (l) => {
               setEditingLaw(l);

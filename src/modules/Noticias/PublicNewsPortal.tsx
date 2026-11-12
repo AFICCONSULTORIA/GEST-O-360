@@ -182,7 +182,7 @@ export const PublicNewsPortal: React.FC<PublicNewsPortalProps> = ({
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const siteHomeUrl = withInstitutionQuery('/', currentInstitution);
+  const siteHomeUrl = withInstitutionQuery('/site', currentInstitution);
 
   return (
     <div className={`min-h-[100dvh] bg-[#F8F9FA] dark:bg-neutral-950 font-sans transition-colors duration-300 ${darkMode ? 'dark' : ''}`}>

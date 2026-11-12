@@ -1,10 +1,10 @@
 {
   "major": 0,
   "minor": 0,
-  "patch": 6,
-  "build": 70,
-  "version": "0.0.6.70",
-  "buildDate": "11/11/2026",
-  "buildTime": "21:12",
+  "patch": 8,
+  "build": 1,
+  "version": "0.0.8.1",
+  "buildDate": "12/11/2026",
+  "buildTime": "09:45",
   "notes": "Versionamento contínuo no formato 0.0.0.0 com rollover centesimal"
 }

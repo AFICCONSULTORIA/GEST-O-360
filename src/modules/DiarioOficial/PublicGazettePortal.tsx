@@ -179,7 +179,7 @@ export const PublicGazettePortal: React.FC<PublicGazettePortalProps> = ({
 
             <div className="flex items-center gap-2 shrink-0">
               <a
-                href={withInstitutionQuery('/', currentInstitution)}
+                href={withInstitutionQuery('/site', currentInstitution)}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-xs font-bold"
               >
                 <ArrowLeft size={14} />

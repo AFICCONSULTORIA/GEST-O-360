@@ -112,39 +112,43 @@ export async function fetchInstitutionNews(
           return list;
         }
 
-        // Migra automaticamente notícias reais que tenham ficado apenas no cache local deste navegador
+        // Migra automaticamente notícias reais que tenham ficado apenas no cache local deste navegador (somente com sessão autenticada)
         const localReal = readLocalNewsCache(institution).filter((n) => !MOCK_NEWS_IDS.has(n.id));
         if (localReal.length > 0) {
-          const rowsToSync = localReal.map((n) => ({
-            id: isValidUuid(n.id) ? n.id : crypto.randomUUID(),
-            institution_id: institution.id,
-            title: n.title,
-            subtitle: n.subtitle || null,
-            content: n.content || '',
-            category: n.category || 'Nota Oficial',
-            department: n.department || null,
-            author_name: n.author_name || null,
-            published_at: n.published_at || n.created_at || new Date().toISOString(),
-            status: n.status || 'published',
-            is_featured: Boolean(n.is_featured),
-            badge: n.badge || null,
-            cover_image_url: n.cover_image_url || null,
-            gallery_urls: n.gallery_urls || [],
-            project_status: n.project_status || null,
-            project_budget: n.project_budget ?? null,
-            views_count: n.views_count || 0,
-            updated_at: new Date().toISOString(),
-          }));
+          const { data: sessionData } = await supabase.auth.getSession();
+          let activeList: MunicipalNews[] = localReal;
 
-          const { data: syncedRows, error: syncErr } = await supabase
-            .from('municipal_news')
-            .upsert(rowsToSync, { onConflict: 'id' })
-            .select('*');
+          if (sessionData?.session) {
+            const rowsToSync = localReal.map((n) => ({
+              id: isValidUuid(n.id) ? n.id : crypto.randomUUID(),
+              institution_id: institution.id,
+              title: n.title,
+              subtitle: n.subtitle || null,
+              content: n.content || '',
+              category: n.category || 'Nota Oficial',
+              department: n.department || null,
+              author_name: n.author_name || null,
+              published_at: n.published_at || n.created_at || new Date().toISOString(),
+              status: n.status || 'published',
+              is_featured: Boolean(n.is_featured),
+              badge: n.badge || null,
+              cover_image_url: n.cover_image_url || null,
+              gallery_urls: n.gallery_urls || [],
+              project_status: n.project_status || null,
+              project_budget: n.project_budget ?? null,
+              views_count: n.views_count || 0,
+              updated_at: new Date().toISOString(),
+            }));
 
-          const activeList =
-            !syncErr && Array.isArray(syncedRows) && syncedRows.length > 0
-              ? (syncedRows as MunicipalNews[])
-              : localReal;
+            const { data: syncedRows, error: syncErr } = await supabase
+              .from('municipal_news')
+              .upsert(rowsToSync, { onConflict: 'id' })
+              .select('*');
+
+            if (!syncErr && Array.isArray(syncedRows) && syncedRows.length > 0) {
+              activeList = syncedRows as MunicipalNews[];
+            }
+          }
 
           if (!onlyPublished) writeLocalNewsCache(institution.id, sortNewsDescending(activeList));
           const filtered = onlyPublished

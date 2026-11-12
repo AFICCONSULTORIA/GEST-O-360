@@ -71,6 +71,7 @@ import {
   registerFuelExecution,
   uploadReceiptAttachment,
   auditFuelOrder,
+  clearFuelOrderFraudRisk,
   createFleetVehicle,
   updateFleetVehicle,
   deleteFleetVehicle,
@@ -284,6 +285,12 @@ export function resolveOrderFinancials(
   };
 }
 
+function resolveFleetAuthorizedIssuer(user?: AdminUser | null): { name: string; role: string } {
+  const name = user?.name?.trim() || 'Gestor da Frota Municipal';
+  const role = user?.role === 'Prefeito' ? 'Prefeito Municipal' : 'Responsável pela Frota';
+  return { name, role };
+}
+
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
 }
@@ -372,6 +379,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [viewingAttachmentOrder, setViewingAttachmentOrder] = useState<FuelSupplyOrder | null>(null);
 
   // Formulário: Nova Ordem
+  const initialAuthorizedIssuer = resolveFleetAuthorizedIssuer(currentUser);
   const [newOrderForm, setNewOrderForm] = useState({
     custom_order_number: '',
     vehicle_id: '',
@@ -383,11 +391,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     current_odometer: 0,
     budget_classification_id: '',
     supply_mode: 'litragem_fixa' as 'litragem_fixa' | 'encher_tanque',
-    authorized_by_name: currentUser?.name || 'Gestor da Frota Municipal',
-    authorized_by_role: 'Secretário / Responsável pela Frota',
+    authorized_by_name: initialAuthorizedIssuer.name,
+    authorized_by_role: initialAuthorizedIssuer.role,
     is_full_tank_order: false,
     emergency_call_reason: ''
   });
+
+  useEffect(() => {
+    const issuer = resolveFleetAuthorizedIssuer(currentUser);
+    setNewOrderForm(prev => ({
+      ...prev,
+      authorized_by_name: issuer.name,
+      authorized_by_role: issuer.role
+    }));
+  }, [currentUser?.id, currentUser?.name, currentUser?.role]);
 
   // Formulário: Lançamento de Canhoto / Execução
   const [executionForm, setExecutionForm] = useState({
@@ -419,6 +436,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     status: 'auditado' as 'auditado' | 'glosado',
     justification: ''
   });
+  const [showFraudClearBox, setShowFraudClearBox] = useState(false);
+  const [fraudClearObservation, setFraudClearObservation] = useState('');
+  const [clearingFraudRisk, setClearingFraudRisk] = useState(false);
 
   // Formulário: Novo Veículo
   const [newVehicleForm, setNewVehicleForm] = useState({
@@ -1253,7 +1273,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (isLitersOverCapacity) {
       return {
         level: 'critico' as const,
-        label: 'Bloqueio Crítico TCE',
+        label: 'Risco de Fraude',
         reason: `Litragem (${newOrderForm.liters_authorized}L) excede a capacidade máxima do tanque (${selectedVehicleForNewOrder?.tank_capacity}L - ${selectedVehicleForNewOrder?.model}).`,
         badgeColor: 'bg-rose-600 text-white animate-pulse',
         canEmit: false
@@ -1262,7 +1282,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (isOdometerInvalid) {
       return {
         level: 'critico' as const,
-        label: 'Odômetro Regressivo (Bloqueio)',
+        label: 'Risco de Fraude (Odômetro Regressivo)',
         reason: `Odômetro informado (${formatThousands(newOrderForm.current_odometer)} km) é inferior ao último odômetro cadastrado (${formatThousands(selectedVehicleForNewOrder?.current_odometer || 0)} km).`,
         badgeColor: 'bg-rose-600 text-white animate-pulse',
         canEmit: false
@@ -1706,6 +1726,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const handleOpenOrderHub = (order: FuelSupplyOrder) => {
     setSelectedOrderForAction(order);
     setShowGlossReasonBox(false);
+    setShowFraudClearBox(false);
+    setFraudClearObservation('');
     setAuditForm({
       status: order.status === 'glosado' ? 'glosado' : 'auditado',
       justification:
@@ -1713,6 +1735,34 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         'Documentação física, odômetro e comprovantes conferidos e homologados em conformidade com as diretrizes do Tribunal de Contas.'
     });
     setIsAuditModalOpen(true);
+  };
+
+  // Retirada Manual do Risco de Fraude pelo Responsável pela Frota com Observação Obrigatória
+  const handleClearFraudRisk = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrderForAction) return;
+    if (!fraudClearObservation.trim()) {
+      showToast('Informe uma observação explicando a situação para retirar o Risco de Fraude.', 'warning');
+      return;
+    }
+
+    setClearingFraudRisk(true);
+    try {
+      const updated = await clearFuelOrderFraudRisk(
+        selectedOrderForAction.id,
+        fraudClearObservation,
+        currentUser?.name || currentUser?.id || 'Responsável pela Frota'
+      );
+      setSelectedOrderForAction(updated);
+      setShowFraudClearBox(false);
+      setFraudClearObservation('');
+      showToast(`Risco de Fraude retirado da ordem ${updated.order_number} com observação registrada!`, 'success');
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao retirar o Risco de Fraude.', 'error');
+    } finally {
+      setClearingFraudRisk(false);
+    }
   };
 
   // Homologação Instantânea em 1 Clique dentro da Janela da Ordem
@@ -1898,14 +1948,22 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Abertura do modal de nova ordem com numeração padrão de 7 dígitos pré-calculada
   const handleOpenNewOrder = async () => {
+    const issuer = resolveFleetAuthorizedIssuer(currentUser);
     try {
       const nextNum = await getNextOrderNumber7Digits();
       setNewOrderForm(prev => ({
         ...prev,
-        custom_order_number: nextNum
+        custom_order_number: nextNum,
+        authorized_by_name: issuer.name,
+        authorized_by_role: issuer.role
       }));
     } catch (err) {
       console.warn('Erro ao obter próximo número sequencial de 7 dígitos:', err);
+      setNewOrderForm(prev => ({
+        ...prev,
+        authorized_by_name: issuer.name,
+        authorized_by_role: issuer.role
+      }));
     }
     setNewOrderStep(1);
     setIsNewOrderModalOpen(true);
@@ -1951,6 +2009,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       setNewOrderStep(1);
       
       const nextNum = await getNextOrderNumber7Digits();
+      const issuer = resolveFleetAuthorizedIssuer(currentUser);
       setNewOrderForm({
         custom_order_number: nextNum,
         vehicle_id: '',
@@ -1960,6 +2019,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         fuel_type: 'diesel_s10',
         liters_authorized: 50,
         current_odometer: 0,
+        supply_mode: 'litragem_fixa',
+        authorized_by_name: issuer.name,
+        authorized_by_role: issuer.role,
         is_full_tank_order: false,
         emergency_call_reason: '',
         budget_classification_id: ''
@@ -2001,7 +2063,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
-        showToast(`Abastecimento registrado com BLOQUEIO CRÍTICO DE AUDITORIA: ${res.audit.anomaly_reason}`, 'error');
+        showToast(`Abastecimento registrado com RISCO DE FRAUDE: ${res.audit.anomaly_reason}`, 'error');
       } else if (res.audit.anomaly_level === 'alerta_amarelo') {
         showToast(`Abastecimento registrado com ALERTA MODERADO (${res.audit.deviation_percent}% desvio).`, 'warning');
       } else {
@@ -2207,7 +2269,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           : (v?.expected_consumption && consumption ? `${(((consumption - v.expected_consumption) / v.expected_consumption) * 100).toFixed(1)}%` : '-');
 
         const anomalyLabel = ord.anomaly_level === 'bloqueio_critico' || ord.is_anomaly
-          ? 'BLOQUEIO CRÍTICO'
+          ? 'RISCO DE FRAUDE'
           : ord.anomaly_level === 'alerta_amarelo'
           ? 'ALERTA MODERADO'
           : 'CONFORME';
@@ -2953,7 +3015,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             </span>
                           ) : order.anomaly_level === 'bloqueio_critico' || order.is_anomaly ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
-                              <AlertTriangle size={12} className="text-rose-600" /> Bloqueio TCE
+                              <AlertTriangle size={12} className="text-rose-600" /> Risco de Fraude
                             </span>
                           ) : order.anomaly_level === 'alerta_amarelo' ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
@@ -3329,7 +3391,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               <div className="space-y-1">
                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-600 text-white animate-pulse">
                                   <AlertTriangle size={11} />
-                                  🔴 Bloqueio Crítico TCE
+                                  🔴 Risco de Fraude
                                 </span>
                                 <div className="text-[10px] font-bold text-rose-700 dark:text-rose-300 leading-tight">
                                   {order.anomaly_reason || 'Inconsistência grave no odômetro ou consumo discrepante (>25%).'}
@@ -4559,7 +4621,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           required
                           value={newOrderForm.authorized_by_role}
                           onChange={e => setNewOrderForm({ ...newOrderForm, authorized_by_role: e.target.value })}
-                          placeholder="Ex: Secretário Municipal de Frotas / Matr. 1024"
+                          placeholder="Ex: Responsável pela Frota / Matr. 1024"
                           className="w-full px-3 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                         />
                       </div>
@@ -4634,7 +4696,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         <div className="mt-2 p-2.5 rounded-xl bg-rose-100 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-800 flex items-start gap-2 text-rose-800 dark:text-rose-200 text-xs">
                           <AlertTriangle size={16} className="text-rose-600 shrink-0 mt-0.5" />
                           <div>
-                            <strong>BLOQUEIO ANTIFRAUDE DO TCE:</strong> A litragem autorizada ({newOrderForm.liters_authorized}L) excede a capacidade física do tanque do veículo ({selectedVehicleForNewOrder?.tank_capacity}L). Reduza a quantidade.
+                            <strong>RISCO DE FRAUDE DETECTADO:</strong> A litragem autorizada ({newOrderForm.liters_authorized}L) excede a capacidade física do tanque do veículo ({selectedVehicleForNewOrder?.tank_capacity}L). Reduza a quantidade.
                           </div>
                         </div>
                       )}
@@ -5419,18 +5481,71 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                 </div>
 
-                {/* Alerta do Semáforo TCE (se houver inconsistência) */}
+                {/* Alerta do Semáforo (se houver Risco de Fraude ou Alerta de Consumo) */}
                 {(ord.is_anomaly || ord.anomaly_level === 'bloqueio_critico' || ord.anomaly_level === 'alerta_amarelo') ? (
-                  <div className={`p-3.5 rounded-2xl border text-xs flex items-start gap-2.5 ${
-                    ord.anomaly_level === 'alerta_amarelo'
+                  <div className={`p-3.5 rounded-2xl border text-xs space-y-3 ${
+                    ord.anomaly_level === 'alerta_amarelo' && !ord.is_anomaly
                       ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
                       : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
                   }`}>
-                    <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-                    <div>
-                      <strong className="font-black block">Apontamento Automático do Semáforo TCE:</strong>
-                      <p className="mt-0.5">{ord.anomaly_reason}</p>
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div className="flex items-start gap-2.5">
+                        <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                        <div>
+                          <strong className="font-black block">
+                            {(ord.is_anomaly || ord.anomaly_level === 'bloqueio_critico')
+                              ? 'Alerta de Risco de Fraude:'
+                              : 'Alerta do Semáforo de Consumo:'}
+                          </strong>
+                          <p className="mt-0.5">{ord.anomaly_reason}</p>
+                        </div>
+                      </div>
+                      {(ord.is_anomaly || ord.anomaly_level === 'bloqueio_critico') && !showFraudClearBox && (
+                        <button
+                          type="button"
+                          onClick={() => setShowFraudClearBox(true)}
+                          className="px-3 py-1.5 text-[11px] font-black text-rose-800 dark:text-rose-100 bg-white dark:bg-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-300 dark:border-rose-700 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-xs"
+                        >
+                          <ShieldCheck size={14} />
+                          <span>Retirar Risco de Fraude</span>
+                        </button>
+                      )}
                     </div>
+
+                    {showFraudClearBox && (
+                      <form onSubmit={handleClearFraudRisk} className="pt-3 border-t border-rose-200/80 dark:border-rose-800/70 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black text-rose-950 dark:text-rose-100">
+                            Observação do Responsável pela Frota (explicando a situação) *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setShowFraudClearBox(false)}
+                            className="text-[11px] font-bold text-neutral-500 hover:underline cursor-pointer"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                        <textarea
+                          rows={2}
+                          required
+                          value={fraudClearObservation}
+                          onChange={e => setFraudClearObservation(e.target.value)}
+                          placeholder="Ex: Odômetro corrigido após troca de painel / veículo abasteceu com galão autorizado para maquinário..."
+                          className="w-full p-2.5 bg-white dark:bg-neutral-900 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+                        />
+                        <div className="flex justify-end">
+                          <button
+                            type="submit"
+                            disabled={clearingFraudRisk}
+                            className="px-4 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 rounded-xl shadow-sm cursor-pointer flex items-center gap-1.5"
+                          >
+                            <ShieldCheck size={14} />
+                            <span>{clearingFraudRisk ? 'Liberando...' : 'Confirmar Retirada e Liberar'}</span>
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 ) : (
                   <div className="p-3.5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-2.5">

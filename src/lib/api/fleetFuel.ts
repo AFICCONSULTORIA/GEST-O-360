@@ -1385,6 +1385,60 @@ export async function auditFuelOrder(
 }
 
 /**
+ * 5.0.1 clearFuelOrderFraudRisk: Permite ao responsável pela frota retirar manualmente
+ * o apontamento de Risco de Fraude mediante observação explicativa obrigatória.
+ */
+export async function clearFuelOrderFraudRisk(
+  orderId: string,
+  observation: string,
+  clearedBy?: string
+): Promise<FuelSupplyOrder> {
+  const cleanObs = observation.trim();
+  if (!cleanObs) {
+    throw new Error('Informe uma observação explicando a situação para retirar o Risco de Fraude.');
+  }
+
+  const orders = getLocalRealOrders();
+  const index = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+
+  if (index === -1) {
+    throw new Error('Ordem de abastecimento não encontrada.');
+  }
+
+  const order = orders[index];
+  const nowIso = new Date().toISOString();
+  const auditNote = `[Risco de Fraude retirado manualmente${clearedBy ? ` por ${clearedBy}` : ''}]: ${cleanObs}`;
+  const updatedJustification = order.audit_justification
+    ? `${order.audit_justification}\n${auditNote}`
+    : auditNote;
+
+  const updatedOrder: FuelSupplyOrder = {
+    ...order,
+    is_anomaly: false,
+    anomaly_level: 'none',
+    anomaly_reason: undefined,
+    audit_justification: updatedJustification,
+    updated_at: nowIso
+  };
+
+  try {
+    await supabase.from('fuel_supply_orders').update({
+      is_anomaly: false,
+      anomaly_level: 'none',
+      anomaly_reason: null,
+      audit_justification: updatedOrder.audit_justification,
+      updated_at: updatedOrder.updated_at
+    }).eq('id', order.id);
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao retirar Risco de Fraude no Supabase:', err);
+  }
+
+  orders[index] = updatedOrder;
+  saveLocalRealOrders(orders);
+  return updatedOrder;
+}
+
+/**
  * 5.1 cancelFuelOrderHomologation: Cancela a homologação ou glosa de uma ordem,
  * reabrindo-a no status 'abastecido' para permitir correções de odômetro, litragem ou notas.
  */

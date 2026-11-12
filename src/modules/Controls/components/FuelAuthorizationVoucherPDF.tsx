@@ -89,6 +89,7 @@ export function gerarCanhotoDuasViasHtml(
   const isTopOff = order.supply_mode === 'encher_tanque' || !!order.is_full_tank_order;
   const isSupplied = !!order.liters_supplied && (order.status === 'abastecido' || order.status === 'auditado');
   const tankCapacity = Number(targetVehicle?.tank_capacity || 0);
+  const authorizedOdometer = Number(order.current_odometer || order.previous_odometer || targetVehicle?.current_odometer || 0);
 
   const gestorEmissor = order.authorized_by_name || 'Departamento de Frotas';
   const cargoEmissor = order.authorized_by_role || 'Gestor Responsável pela Autorização';
@@ -213,6 +214,14 @@ export function gerarCanhotoDuasViasHtml(
                     <span class="act-confirmed-val">${Number(order.current_odometer).toLocaleString('pt-BR')} <span class="act-unit-sm">KM</span></span>
                     <span class="act-confirmed-tag">✓ Painel Confirmado</span>
                   </div>
+                ` : authorizedOdometer > 0 ? `
+                  <div class="act-confirmed-row">
+                    <span class="act-confirmed-val">${authorizedOdometer.toLocaleString('pt-BR')} <span class="act-unit-sm">KM</span></span>
+                    <span class="act-confirmed-tag">✓ Informado na Autorização</span>
+                  </div>
+                  ${order.previous_odometer && Number(order.previous_odometer) !== authorizedOdometer ? `
+                    <div class="act-limit-hint">Anterior: ${Number(order.previous_odometer).toLocaleString('pt-BR')} KM</div>
+                  ` : ''}
                 ` : `
                   <div class="act-write-box">
                     <div class="act-handwrite-row">

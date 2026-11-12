@@ -14,7 +14,6 @@ import {
   Newspaper,
   Scale,
   LayoutGrid,
-  RotateCcw,
   FileBadge,
   HeartOff,
   Megaphone,
@@ -28,9 +27,9 @@ import { showToast } from '../../components/ui/Toast';
 import { withInstitutionQuery } from '../../lib/institutionModules';
 import {
   InstitutionalSiteConfig,
-  DEFAULT_CND_MUNICIPAL_URL,
   MAX_SITE_POPUPS,
   getActiveSitePopups,
+  resolveEffectiveUsefulLinks,
   resolveSiteAccentHex,
   saveInstitutionalSiteConfig,
   useInstitutionalSiteConfig,
@@ -39,6 +38,10 @@ import { ColorWheelPicker } from '../../components/ColorWheelPicker';
 import { SitePopupManagerPanel } from '../../components/SitePopupManagerPanel';
 import { SiteNewsManagerPanel } from '../../components/SiteNewsManagerPanel';
 import { SiteLawsManagerPanel } from '../../components/SiteLawsManagerPanel';
+import {
+  SecretariatsProfileManagerPanel,
+  UsefulLinksManagerPanel,
+} from '../../components/SiteUsefulLinksAndSecretariatsManager';
 import { DiarioOficialManagerContent } from '../DiarioOficial/components/DiarioOficialManagerContent';
 import { useMunicipalDepartments } from '../../lib/api/departments';
 import { fetchInstitutionNews, NEWS_UPDATED_EVENT } from '../../lib/api/municipalNews';
@@ -52,7 +55,17 @@ interface SiteInstitucionalModuleProps {
   onInstitutionUpdated?: (inst: Institution) => void;
 }
 
-type SiteAdminTab = 'news' | 'gazette' | 'laws' | 'popups' | 'identity' | 'contact' | 'mourning' | 'domain';
+type SiteAdminTab =
+  | 'news'
+  | 'gazette'
+  | 'laws'
+  | 'secretarias'
+  | 'links'
+  | 'popups'
+  | 'identity'
+  | 'contact'
+  | 'mourning'
+  | 'domain';
 
 export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = ({
   currentUser,
@@ -141,17 +154,17 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
     );
   }
 
-  const publicSiteUrl = withInstitutionQuery('/', currentInstitution);
+  const publicSiteUrl = withInstitutionQuery('/site', currentInstitution);
   const publicGazettePath = withInstitutionQuery('/diario', currentInstitution);
   const originBase =
     typeof window !== 'undefined' ? window.location.origin : 'https://gestao360sistema.com.br';
   const activeSiteFullUrl = config.customDomain
-    ? `https://${config.customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}`
+    ? `https://${config.customDomain.replace(/^https?:\/\//, '').replace(/\/+$/, '')}/site`
     : `${originBase}${publicSiteUrl}`;
   const activeGazetteFullUrl = `${originBase}${publicGazettePath}`;
   const fallbackSubdomainUrl = currentInstitution.subdomain
-    ? `https://${currentInstitution.subdomain}.gestao360sistema.com.br`
-    : 'https://municipio.gestao360sistema.com.br';
+    ? `https://${currentInstitution.subdomain}.gestao360sistema.com.br/site`
+    : 'https://municipio.gestao360sistema.com.br/site';
   const futureGazetteSubdomainUrl = currentInstitution.subdomain
     ? `https://diario.${currentInstitution.subdomain}.gestao360sistema.com.br`
     : 'https://diario.municipio.gestao360sistema.com.br';
@@ -279,6 +292,22 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
       hint: 'Publicar leis e decretos',
       icon: Scale,
       badge: String(stats.lawsCount),
+      badgeTone: 'emerald',
+    },
+    {
+      id: 'secretarias',
+      label: 'Secretarias',
+      hint: 'Missão, carta e serviços',
+      icon: Building2,
+      badge: String(departmentNames.length),
+      badgeTone: 'sky',
+    },
+    {
+      id: 'links',
+      label: 'Links Úteis',
+      hint: 'Portais e serviços extras',
+      icon: Link2,
+      badge: String(resolveEffectiveUsefulLinks(config).length),
       badgeTone: 'emerald',
     },
     {
@@ -539,7 +568,7 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
 
       {/* Navegação por Cartões (Largura Total) + Painel Ativo */}
       <div className="space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
           {NAV_TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -703,10 +732,12 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
                         { key: 'showOfficialGazette' as const, label: 'Diário Oficial Eletrônico do Município' },
                         { key: 'showLaws' as const, label: 'Busca Rápida de Leis & Atos' },
                         { key: 'showDepartments' as const, label: 'Secretarias Oficiais do Município' },
+                        { key: 'showUsefulLinks' as const, label: 'Links Úteis (Portais Governamentais)' },
                         { key: 'showGovernmentInfo' as const, label: 'Bloco Executivo, Horário & Contato' },
                         { key: 'showValidators' as const, label: 'Validadores Públicos (QR/Certidões)' },
                         { key: 'enableAccessibilityBar' as const, label: 'Barra de Acessibilidade eMAG (Fonte, Contraste, Voz)' },
                         { key: 'enableVLibras' as const, label: 'Widget VLibras Oficial (Tradução em LIBRAS)' },
+                        { key: 'showCookieBanner' as const, label: 'Aviso de Cookies & Privacidade (LGPD)' },
                       ].map((sec) => (
                         <label
                           key={sec.key}
@@ -715,7 +746,7 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
                           <span className="font-bold">{sec.label}</span>
                           <input
                             type="checkbox"
-                            checked={config.sections[sec.key]}
+                            checked={config.sections[sec.key] !== false}
                             onChange={(e) => updateSection(sec.key, e.target.checked)}
                             className="w-4 h-4 accent-emerald-600"
                           />
@@ -842,19 +873,6 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
                       <span>Link do Serviço de CND Municipal (Certidão Negativa)</span>
                     </label>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setConfig((prev) => ({
-                            ...prev,
-                            cndMunicipalUrl: DEFAULT_CND_MUNICIPAL_URL,
-                          }))
-                        }
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-neutral-500 hover:text-neutral-900 dark:hover:text-white cursor-pointer"
-                      >
-                        <RotateCcw size={12} />
-                        <span>Usar link padrão</span>
-                      </button>
                       {config.cndMunicipalUrl && (
                         <a
                           href={config.cndMunicipalUrl}
@@ -872,39 +890,98 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
                     type="url"
                     value={config.cndMunicipalUrl}
                     onChange={(e) => setConfig((prev) => ({ ...prev, cndMunicipalUrl: e.target.value }))}
-                    placeholder={DEFAULT_CND_MUNICIPAL_URL}
+                    placeholder="https://tributos.municipio.gov.br/cnd"
                     className="w-full px-4 py-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-sm font-mono focus:outline-none focus:border-emerald-500"
                   />
                   <p className="text-[11px] text-neutral-500">
-                    Deixe preenchido para exibir o card e o botão de emissão de CND Municipal no site público. Para ocultar o serviço, basta limpar o campo.
+                    Utilize preferencialmente link HTTPS oficial do sistema tributário do município. Para ocultar o serviço, basta limpar o campo.
                   </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-neutral-500 mb-1.5">
-                      Link Portal da Transparência (Opcional)
+                      Link Portal da Transparência (Obrigatório PNTP/LAI)
                     </label>
                     <input
                       type="url"
                       value={config.transparencyUrl}
                       onChange={(e) => setConfig((prev) => ({ ...prev, transparencyUrl: e.target.value }))}
-                      placeholder="https://transparencia.municipio.mt.gov.br"
+                      placeholder="https://transparencia.municipio.gov.br"
                       className="w-full px-4 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-sm"
                     />
+                    {!config.transparencyUrl?.trim() && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold mt-1">
+                        Atenção: preencha a URL do Portal da Transparência (Receitas, Despesas, Licitações, LRF) para atendimento aos critérios do PNTP/TCE.
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-black uppercase tracking-wider text-neutral-500 mb-1.5">
-                      Link Diário Oficial (Opcional)
+                      Link Diário Oficial Externo (Opcional)
                     </label>
                     <input
                       type="url"
                       value={config.officialGazetteUrl}
                       onChange={(e) => setConfig((prev) => ({ ...prev, officialGazetteUrl: e.target.value }))}
-                      placeholder="https://diariooficial.municipio.mt.gov.br"
+                      placeholder="https://diariooficial.municipio.gov.br"
                       className="w-full px-4 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-sm"
                     />
                   </div>
+                </div>
+
+                {/* Conformidade LGPD (DPO) & Modo Período Eleitoral */}
+                <div className="p-4 rounded-2xl bg-sky-50/60 dark:bg-sky-950/20 border border-sky-200/80 dark:border-sky-900/50 space-y-4">
+                  <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-sky-900 dark:text-sky-300">
+                    <ShieldCheck size={15} />
+                    <span>Conformidade Legal (LGPD Art. 41 & Legislação Eleitoral)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 mb-1">
+                        Encarregado de Dados (DPO — LGPD)
+                      </label>
+                      <input
+                        type="text"
+                        value={config.dpoName || ''}
+                        onChange={(e) => setConfig((prev) => ({ ...prev, dpoName: e.target.value }))}
+                        placeholder="Nome completo ou setor designado"
+                        className="w-full px-4 py-2 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 mb-1">
+                        E-mail Oficial do Encarregado (DPO)
+                      </label>
+                      <input
+                        type="email"
+                        value={config.dpoEmail || ''}
+                        onChange={(e) => setConfig((prev) => ({ ...prev, dpoEmail: e.target.value }))}
+                        placeholder="lgpd@municipio.gov.br"
+                        className="w-full px-4 py-2 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  <label className="flex items-start justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-neutral-900 border border-amber-200 dark:border-amber-900/50 cursor-pointer">
+                    <div>
+                      <span className="text-xs font-black text-neutral-900 dark:text-white block">
+                        Ativar Modo Período Eleitoral (Lei nº 9.504/1997 & CF Art. 37 §1º)
+                      </span>
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block mt-0.5">
+                        Oculta nome/mensagem de gestão do(a) prefeito(a) e vice, slogans e pop-ups promocionais, preservando serviços, transparência, Diário Oficial e legislação.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(config.electoralMode)}
+                      onChange={(e) =>
+                        setConfig((prev) => ({ ...prev, electoralMode: e.target.checked }))
+                      }
+                      className="w-4 h-4 mt-1 accent-amber-600 cursor-pointer shrink-0"
+                    />
+                  </label>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -946,6 +1023,24 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
                   />
                 </div>
               </div>
+            )}
+
+            {activeTab === 'secretarias' && (
+              <SecretariatsProfileManagerPanel
+                institution={currentInstitution}
+                departmentNames={departmentNames}
+                config={config}
+                onChange={setConfig}
+                accentHex={accentHex}
+              />
+            )}
+
+            {activeTab === 'links' && (
+              <UsefulLinksManagerPanel
+                config={config}
+                onChange={setConfig}
+                accentHex={accentHex}
+              />
             )}
 
             {activeTab === 'popups' && (
