@@ -1642,32 +1642,72 @@ export async function registerAdvanceTravelFuelOrder(
     supplied_at: suppliedDate
   };
 
+  const advanceRecord: Record<string, any> = {
+    id: newOrder.id,
+    institution_id: newOrder.institution_id,
+    order_number: newOrder.order_number,
+    vehicle_id: newOrder.vehicle_id,
+    driver_name: newOrder.driver_name,
+    station_name: newOrder.station_name,
+    fuel_type: newOrder.fuel_type,
+    bidded_unit_price: newOrder.bidded_unit_price,
+    liters_authorized: newOrder.liters_authorized,
+    liters_supplied: newOrder.liters_supplied,
+    total_authorized_value: newOrder.total_authorized_value,
+    previous_odometer: newOrder.previous_odometer,
+    current_odometer: newOrder.current_odometer,
+    calculated_km_per_liter: newOrder.calculated_km_per_liter,
+    anomaly_level: 'none',
+    odometer_photo_url: newOrder.odometer_photo_url,
+    pump_photo_url: newOrder.pump_photo_url,
+    receipt_photo_url: newOrder.receipt_photo_url,
+    supply_mode: newOrder.supply_mode,
+    audit_justification: newOrder.notes,
+    authorized_by_name: newOrder.authorized_by_name,
+    authorized_by_role: newOrder.authorized_by_role,
+    status: 'abastecido',
+    created_at: newOrder.created_at,
+    supplied_at: newOrder.supplied_at
+  };
+
+  if (resolvedBudgetId && isValidUUID(resolvedBudgetId)) {
+    advanceRecord.budget_classification_id = resolvedBudgetId;
+  }
+
   try {
-    await supabase.from('fuel_supply_orders').insert([{
-      id: newOrder.id,
-      institution_id: newOrder.institution_id,
-      order_number: newOrder.order_number,
-      vehicle_id: newOrder.vehicle_id,
-      driver_name: newOrder.driver_name,
-      station_name: newOrder.station_name,
-      fuel_type: newOrder.fuel_type,
-      liters_authorized: newOrder.liters_authorized,
-      liters_supplied: newOrder.liters_supplied,
-      unit_price: newOrder.bidded_unit_price,
-      total_value: newOrder.total_authorized_value,
-      previous_odometer: newOrder.previous_odometer,
-      current_odometer: newOrder.current_odometer,
-      odometer_photo_url: newOrder.odometer_photo_url,
-      pump_photo_url: newOrder.pump_photo_url,
-      receipt_photo_url: newOrder.receipt_photo_url,
-      supply_mode: newOrder.supply_mode,
-      notes: newOrder.notes,
-      authorized_by_name: newOrder.authorized_by_name,
-      authorized_by_role: newOrder.authorized_by_role,
-      status: 'abastecido',
-      created_at: newOrder.created_at,
-      supplied_at: newOrder.supplied_at
-    }]);
+    let { data, error } = await supabase.from('fuel_supply_orders').insert([advanceRecord]).select().single();
+
+    // Retry removendo colunas opcionais caso o schema remoto ainda não as possua
+    let attempts = 0;
+    while (error && error.code === 'PGRST204' && attempts < 4) {
+      attempts++;
+      const missingMatch = error.message?.match(/'([^']+)' column/);
+      if (missingMatch?.[1] && missingMatch[1] in advanceRecord) {
+        delete advanceRecord[missingMatch[1]];
+      } else {
+        delete advanceRecord.budget_classification_id;
+        delete advanceRecord.audit_justification;
+        delete advanceRecord.supply_mode;
+      }
+      const retry = await supabase.from('fuel_supply_orders').insert([advanceRecord]).select().single();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error && error.code === '23505') {
+      const freshNumber = await getNextOrderNumber7Digits();
+      newOrder.order_number = freshNumber;
+      advanceRecord.order_number = freshNumber;
+      const retryDup = await supabase.from('fuel_supply_orders').insert([advanceRecord]).select().single();
+      data = retryDup.data;
+      error = retryDup.error;
+    }
+
+    if (!error && data) {
+      newOrder.id = data.id;
+    } else if (error) {
+      console.error('[FleetFuelAudit] Erro ao gravar adiantamento no Supabase:', error);
+    }
 
     if (shouldUpdateVehicleOdo) {
       await supabase.from('fleet_vehicles').update({

@@ -1434,6 +1434,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }, 0);
     const anomalousOrders = orders.filter(o => o.is_anomaly || o.status === 'glosado' || o.anomaly_level === 'bloqueio_critico');
     const auditedOrders = orders.filter(o => o.status === 'auditado' || o.status === 'liquidado');
+    const advanceTravelOrders = orders.filter(o => isAdvanceTravelOrder(o));
 
     // Consumo médio ponderado (ignora 1º registro de odômetro base e anomalias irreais)
     const validConsumptionOrders = suppliedOrders.filter(o => {
@@ -1455,6 +1456,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       totalSpent: totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       anomalousCount: anomalousOrders.length,
       auditedCount: auditedOrders.length,
+      advanceTravelCount: advanceTravelOrders.length,
       avgConsumption
     };
   }, [orders]);
@@ -1486,6 +1488,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         matchesStatus = order.anomaly_level === 'alerta_amarelo';
       } else if (statusFilter === 'conforme') {
         matchesStatus = order.status === 'auditado' || (order.status === 'abastecido' && !order.is_anomaly && order.anomaly_level !== 'bloqueio_critico' && order.anomaly_level !== 'alerta_amarelo');
+      } else if (statusFilter === 'adiantamento') {
+        matchesStatus = isAdvanceTravelOrder(order);
       } else {
         matchesStatus = order.status === statusFilter;
       }
@@ -2970,6 +2974,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   statusFilter === 'auditado' ? 'bg-white/25 text-white' : 'bg-emerald-200/70 dark:bg-emerald-900/70'
                 }`}>
                   {auditMetrics.auditedCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter(statusFilter === 'adiantamento' ? 'all' : 'adiantamento')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 border ${
+                  statusFilter === 'adiantamento'
+                    ? 'bg-cyan-600 text-white border-transparent shadow-xs'
+                    : 'bg-cyan-50/70 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-300 border-cyan-200/80 dark:border-cyan-800/60 hover:bg-cyan-100/70'
+                }`}
+              >
+                <span>⛽ Adiantamentos</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  statusFilter === 'adiantamento' ? 'bg-white/25 text-white' : 'bg-cyan-200/70 dark:bg-cyan-900/70'
+                }`}>
+                  {auditMetrics.advanceTravelCount}
                 </span>
               </button>
 
@@ -7988,7 +8009,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </div>
 
                     {showAdvanceDriverList && drivers.length > 0 && (
-                      <div className="absolute z-30 mt-1 w-full max-h-44 overflow-y-auto bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl divide-y divide-neutral-100 dark:divide-neutral-800">
+                      <div className="absolute z-30 mt-1 w-full min-w-[260px] max-h-48 overflow-y-auto overflow-x-hidden bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl shadow-xl divide-y divide-neutral-100 dark:divide-neutral-800">
                         {(() => {
                           const q = advanceFuelForm.driver_name.trim().toLowerCase();
                           const matches = drivers.filter(d =>
@@ -8010,11 +8031,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                                 setAdvanceFuelForm({ ...advanceFuelForm, driver_name: d.full_name });
                                 setShowAdvanceDriverList(false);
                               }}
-                              className="w-full px-3 py-2 text-left hover:bg-cyan-50 dark:hover:bg-cyan-950/40 flex items-center justify-between gap-2 cursor-pointer transition-colors"
+                              className="w-full px-3 py-2 text-left hover:bg-cyan-50 dark:hover:bg-cyan-950/40 flex flex-col gap-0.5 cursor-pointer transition-colors"
                             >
-                              <span className="text-xs font-semibold text-neutral-900 dark:text-white truncate">{d.full_name}</span>
+                              <span className="text-xs font-bold text-neutral-900 dark:text-white truncate">{d.full_name}</span>
                               {d.department && (
-                                <span className="text-[10px] text-neutral-400 shrink-0">{d.department}</span>
+                                <span className="text-[10px] text-neutral-400 truncate">{d.department}</span>
                               )}
                             </button>
                           ));
