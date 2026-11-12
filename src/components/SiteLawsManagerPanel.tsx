@@ -162,9 +162,9 @@ export const SiteLawsManagerPanel: React.FC<SiteLawsManagerPanelProps> = ({
           ? 'Norma atualizada e sincronizada no site oficial!'
           : 'Nova norma publicada no banco e no site oficial!'
         : isEditing
-        ? 'Norma atualizada localmente no portal!'
-        : 'Nova norma publicada localmente no portal!',
-      'success'
+        ? 'Salvo apenas neste computador. Execute a migração SQL no Supabase para publicar para todos.'
+        : 'Publicado apenas neste computador. Execute a migração SQL no Supabase para publicar para todos.',
+      syncedRemote ? 'success' : 'warning'
     );
     setIsFormOpen(false);
     setEditingLaw(null);
@@ -178,8 +178,8 @@ export const SiteLawsManagerPanel: React.FC<SiteLawsManagerPanelProps> = ({
     showToast(
       syncedRemote
         ? `${items.length} normas importadas e publicadas no site!`
-        : `${items.length} normas importadas localmente para o site!`,
-      'success'
+        : `${items.length} normas salvas apenas neste computador (sem sincronia com o Supabase).`,
+      syncedRemote ? 'success' : 'warning'
     );
     await loadLaws();
   };

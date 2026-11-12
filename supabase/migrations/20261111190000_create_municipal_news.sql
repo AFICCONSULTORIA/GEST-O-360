@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS public.municipal_news (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  institution_id UUID REFERENCES public.institutions(id) ON DELETE CASCADE,
+  institution_id TEXT REFERENCES public.institutions(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   slug TEXT,
   subtitle TEXT,

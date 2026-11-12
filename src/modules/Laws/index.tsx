@@ -160,9 +160,9 @@ export const LawsModule = ({
     } else {
       showToast(
         isUpdating
-          ? 'Norma atualizada e salva localmente!'
-          : 'Norma cadastrada e salva localmente!',
-        'success'
+          ? 'Norma atualizada apenas localmente! Verifique a conexão/migração do Supabase.'
+          : 'Norma salva apenas neste computador! Verifique a conexão/migração do Supabase.',
+        'warning'
       );
     }
 
@@ -179,8 +179,8 @@ export const LawsModule = ({
     showToast(
       syncedRemote
         ? `${items.length} leis importadas e salvas com sucesso no banco!`
-        : `${items.length} leis importadas e salvas com sucesso!`,
-      'success'
+        : `${items.length} leis salvas apenas neste computador (falha ao sincronizar com o banco).`,
+      syncedRemote ? 'success' : 'warning'
     );
   };
 

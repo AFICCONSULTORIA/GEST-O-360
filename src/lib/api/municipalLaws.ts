@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { Institution, MunicipalLaw } from '../../types';
 import { isValidUuid } from './municipalNews';
+import { isDemoEnvironment } from '../demoManager';
 import { INITIAL_REAL_LAWS } from '../../modules/Laws/data/realInitialLaws';
 
 export const LAWS_UPDATED_EVENT = 'gestao360:laws-updated';
@@ -33,6 +34,15 @@ export const isLegacyMockLaw = (law: Partial<MunicipalLaw>): boolean =>
 const resolveInstitutionId = (institution?: Institution | string | null): string | undefined => {
   if (!institution) return undefined;
   return typeof institution === 'string' ? institution : institution.id;
+};
+
+const canSyncRemoteLaws = (
+  institution?: Institution | string | null,
+  instId?: string
+): instId is string => {
+  if (!instId || !instId.trim()) return false;
+  const instObj = typeof institution === 'object' && institution !== null ? institution : undefined;
+  return !isDemoEnvironment(instObj);
 };
 
 /** Sanitizes a filename into an ASCII-safe slug for Supabase Storage keys. */
@@ -170,7 +180,7 @@ export const buildLawSupabasePayload = (law: Partial<MunicipalLaw>, includeExten
   };
 
   if (isValidUuid(law.id)) base.id = law.id;
-  if (isValidUuid(law.institution_id)) base.institution_id = law.institution_id;
+  if (law.institution_id && law.institution_id.trim()) base.institution_id = law.institution_id.trim();
 
   if (includeExtended) {
     if (law.origin_power) base.origin_power = law.origin_power;
@@ -200,8 +210,9 @@ export const uploadLawPdf = async (
   const extMatch = pdfFile.name.match(/\.([a-zA-Z0-9]+)$/);
   const ext = extMatch ? extMatch[1].toLowerCase() : 'pdf';
 
-  if (isValidUuid(instId)) {
-    const filename = `${instId}/law_${Date.now()}_${safeBase}.${ext}`;
+  if (canSyncRemoteLaws(institution, instId)) {
+    const safeInst = sanitizeLawStorageName(instId);
+    const filename = `${safeInst}/law_${Date.now()}_${safeBase}.${ext}`;
     try {
       const { error: uploadError } = await supabase.storage
         .from('leis')
@@ -260,9 +271,14 @@ export const fetchInstitutionLaws = async (
     return sortMunicipalLaws(filtered, Boolean(options.prioritizeFeatured));
   };
 
-  if (!isValidUuid(instId)) {
+  const isTorixoreuTenant =
+    instId === 'inst_1' ||
+    (typeof institution === 'object' &&
+      institution?.subdomain?.toLowerCase().trim() === 'torixoreu');
+
+  if (!canSyncRemoteLaws(institution, instId)) {
     const cached = readLawsCache(instId);
-    if (cached.length === 0 && options.seedIfEmpty && !cleared) {
+    if (cached.length === 0 && options.seedIfEmpty && !cleared && isTorixoreuTenant) {
       writeLawsCache(INITIAL_REAL_LAWS, instId);
       return applyFilters(INITIAL_REAL_LAWS);
     }
@@ -282,9 +298,16 @@ export const fetchInstitutionLaws = async (
       if (realLaws.length === 0) {
         const cached = readLawsCache(instId);
         if (cached.length > 0) {
+          // Promove para a nuvem as leis que estavam presas apenas no cache local
+          const syncPayloads = cached.map((law) => {
+            const p = buildLawSupabasePayload({ ...law, institution_id: instId }, true);
+            p.id = isValidUuid(law.id) ? law.id : crypto.randomUUID();
+            return p;
+          });
+          supabase.from('municipal_laws').upsert(syncPayloads, { onConflict: 'id' }).then(() => {});
           return applyFilters(cached);
         }
-        if (options.seedIfEmpty && !cleared) {
+        if (options.seedIfEmpty && !cleared && isTorixoreuTenant) {
           const seeded = INITIAL_REAL_LAWS.map((seed) => ({
             ...seed,
             institution_id: instId,
@@ -342,7 +365,7 @@ export const fetchInstitutionLaws = async (
   }
 
   const fallback = readLawsCache(instId);
-  if (fallback.length === 0 && options.seedIfEmpty && !cleared) {
+  if (fallback.length === 0 && options.seedIfEmpty && !cleared && isTorixoreuTenant) {
     return applyFilters(INITIAL_REAL_LAWS);
   }
   return applyFilters(fallback);
@@ -400,7 +423,7 @@ export const saveInstitutionLawItem = async (
   let syncedRemote = false;
   let finalRecord: MunicipalLaw = fullLaw;
 
-  if (isValidUuid(instId)) {
+  if (canSyncRemoteLaws(institution, instId)) {
     if (isUpdating) {
       let updatePayload = buildLawSupabasePayload(fullLaw, true);
       delete updatePayload.id;
@@ -525,7 +548,7 @@ export const saveInstitutionLawsBatch = async (
   let syncedRemote = false;
   let finalItems = prepared;
 
-  if (isValidUuid(instId) && prepared.length > 0) {
+  if (canSyncRemoteLaws(institution, instId) && prepared.length > 0) {
     try {
       const extendedPayloads = prepared.map((law) => {
         const p = buildLawSupabasePayload(law, true);
@@ -580,7 +603,7 @@ export const updateInstitutionLawPartial = async (
   const instId = resolveInstitutionId(institution);
   let syncedRemote = false;
 
-  if (isValidUuid(instId) && isValidUuid(id)) {
+  if (canSyncRemoteLaws(institution, instId) && isValidUuid(id)) {
     const { error } = await supabase
       .from('municipal_laws')
       .update(patch)
@@ -605,7 +628,7 @@ export const deleteInstitutionLawItem = async (
   const instId = resolveInstitutionId(institution);
   setLawsClearedFlag(true, instId);
 
-  if (isValidUuid(instId) && isValidUuid(id)) {
+  if (canSyncRemoteLaws(institution, instId) && isValidUuid(id)) {
     try {
       await supabase.from('municipal_laws').delete().eq('id', id).eq('institution_id', instId);
     } catch (err) {
@@ -635,7 +658,7 @@ export const deleteAllInstitutionLaws = async (
     }
   }
 
-  if (isValidUuid(instId)) {
+  if (canSyncRemoteLaws(institution, instId)) {
     const idsToDelete = new Set<string>(currentLaws.map((l) => l.id).filter(Boolean));
     try {
       const { data: remoteRows } = await supabase

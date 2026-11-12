@@ -11,10 +11,12 @@ import {
   FileText,
   Layers,
   Plus,
+  Printer,
   RefreshCw,
   Search,
   Send,
   ShieldCheck,
+  Sparkles,
   Trash2,
 } from 'lucide-react';
 import {
@@ -39,6 +41,8 @@ import { showToast } from '../../../components/ui/Toast';
 import { GazetteActModal } from './GazetteActModal';
 import { GazetteEditionModal } from './GazetteEditionModal';
 import { OfficialGazetteReaderModal } from './OfficialGazetteReaderModal';
+import { GazetteActLetterheadModal } from './GazetteActLetterheadModal';
+import { GAZETTE_PUBLICATION_TEMPLATES } from '../templates/gazetteTemplates';
 
 interface DiarioOficialManagerContentProps {
   currentInstitution: Institution;
@@ -71,9 +75,13 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
 
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('Todas');
+  const [actStatusFilter, setActStatusFilter] = useState<'all' | 'queued' | 'published'>('all');
+  const [showTemplatesStrip, setShowTemplatesStrip] = useState(true);
 
   const [actModalOpen, setActModalOpen] = useState(false);
+  const [initialTemplateId, setInitialTemplateId] = useState<string | null>(null);
   const [editingAct, setEditingAct] = useState<OfficialGazetteAct | null>(null);
+  const [letterheadAct, setLetterheadAct] = useState<OfficialGazetteAct | null>(null);
   const [editionModalOpen, setEditionModalOpen] = useState(false);
   const [editingEdition, setEditingEdition] = useState<OfficialGazetteEdition | null>(null);
   const [readingEdition, setReadingEdition] = useState<OfficialGazetteEdition | null>(null);
@@ -147,13 +155,17 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
     const q = search.trim().toLowerCase();
     return acts.filter((act) => {
       if (categoryFilter !== 'Todas' && act.category !== categoryFilter) return false;
+      const parentEdition = editions.find((e) => e.id === act.edition_id);
+      const isPublishedAct = act.status === 'published' || parentEdition?.status === 'published';
+      if (actStatusFilter === 'queued' && isPublishedAct) return false;
+      if (actStatusFilter === 'published' && !isPublishedAct) return false;
       if (!q) return true;
       return [act.title, act.act_number, act.department || '', act.summary || '', act.category]
         .join(' ')
         .toLowerCase()
         .includes(q);
     });
-  }, [acts, search, categoryFilter]);
+  }, [acts, editions, search, categoryFilter, actStatusFilter]);
 
   const handleSaveAct = async (actData: Partial<OfficialGazetteAct>, pdfFile?: File | null) => {
     const { syncedRemote } = await saveGazetteAct(
@@ -300,14 +312,28 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
 
           <button
             type="button"
+            onClick={() => setShowTemplatesStrip((prev) => !prev)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-black transition cursor-pointer ${
+              showTemplatesStrip
+                ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-300 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100'
+            }`}
+          >
+            <Sparkles size={14} />
+            <span>Modelos & Timbre</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setEditingAct(null);
+              setInitialTemplateId(null);
               setActModalOpen(true);
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 text-xs font-black hover:opacity-90 transition cursor-pointer"
           >
             <Plus size={14} />
-            <span>Nova Matéria / Ato</span>
+            <span>Nova Publicação / Ato</span>
           </button>
 
           <button
@@ -350,26 +376,94 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
 
         <button
           type="button"
-          onClick={() => setSubTab('acts')}
+          onClick={() => {
+            setSubTab('acts');
+            setActStatusFilter('queued');
+          }}
           className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950/70 border border-neutral-200/80 dark:border-neutral-800 text-left cursor-pointer hover:border-sky-400 transition"
         >
-          <div className="text-xl font-black text-sky-600 dark:text-sky-400">
-            {metrics.queuedActs}
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xl font-black text-sky-600 dark:text-sky-400">
+              {metrics.queuedActs}
+            </div>
+            {metrics.queuedActs > 0 && (
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingEdition(null);
+                  setEditionModalOpen(true);
+                }}
+                className="px-2 py-0.5 rounded-lg bg-sky-600 text-white text-[10px] font-black hover:bg-sky-700"
+              >
+                Montar Edição
+              </span>
+            )}
           </div>
-          <div className="text-[11px] font-bold text-neutral-500">Matérias na Fila</div>
+          <div className="text-[11px] font-bold text-neutral-500">Prontas na Fila (Próxima Edição)</div>
         </button>
 
         <button
           type="button"
-          onClick={() => setSubTab('acts')}
+          onClick={() => {
+            setSubTab('acts');
+            setActStatusFilter('all');
+          }}
           className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950/70 border border-neutral-200/80 dark:border-neutral-800 text-left cursor-pointer hover:border-indigo-400 transition"
         >
           <div className="text-xl font-black text-indigo-600 dark:text-indigo-400">
             {metrics.totalActs}
           </div>
-          <div className="text-[11px] font-bold text-neutral-500">Total de Atos Registrados</div>
+          <div className="text-[11px] font-bold text-neutral-500">Total de Publicações</div>
         </button>
       </div>
+
+      {/* Modelos Padrão com Timbre do Município (Acesso Rápido p/ Gerar PDF) */}
+      {showTemplatesStrip && (
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-50/70 via-white to-sky-50/50 dark:from-emerald-950/20 dark:via-neutral-900 dark:to-sky-950/20 border border-emerald-200/80 dark:border-emerald-500/20 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                <FileText size={14} />
+                <span>Modelos Padrão com Timbre de {currentInstitution.name}</span>
+              </div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                Escolha um modelo oficial já estruturado com brasão e timbre municipal para editar, salvar/imprimir em PDF ou publicar na edição diária.
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-full bg-white dark:bg-neutral-900 border border-emerald-200 dark:border-emerald-500/30 text-[10px] font-black text-emerald-700 dark:text-emerald-300">
+              Folha A4 Timbrada + Marca d&apos;água
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {GAZETTE_PUBLICATION_TEMPLATES.map((tpl) => (
+              <button
+                key={tpl.id}
+                type="button"
+                onClick={() => {
+                  setEditingAct(null);
+                  setInitialTemplateId(tpl.id);
+                  setActModalOpen(true);
+                }}
+                className="group p-2.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/90 dark:border-neutral-800 hover:border-emerald-500 text-left transition shadow-2xs cursor-pointer"
+              >
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-black uppercase">
+                    {tpl.shortTag}
+                  </span>
+                  <Printer size={12} className="text-neutral-400 group-hover:text-emerald-600" />
+                </div>
+                <div className="text-xs font-black text-neutral-900 dark:text-white leading-tight group-hover:text-emerald-700 dark:group-hover:text-emerald-300">
+                  {tpl.label}
+                </div>
+                <div className="text-[10px] text-neutral-500 line-clamp-1 mt-0.5">
+                  {tpl.description}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sub-abas + Busca */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -418,18 +512,30 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
           </div>
 
           {subTab === 'acts' && (
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="px-3 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-xs font-bold focus:outline-none"
-            >
-              <option value="Todas">Todas as categorias</option>
-              {GAZETTE_ACT_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                value={actStatusFilter}
+                onChange={(e) => setActStatusFilter(e.target.value as 'all' | 'queued' | 'published')}
+                className="px-3 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-xs font-bold focus:outline-none"
+              >
+                <option value="all">Todas as situações</option>
+                <option value="queued">Prontas p/ publicação (Fila)</option>
+                <option value="published">Publicadas em edição</option>
+              </select>
+
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="px-3 py-2.5 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 text-xs font-bold focus:outline-none"
+              >
+                <option value="Todas">Todas as categorias</option>
+                {GAZETTE_ACT_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat === 'Licitação & Edital' ? 'Atos de Contratação (Licitação)' : cat}
+                  </option>
+                ))}
+              </select>
+            </>
           )}
         </div>
       </div>
@@ -632,11 +738,21 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setLetterheadAct(act)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 text-[11px] font-black cursor-pointer"
+                        title="Gerar documento com timbre oficial do município (Imprimir / Salvar PDF)"
+                      >
+                        <Printer size={12} />
+                        <span>Timbre / PDF</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
                           setEditingAct(act);
+                          setInitialTemplateId(null);
                           setActModalOpen(true);
                         }}
                         className="p-1.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 hover:text-blue-600 cursor-pointer"
@@ -667,11 +783,22 @@ export const DiarioOficialManagerContent: React.FC<DiarioOficialManagerContentPr
           actToEdit={editingAct}
           editions={editions}
           institution={currentInstitution}
+          initialTemplateId={initialTemplateId}
           onClose={() => {
             setActModalOpen(false);
             setEditingAct(null);
+            setInitialTemplateId(null);
           }}
           onSave={handleSaveAct}
+        />
+      )}
+
+      {letterheadAct && (
+        <GazetteActLetterheadModal
+          act={letterheadAct}
+          institution={currentInstitution}
+          edition={editions.find((e) => e.id === letterheadAct.edition_id) || null}
+          onClose={() => setLetterheadAct(null)}
         />
       )}
 

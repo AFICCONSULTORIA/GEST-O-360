@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Institution, OfficialGazetteAct, OfficialGazetteEdition } from '../../../types';
 import { LogoCompass } from '../../../components/LogoCompass';
+import { sanitizeGazetteHtml } from '../utils/sanitizeGazetteHtml';
 
 interface OfficialGazetteReaderModalProps {
   edition: OfficialGazetteEdition;
@@ -113,22 +114,20 @@ export const OfficialGazetteReaderModal: React.FC<OfficialGazetteReaderModalProp
                 <button
                   type="button"
                   onClick={() => setViewTab('caderno')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                    viewTab === 'caderno'
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${viewTab === 'caderno'
                       ? 'bg-white dark:bg-neutral-900 shadow-xs text-neutral-900 dark:text-white'
                       : 'text-neutral-500'
-                  }`}
+                    }`}
                 >
                   Caderno A4
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewTab('pdf')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                    viewTab === 'pdf'
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${viewTab === 'pdf'
                       ? 'bg-white dark:bg-neutral-900 shadow-xs text-neutral-900 dark:text-white'
                       : 'text-neutral-500'
-                  }`}
+                    }`}
                 >
                   PDF Assinado
                 </button>
@@ -316,9 +315,12 @@ export const OfficialGazetteReaderModal: React.FC<OfficialGazetteReaderModalProp
                             )}
 
                             {act.content && (
-                              <div className="whitespace-pre-wrap text-xs sm:text-[13px] font-serif text-neutral-800 leading-relaxed text-justify">
-                                {act.content}
-                              </div>
+                              <div
+                                className="text-xs sm:text-[13px] font-serif text-neutral-800 leading-relaxed text-justify [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_table]:w-full [&_table]:border-collapse [&_table]:my-2 [&_td]:border [&_td]:border-neutral-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-neutral-300 [&_th]:px-2 [&_th]:py-1 [&_th]:bg-neutral-100"
+                                dangerouslySetInnerHTML={{
+                                  __html: sanitizeGazetteHtml(act.content),
+                                }}
+                              />
                             )}
                           </div>
                         ))}

@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 import { Institution } from '../../types';
-import { isValidUuid } from './municipalNews';
+import { isDemoEnvironment } from '../demoManager';
 
 export type SiteThemeColor = 'emerald' | 'sky' | 'indigo' | 'amber' | 'slate';
 
@@ -338,7 +338,7 @@ export async function saveInstitutionalSiteConfig(
     }
   }
 
-  if (!isValidUuid(institution.id)) {
+  if (!institution.id || isDemoEnvironment(institution)) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
         new CustomEvent(SITE_CONFIG_UPDATED_EVENT, {
@@ -405,7 +405,7 @@ export function useInstitutionalSiteConfig(institution?: Institution | null) {
     const initial = extractSiteConfigFromInstitution(institution);
     setConfig(initial);
 
-    if (!institution?.id || !isValidUuid(institution.id)) return;
+    if (!institution?.id || isDemoEnvironment(institution)) return;
     setLoading(true);
     try {
       const { data, error } = await supabase

@@ -23,7 +23,7 @@ import { CATEGORY_META_LIST, POPULAR_BADGES, PROJECT_STATUS_META } from './types
 import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { useMunicipalDepartments } from '../../lib/api/departments';
-import { isValidUuid } from '../../lib/api/municipalNews';
+import { isDemoEnvironment } from '../../lib/demoManager';
 
 interface NewsEditorProps {
   initialNews?: MunicipalNews | null;
@@ -110,7 +110,7 @@ const uploadOrInlineNewsImage = async (
 ): Promise<{ url: string; uploadedToStorage: boolean }> => {
   const compressed = await compressImage(file);
 
-  if (!isValidUuid(institutionId)) {
+  if (!institutionId || isDemoEnvironment()) {
     return {
       url: await readFileAsDataUrl(compressed),
       uploadedToStorage: false,
@@ -119,8 +119,9 @@ const uploadOrInlineNewsImage = async (
 
   const extMatch = compressed.name.match(/\.([a-zA-Z0-9]+)$/);
   const ext = extMatch ? extMatch[1].toLowerCase() : 'webp';
+  const safeInst = sanitizeStorageFileName(institutionId);
   const uniqueSuffix = Math.random().toString(36).substring(2, 8);
-  const storageKey = `${folder}/${Date.now()}-${uniqueSuffix}-${sanitizeStorageFileName(compressed.name)}.${ext}`;
+  const storageKey = `${folder}/${safeInst}/${Date.now()}-${uniqueSuffix}-${sanitizeStorageFileName(compressed.name)}.${ext}`;
 
   const { error: uploadError } = await supabase.storage
     .from('certidoes')

@@ -11,9 +11,20 @@ export const NEWS_UPDATED_EVENT = 'gestao360:news-updated';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const MOCK_NEWS_IDS = new Set(MOCK_MUNICIPAL_NEWS.map((m) => m.id));
+
 export function isValidUuid(value?: string | null): boolean {
   return Boolean(value && UUID_REGEX.test(value.trim()));
 }
+
+const canSyncRemoteNews = (
+  institution?: Institution | null,
+  explicitInstId?: string | null
+): boolean => {
+  const instId = explicitInstId || institution?.id;
+  if (!instId || !instId.trim()) return false;
+  return !isDemoEnvironment(institution);
+};
 
 const newsStorageKey = (institutionId?: string | null) =>
   institutionId ? `gestao360_municipal_news_${institutionId}` : 'gestao360_municipal_news';
@@ -74,19 +85,17 @@ export async function fetchInstitutionNews(
 ): Promise<MunicipalNews[]> {
   const onlyPublished = Boolean(options?.onlyPublished);
   const isDemo = isDemoEnvironment(institution);
-  const canQueryRemote = !institution?.id || isValidUuid(institution.id);
+  const canQueryRemote = canSyncRemoteNews(institution);
 
-  if (canQueryRemote) {
+  if (canQueryRemote && institution?.id) {
     try {
       let query = supabase
         .from('municipal_news')
         .select('*')
+        .eq('institution_id', institution.id)
         .order('published_at', { ascending: false })
         .order('created_at', { ascending: false });
 
-      if (institution?.id && isValidUuid(institution.id)) {
-        query = query.eq('institution_id', institution.id);
-      }
       if (onlyPublished) {
         query = query.eq('status', 'published');
       }
@@ -99,19 +108,53 @@ export async function fetchInstitutionNews(
       if (!error && data) {
         const list = data as MunicipalNews[];
         if (list.length > 0) {
-          if (!onlyPublished) writeLocalNewsCache(institution?.id, list);
+          if (!onlyPublished) writeLocalNewsCache(institution.id, list);
           return list;
         }
-        const localCached = readLocalNewsCache(institution);
-        const filtered = onlyPublished
-          ? localCached.filter((n) => n.status === 'published')
-          : localCached;
-        if (filtered.length > 0) {
-          return options?.limit ? sortNewsDescending(filtered).slice(0, options.limit) : sortNewsDescending(filtered);
+
+        // Migra automaticamente notícias reais que tenham ficado apenas no cache local deste navegador
+        const localReal = readLocalNewsCache(institution).filter((n) => !MOCK_NEWS_IDS.has(n.id));
+        if (localReal.length > 0) {
+          const rowsToSync = localReal.map((n) => ({
+            id: isValidUuid(n.id) ? n.id : crypto.randomUUID(),
+            institution_id: institution.id,
+            title: n.title,
+            subtitle: n.subtitle || null,
+            content: n.content || '',
+            category: n.category || 'Nota Oficial',
+            department: n.department || null,
+            author_name: n.author_name || null,
+            published_at: n.published_at || n.created_at || new Date().toISOString(),
+            status: n.status || 'published',
+            is_featured: Boolean(n.is_featured),
+            badge: n.badge || null,
+            cover_image_url: n.cover_image_url || null,
+            gallery_urls: n.gallery_urls || [],
+            project_status: n.project_status || null,
+            project_budget: n.project_budget ?? null,
+            views_count: n.views_count || 0,
+            updated_at: new Date().toISOString(),
+          }));
+
+          const { data: syncedRows, error: syncErr } = await supabase
+            .from('municipal_news')
+            .upsert(rowsToSync, { onConflict: 'id' })
+            .select('*');
+
+          const activeList =
+            !syncErr && Array.isArray(syncedRows) && syncedRows.length > 0
+              ? (syncedRows as MunicipalNews[])
+              : localReal;
+
+          if (!onlyPublished) writeLocalNewsCache(institution.id, sortNewsDescending(activeList));
+          const filtered = onlyPublished
+            ? activeList.filter((n) => n.status === 'published')
+            : activeList;
+          const sorted = sortNewsDescending(filtered);
+          return options?.limit ? sorted.slice(0, options.limit) : sorted;
         }
-        return isDemo
-          ? (options?.limit ? MOCK_MUNICIPAL_NEWS.slice(0, options.limit) : MOCK_MUNICIPAL_NEWS)
-          : [];
+
+        return [];
       }
     } catch (err) {
       console.warn('[municipalNews] Falha ao consultar Supabase, usando cache local:', err);
@@ -190,9 +233,9 @@ export async function saveInstitutionNewsItem(
   let syncedToCloud = false;
   let cloudError: string | undefined;
 
-  if (isValidUuid(fullItem.institution_id)) {
+  if (canSyncRemoteNews(institution, fullItem.institution_id)) {
     try {
-      const { error } = editingNews
+      const { error } = editingNews && isValidUuid(fullItem.id)
         ? await supabase.from('municipal_news').update(dbRecord).eq('id', fullItem.id)
         : await supabase.from('municipal_news').insert(dbRecord);
 
@@ -205,8 +248,10 @@ export async function saveInstitutionNewsItem(
     } catch (err: any) {
       cloudError = err?.message || 'Erro de conexão com o banco de dados';
     }
-  } else {
+  } else if (isDemoEnvironment(institution)) {
     syncedToCloud = true;
+  } else {
+    cloudError = 'Instituição não identificada para envio ao servidor.';
   }
 
   const existingLocal = readLocalNewsCache(institution);
@@ -231,7 +276,7 @@ export async function deleteInstitutionNewsItem(
   let syncedToCloud = false;
   let cloudError: string | undefined;
 
-  if (isValidUuid(institution?.id) && isValidUuid(newsId)) {
+  if (canSyncRemoteNews(institution) && isValidUuid(newsId)) {
     try {
       const { error } = await supabase.from('municipal_news').delete().eq('id', newsId);
       if (!error) syncedToCloud = true;
@@ -239,7 +284,7 @@ export async function deleteInstitutionNewsItem(
     } catch (err: any) {
       cloudError = err?.message;
     }
-  } else {
+  } else if (isDemoEnvironment(institution)) {
     syncedToCloud = true;
   }
 
@@ -262,7 +307,7 @@ export async function updateInstitutionNewsPartial(
   };
 
   let syncedToCloud = false;
-  if (isValidUuid(institution?.id) && isValidUuid(item.id)) {
+  if (canSyncRemoteNews(institution) && isValidUuid(item.id)) {
     try {
       const { error } = await supabase
         .from('municipal_news')
@@ -275,7 +320,7 @@ export async function updateInstitutionNewsPartial(
     } catch {
       // mantém atualização local
     }
-  } else {
+  } else if (isDemoEnvironment(institution)) {
     syncedToCloud = true;
   }
 
