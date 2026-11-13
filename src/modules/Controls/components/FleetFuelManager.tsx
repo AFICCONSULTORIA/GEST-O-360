@@ -440,6 +440,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const initialAuthorizedIssuer = resolveFleetAuthorizedIssuer(currentUser);
   const [newOrderForm, setNewOrderForm] = useState({
     custom_order_number: '',
+    target_type: 'veiculo' as 'veiculo' | 'galao',
+    galao_label: '',
     vehicle_id: '',
     driver_name: '',
     driver_document: '',
@@ -1314,17 +1316,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Checagem em tempo real de excesso de tanque na emissão
   const isLitersOverCapacity = useMemo(() => {
-    if (!selectedVehicleForNewOrder) return false;
+    if (newOrderForm.target_type === 'galao' || !selectedVehicleForNewOrder) return false;
     return newOrderForm.liters_authorized > selectedVehicleForNewOrder.tank_capacity;
-  }, [selectedVehicleForNewOrder, newOrderForm.liters_authorized]);
+  }, [newOrderForm.target_type, selectedVehicleForNewOrder, newOrderForm.liters_authorized]);
 
   // Checagem em tempo real de coerência do odômetro na emissão (Odômetro regressivo)
   const isOdometerInvalid = useMemo(() => {
-    if (!selectedVehicleForNewOrder) return false;
+    if (newOrderForm.target_type === 'galao' || !selectedVehicleForNewOrder) return false;
     const prevOdo = Number(selectedVehicleForNewOrder.current_odometer || 0);
     const currOdo = Number(newOrderForm.current_odometer || 0);
     return currOdo > 0 && currOdo < prevOdo;
-  }, [selectedVehicleForNewOrder, newOrderForm.current_odometer]);
+  }, [newOrderForm.target_type, selectedVehicleForNewOrder, newOrderForm.current_odometer]);
 
   // Semáforo Integrado de Auditoria Prévia da Emissão (Padrão TCE)
   const emissionSemaphore = useMemo(() => {
@@ -1346,7 +1348,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         canEmit: false
       };
     }
-    const hasBudget = Boolean(newOrderForm.budget_classification_id || selectedVehicleForNewOrder?.budget_classification_id);
+    const hasBudget = Boolean(
+      newOrderForm.budget_classification_id ||
+      (newOrderForm.target_type === 'veiculo' && selectedVehicleForNewOrder?.budget_classification_id)
+    );
     if (!hasBudget) {
       return {
         level: 'alerta' as const,
@@ -1359,11 +1364,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     return {
       level: 'conforme' as const,
       label: '100% Conforme',
-      reason: 'Parâmetros validados: capacidade física, odômetro e dotação conformes com o TCE.',
+      reason: newOrderForm.target_type === 'galao'
+        ? 'Parâmetros validados: abastecimento de galão/bombona e dotação conformes com o TCE.'
+        : 'Parâmetros validados: capacidade física, odômetro e dotação conformes com o TCE.',
       badgeColor: 'bg-emerald-600 text-white',
       canEmit: true
     };
-  }, [isLitersOverCapacity, isOdometerInvalid, newOrderForm.liters_authorized, newOrderForm.current_odometer, newOrderForm.budget_classification_id, selectedVehicleForNewOrder]);
+  }, [isLitersOverCapacity, isOdometerInvalid, newOrderForm.target_type, newOrderForm.liters_authorized, newOrderForm.current_odometer, newOrderForm.budget_classification_id, selectedVehicleForNewOrder]);
 
   // Lista oficial e padronizada de Secretarias do Município (e detecção de nomes legados fora do padrão)
   const departments = useMemo(() => {
@@ -2008,9 +2015,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
   // Preço unitário contratual licitado e valor total travado
   const currentBiddedPrice = useMemo(() => {
-    if (!selectedVehicleForNewOrder) return 6.19;
-    return biddedPrices[selectedVehicleForNewOrder.fuel_type]?.price || CONTRACTUAL_BIDDED_PRICES[selectedVehicleForNewOrder.fuel_type]?.price || 6.19;
-  }, [selectedVehicleForNewOrder, biddedPrices]);
+    const activeFuel: FuelType =
+      newOrderForm.target_type === 'galao'
+        ? newOrderForm.fuel_type
+        : (selectedVehicleForNewOrder?.fuel_type || newOrderForm.fuel_type);
+    return biddedPrices[activeFuel]?.price || CONTRACTUAL_BIDDED_PRICES[activeFuel]?.price || 6.19;
+  }, [newOrderForm.target_type, newOrderForm.fuel_type, selectedVehicleForNewOrder, biddedPrices]);
 
   const currentTotalAuthorized = useMemo(() => {
     return Number((newOrderForm.liters_authorized * currentBiddedPrice).toFixed(2));
@@ -2138,39 +2148,59 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Envio de nova ordem com emissão em duas vias e parâmetros travados
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newOrderForm.vehicle_id) {
-      showToast('Selecione um veículo da frota.', 'warning');
-      return;
-    }
-    if (isLitersOverCapacity) {
-      showToast('A litragem excede a capacidade do tanque do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
-      return;
-    }
-    if (isOdometerInvalid) {
-      showToast('O odômetro informado não pode ser menor que o odômetro anterior do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
-      return;
+    const isGalao = newOrderForm.target_type === 'galao';
+    if (isGalao) {
+      if (!newOrderForm.galao_label.trim()) {
+        showToast('Informe a identificação ou finalidade do galão/bombona.', 'warning');
+        return;
+      }
+    } else {
+      if (!newOrderForm.vehicle_id) {
+        showToast('Selecione um veículo da frota.', 'warning');
+        return;
+      }
+      if (isLitersOverCapacity) {
+        showToast('A litragem excede a capacidade do tanque do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
+        return;
+      }
+      if (isOdometerInvalid) {
+        showToast('O odômetro informado não pode ser menor que o odômetro anterior do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
+        return;
+      }
     }
 
     try {
       const created = await issueFuelAuthorization({
-        vehicle_id: newOrderForm.vehicle_id,
+        target_type: newOrderForm.target_type,
+        galao_label: isGalao ? newOrderForm.galao_label.trim() : undefined,
+        fuel_type: newOrderForm.fuel_type,
+        vehicle_id: isGalao ? undefined : newOrderForm.vehicle_id,
         driver_name: newOrderForm.driver_name,
         driver_document: newOrderForm.driver_document,
         station_name: newOrderForm.station_name,
         bidded_unit_price: currentBiddedPrice,
         liters_authorized: Number(newOrderForm.liters_authorized),
-        current_odometer: Number(newOrderForm.current_odometer),
-        supply_mode: newOrderForm.supply_mode,
+        current_odometer: isGalao ? 0 : Number(newOrderForm.current_odometer),
+        supply_mode: isGalao ? 'litragem_fixa' : newOrderForm.supply_mode,
         authorized_by_name: newOrderForm.authorized_by_name,
         authorized_by_role: newOrderForm.authorized_by_role,
-        budget_classification_id: newOrderForm.budget_classification_id || selectedVehicleForNewOrder?.budget_classification_id,
-        budget_classification: budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || selectedVehicleForNewOrder?.budget_classification,
+        budget_classification_id:
+          newOrderForm.budget_classification_id ||
+          (!isGalao ? selectedVehicleForNewOrder?.budget_classification_id : undefined),
+        budget_classification:
+          budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) ||
+          (!isGalao ? selectedVehicleForNewOrder?.budget_classification : undefined),
         custom_order_number: newOrderForm.custom_order_number?.trim() 
           ? formatOrderNumber7Digits(newOrderForm.custom_order_number.trim()) 
           : undefined
       });
 
-      showToast(`Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`, 'success');
+      showToast(
+        isGalao
+          ? `Autorização de Galão ${created.order_number} emitida com sucesso! Via do Sistema registrada.`
+          : `Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`,
+        'success'
+      );
       setIsNewOrderModalOpen(false);
       setNewOrderStep(1);
       
@@ -2178,6 +2208,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const issuer = resolveFleetAuthorizedIssuer(currentUser);
       setNewOrderForm({
         custom_order_number: nextNum,
+        target_type: 'veiculo',
+        galao_label: '',
         vehicle_id: '',
         driver_name: '',
         driver_document: '',
@@ -2195,7 +2227,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       loadData();
 
       // Dispara imediatamente a impressão da folha A4 com as 2 vias e QR Code
-      imprimirCanhotoDuasVias(created, created.vehicle || selectedVehicleForNewOrder);
+      imprimirCanhotoDuasVias(created, created.vehicle || (!isGalao ? selectedVehicleForNewOrder : undefined));
     } catch (err: any) {
       showToast(err.message || 'Erro ao emitir autorização.', 'error');
     }
@@ -4444,9 +4476,138 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <form onSubmit={handleCreateOrder} className="space-y-4">
-                {/* PASSO 1: SELEÇÃO DO VEÍCULO COM BUSCA INTELIGENTE */}
+                {/* PASSO 1: SELEÇÃO DO VEÍCULO OU GALÃO / BOMBONA */}
                 {newOrderStep === 1 && (
                   <div className="space-y-3 animate-in fade-in duration-200">
+                    {/* Seletor de Tipo de Destino: Veículo vs Galão/Bombona */}
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-neutral-100 dark:bg-neutral-800/80 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNewOrderForm(prev => ({
+                            ...prev,
+                            target_type: 'veiculo'
+                          }))
+                        }
+                        className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          newOrderForm.target_type === 'veiculo'
+                            ? 'bg-white dark:bg-neutral-900 text-amber-700 dark:text-amber-300 shadow-sm border border-amber-200 dark:border-amber-800'
+                            : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                        }`}
+                      >
+                        <Truck size={14} />
+                        <span>Veículo da Frota</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNewOrderForm(prev => ({
+                            ...prev,
+                            target_type: 'galao',
+                            vehicle_id: '',
+                            current_odometer: 0,
+                            supply_mode: 'litragem_fixa',
+                            liters_authorized: prev.liters_authorized > 200 || prev.liters_authorized <= 0 ? 20 : prev.liters_authorized
+                          }))
+                        }
+                        className={`py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          newOrderForm.target_type === 'galao'
+                            ? 'bg-white dark:bg-neutral-900 text-emerald-700 dark:text-emerald-300 shadow-sm border border-emerald-200 dark:border-emerald-800'
+                            : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                        }`}
+                      >
+                        <Fuel size={14} />
+                        <span>Galão / Bombona</span>
+                      </button>
+                    </div>
+
+                    {newOrderForm.target_type === 'galao' ? (
+                      <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 space-y-3">
+                        <div>
+                          <label className="block text-xs font-black text-emerald-950 dark:text-emerald-200 mb-1">
+                            Identificação / Finalidade do Galão ou Bombona *
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ex: Galão 20L Roçadeira • Secretaria de Obras"
+                            value={newOrderForm.galao_label}
+                            onChange={e => setNewOrderForm({ ...newOrderForm, galao_label: e.target.value })}
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          />
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {[
+                              { label: '20L Roçadeira', liters: 20, fuel: 'gasolina' as FuelType },
+                              { label: '50L Gerador', liters: 50, fuel: 'diesel_s10' as FuelType },
+                              { label: '200L Bombona', liters: 200, fuel: 'diesel_s500' as FuelType },
+                              { label: '20L Motosserra', liters: 20, fuel: 'gasolina' as FuelType }
+                            ].map(preset => (
+                              <button
+                                key={preset.label}
+                                type="button"
+                                onClick={() =>
+                                  setNewOrderForm(prev => ({
+                                    ...prev,
+                                    galao_label: preset.label,
+                                    liters_authorized: preset.liters,
+                                    fuel_type: preset.fuel
+                                  }))
+                                }
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-white dark:bg-neutral-900 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer"
+                              >
+                                + {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-black text-emerald-950 dark:text-emerald-200 mb-1">
+                            Combustível do Galão *
+                          </label>
+                          <select
+                            value={newOrderForm.fuel_type}
+                            onChange={e => setNewOrderForm({ ...newOrderForm, fuel_type: e.target.value as FuelType })}
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <option value="gasolina">Gasolina Comum</option>
+                            <option value="etanol">Etanol Hidratado</option>
+                            <option value="diesel_s10">Diesel S-10</option>
+                            <option value="diesel_s500">Diesel Comum S-500</option>
+                            <option value="arla32">ARLA 32</option>
+                          </select>
+                        </div>
+
+                        <div className="pt-2 border-t border-emerald-200/60 dark:border-emerald-900/40">
+                          <div className="flex justify-between items-center mb-1">
+                            <label className="block text-xs font-black text-emerald-950 dark:text-emerald-200 flex items-center gap-1.5">
+                              <Layers size={14} className="text-emerald-600" />
+                              Classificação Orçamentária (Centro de Custo / Ficha) *
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => setIsBudgetClassificationsModalOpen(true)}
+                              className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus size={11} />
+                              <span>Gerenciar / Crédito Especial</span>
+                            </button>
+                          </div>
+                          <select
+                            value={newOrderForm.budget_classification_id}
+                            onChange={e => setNewOrderForm({ ...newOrderForm, budget_classification_id: e.target.value })}
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-neutral-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <option value="">Selecione a dotação contábil para esta autorização...</option>
+                            {sortedBudgetClassifications.map(bc => (
+                              <option key={bc.id} value={bc.id}>
+                                {bc.invoice_sheet} • {bc.department_local} — Fonte {bc.funding_source} {bc.budget_code ? `(Cód: ${bc.budget_code})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
                     <div>
                       <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
                         Localizar Veículo por Placa, Modelo ou Secretaria:
@@ -4633,6 +4794,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         )}
                       </div>
                     )}
+                      </>
+                    )}
 
                     <div className="flex flex-wrap justify-end gap-2 pt-2">
                       <button
@@ -4644,14 +4807,20 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </button>
                       <button
                         type="button"
-                        disabled={!newOrderForm.vehicle_id}
+                        disabled={
+                          newOrderForm.target_type === 'galao'
+                            ? !newOrderForm.galao_label.trim()
+                            : !newOrderForm.vehicle_id
+                        }
                         onClick={() => setNewOrderStep(2)}
                         className="px-4 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100 hover:bg-amber-200 dark:bg-amber-950/60 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer border border-amber-300 dark:border-amber-800"
                       >
                         <span>Passo 2: Condutor & Posto</span>
                         <ArrowRight size={13} />
                       </button>
-                      {newOrderForm.vehicle_id && newOrderForm.driver_name && (
+                      {(newOrderForm.target_type === 'galao'
+                        ? Boolean(newOrderForm.galao_label.trim())
+                        : Boolean(newOrderForm.vehicle_id)) && newOrderForm.driver_name && (
                         <button
                           type="button"
                           onClick={() => setNewOrderStep(3)}
@@ -5039,22 +5208,40 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </button>
                     </div>
 
-                    {/* Odômetro Atual Confirmado */}
-                    <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-xs">
-                      <div>
-                        <span className="text-[10px] text-neutral-400 block font-bold uppercase">Odômetro do Painel Gravado:</span>
-                        <span className="font-mono font-black text-sm text-neutral-900 dark:text-white">
-                          {formatThousands(newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0)} km
-                        </span>
+                    {/* Odômetro Atual Confirmado / Destino Galão */}
+                    {newOrderForm.target_type === 'galao' ? (
+                      <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-800 flex justify-between items-center text-xs">
+                        <div>
+                          <span className="text-[10px] text-emerald-700 dark:text-emerald-400 block font-bold uppercase">Destino do Abastecimento (Galão / Bombona):</span>
+                          <span className="font-black text-sm text-emerald-950 dark:text-white">
+                            {newOrderForm.galao_label || 'Galão / Bombona'} (Sem Odômetro)
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewOrderStep(1)}
+                          className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+                        >
+                          Alterar Destino
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setNewOrderStep(1)}
-                        className="text-[11px] font-bold text-amber-600 hover:underline cursor-pointer"
-                      >
-                        Ajustar KM
-                      </button>
-                    </div>
+                    ) : (
+                      <div className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200 dark:border-neutral-700 flex justify-between items-center text-xs">
+                        <div>
+                          <span className="text-[10px] text-neutral-400 block font-bold uppercase">Odômetro do Painel Gravado:</span>
+                          <span className="font-mono font-black text-sm text-neutral-900 dark:text-white">
+                            {formatThousands(newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0)} km
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewOrderStep(1)}
+                          className="text-[11px] font-bold text-amber-600 hover:underline cursor-pointer"
+                        >
+                          Ajustar KM
+                        </button>
+                      </div>
+                    )}
 
                     {/* QUADRO FINANCEIRO E VOLUMÉTRICO TRAVADO (SEM CAMPOS EM BRANCO) */}
                     <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-2xl border border-emerald-200 dark:border-emerald-800 text-xs space-y-3">
@@ -5080,7 +5267,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-900">
                           <span className="text-[9px] text-neutral-500 block font-bold uppercase">Combustível</span>
                           <span className="text-xs font-black text-blue-700 dark:text-blue-300 block truncate">
-                            {selectedVehicleForNewOrder ? formatFuelLabel(selectedVehicleForNewOrder.fuel_type) : '-'}
+                            {newOrderForm.target_type === 'galao'
+                              ? formatFuelLabel(newOrderForm.fuel_type)
+                              : (selectedVehicleForNewOrder ? formatFuelLabel(selectedVehicleForNewOrder.fuel_type) : '-')}
                           </span>
                         </div>
                         <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-xl border border-emerald-100 dark:border-emerald-900">
@@ -5197,9 +5386,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div className="min-w-0 flex-1">
                             <strong className="text-[11px] block font-black uppercase tracking-tight">Odômetro do Painel</strong>
                             <span className="text-[10px] opacity-85 block leading-tight">
-                              {isOdometerInvalid
-                                ? `KM menor que o anterior (${formatThousands(selectedVehicleForNewOrder?.current_odometer || 0)})`
-                                : `${formatThousands(newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0)} km (Coerente)`}
+                              {newOrderForm.target_type === 'galao'
+                                ? 'Isento de Odômetro (Galão)'
+                                : isOdometerInvalid
+                                  ? `KM menor que o anterior (${formatThousands(selectedVehicleForNewOrder?.current_odometer || 0)})`
+                                  : `${formatThousands(newOrderForm.current_odometer || selectedVehicleForNewOrder?.current_odometer || 0)} km (Coerente)`}
                             </span>
                           </div>
                         </div>

@@ -215,7 +215,10 @@ export interface LegacyVoucherPayload {
 }
 
 export interface IssueOrderPayload {
-  vehicle_id: string;
+  vehicle_id?: string;
+  target_type?: 'veiculo' | 'galao';
+  galao_label?: string;
+  fuel_type?: FuelType;
   driver_name: string;
   driver_document?: string;
   station_name: string;
@@ -387,22 +390,43 @@ export function calculateRealtimeMetrics(
  * 1. issueFuelAuthorization: Emite autorização prévia e gera a Via do Sistema travada
  */
 export async function issueFuelAuthorization(payload: IssueOrderPayload): Promise<TwoWayFuelOrder> {
-  // 1. Localizar veículo
-  let vehicles = getLocalVehicles();
-  let vehicle = vehicles.find(v => v.id === payload.vehicle_id);
+  const isGalao = payload.target_type === 'galao';
 
-  if (!vehicle) {
-    // Tenta carregar do Supabase
-    try {
-      const { data } = await supabase.from('fleet_vehicles').select('*').eq('id', payload.vehicle_id).single();
-      if (data) {
-        vehicle = data as FleetVehicle;
-      }
-    } catch { }
-  }
+  // 1. Localizar veículo (ou montar referência virtual quando for Abastecimento de Galão)
+  let vehicle: FleetVehicle | undefined;
+  if (!isGalao) {
+    let vehicles = getLocalVehicles();
+    vehicle = vehicles.find(v => v.id === payload.vehicle_id);
 
-  if (!vehicle) {
-    throw new Error('Veículo informado não foi localizado no cadastro oficial da frota municipal.');
+    if (!vehicle && payload.vehicle_id) {
+      // Tenta carregar do Supabase
+      try {
+        const { data } = await supabase.from('fleet_vehicles').select('*').eq('id', payload.vehicle_id).single();
+        if (data) {
+          vehicle = data as FleetVehicle;
+        }
+      } catch { }
+    }
+
+    if (!vehicle) {
+      throw new Error('Veículo informado não foi localizado no cadastro oficial da frota municipal.');
+    }
+  } else {
+    const resolvedFuel: FuelType = payload.fuel_type || 'gasolina';
+    vehicle = {
+      id: '',
+      institution_id: payload.institution_id || 'inst_1',
+      plate: 'GALÃO',
+      model: payload.galao_label?.trim() || 'Galão / Bombona de Combustível',
+      department: payload.budget_classification?.department_local || 'Frota Municipal',
+      fuel_type: resolvedFuel,
+      tank_capacity: Math.max(Number(payload.liters_authorized || 20), 200),
+      metric_type: 'km',
+      expected_consumption: 0,
+      current_odometer: 0,
+      status: 'ativo',
+      created_at: new Date().toISOString()
+    };
   }
 
   // 2. Validações de Negócio
@@ -410,7 +434,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     throw new Error('A litragem autorizada deve ser superior a zero.');
   }
 
-  if (payload.liters_authorized > vehicle.tank_capacity) {
+  if (!isGalao && payload.liters_authorized > vehicle.tank_capacity) {
     throw new Error(
       `BLOQUEIO DE AUDITORIA: Litragem autorizada (${payload.liters_authorized.toFixed(2)}L) ultrapassa a capacidade máxima do tanque (${vehicle.tank_capacity.toFixed(2)}L - ${vehicle.model}).`
     );
@@ -428,18 +452,22 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     vehicle.budget_classification;
   const resolvedBudgetId = resolvedBudget?.id || (rawBudgetId ? toBudgetUUID(rawBudgetId) : undefined);
 
-  const supply_mode = payload.supply_mode || (vehicle.always_full_tank ? 'encher_tanque' : 'litragem_fixa');
+  const supply_mode = isGalao
+    ? 'litragem_fixa'
+    : (payload.supply_mode || (vehicle.always_full_tank ? 'encher_tanque' : 'litragem_fixa'));
   const liters_authorized = supply_mode === 'encher_tanque'
     ? vehicle.tank_capacity
     : payload.liters_authorized;
 
   const total_authorized_value = Number((liters_authorized * payload.bidded_unit_price).toFixed(2));
-  const previous_odometer = Number(vehicle.current_odometer || 0);
-  const current_odometer = payload.current_odometer && Number(payload.current_odometer) > 0
-    ? Number(payload.current_odometer)
-    : previous_odometer;
+  const previous_odometer = isGalao ? 0 : Number(vehicle.current_odometer || 0);
+  const current_odometer = isGalao
+    ? 0
+    : (payload.current_odometer && Number(payload.current_odometer) > 0
+      ? Number(payload.current_odometer)
+      : previous_odometer);
 
-  const delta_km = current_odometer > previous_odometer ? current_odometer - previous_odometer : 0;
+  const delta_km = !isGalao && current_odometer > previous_odometer ? current_odometer - previous_odometer : 0;
 
   // 4. Sequencial oficial padrão de 7 dígitos ou número personalizado normalizado
   let orderNumber = payload.custom_order_number?.trim();
@@ -453,7 +481,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     id: generateUUID(),
     institution_id: payload.institution_id || vehicle.institution_id || 'inst_1',
     order_number: orderNumber,
-    vehicle_id: vehicle.id,
+    vehicle_id: isGalao ? '' : vehicle.id,
     vehicle: vehicle,
     driver_name: payload.driver_name.trim(),
     driver_document: payload.driver_document?.trim() || undefined,
@@ -470,9 +498,12 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     deviation_percent: undefined,
     anomaly_level: 'none',
     supply_mode: supply_mode,
-    is_full_tank_order: !!payload.is_full_tank_order || supply_mode === 'encher_tanque',
+    is_full_tank_order: !isGalao && (!!payload.is_full_tank_order || supply_mode === 'encher_tanque'),
     emergency_call_reason: payload.emergency_call_reason,
     pump_photo_url: payload.pump_photo_url || undefined,
+    notes: isGalao
+      ? `[Abastecimento de Galão] ${payload.galao_label?.trim() || 'Galão / Bombona de Combustível'}`
+      : undefined,
     authorized_by_name: payload.authorized_by_name || 'Gestor de Frotas',
     authorized_by_role: payload.authorized_by_role || 'Gestor de Frotas',
     budget_classification_id: resolvedBudgetId,
@@ -482,23 +513,25 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   };
 
   // 5. Garantir que o veículo exista no Supabase antes da ordem (evita erro de foreign key)
-  try {
-    await supabase.from('fleet_vehicles').upsert([{
-      id: vehicle.id,
-      institution_id: vehicle.institution_id || 'inst_1',
-      plate: vehicle.plate,
-      prefix_code: vehicle.prefix_code,
-      model: vehicle.model,
-      department: vehicle.department,
-      fuel_type: vehicle.fuel_type,
-      tank_capacity: vehicle.tank_capacity,
-      metric_type: vehicle.metric_type,
-      expected_consumption: vehicle.expected_consumption,
-      current_odometer: vehicle.current_odometer,
-      status: vehicle.status || 'ativo'
-    }], { onConflict: 'id' });
-  } catch (errVeh) {
-    console.warn('[FleetFuelAudit] Aviso ao sincronizar veículo com Supabase:', errVeh);
+  if (!isGalao) {
+    try {
+      await supabase.from('fleet_vehicles').upsert([{
+        id: vehicle.id,
+        institution_id: vehicle.institution_id || 'inst_1',
+        plate: vehicle.plate,
+        prefix_code: vehicle.prefix_code,
+        model: vehicle.model,
+        department: vehicle.department,
+        fuel_type: vehicle.fuel_type,
+        tank_capacity: vehicle.tank_capacity,
+        metric_type: vehicle.metric_type,
+        expected_consumption: vehicle.expected_consumption,
+        current_odometer: vehicle.current_odometer,
+        status: vehicle.status || 'ativo'
+      }], { onConflict: 'id' });
+    } catch (errVeh) {
+      console.warn('[FleetFuelAudit] Aviso ao sincronizar veículo com Supabase:', errVeh);
+    }
   }
 
   // 6. Persistir no Supabase de forma resiliente
@@ -506,7 +539,9 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     id: newOrder.id,
     institution_id: newOrder.institution_id,
     order_number: newOrder.order_number,
-    vehicle_id: newOrder.vehicle_id,
+    vehicle_id: isGalao ? null : newOrder.vehicle_id,
+    target_type: isGalao ? 'galao' : 'veiculo',
+    galao_label: isGalao ? (payload.galao_label?.trim() || 'Galão / Bombona') : null,
     driver_name: newOrder.driver_name,
     driver_document: newOrder.driver_document,
     station_name: newOrder.station_name,
