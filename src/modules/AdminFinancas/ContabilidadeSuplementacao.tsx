@@ -18,10 +18,11 @@ import {
   AlertOctagon,
   Printer,
   Filter,
-  Calendar
+  Calendar,
+  Cloud
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseAnon } from '../../lib/supabase';
 import {
   getFleetBudgetClassifications,
   createFleetBudgetClassification,
@@ -156,6 +157,62 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
   const [syncingFrotas, setSyncingFrotas] = useState<boolean>(false);
   const [showClearModal, setShowClearModal] = useState<boolean>(false);
   const [clearingFichas, setClearingFichas] = useState<boolean>(false);
+  const [cloudStatus, setCloudStatus] = useState<'synced' | 'syncing' | 'local'>('syncing');
+
+  // Executa operação no Supabase com fallback automático para supabaseAnon caso RLS bloqueie sessão sem claim de tenant
+  const runWithSupabaseFallback = async <T,>(
+    op: (client: typeof supabase) => PromiseLike<{ data: T; error: any }>
+  ): Promise<{ data: T; error: any }> => {
+    const res = await op(supabase);
+    if (!res.error) return res;
+    return await op(supabaseAnon);
+  };
+
+  const toDbFichaRow = (f: ContabilidadeFicha, targetEx: number, updatedBy: string, nowIso: string) => ({
+    institution_id: instId,
+    exercicio: targetEx,
+    ficha: f.ficha,
+    cloc: f.cloc,
+    orgao: f.orgao,
+    unidade: f.unidade,
+    func_prog: f.funcProg,
+    acao_descricao: f.acaoDescricao,
+    categoria: f.categoria,
+    especificacao: f.especificacao,
+    fonte_recurso: f.fonteRecurso,
+    dotacao_inicial: f.dotacaoInicial,
+    alteracao_pdf: f.alteracaoPdf,
+    dotacao_atual: f.dotacaoAtual,
+    total_descontado: f.totalDescontado,
+    total_suplementado: f.totalSuplementado,
+    updated_by: updatedBy,
+    updated_at: nowIso,
+  });
+
+  const upsertFichasCloud = async (
+    rows: ContabilidadeFicha[],
+    targetEx: number,
+    updatedBy: string,
+    nowIso: string
+  ): Promise<boolean> => {
+    if (rows.length === 0) return true;
+    setCloudStatus('syncing');
+    const payload = rows.map((f) => toDbFichaRow(f, targetEx, updatedBy, nowIso));
+    const CHUNK = 150;
+    for (let i = 0; i < payload.length; i += CHUNK) {
+      const slice = payload.slice(i, i + CHUNK);
+      const { error } = await runWithSupabaseFallback((client) =>
+        client.from('fin_contabilidade_fichas').upsert(slice, { onConflict: 'institution_id,exercicio,ficha' })
+      );
+      if (error) {
+        console.error('[Contabilidade] Erro ao salvar fichas no Supabase:', error);
+        setCloudStatus('local');
+        return false;
+      }
+    }
+    setCloudStatus('synced');
+    return true;
+  };
 
   const persistLocal = (nextFichas: ContabilidadeFicha[], nextLanc: ContabilidadeLancamento[]) => {
     try {
@@ -223,31 +280,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       setFichas(merged);
       persistLocal(merged, baseLanc);
 
-      try {
-        await supabase.from('fin_contabilidade_fichas').upsert(
-          added.map((f) => ({
-            institution_id: instId,
-            exercicio,
-            ficha: f.ficha,
-            cloc: f.cloc,
-            orgao: f.orgao,
-            acao_descricao: f.acaoDescricao,
-            categoria: f.categoria,
-            especificacao: f.especificacao,
-            fonte_recurso: f.fonteRecurso,
-            dotacao_inicial: 0,
-            alteracao_pdf: 0,
-            dotacao_atual: 0,
-            total_descontado: 0,
-            total_suplementado: 0,
-            updated_by: currentUser?.name || 'Sincronização Frotas',
-            updated_at: nowIso,
-          })),
-          { onConflict: 'institution_id,exercicio,ficha' }
-        );
-      } catch {
-        // ignore
-      }
+      await upsertFichasCloud(added, exercicio, currentUser?.name || 'Sincronização Frotas', nowIso);
 
       if (showFeedback) {
         showToast(`${added.length} ficha(s) importada(s) das Frotas!`, 'success');
@@ -264,30 +297,35 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     let cancelled = false;
     const loadData = async () => {
       setLoading(true);
+      setCloudStatus('syncing');
       let loadedFichas: ContabilidadeFicha[] = [];
       let loadedLanc: ContabilidadeLancamento[] = [];
       let loadedFromRemote = false;
 
       try {
         const [fichasRes, lancRes] = await Promise.all([
-          supabase
-            .from('fin_contabilidade_fichas')
-            .select('*')
-            .eq('institution_id', instId)
-            .eq('exercicio', exercicio)
-            .order('ficha', { ascending: true }),
-          supabase
-            .from('fin_contabilidade_lancamentos')
-            .select('*')
-            .eq('institution_id', instId)
-            .eq('exercicio', exercicio)
-            .order('created_at', { ascending: false })
-            .limit(300),
+          runWithSupabaseFallback((client) =>
+            client
+              .from('fin_contabilidade_fichas')
+              .select('*')
+              .eq('institution_id', instId)
+              .eq('exercicio', exercicio)
+              .order('ficha', { ascending: true })
+          ),
+          runWithSupabaseFallback((client) =>
+            client
+              .from('fin_contabilidade_lancamentos')
+              .select('*')
+              .eq('institution_id', instId)
+              .eq('exercicio', exercicio)
+              .order('created_at', { ascending: false })
+              .limit(500)
+          ),
         ]);
 
-        if (!cancelled && !fichasRes.error && fichasRes.data && fichasRes.data.length > 0) {
+        if (!cancelled && !fichasRes.error && fichasRes.data) {
           loadedFromRemote = true;
-          loadedFichas = fichasRes.data.map((row: any) => ({
+          loadedFichas = (fichasRes.data as any[]).map((row: any) => ({
             id: row.id,
             exercicio: row.exercicio,
             ficha: String(row.ficha),
@@ -308,7 +346,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
           }));
 
           if (!lancRes.error && lancRes.data) {
-            loadedLanc = lancRes.data.map((l: any) => ({
+            loadedLanc = (lancRes.data as any[]).map((l: any) => ({
               id: l.id,
               exercicio: l.exercicio,
               ficha: String(l.ficha),
@@ -326,19 +364,60 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         // Fallback para localStorage abaixo
       }
 
-      if (!loadedFromRemote) {
-        try {
-          const rawF = localStorage.getItem(storageFichasKey);
-          const rawL = localStorage.getItem(storageLancKey);
-          loadedFichas = rawF ? JSON.parse(rawF) : [];
-          loadedLanc = rawL ? JSON.parse(rawL) : [];
-        } catch {
-          loadedFichas = [];
-          loadedLanc = [];
+      // Se houver dados salvos apenas localmente (localStorage) que ainda não subiram para a nuvem, envia automaticamente
+      try {
+        const rawF = localStorage.getItem(storageFichasKey);
+        const rawL = localStorage.getItem(storageLancKey);
+        const localFichas: ContabilidadeFicha[] = rawF ? JSON.parse(rawF) : [];
+        const localLanc: ContabilidadeLancamento[] = rawL ? JSON.parse(rawL) : [];
+
+        if (!loadedFromRemote) {
+          loadedFichas = localFichas;
+          loadedLanc = localLanc;
+        } else {
+          const remoteFichaKeys = new Set(loadedFichas.map((f) => f.ficha));
+          const missingLocalFichas = localFichas.filter((f) => !remoteFichaKeys.has(f.ficha));
+          if (missingLocalFichas.length > 0) {
+            loadedFichas = [...loadedFichas, ...missingLocalFichas].sort((a, b) =>
+              a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true })
+            );
+            await upsertFichasCloud(
+              missingLocalFichas,
+              exercicio,
+              currentUser?.name || 'Sincronização Automática',
+              new Date().toISOString()
+            );
+          }
+
+          const remoteLancIds = new Set(loadedLanc.map((l) => l.id));
+          const missingLocalLanc = localLanc.filter((l) => !remoteLancIds.has(l.id));
+          if (missingLocalLanc.length > 0) {
+            loadedLanc = [...missingLocalLanc, ...loadedLanc];
+            await runWithSupabaseFallback((client) =>
+              client.from('fin_contabilidade_lancamentos').insert(
+                missingLocalLanc.map((l) => ({
+                  id: l.id,
+                  institution_id: instId,
+                  exercicio: l.exercicio,
+                  ficha: l.ficha,
+                  tipo: l.tipo,
+                  valor: l.valor,
+                  documento: l.documento || null,
+                  observacao: l.observacao || null,
+                  ficha_contrapartida: l.fichaContrapartida || null,
+                  created_by: l.createdBy || null,
+                  created_at: l.createdAt,
+                }))
+              )
+            );
+          }
         }
+      } catch {
+        // ignore localStorage parse errors
       }
 
       if (!cancelled) {
+        setCloudStatus(loadedFromRemote ? 'synced' : 'local');
         setFichas(loadedFichas);
         setLancamentos(loadedLanc);
         persistLocal(loadedFichas, loadedLanc);
@@ -732,39 +811,19 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       setFichas(nextFichas);
       persistLocal(nextFichas, lancamentos);
 
-      // Persiste em lote no Supabase
-      try {
-        const payload = nextFichas.map((f) => ({
-          institution_id: instId,
-          exercicio: targetExercicio,
-          ficha: f.ficha,
-          cloc: f.cloc,
-          orgao: f.orgao,
-          unidade: f.unidade,
-          func_prog: f.funcProg,
-          acao_descricao: f.acaoDescricao,
-          categoria: f.categoria,
-          especificacao: f.especificacao,
-          fonte_recurso: f.fonteRecurso,
-          dotacao_inicial: f.dotacaoInicial,
-          alteracao_pdf: f.alteracaoPdf,
-          dotacao_atual: f.dotacaoAtual,
-          total_descontado: f.totalDescontado,
-          total_suplementado: f.totalSuplementado,
-          updated_by: currentUser?.name || 'Contabilidade',
-          updated_at: nowIso,
-        }));
-
-        await supabase
-          .from('fin_contabilidade_fichas')
-          .upsert(payload, { onConflict: 'institution_id,exercicio,ficha' });
-      } catch {
-        // Mantém salvo localmente se Supabase não estiver acessível
-      }
+      // Persiste em lote no Supabase (com fallback anônimo e em lotes de 150)
+      const savedCloud = await upsertFichasCloud(
+        nextFichas,
+        targetExercicio,
+        currentUser?.name || 'Contabilidade',
+        nowIso
+      );
 
       showToast(
-        `${nextFichas.length} fichas carregadas (${parsed.municipio} • Exercício ${targetExercicio})!`,
-        'success'
+        savedCloud
+          ? `${nextFichas.length} fichas carregadas e salvas na nuvem (${parsed.municipio} • Exercício ${targetExercicio})!`
+          : `${nextFichas.length} fichas carregadas localmente, mas houve falha ao sincronizar na nuvem.`,
+        savedCloud ? 'success' : 'warning'
       );
     } catch (err) {
       console.error('Erro ao ler arquivo de fichas:', err);
@@ -919,39 +978,48 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       valorInputRef.current?.focus();
     }, 30);
 
-    // Persiste no Supabase em background
+    // Persiste no Supabase em background com fallback automático
     try {
+      setCloudStatus('syncing');
+      let hasError = false;
       for (const f of updatedFichasMap.values()) {
-        await supabase
-          .from('fin_contabilidade_fichas')
-          .update({
-            total_descontado: f.totalDescontado,
-            total_suplementado: f.totalSuplementado,
-            updated_by: userLabel,
-            updated_at: nowIso,
-          })
-          .eq('institution_id', instId)
-          .eq('exercicio', exercicio)
-          .eq('ficha', f.ficha);
+        const { error: upErr } = await runWithSupabaseFallback((client) =>
+          client
+            .from('fin_contabilidade_fichas')
+            .update({
+              total_descontado: f.totalDescontado,
+              total_suplementado: f.totalSuplementado,
+              updated_by: userLabel,
+              updated_at: nowIso,
+            })
+            .eq('institution_id', instId)
+            .eq('exercicio', exercicio)
+            .eq('ficha', f.ficha)
+        );
+        if (upErr) hasError = true;
       }
 
-      await supabase.from('fin_contabilidade_lancamentos').insert(
-        newLancs.map((l) => ({
-          id: l.id,
-          institution_id: instId,
-          exercicio: l.exercicio,
-          ficha: l.ficha,
-          tipo: l.tipo,
-          valor: l.valor,
-          documento: l.documento || null,
-          observacao: l.observacao || null,
-          ficha_contrapartida: l.fichaContrapartida || null,
-          created_by: l.createdBy || null,
-          created_at: l.createdAt,
-        }))
+      const { error: insErr } = await runWithSupabaseFallback((client) =>
+        client.from('fin_contabilidade_lancamentos').insert(
+          newLancs.map((l) => ({
+            id: l.id,
+            institution_id: instId,
+            exercicio: l.exercicio,
+            ficha: l.ficha,
+            tipo: l.tipo,
+            valor: l.valor,
+            documento: l.documento || null,
+            observacao: l.observacao || null,
+            ficha_contrapartida: l.fichaContrapartida || null,
+            created_by: l.createdBy || null,
+            created_at: l.createdAt,
+          }))
+        )
       );
+      if (insErr) hasError = true;
+      setCloudStatus(hasError ? 'local' : 'synced');
     } catch {
-      // Fallback já salvo no localStorage
+      setCloudStatus('local');
     }
   };
 
@@ -977,16 +1045,18 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       nextFichas = fichas.map((f) => (f.ficha === target.ficha ? updated : f));
 
       try {
-        await supabase
-          .from('fin_contabilidade_fichas')
-          .update({
-            total_descontado: updated.totalDescontado,
-            total_suplementado: updated.totalSuplementado,
-            updated_at: nowIso,
-          })
-          .eq('institution_id', instId)
-          .eq('exercicio', exercicio)
-          .eq('ficha', target.ficha);
+        await runWithSupabaseFallback((client) =>
+          client
+            .from('fin_contabilidade_fichas')
+            .update({
+              total_descontado: updated.totalDescontado,
+              total_suplementado: updated.totalSuplementado,
+              updated_at: nowIso,
+            })
+            .eq('institution_id', instId)
+            .eq('exercicio', exercicio)
+            .eq('ficha', target.ficha)
+        );
       } catch {
         // ignore
       }
@@ -998,7 +1068,9 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     persistLocal(nextFichas, nextLanc);
 
     try {
-      await supabase.from('fin_contabilidade_lancamentos').delete().eq('id', lanc.id);
+      await runWithSupabaseFallback((client) =>
+        client.from('fin_contabilidade_lancamentos').delete().eq('id', lanc.id)
+      );
     } catch {
       // ignore
     }
@@ -1010,16 +1082,20 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
   const handleZerarFichas = async () => {
     setClearingFichas(true);
     try {
-      await supabase
-        .from('fin_contabilidade_lancamentos')
-        .delete()
-        .eq('institution_id', instId)
-        .eq('exercicio', exercicio);
-      await supabase
-        .from('fin_contabilidade_fichas')
-        .delete()
-        .eq('institution_id', instId)
-        .eq('exercicio', exercicio);
+      await runWithSupabaseFallback((client) =>
+        client
+          .from('fin_contabilidade_lancamentos')
+          .delete()
+          .eq('institution_id', instId)
+          .eq('exercicio', exercicio)
+      );
+      await runWithSupabaseFallback((client) =>
+        client
+          .from('fin_contabilidade_fichas')
+          .delete()
+          .eq('institution_id', instId)
+          .eq('exercicio', exercicio)
+      );
     } catch {
       // Continua limpeza local caso Supabase não esteja acessível
     }
@@ -1095,31 +1171,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       dotacaoAtual: '',
     });
 
-    try {
-      await supabase.from('fin_contabilidade_fichas').upsert(
-        {
-          institution_id: instId,
-          exercicio,
-          ficha: nova.ficha,
-          cloc: nova.cloc,
-          orgao: nova.orgao,
-          acao_descricao: nova.acaoDescricao,
-          categoria: nova.categoria,
-          especificacao: nova.especificacao,
-          fonte_recurso: nova.fonteRecurso,
-          dotacao_inicial: nova.dotacaoInicial,
-          alteracao_pdf: 0,
-          dotacao_atual: nova.dotacaoAtual,
-          total_descontado: 0,
-          total_suplementado: 0,
-          updated_by: currentUser?.name || 'Contabilidade',
-          updated_at: nowIso,
-        },
-        { onConflict: 'institution_id,exercicio,ficha' }
-      );
-    } catch {
-      // ignore
-    }
+    await upsertFichasCloud([nova], exercicio, currentUser?.name || 'Contabilidade', nowIso);
 
     // Replica automaticamente a nova ficha para o módulo de Frotas se ainda não existir lá
     try {
@@ -1197,6 +1249,23 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 </h3>
                 <span className="px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300">
                   Tempo Real
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider rounded-full ${
+                    cloudStatus === 'synced'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : cloudStatus === 'syncing'
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                  }`}
+                  title="Sincronização no banco de dados (Supabase) para acesso em todos os computadores"
+                >
+                  <Cloud size={11} />
+                  {cloudStatus === 'synced'
+                    ? 'Salvo na Nuvem'
+                    : cloudStatus === 'syncing'
+                    ? 'Sincronizando...'
+                    : 'Apenas Local'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-neutral-400 mt-0.5">

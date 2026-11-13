@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.0.10.72",
+  "version": "0.0.10.82",
   "type": "module",
   "scripts": {
     "dev": "node scripts/bump-version.js && vite",
