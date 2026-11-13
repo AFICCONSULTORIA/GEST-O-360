@@ -225,51 +225,27 @@ export const LandingPage = ({
             )}
 
             {showSaude && (
-              <>
-                <a
-                  href={withInstitutionQuery('/agendamento', currentInstitution)}
-                  className="group relative bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/80 rounded-[32px] p-8 text-left hover:shadow-2xl hover:shadow-sky-500/10 hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-sky-50/50 to-transparent dark:from-sky-950/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="relative space-y-5">
-                    <div className="w-14 h-14 bg-sky-50 dark:bg-sky-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-sky-500 group-hover:text-white dark:group-hover:text-neutral-950 transition-all duration-300 text-sky-600 dark:text-sky-400 shadow-sm">
-                      <Calendar size={24} />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-neutral-900 dark:text-white tracking-tight group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">Agendamento SUS</h2>
-                      <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mt-2 font-medium">
-                        Agende consultas médicas básicas, exames e solicite transporte para tratamento de saúde.
-                      </p>
-                    </div>
+              <a
+                href={withInstitutionQuery('/saude', currentInstitution)}
+                className="group relative bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/80 rounded-[32px] p-8 text-left hover:shadow-2xl hover:shadow-emerald-500/10 hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="relative space-y-5">
+                  <div className="w-14 h-14 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white dark:group-hover:text-neutral-950 transition-all duration-300 text-emerald-600 dark:text-emerald-400 shadow-sm">
+                    <HeartPulse size={24} />
                   </div>
-                  <div className="relative mt-8 flex items-center gap-2 text-sky-600 dark:text-sky-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
-                    <span>Agendar Consulta</span>
-                    <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
+                  <div>
+                    <h2 className="text-xl font-bold text-neutral-900 dark:text-white tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Portal da Saúde</h2>
+                    <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mt-2 font-medium">
+                      Agendamento SUS, Farmácia SUS online, exames e acesso integrado para Secretaria, Médicos e Enfermeiras.
+                    </p>
                   </div>
-                </a>
-
-                <a
-                  href={withInstitutionQuery('/farmaciasus', currentInstitution)}
-                  className="group relative bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md border border-neutral-200/50 dark:border-neutral-800/80 rounded-[32px] p-8 text-left hover:shadow-2xl hover:shadow-indigo-500/10 hover:-translate-y-2 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col justify-between"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-br from-indigo-50/50 to-transparent dark:from-indigo-950/20 dark:to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="relative space-y-5">
-                    <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center group-hover:scale-110 group-hover:bg-indigo-500 group-hover:text-white dark:group-hover:text-neutral-950 transition-all duration-300 text-indigo-600 dark:text-indigo-400 shadow-sm">
-                      <HeartPulse size={24} />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-neutral-900 dark:text-white tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Farmácia SUS</h2>
-                      <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed mt-2 font-medium">
-                        Consulte a disponibilidade em tempo real de medicamentos gratuitos nas farmácias municipais.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="relative mt-8 flex items-center gap-2 text-indigo-600 dark:text-indigo-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
-                    <span>Consultar Remédios</span>
-                    <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
-                  </div>
-                </a>
-              </>
+                </div>
+                <div className="relative mt-8 flex items-center gap-2 text-emerald-600 dark:text-emerald-400 text-xs font-black uppercase tracking-widest border-t border-neutral-100 dark:border-neutral-800/80 pt-4 w-full">
+                  <span>Acessar Saúde Digital</span>
+                  <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform duration-300" />
+                </div>
+              </a>
             )}
 
             {showEducacao && (

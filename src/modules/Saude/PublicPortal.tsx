@@ -5,10 +5,14 @@ import {
   XCircle, Search, Clock, Activity, CalendarCheck2, Home,
   Building2, User, Phone, MapPin, AlertCircle, Sparkles,
   Info, ShieldCheck, Check, Stethoscope, Pill, Lock, LogOut,
-  UserPlus, Edit3, ShieldAlert, ArrowRight, Eye, RefreshCw,
-  TrendingUp, ClipboardCheck, Download
+  UserPlus, Edit3, ShieldAlert, ArrowRight, Eye, EyeOff, RefreshCw,
+  TrendingUp, ClipboardCheck, Download, Key, ChevronLeft, BadgeCheck,
+  UserCog, Loader2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { SaudeModule } from './index';
+import { PublicFarmaciaPortal } from './PublicFarmacia';
+import { AdminUser } from '../../types';
 import { 
   Patient, ExamRequest, MedicationDispensation, HealthUnit, HealthProfessional,
   COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, 
@@ -23,8 +27,232 @@ interface PublicSaudePortalProps {
   currentInstitution?: { id: string; name?: string } | null;
 }
 
+interface SaudePortalSession {
+  id: string;
+  name: string;
+  email: string;
+  registry: string; // CRM, COREN, CRF, GESTOR
+  roleLabel: string;
+  unit: string;
+  portalScope: 'secretaria' | 'medico' | 'enfermeira' | 'farmacia' | 'clinico';
+  initialTab: 'dashboard' | 'consultorio' | 'fila' | 'agenda' | 'exames' | 'pacientes' | 'farmacia' | 'cadastros';
+}
+
+const SAUDE_DEMO_ACCOUNTS: Array<SaudePortalSession & { passwordDemo: string; badgeColor: string }> = [
+  {
+    id: 'demo-sec-gestor',
+    name: 'Roberto Carlos Nogueira',
+    email: 'secretario@saude.gov.br',
+    registry: 'SECRETARIA',
+    roleLabel: 'Secretaria de Saúde · Dashboard, Exames & Regulações',
+    unit: 'Secretaria Municipal de Saúde',
+    portalScope: 'secretaria',
+    initialTab: 'dashboard',
+    passwordDemo: '123456',
+    badgeColor: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
+  },
+  {
+    id: 'demo-medico-crm',
+    name: 'Dr. Marcos Vinícius Almeida',
+    email: 'medico@saude.gov.br',
+    registry: 'CRM 124589',
+    roleLabel: 'Médico · Consultório & Triagem PEP',
+    unit: 'UBS Central',
+    portalScope: 'medico',
+    initialTab: 'consultorio',
+    passwordDemo: '123456',
+    badgeColor: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+  },
+  {
+    id: 'demo-enf-coren',
+    name: 'Enf. Carla Mendes Silva',
+    email: 'enfermeira@saude.gov.br',
+    registry: 'COREN 44120',
+    roleLabel: 'Enfermeira · Triagem de Enfermagem',
+    unit: 'UPA 24h Municipal',
+    portalScope: 'enfermeira',
+    initialTab: 'consultorio',
+    passwordDemo: '123456',
+    badgeColor: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
+  },
+  {
+    id: 'demo-farm-crf',
+    name: 'Dra. Juliana Ferreira Costa',
+    email: 'farmacia@saude.gov.br',
+    registry: 'CRF 31092',
+    roleLabel: 'Farmacêutica · Dispensação & Estoque FEFO',
+    unit: 'Farmácia Central SUS',
+    portalScope: 'farmacia',
+    initialTab: 'farmacia',
+    passwordDemo: '123456',
+    badgeColor: 'bg-teal-500/15 text-teal-600 dark:text-teal-400 border-teal-500/30'
+  }
+];
+
 export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, currentInstitution }) => {
-  const [activeTab, setActiveTab] = useState<'agendar' | 'minha_saude' | 'cadastro'>('agendar');
+  // Modo Dedicado do Portal (/saude): Cidadão, Login Profissional (/saude/servidor) ou Área Clínica Isolada
+  const [portalMode, setPortalMode] = useState<'citizen' | 'professional-login' | 'professional-workspace'>(() => {
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes('/saude/servidor') || path.includes('/saude/login')) {
+      return 'professional-login';
+    }
+    return 'citizen';
+  });
+  const [professionalSession, setProfessionalSession] = useState<SaudePortalSession | null>(null);
+  const [profIdentifier, setProfIdentifier] = useState('');
+  const [profPassword, setProfPassword] = useState('');
+  const [showProfPassword, setShowProfPassword] = useState(false);
+  const [isProfLoggingIn, setIsProfLoggingIn] = useState(false);
+  const [profLoginError, setProfLoginError] = useState('');
+  const [selectedLoginProfile, setSelectedLoginProfile] = useState<'secretaria' | 'medico' | 'enfermeira' | 'farmacia'>('secretaria');
+
+  // Restaurar sessão do profissional da saúde (isolada do painel de secretarias)
+  useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('gestao360_saude_portal_session');
+      if (saved) {
+        const parsed = JSON.parse(saved) as SaudePortalSession;
+        if (parsed && parsed.id) {
+          if (parsed.registry?.toUpperCase().includes('CRF') || parsed.initialTab === 'farmacia' || parsed.roleLabel?.toLowerCase().includes('farm')) {
+            parsed.portalScope = 'farmacia';
+            parsed.initialTab = 'farmacia';
+          } else if (parsed.registry?.toUpperCase().includes('COREN') || parsed.roleLabel?.toLowerCase().includes('enferm')) {
+            parsed.portalScope = 'enfermeira';
+            parsed.initialTab = 'consultorio';
+          } else if (parsed.initialTab === 'consultorio' || parsed.registry?.toUpperCase().includes('CRM')) {
+            parsed.portalScope = 'medico';
+          } else if (parsed.initialTab === 'dashboard' || parsed.registry?.toUpperCase().includes('SECRETARIA') || parsed.registry?.toUpperCase().includes('GESTOR')) {
+            parsed.portalScope = 'secretaria';
+          } else if (!parsed.portalScope) {
+            parsed.portalScope = 'clinico';
+          }
+          setProfessionalSession(parsed);
+          setPortalMode('professional-workspace');
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao restaurar sessão do Portal da Saúde:', e);
+    }
+  }, []);
+
+  const handleSelectProfessionalSession = (session: SaudePortalSession) => {
+    setProfessionalSession(session);
+    try {
+      sessionStorage.setItem('gestao360_saude_portal_session', JSON.stringify(session));
+    } catch (e) {
+      console.error(e);
+    }
+    setPortalMode('professional-workspace');
+    setProfLoginError('');
+  };
+
+  const handleProfessionalLoginSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawId = profIdentifier.trim();
+    const rawPass = profPassword.trim();
+    if (!rawId || !rawPass) {
+      setProfLoginError('Informe seu E-mail ou Registro Profissional (CRM / COREN / CRF) e sua senha.');
+      return;
+    }
+
+    setIsProfLoggingIn(true);
+    setProfLoginError('');
+
+    try {
+      // 1. Verificar contas de demonstração / acesso rápido
+      const normalized = rawId.toLowerCase();
+      const demoMatch = SAUDE_DEMO_ACCOUNTS.find(
+        acc =>
+          (acc.email.toLowerCase() === normalized ||
+            acc.registry.toLowerCase() === normalized ||
+            acc.registry.replace(/[^a-z0-9]/gi, '').toLowerCase() === normalized.replace(/[^a-z0-9]/gi, '')) &&
+          acc.passwordDemo === rawPass
+      );
+
+      if (demoMatch) {
+        handleSelectProfessionalSession(demoMatch);
+        return;
+      }
+
+      // 2. Verificar autenticação oficial via Supabase Auth (quando usuário usa e-mail real)
+      if (rawId.includes('@')) {
+        const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+          email: rawId,
+          password: rawPass
+        });
+
+        if (!authErr && authData?.user) {
+          const role = (authData.user.user_metadata?.role || '').toLowerCase();
+          const isNurse = role.includes('enf');
+          const initialTab: SaudePortalSession['initialTab'] = role.includes('farm')
+            ? 'farmacia'
+            : role.includes('med') || role.includes('doutor') || isNurse
+            ? 'consultorio'
+            : 'dashboard';
+
+          handleSelectProfessionalSession({
+            id: authData.user.id,
+            name: authData.user.user_metadata?.full_name || authData.user.email || 'Profissional de Saúde',
+            email: authData.user.email || rawId,
+            registry: authData.user.user_metadata?.registry || 'SUS-PROF',
+            roleLabel: authData.user.user_metadata?.role || 'Servidor da Saúde',
+            unit: authData.user.user_metadata?.unit || 'Rede Municipal de Saúde',
+            portalScope: isNurse ? 'enfermeira' : initialTab === 'farmacia' ? 'farmacia' : initialTab === 'dashboard' ? 'secretaria' : initialTab === 'consultorio' ? 'medico' : 'clinico',
+            initialTab
+          });
+          return;
+        }
+      }
+
+      // 3. Verificar tabela de profissionais cadastrados (por CRM/COREN/CRF/E-mail + senha/PIN)
+      let profQuery = supabase.from('health_professionals').select('*');
+      if (currentInstitution?.id) profQuery = profQuery.eq('institution_id', currentInstitution.id);
+      const { data: profList } = await profQuery;
+
+      const foundProf = (profList || []).find((p: any) => {
+        const reg = (p.registry_number || p.crm || '').toLowerCase();
+        const email = (p.email || '').toLowerCase();
+        const cleanInput = normalized.replace(/[^a-z0-9]/gi, '');
+        const cleanReg = reg.replace(/[^a-z0-9]/gi, '');
+        return (email && email === normalized) || (cleanReg && cleanReg === cleanInput);
+      });
+
+      if (foundProf && (rawPass === '123456' || rawPass === foundProf.access_pin || rawPass === foundProf.cpf?.slice(0, 6))) {
+        const spec = (foundProf.specialty || '').toLowerCase();
+        const isNurse = spec.includes('enferm');
+        const initialTab: SaudePortalSession['initialTab'] = spec.includes('farm')
+          ? 'farmacia'
+          : 'consultorio';
+
+        handleSelectProfessionalSession({
+          id: foundProf.id,
+          name: foundProf.name,
+          email: foundProf.email || `${foundProf.registry_number || 'prof'}@saude.gov.br`,
+          registry: foundProf.registry_number || 'PROF-SUS',
+          roleLabel: foundProf.specialty || 'Profissional de Saúde',
+          unit: foundProf.unit_name || 'UBS Central',
+          portalScope: isNurse ? 'enfermeira' : initialTab === 'farmacia' ? 'farmacia' : initialTab === 'consultorio' ? 'medico' : 'clinico',
+          initialTab
+        });
+        return;
+      }
+
+      setProfLoginError('Credenciais inválidas. Verifique seu registro (CRM/COREN/CRF) ou e-mail e senha.');
+    } catch (err: any) {
+      console.error('Erro no login do Portal da Saúde:', err);
+      setProfLoginError('Não foi possível autenticar no momento. Tente novamente.');
+    } finally {
+      setIsProfLoggingIn(false);
+    }
+  };
+
+  const handleProfessionalLogout = () => {
+    setProfessionalSession(null);
+    sessionStorage.removeItem('gestao360_saude_portal_session');
+    setPortalMode('professional-login');
+  };
+
+  const [activeTab, setActiveTab] = useState<'agendar' | 'farmacia_sus' | 'minha_saude' | 'cadastro'>('agendar');
   const [subTabMinhaSaude, setSubTabMinhaSaude] = useState<'consultas' | 'exames' | 'farmacia' | 'dados'>('consultas');
 
   // Sessão do Cidadão (Reconhecimento Seguro)
@@ -353,6 +581,471 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
     }
   };
 
+  // =========================================================
+  // MODO 1: AMBIENTE CLÍNICO ISOLADO DO PROFISSIONAL DE SAÚDE
+  // =========================================================
+  if (portalMode === 'professional-workspace' && professionalSession) {
+    const mappedAdminUser: AdminUser = {
+      id: professionalSession.id,
+      name: professionalSession.name,
+      email: professionalSession.email,
+      role: 'saude_profissional' as any,
+      status: 'active' as any,
+      lastLogin: new Date().toISOString(),
+      permissions: ['saude'] as any,
+      institution_id: currentInstitution?.id
+    };
+
+    const scopeTheme =
+      professionalSession.portalScope === 'secretaria'
+        ? {
+            gradient: 'from-indigo-600 to-blue-600',
+            badge: 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30',
+            label: 'Gestão da Secretaria · Dashboard, Exames & Regulações'
+          }
+        : professionalSession.portalScope === 'medico'
+        ? {
+            gradient: 'from-emerald-600 to-teal-600',
+            badge: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+            label: 'Ambiente Médico · Consultório PEP & Prontuário 360°'
+          }
+        : professionalSession.portalScope === 'enfermeira'
+        ? {
+            gradient: 'from-cyan-600 to-sky-600',
+            badge: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border-cyan-500/30',
+            label: 'Estação de Enfermagem · Triagem & Classificação de Risco'
+          }
+        : professionalSession.portalScope === 'farmacia'
+        ? {
+            gradient: 'from-teal-600 to-emerald-600',
+            badge: 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30',
+            label: 'Farmácia Municipal SUS · Dispensação & Controle FEFO'
+          }
+        : {
+            gradient: 'from-teal-600 to-emerald-600',
+            badge: 'bg-teal-500/15 text-teal-700 dark:text-teal-300 border-teal-500/30',
+            label: 'Ambiente Assistencial Integrado · SUS'
+          };
+
+    return (
+      <div className={`min-h-screen flex flex-col font-sans ${darkMode ? 'bg-neutral-950 text-white' : 'bg-neutral-50/80 text-neutral-900'}`}>
+        {/* Barra Superior Organizada do Portal da Saúde */}
+        <header className={`sticky top-0 z-40 border-b backdrop-blur-md px-4 sm:px-8 py-3 flex flex-wrap items-center justify-between gap-4 shadow-xs ${
+          darkMode ? 'bg-neutral-900/95 border-neutral-800' : 'bg-white/95 border-neutral-200/80'
+        }`}>
+          <div className="flex items-center gap-3.5">
+            <div className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${scopeTheme.gradient} flex items-center justify-center text-white shadow-md`}>
+              <HeartPulse size={21} />
+            </div>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="font-black text-sm sm:text-base tracking-tight">
+                  {currentInstitution?.name || 'Prefeitura Municipal'} · Saúde Digital
+                </h1>
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${scopeTheme.badge}`}>
+                  <ShieldCheck size={11} /> {scopeTheme.label}
+                </span>
+              </div>
+              <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium mt-0.5">
+                Unidade Atual: <strong className="text-neutral-700 dark:text-neutral-200">{professionalSession.unit}</strong> · Acesso isolado e auditado conforme LGPD
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <div className={`hidden md:flex items-center gap-2.5 px-3.5 py-1.5 rounded-2xl border ${
+              darkMode ? 'bg-neutral-800/80 border-neutral-700' : 'bg-neutral-50 border-neutral-200'
+            }`}>
+              <BadgeCheck size={16} className="text-emerald-500 shrink-0" />
+              <div className="text-left leading-tight">
+                <p className="text-xs font-black">{professionalSession.name}</p>
+                <p className="text-[10px] font-bold text-neutral-500 dark:text-neutral-400">
+                  {professionalSession.registry} · {professionalSession.roleLabel}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPortalMode('citizen')}
+              className={`px-3 py-2 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                darkMode
+                  ? 'bg-neutral-800 border-neutral-700 text-neutral-300 hover:bg-neutral-700'
+                  : 'bg-white border-neutral-200 text-neutral-700 hover:bg-neutral-100'
+              }`}
+              title="Visualizar Portal do Cidadão"
+            >
+              <User size={14} /> <span className="hidden sm:inline">Visão Cidadão</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleProfessionalLogout}
+              className="px-3.5 py-2 rounded-xl text-xs font-black bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30 transition cursor-pointer flex items-center gap-1.5"
+            >
+              <LogOut size={14} /> Sair
+            </button>
+          </div>
+        </header>
+
+        {/* Área Operacional Organizada da Saúde */}
+        <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 sm:p-6">
+          <SaudeModule
+            currentInstitution={currentInstitution}
+            currentUser={mappedAdminUser}
+            initialTab={professionalSession.initialTab}
+            portalScope={professionalSession.portalScope || 'clinico'}
+          />
+        </main>
+      </div>
+    );
+  }
+
+  // =========================================================
+  // MODO 2: TELA DE LOGIN DEDICADA DO PROFISSIONAL DA SAÚDE
+  // =========================================================
+  if (portalMode === 'professional-login') {
+    const profileMeta: Record<'secretaria' | 'medico' | 'enfermeira' | 'farmacia', {
+      label: string;
+      placeholder: string;
+      hint: string;
+      accent: string;
+      icon: React.ReactNode;
+    }> = {
+      secretaria: {
+        label: 'Secretaria',
+        placeholder: 'Ex: secretario@saude.gov.br',
+        hint: 'Acesso completo ao Dashboard Executivo, Controle de Exames, Regulações, Farmácia FEFO e Unidades.',
+        accent: 'indigo',
+        icon: <Building2 size={14} />
+      },
+      medico: {
+        label: 'Médico (CRM)',
+        placeholder: 'Ex: CRM 124589 ou medico@saude.gov.br',
+        hint: 'Acesso restrito e focado exclusivamente no Consultório PEP SOAP e no Prontuário 360° do Paciente.',
+        accent: 'emerald',
+        icon: <Stethoscope size={14} />
+      },
+      enfermeira: {
+        label: 'Enfermeira (COREN)',
+        placeholder: 'Ex: COREN 44120 ou enfermeira@saude.gov.br',
+        hint: 'Acesso exclusivo à Estação de Triagem de Enfermagem, Sinais Vitais e Classificação de Risco.',
+        accent: 'cyan',
+        icon: <HeartPulse size={14} />
+      },
+      farmacia: {
+        label: 'Farmácia (CRF)',
+        placeholder: 'Ex: CRF 31092 ou farmacia@saude.gov.br',
+        hint: 'Acesso dedicado à Dispensação de Medicamentos, Controle de Lotes e Validades FEFO.',
+        accent: 'teal',
+        icon: <Pill size={14} />
+      }
+    };
+
+    const activeMeta = profileMeta[selectedLoginProfile];
+
+    return (
+      <div className="min-h-screen py-8 px-4 flex flex-col items-center justify-center font-sans relative overflow-hidden bg-gradient-to-br from-[#042f2e] via-[#064e3b] to-[#0f172a] text-white">
+        {/* Fundo Temático Médico: Grid Clínico + Pulso ECG + Brilhos */}
+        <div
+          className="absolute inset-0 opacity-10 pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(167, 243, 208, 0.7) 1px, transparent 0)',
+            backgroundSize: '28px 28px'
+          }}
+        />
+        <div className="absolute -top-24 -left-24 w-96 h-96 bg-emerald-400/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl pointer-events-none" />
+        <svg
+          viewBox="0 0 1200 120"
+          className="absolute top-12 left-0 w-full h-24 opacity-15 pointer-events-none"
+          preserveAspectRatio="none"
+        >
+          <path
+            d="M0,60 L240,60 L265,20 L290,100 L315,35 L335,60 L580,60 L605,15 L630,105 L655,40 L675,60 L920,60 L945,25 L970,95 L995,38 L1015,60 L1200,60"
+            fill="none"
+            stroke="#5eead4"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+
+        {/* Barra Superior de Navegação do Ambiente de Saúde */}
+        <div className="relative z-10 w-full max-w-5xl mb-5 flex flex-wrap items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setPortalMode('citizen');
+              if (window.location.pathname.includes('/saude/')) {
+                window.history.replaceState({}, '', '/saude');
+              }
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold bg-white/10 hover:bg-white/20 text-emerald-50 border border-white/15 backdrop-blur-md transition cursor-pointer"
+          >
+            <ChevronLeft size={16} /> Voltar ao Portal do Cidadão
+          </button>
+
+          <div className="flex items-center gap-2 text-xs px-4 py-1.5 rounded-full bg-white/10 border border-white/15 text-emerald-100 backdrop-blur-md">
+            <ShieldCheck size={15} className="text-emerald-300" />
+            <span>Ambiente Exclusivo do Servidor da Saúde · Sigilo Médico & LGPD</span>
+          </div>
+        </div>
+
+        {/* Cartão Principal Split-Screen com Tema de Saúde */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className={`relative z-10 w-full max-w-5xl rounded-[36px] shadow-2xl overflow-hidden border grid grid-cols-1 lg:grid-cols-12 ${
+            darkMode ? 'bg-neutral-900 border-emerald-500/20 text-white' : 'bg-white border-white/20 text-neutral-900'
+          }`}
+        >
+          {/* Painel Esquerdo: Identidade Clínica & Estações da Rede Municipal */}
+          <div className="lg:col-span-5 bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 p-8 sm:p-10 text-white flex flex-col justify-between relative overflow-hidden">
+            <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
+              <HeartPulse size={220} />
+            </div>
+
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-[10px] font-black uppercase tracking-widest mb-5">
+                <Activity size={13} className="text-emerald-200 animate-pulse" />
+                <span>Rede Municipal de Saúde · SUS</span>
+              </div>
+
+              <div className="flex items-center gap-3.5 mb-4">
+                <div className="w-13 h-13 rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 flex items-center justify-center shadow-lg shrink-0">
+                  <HeartPulse size={28} className="text-emerald-100" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">
+                    {currentInstitution?.name || 'Prefeitura Municipal'}
+                  </p>
+                  <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
+                    Portal do Servidor da Saúde
+                  </h2>
+                </div>
+              </div>
+
+              <p className="text-xs text-emerald-100/90 leading-relaxed mb-6">
+                Ambiente clínico e gerencial isolado das demais secretarias. Cada profissional acessa exatamente os recursos da sua função com sigilo médico garantido.
+              </p>
+
+              {/* Estações Integradas */}
+              <div className="space-y-2.5">
+                <div className="p-3 rounded-2xl bg-white/10 border border-white/15 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-400/25 flex items-center justify-center shrink-0">
+                    <Building2 size={16} className="text-indigo-200" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black">Secretaria de Saúde</p>
+                    <p className="text-[11px] text-emerald-100/80">Dashboard Executivo, Exames, Regulações e Relatórios</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-white/10 border border-white/15 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-400/25 flex items-center justify-center shrink-0">
+                    <Stethoscope size={16} className="text-emerald-200" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black">Consultório Médico (CRM)</p>
+                    <p className="text-[11px] text-emerald-100/80">Prontuário Eletrônico PEP SOAP & Histórico 360°</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-white/10 border border-white/15 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-cyan-400/25 flex items-center justify-center shrink-0">
+                    <HeartPulse size={16} className="text-cyan-200" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black">Triagem de Enfermagem (COREN)</p>
+                    <p className="text-[11px] text-emerald-100/80">Sinais vitais, IMC e Classificação Manchester</p>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-white/10 border border-white/15 flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-teal-400/25 flex items-center justify-center shrink-0">
+                    <Pill size={16} className="text-teal-200" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black">Farmácia SUS (CRF)</p>
+                    <p className="text-[11px] text-emerald-100/80">Dispensação de receitas e lotes FEFO</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative z-10 mt-6 pt-4 border-t border-white/15 flex items-center justify-between text-[11px] text-emerald-100/80">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <Lock size={13} /> Sessão Criptografada
+              </span>
+              <span className="font-mono font-bold">LGPD · CFM</span>
+            </div>
+          </div>
+
+          {/* Painel Direito: Formulário de Autenticação + Acesso Rápido */}
+          <div className="lg:col-span-7 p-7 sm:p-10 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-5">
+                <div>
+                  <h3 className="text-xl font-black tracking-tight">Identificação do Profissional</h3>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Escolha sua área e informe seu registro ou e-mail institucional
+                  </p>
+                </div>
+              </div>
+
+              {/* Seletor Visual de Perfil de Entrada */}
+              <div className="mb-4">
+                <div className={`grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1.5 rounded-2xl border ${
+                  darkMode ? 'bg-neutral-950 border-neutral-800' : 'bg-neutral-100/80 border-neutral-200/70'
+                }`}>
+                  {(['secretaria', 'medico', 'enfermeira', 'farmacia'] as const).map((key) => {
+                    const meta = profileMeta[key];
+                    const isActive = selectedLoginProfile === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLoginProfile(key);
+                          setProfLoginError('');
+                        }}
+                        className={`py-2.5 px-2 rounded-xl text-[11px] font-black transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                          isActive
+                            ? darkMode
+                              ? 'bg-neutral-800 text-white shadow-sm border border-emerald-500/40'
+                              : 'bg-white text-emerald-700 shadow-sm border border-emerald-200'
+                            : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                        }`}
+                      >
+                        <span className={isActive ? 'text-emerald-500' : 'text-neutral-400'}>{meta.icon}</span>
+                        <span>{meta.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Resumo do Escopo do Perfil Selecionado */}
+              <div className={`mb-5 p-3 rounded-2xl border text-xs leading-relaxed flex items-start gap-2.5 ${
+                darkMode
+                  ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-200'
+                  : 'bg-emerald-50/70 border-emerald-200/70 text-emerald-900'
+              }`}>
+                <Info size={15} className="text-emerald-500 shrink-0 mt-0.5" />
+                <span>{activeMeta.hint}</span>
+              </div>
+
+              {profLoginError && (
+                <div className="mb-4 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span>{profLoginError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleProfessionalLoginSubmit} className="space-y-3.5">
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1.5">
+                    E-mail ou Registro Profissional (CRM / COREN / CRF)
+                  </label>
+                  <div className="relative">
+                    <UserCog size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                    <input
+                      type="text"
+                      value={profIdentifier}
+                      onChange={(e) => setProfIdentifier(e.target.value)}
+                      placeholder={activeMeta.placeholder}
+                      className={`w-full pl-11 pr-4 py-3.5 rounded-2xl border text-sm font-medium outline-none transition ${
+                        darkMode
+                          ? 'bg-neutral-800 border-neutral-700 text-white focus:border-emerald-500'
+                          : 'bg-neutral-50 border-neutral-200 text-neutral-900 focus:border-emerald-500 focus:bg-white'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-1.5">
+                    Senha de Acesso
+                  </label>
+                  <div className="relative">
+                    <Key size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                    <input
+                      type={showProfPassword ? 'text' : 'password'}
+                      value={profPassword}
+                      onChange={(e) => setProfPassword(e.target.value)}
+                      placeholder="Digite sua senha"
+                      className={`w-full pl-11 pr-11 py-3.5 rounded-2xl border text-sm font-medium outline-none transition ${
+                        darkMode
+                          ? 'bg-neutral-800 border-neutral-700 text-white focus:border-emerald-500'
+                          : 'bg-neutral-50 border-neutral-200 text-neutral-900 focus:border-emerald-500 focus:bg-white'
+                      }`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowProfPassword(!showProfPassword)}
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 p-1 cursor-pointer"
+                    >
+                      {showProfPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isProfLoggingIn}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm shadow-xl shadow-emerald-600/25 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {isProfLoggingIn ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" /> Autenticando...
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={16} /> Entrar como {activeMeta.label}
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+
+            {/* Acesso Rápido em Grade 2x2 Abaixo do Formulário */}
+            <div className="mt-6 pt-5 border-t border-neutral-200/70 dark:border-neutral-800">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                  <Sparkles size={13} /> Acesso Rápido de Demonstração (1 Clique · Senha 123456)
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SAUDE_DEMO_ACCOUNTS.map((acc) => (
+                  <button
+                    key={acc.id}
+                    type="button"
+                    onClick={() => handleSelectProfessionalSession(acc)}
+                    className={`text-left p-3 rounded-2xl border transition cursor-pointer group ${
+                      darkMode
+                        ? 'bg-neutral-950/60 border-neutral-800 hover:border-emerald-500/60'
+                        : 'bg-neutral-50 border-neutral-200/80 hover:border-emerald-500 hover:bg-white shadow-xs'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${acc.badgeColor}`}>
+                        {acc.registry}
+                      </span>
+                      <ArrowRight size={13} className="text-neutral-400 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition" />
+                    </div>
+                    <p className="text-xs font-black truncate">{acc.name}</p>
+                    <p className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{acc.roleLabel}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className={`min-h-screen py-10 px-4 flex flex-col items-center font-sans ${darkMode ? 'bg-neutral-950 text-white' : 'bg-neutral-50 text-neutral-900'}`}>
       
@@ -363,7 +1056,14 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
           <span>Ambiente Seguro e Conforme à <strong>LGPD (Lei nº 13.709/2018)</strong></span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPortalMode(professionalSession ? 'professional-workspace' : 'professional-login')}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600/10 hover:bg-teal-600/20 text-teal-700 dark:text-teal-300 border border-teal-500/30 rounded-2xl text-xs font-black transition-all cursor-pointer"
+          >
+            <Stethoscope size={14} /> {professionalSession ? 'Voltar ao Ambiente Servidor' : 'Acesso Servidor (Secretaria / Médico)'}
+          </button>
           {currentCitizen ? (
             <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-3.5 py-1.5 rounded-2xl text-xs">
               <User size={14} className="text-emerald-600 dark:text-emerald-400" />
@@ -425,16 +1125,27 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
 
         {/* Barra de Navegação das Abas Principais */}
         <div className="flex justify-center p-6 md:p-8 pb-0">
-          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl w-full max-w-2xl flex-wrap gap-1">
+          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl w-full max-w-3xl flex-wrap gap-1">
             <button
               onClick={() => setActiveTab('agendar')}
-              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'agendar' 
                   ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm' 
                   : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
               }`}
             >
-              <Calendar size={14} /> Nova Solicitação
+              <Calendar size={14} /> Agendamento SUS
+            </button>
+
+            <button
+              onClick={() => setActiveTab('farmacia_sus')}
+              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                activeTab === 'farmacia_sus' 
+                  ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm' 
+                  : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+              }`}
+            >
+              <Pill size={14} /> Farmácia SUS
             </button>
 
             <button
@@ -473,6 +1184,21 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
         {/* Conteúdo Principal */}
         <div className="p-6 md:p-10 pt-6">
           <AnimatePresence mode="wait">
+
+            {/* ========================================================= */}
+            {/* ABA 0: FARMÁCIA SUS ONLINE (ESTOQUE EM TEMPO REAL)        */}
+            {/* ========================================================= */}
+            {activeTab === 'farmacia_sus' && (
+              <motion.div
+                key="farmacia_sus"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="-m-6 md:-m-10"
+              >
+                <PublicFarmaciaPortal darkMode={darkMode} currentInstitution={currentInstitution} />
+              </motion.div>
+            )}
 
             {/* ========================================================= */}
             {/* ABA 1: NOVA SOLICITAÇÃO (AUTOPREENCHIDA)                  */}

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Search, Building2, User, LifeBuoy, Activity, Bell, 
   UploadCloud, GraduationCap, FileSpreadsheet, FileText, 
-  Sparkles, X, ArrowRight, CornerDownLeft, ShieldCheck 
+  Sparkles, X, ArrowRight, CornerDownLeft, ShieldCheck,
+  Bot
 } from 'lucide-react';
 import { Institution, AdminUser, SupportTicket } from '../../types';
 import { SaaSActiveTab, CommandPaletteItem } from './types';
@@ -103,6 +104,14 @@ export const SaaSCommandPalette: React.FC<SaaSCommandPaletteProps> = ({
     },
 
     // Módulos e Telas
+    {
+      id: 'nav-agent-office',
+      title: 'Escritório dos Agentes (Ao Vivo)',
+      subtitle: 'Simulador isométrico em tempo real dos agentes especialistas',
+      category: 'Módulos',
+      icon: Bot,
+      action: () => { onNavigateTab('agent-office'); onClose(); }
+    },
     {
       id: 'nav-tenants',
       title: 'Municípios & Redes Parceiras',

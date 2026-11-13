@@ -696,6 +696,7 @@ export default function App() {
   const portalHostPrefix = getPortalHostPrefix();
   const currentPath = stripTenantFromPath(window.location.pathname, currentInstitution?.subdomain || currentSubdomain);
   const isPublicPortal = currentPath === '/agendamento';
+  const isSaudePortal = currentPath === '/saude' || currentPath.startsWith('/saude/') || currentPath === '/portalsaude' || currentPath === '/saudepublica';
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isEducacaoPortal = currentPath === '/educacao';
@@ -971,7 +972,7 @@ export default function App() {
     );
   }
 
-  if (isPublicPortal) {
+  if (isPublicPortal || isSaudePortal) {
     if (!isInstitutionModuleActive(currentInstitution, 'saude')) return redirectInactivePublicPortal();
     return (
       <div className={darkMode ? 'dark' : ''}>

@@ -3,7 +3,8 @@ import {
   Building2, LifeBuoy, ShieldCheck, Activity, Bell, 
   HeartPulse, UploadCloud, GraduationCap, FileSpreadsheet, 
   FileText, Sun, Moon, LogOut, Search, Menu, X, 
-  ChevronRight, ChevronLeft, Compass, ShieldAlert, Sparkles, CheckCircle2 
+  ChevronRight, ChevronLeft, Compass, ShieldAlert, Sparkles, CheckCircle2,
+  Bot
 } from 'lucide-react';
 import { SaaSActiveTab, SaaSNavGroup } from './types';
 import { Institution, AdminUser } from '../../types';
@@ -51,6 +52,14 @@ export const SaaSAdminLayout: React.FC<SaaSAdminLayoutProps> = ({
           badge: institutionsCount,
           badgeColor: 'emerald',
           description: 'Ciclo de vida e módulos contratados'
+        },
+        {
+          id: 'agent-office',
+          label: 'Escritório dos Agentes',
+          icon: Bot,
+          badge: 'Ao Vivo',
+          badgeColor: 'emerald',
+          description: 'Simulador isométrico e telemetria dos agentes'
         },
         {
           id: 'health',

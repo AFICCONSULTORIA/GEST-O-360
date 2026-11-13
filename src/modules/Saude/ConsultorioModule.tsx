@@ -21,13 +21,19 @@ import { SaudeConsultorio } from './components/SaudeConsultorio';
 interface ConsultorioModuleProps {
   currentInstitution?: { id: string; name?: string } | null;
   currentUser?: AdminUser | null;
+  initialSubTab?: 'consultorio' | 'triagem' | 'historico';
+  onlyTriagem?: boolean;
 }
 
 export const ConsultorioModule: React.FC<ConsultorioModuleProps> = ({
   currentInstitution,
-  currentUser
+  currentUser,
+  initialSubTab = 'consultorio',
+  onlyTriagem = false
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'consultorio' | 'triagem' | 'historico'>('consultorio');
+  const [activeSubTab, setActiveSubTab] = useState<'consultorio' | 'triagem' | 'historico'>(
+    onlyTriagem ? 'triagem' : initialSubTab
+  );
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -272,17 +278,19 @@ export const ConsultorioModule: React.FC<ConsultorioModuleProps> = ({
 
         {/* Abas Exclusivas do Consultório */}
         <div className="flex items-center gap-1.5 bg-black/30 p-1.5 rounded-2xl border border-white/10 text-xs font-bold">
-          <button
-            onClick={() => setActiveSubTab('consultorio')}
-            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${
-              activeSubTab === 'consultorio'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-indigo-200 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Stethoscope size={15} />
-            <span>Consultório Médico</span>
-          </button>
+          {!onlyTriagem && (
+            <button
+              onClick={() => setActiveSubTab('consultorio')}
+              className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 ${
+                activeSubTab === 'consultorio'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-indigo-200 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Stethoscope size={15} />
+              <span>Consultório Médico</span>
+            </button>
+          )}
 
           <button
             onClick={() => setActiveSubTab('triagem')}

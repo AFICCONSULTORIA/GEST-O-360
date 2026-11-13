@@ -7,6 +7,8 @@
  * - Sem dependência externa de Sefin ou ADN
  */
 
+import { dispatchAgentOfficeEvent } from '../lib/agentOfficeTelemetry';
+
 export interface NotaFiscalProblem {
   problema: string;     // Explicação simples
   comoCorrigir: string; // Instrução direta para o emissor/contador
@@ -308,6 +310,24 @@ export function validateFiscalData(data: {
 
   const valorEsperadoNum = isNFSe ? vLiqCalculado : vBaseOperacao;
   const valorTotalDestacadoNum = isNFSe ? (data.vTotNF || data.vLiq) : data.vTotNF;
+
+  // Notifica o Escritório Vivo dos Agentes
+  dispatchAgentOfficeEvent({
+    agentId: 'fiscal-agent',
+    status: temErros ? 'alert_critical' : temAvisos ? 'waiting_approval' : 'working',
+    isViolation: temErros,
+    bubbleText: temErros 
+      ? `GLOSA: NF-e #${numFormatado} reprovada com ${problemas.length} erros!`
+      : temAvisos 
+      ? `Atenção: NF-e #${numFormatado} com retenção pendente`
+      : `NF-e #${numFormatado} validada e conforme!`,
+    technicalDetail: {
+      tipo: tipoFormatado,
+      numero: numFormatado,
+      emitente: emitenteFormatado,
+      problemas: problemas.map(p => p.problema)
+    }
+  }).catch(() => {});
 
   return {
     aprovada,

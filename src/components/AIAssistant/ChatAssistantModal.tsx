@@ -28,6 +28,7 @@ import {
 } from '../../services/liveChatService';
 import { assistantActionBus } from './actionBus';
 import { ContextualShortcut, ChatAssistantProps } from './types';
+import { dispatchAgentOfficeEvent } from '../../lib/agentOfficeTelemetry';
 import { FormattedText } from './FormattedText';
 import { showToast } from '../ui/Toast';
 
@@ -450,6 +451,14 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
   // Executar Ação Estruturada
   const handleExecuteAction = (action: AssistantActionPayload) => {
     setExecutedActionId(action.type);
+
+    dispatchAgentOfficeEvent({
+      agentId: 'copilot-agent',
+      targetAgentId: 'orchestrator',
+      status: 'working',
+      bubbleText: `Despachando: ${action.label || action.type}`,
+      technicalDetail: { action }
+    }).catch(() => {});
 
     if (action.type === 'REQUEST_HUMAN_ATTENDANT') {
       handleRequestHuman(action.params?.reason || 'Solicitado via ação');

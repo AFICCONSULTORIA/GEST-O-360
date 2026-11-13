@@ -1529,6 +1529,7 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
 }
 
 export interface AdvanceTravelFuelPayload {
+  order_number?: string;
   vehicle_id: string;
   driver_name: string;
   station_name?: string;
@@ -1542,6 +1543,47 @@ export interface AdvanceTravelFuelPayload {
   notes?: string;
   authorized_by_name?: string;
   institution_id?: string;
+}
+
+/**
+ * Gera a numeração própria sequencial para Abastecimentos de Adiantamento (ADT-0001, ADT-0002...),
+ * totalmente independente da sequência comum das ordens de abastecimento.
+ */
+export async function getNextAdvanceOrderNumber(institutionId?: string): Promise<string> {
+  let maxSeq = 0;
+
+  const extractSeq = (num?: string | null) => {
+    if (!num) return 0;
+    const match = String(num).toUpperCase().match(/^ADT-(\d+)$/);
+    return match ? parseInt(match[1], 10) : 0;
+  };
+
+  try {
+    const localOrders = getLocalOrders();
+    for (const o of localOrders) {
+      const seq = extractSeq(o.order_number);
+      if (seq > maxSeq) maxSeq = seq;
+    }
+  } catch { }
+
+  try {
+    let query = supabase
+      .from('fuel_supply_orders')
+      .select('order_number')
+      .ilike('order_number', 'ADT-%');
+    if (institutionId) {
+      query = query.eq('institution_id', institutionId);
+    }
+    const { data } = await query;
+    if (data && Array.isArray(data)) {
+      for (const row of data) {
+        const seq = extractSeq((row as any).order_number);
+        if (seq > maxSeq) maxSeq = seq;
+      }
+    }
+  } catch { }
+
+  return `ADT-${String(maxSeq + 1).padStart(4, '0')}`;
 }
 
 /**
@@ -1600,7 +1642,7 @@ export async function registerAdvanceTravelFuelOrder(
     ? Number(totalInput.toFixed(2))
     : Number((litersSupplied * unitPrice).toFixed(2));
 
-  const orderNumber = await getNextOrderNumber7Digits();
+  const orderNumber = payload.order_number?.trim() || (await getNextAdvanceOrderNumber(payload.institution_id));
   const suppliedDate = payload.supplied_at
     ? (payload.supplied_at.includes('T') ? payload.supplied_at : `${payload.supplied_at}T12:00:00.000Z`)
     : new Date().toISOString();

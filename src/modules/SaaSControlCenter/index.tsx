@@ -57,6 +57,7 @@ import { SaaSControlCenterAnnouncements } from './SaaSControlCenterAnnouncements
 import { SaaSControlCenterAuditLogs } from './SaaSControlCenterAuditLogs';
 import { SaaSAdminLayout } from './SaaSAdminLayout';
 import { SaaSCommandPalette } from './SaaSCommandPalette';
+import { AnimatedAgentOffice } from './components/AnimatedAgentOffice';
 import { SaaSActiveTab } from './types';
 import { 
   saveTenant, 
@@ -1319,6 +1320,16 @@ export const SaaSControlCenter: React.FC<SaaSControlCenterProps> = ({
       {activeTab === 'proposal' && (
         <div className="mt-8">
           <SaaSControlCenterProposal institutions={institutions} />
+        </div>
+      )}
+
+      {/* CONTEÚDO 10: ESCRITÓRIO VIVO DOS AGENTES (ISOMÉTRICO AO VIVO) */}
+      {activeTab === 'agent-office' && (
+        <div className="mt-8">
+          <AnimatedAgentOffice 
+            currentInstitution={institutions[0]} 
+            darkMode={darkMode} 
+          />
         </div>
       )}
 

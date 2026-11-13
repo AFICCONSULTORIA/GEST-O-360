@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Landmark, ArrowRightLeft, Scale, ShieldCheck, FileSpreadsheet
+  Landmark, ArrowRightLeft, ShieldCheck, FileSpreadsheet
 } from 'lucide-react';
 
 import { Institution, AdminUser } from '../../types';

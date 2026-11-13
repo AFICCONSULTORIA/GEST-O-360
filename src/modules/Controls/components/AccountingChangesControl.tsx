@@ -36,6 +36,7 @@ import { SRCPartidasComparativo } from './SRCPartidasComparativo';
 import { SRCTimelineAuditoria } from './SRCTimelineAuditoria';
 import { generateSRCDossierHtml } from './SRCDossierImpressao';
 import { LivroAlteracoesContabeis } from './LivroAlteracoesContabeis';
+import { ContabilidadeSuplementacao } from '../../AdminFinancas/ContabilidadeSuplementacao';
 import { AdminUser } from '../../../types';
 import { hasPermission } from '../../../lib/permissions';
 import { useMunicipalDepartments } from '../../../lib/api/departments';
@@ -134,7 +135,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [dateFilter, setDateFilter] = useState<string>(''); // Filtro por data específica (dia, mês e ano)
-  const [accountingMode, setAccountingMode] = useState<'livro' | 'src'>('livro');
+  const [accountingMode, setAccountingMode] = useState<'livro' | 'src' | 'suplementacao'>('livro');
 
   // Modais
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
@@ -903,13 +904,13 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* Seletor de Modo: Livro da Contadora vs Processos SRC TCE */}
-      <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1.5 w-full sm:w-auto">
+      {/* Seletor de Modo: Livro da Contadora vs Processos SRC TCE vs Suplementação de Fichas */}
+      <div className="bg-white dark:bg-neutral-900 p-2.5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-col xl:flex-row items-start xl:items-center justify-between gap-3">
+        <div className="flex flex-wrap bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1.5 w-full xl:w-auto">
           <button
             type="button"
             onClick={() => setAccountingMode('livro')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${
               accountingMode === 'livro'
                 ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
                 : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
@@ -922,7 +923,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
           <button
             type="button"
             onClick={() => setAccountingMode('src')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${
               accountingMode === 'src'
                 ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
                 : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
@@ -931,17 +932,34 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
             <Scale size={16} />
             <span>Processos SRC (Tribunal de Contas / PCASP)</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setAccountingMode('suplementacao')}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider whitespace-nowrap transition-all cursor-pointer ${
+              accountingMode === 'suplementacao'
+                ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-300 shadow-sm'
+                : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Calculator size={16} />
+            <span>Suplementação de Fichas</span>
+          </button>
         </div>
 
-        <span className="text-[11px] font-bold text-neutral-400 px-3 hidden md:inline">
+        <span className="text-[11px] font-bold text-neutral-400 px-3 hidden 2xl:inline">
           {accountingMode === 'livro' 
             ? 'Uso diário e ágil da Contadora para resguardo de pedidos' 
+            : accountingMode === 'suplementacao'
+            ? 'Importação de fichas (PDF), descontos em tempo real e alerta negativo'
             : 'Auditoria formal com partidas dobradas e dossiê do TCE'}
         </span>
       </div>
 
       {accountingMode === 'livro' ? (
         <LivroAlteracoesContabeis searchQuery={searchQuery} />
+      ) : accountingMode === 'suplementacao' ? (
+        <ContabilidadeSuplementacao currentUser={currentUser} />
       ) : (
         <>
           {/* Toast Notificação */}

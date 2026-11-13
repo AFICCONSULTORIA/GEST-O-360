@@ -2841,6 +2841,9 @@ export function getLocalBudgetClassifications(): FleetBudgetClassification[] {
 function saveLocalBudgetClassifications(list: FleetBudgetClassification[]) {
   try {
     localStorage.setItem(STORAGE_KEY_BUDGET, JSON.stringify(list));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('fleet-budget-classifications-updated'));
+    }
   } catch {}
 }
 

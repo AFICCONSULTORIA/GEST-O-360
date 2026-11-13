@@ -15,6 +15,8 @@ import { SaudePatients } from './components/SaudePatients';
 import { SaudeSettings } from './components/SaudeSettings';
 import { SaudeExams } from './components/SaudeExams';
 import { SaudeConsultorio } from './components/SaudeConsultorio';
+import { SaudeSecretarioDashboard } from './components/SaudeSecretarioDashboard';
+import { ConsultorioModule } from './ConsultorioModule';
 import { DemoFillButton } from '../../components/DemoFillButton';
 import { AdminUser } from '../../types';
 import { 
@@ -44,12 +46,16 @@ export const DEFAULT_MEDICATIONS: Medication[] = [
 
 export const SaudeModule = ({ 
   currentInstitution,
-  currentUser
+  currentUser,
+  initialTab = 'dashboard',
+  portalScope = 'all'
 }: { 
   currentInstitution?: { id: string; name?: string } | null;
   currentUser?: AdminUser | null;
+  initialTab?: 'dashboard' | 'consultorio' | 'fila' | 'agenda' | 'exames' | 'pacientes' | 'farmacia' | 'cadastros';
+  portalScope?: 'all' | 'secretaria' | 'medico' | 'enfermeira' | 'farmacia' | 'clinico';
 }) => {
-  const [activeTab, setActiveTab] = useState<'fila' | 'agenda' | 'exames' | 'pacientes' | 'farmacia' | 'cadastros'>('fila');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'consultorio' | 'fila' | 'agenda' | 'exames' | 'pacientes' | 'farmacia' | 'cadastros'>(initialTab);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [units, setUnits] = useState<HealthUnit[]>([]);
@@ -352,132 +358,175 @@ export const SaudeModule = ({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner de Navegação da Secretaria */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-white dark:bg-neutral-900 p-8 rounded-[32px] border border-neutral-100 dark:border-neutral-800 shadow-sm gap-6">
-        <div>
-          <h2 className="text-2xl font-black italic tracking-tight uppercase dark:text-white flex items-center gap-3">
-            <span className="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 p-2.5 rounded-2xl">
-              <HeartPulse size={26} />
+    <div className="space-y-5">
+      {/* Top Banner de Navegação da Secretaria (oculto nos modos focados: Médico, Enfermeira e Farmacêutica) */}
+      {portalScope !== 'medico' && portalScope !== 'enfermeira' && portalScope !== 'farmacia' && (
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between bg-white dark:bg-neutral-900 px-6 py-5 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm gap-4">
+          <div className="flex items-center gap-3.5">
+            <span className="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 p-2.5 rounded-2xl shrink-0">
+              <HeartPulse size={24} />
             </span>
-            Secretaria Municipal de Saúde
-          </h2>
-          <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
-            Gestão Integrada de Regulação, Controle Anti-Duplicidade de Exames e Farmácia Popular.
-          </p>
-        </div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black tracking-tight dark:text-white">
+                Gestão da Secretaria Municipal de Saúde
+              </h2>
+              <p className="text-neutral-500 dark:text-neutral-400 text-xs mt-0.5">
+                Regulação SUS, Controle Anti-Duplicidade de Exames, Farmácia FEFO e Unidades de Saúde.
+              </p>
+            </div>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <DemoFillButton moduleKey="saude" onSuccess={loadData} />
-          <button 
-            onClick={() => handleOpenNewAppointment()}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-2xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/30 flex items-center gap-2"
-          >
-            <Calendar size={18} /> Novo Agendamento
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <DemoFillButton moduleKey="saude" onSuccess={loadData} />
+            <button 
+              onClick={() => handleOpenNewAppointment()}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-2xl font-bold text-xs transition-all shadow-md shadow-emerald-500/25 flex items-center gap-2 cursor-pointer"
+            >
+              <Calendar size={16} /> Novo Agendamento
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tabs de Controle Operacional */}
-      <div className="bg-white dark:bg-neutral-900 p-2 rounded-2xl border border-neutral-100 dark:border-neutral-800 flex flex-wrap gap-2 w-fit">
-        {/* Tab 1: Fila de Regulação */}
-        <button
-          onClick={() => setActiveTab('fila')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'fila'
-              ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Clock size={16} />
-          Fila de Regulação
-          {queueCount > 0 && (
-            <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-sm">
-              {queueCount}
-            </span>
-          )}
-        </button>
+      <div className="bg-white dark:bg-neutral-900 p-1.5 rounded-2xl border border-neutral-200/70 dark:border-neutral-800 shadow-xs flex flex-wrap gap-1.5 w-fit">
+        {/* Tab 0: Dashboard Executivo do Secretário (Exclusivo Secretaria) */}
+        {portalScope !== 'clinico' && portalScope !== 'medico' && portalScope !== 'enfermeira' && portalScope !== 'farmacia' && (
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'dashboard'
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300 shadow-sm border border-emerald-500/30'
+                : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <Activity size={16} />
+            Dashboard Executivo
+          </button>
+        )}
 
-        {/* Tab 2: Agenda & Recepção */}
-        <button
-          onClick={() => setActiveTab('agenda')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'agenda'
-              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Calendar size={16} />
-          Agenda & Recepção
-          {todayAppointmentsCount > 0 && (
-            <span className="bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-              {todayAppointmentsCount} hoje
-            </span>
-          )}
-        </button>
+        {/* Tab 0.5: Consultório & Triagem PEP */}
+        {portalScope !== 'farmacia' && (
+          <button
+            onClick={() => setActiveTab('consultorio')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'consultorio'
+                ? 'bg-cyan-50 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-300 shadow-sm border border-cyan-500/30'
+                : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <Stethoscope size={16} />
+            {portalScope === 'enfermeira' ? 'Triagem de Enfermagem' : 'Consultório & Triagem PEP'}
+          </button>
+        )}
 
+        {portalScope !== 'medico' && portalScope !== 'enfermeira' && portalScope !== 'farmacia' && (
+          <>
+            {/* Tab 1: Fila de Regulação */}
+            <button
+              onClick={() => setActiveTab('fila')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'fila'
+                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300 shadow-sm'
+                  : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+              }`}
+            >
+              <Clock size={16} />
+              Fila de Regulação
+              {queueCount > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-sm">
+                  {queueCount}
+                </span>
+              )}
+            </button>
 
-        {/* Tab 3: Controle de Exames (NOVO) */}
-        <button
-          onClick={() => setActiveTab('exames')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'exames'
-              ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Activity size={16} />
-          Controle de Exames
-          {pendingExamsCount > 0 && (
-            <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
-              {pendingExamsCount}
-            </span>
-          )}
-          {blockedDuplicatesCount > 0 && (
-            <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full" title="Duplicidades identificadas">
-              <ShieldAlert size={10} className="inline" /> {blockedDuplicatesCount}
-            </span>
-          )}
-        </button>
+            {/* Tab 2: Agenda & Recepção */}
+            <button
+              onClick={() => setActiveTab('agenda')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                activeTab === 'agenda'
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 shadow-sm'
+                  : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+              }`}
+            >
+              <Calendar size={16} />
+              Agenda & Recepção
+              {todayAppointmentsCount > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {todayAppointmentsCount} hoje
+                </span>
+              )}
+            </button>
 
-        {/* Tab 4: Farmácia Popular & SUS */}
-        <button
-          onClick={() => setActiveTab('farmacia')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'farmacia'
-              ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400 shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Pill size={16} />
-          Farmácia SUS
-        </button>
+            {/* Tab 3: Controle de Exames */}
+            <button
+              onClick={() => setActiveTab('exames')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                activeTab === 'exames'
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400 shadow-sm'
+                  : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+              }`}
+            >
+              <Activity size={16} />
+              Controle de Exames
+              {pendingExamsCount > 0 && (
+                <span className="bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full">
+                  {pendingExamsCount}
+                </span>
+              )}
+              {blockedDuplicatesCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full" title="Duplicidades identificadas">
+                  <ShieldAlert size={10} className="inline" /> {blockedDuplicatesCount}
+                </span>
+              )}
+            </button>
 
-        {/* Tab 5: Pacientes & Mini-Prontuário */}
-        <button
-          onClick={() => setActiveTab('pacientes')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'pacientes'
-              ? 'bg-purple-50 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <User size={16} />
-          Pacientes & Prontuário 360°
-        </button>
+            {/* Tab 6: Cadastros & Configurações */}
+            {portalScope !== 'clinico' && (
+              <button
+                onClick={() => setActiveTab('cadastros')}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                  activeTab === 'cadastros'
+                    ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm'
+                    : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                }`}
+              >
+                <Building2 size={16} />
+                Cadastros & Prazos
+              </button>
+            )}
+          </>
+        )}
 
-        {/* Tab 6: Cadastros & Configurações */}
-        <button
-          onClick={() => setActiveTab('cadastros')}
-          className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-            activeTab === 'cadastros'
-              ? 'bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm'
-              : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-          }`}
-        >
-          <Building2 size={16} />
-          Cadastros & Prazos
-        </button>
+        {/* Tab 4: Farmácia Popular & SUS (Visível para Farmacêutica, Clínico e Secretaria) */}
+        {portalScope !== 'medico' && portalScope !== 'enfermeira' && (
+          <button
+            onClick={() => setActiveTab('farmacia')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'farmacia'
+                ? 'bg-sky-50 text-sky-700 dark:bg-sky-500/20 dark:text-sky-400 shadow-sm'
+                : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <Pill size={16} />
+            Farmácia SUS
+          </button>
+        )}
+
+        {/* Tab 5: Pacientes & Mini-Prontuário (Visível para Médico, Clínico e Secretaria; oculto para Enfermeira e Farmacêutica) */}
+        {portalScope !== 'enfermeira' && portalScope !== 'farmacia' && (
+          <button
+            onClick={() => setActiveTab('pacientes')}
+            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'pacientes'
+                ? 'bg-purple-50 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 shadow-sm'
+                : 'text-neutral-500 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <User size={16} />
+            Pacientes & Prontuário 360°
+          </button>
+        )}
       </div>
 
       {/* Conteúdo da Tab Ativa */}
@@ -489,6 +538,28 @@ export const SaudeModule = ({
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.2 }}
         >
+          {activeTab === 'dashboard' && (
+            <SaudeSecretarioDashboard 
+              appointments={appointments}
+              patients={patients}
+              units={units}
+              professionals={professionals}
+              medications={medications}
+              examRequests={examRequests}
+              onNavigateTab={(tab) => setActiveTab(tab as any)}
+              onRefresh={loadData}
+            />
+          )}
+
+          {activeTab === 'consultorio' && (
+            <ConsultorioModule 
+              currentInstitution={currentInstitution}
+              currentUser={currentUser}
+              initialSubTab={portalScope === 'enfermeira' ? 'triagem' : 'consultorio'}
+              onlyTriagem={portalScope === 'enfermeira'}
+            />
+          )}
+
           {activeTab === 'fila' && (
             <SaudeQueue 
               appointments={appointments}

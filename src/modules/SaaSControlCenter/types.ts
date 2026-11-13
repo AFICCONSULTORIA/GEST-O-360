@@ -11,7 +11,8 @@ export type SaaSActiveTab =
   | 'import' 
   | 'education' 
   | 'pdf-extractor' 
-  | 'proposal';
+  | 'proposal'
+  | 'agent-office';
 
 export interface SaaSNavItem {
   id: SaaSActiveTab;

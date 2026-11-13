@@ -101,6 +101,7 @@ import { BudgetClassificationsModal } from './BudgetClassificationsModal';
 import { LegacyVoucherModal } from './LegacyVoucherModal';
 import { MercosulPlate } from './MercosulPlate';
 import { useMunicipalDepartments, matchOfficialDepartmentName } from '../../../lib/api/departments';
+import { dispatchAgentOfficeEvent } from '../../../lib/agentOfficeTelemetry';
 import { 
   CONTRACTUAL_BIDDED_PRICES, 
   issueFuelAuthorization,
@@ -113,6 +114,7 @@ import {
   compressFuelPhoto,
   uploadFuelDocumentPhoto,
   registerAdvanceTravelFuelOrder,
+  getNextAdvanceOrderNumber,
   linkInvoiceToFuelOrder,
   syncLocalOrdersToSupabase,
   updateFuelOrderBudgetClassification,
@@ -405,6 +407,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [showAdvanceVehicleList, setShowAdvanceVehicleList] = useState(false);
   const [showAdvanceDriverList, setShowAdvanceDriverList] = useState(false);
   const [advanceFuelForm, setAdvanceFuelForm] = useState({
+    order_number: '',
     vehicle_id: '',
     driver_name: '',
     station_name: '',
@@ -1834,8 +1837,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   };
 
   // Lançamento simples de Abastecimento por Adiantamento de Viagem
-  const handleOpenAdvanceFuelModal = () => {
+  const handleOpenAdvanceFuelModal = async () => {
     setAdvanceFuelForm({
+      order_number: 'ADT-...',
       vehicle_id: '',
       driver_name: '',
       station_name: '',
@@ -1853,6 +1857,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setShowAdvanceVehicleList(false);
     setShowAdvanceDriverList(false);
     setIsAdvanceFuelModalOpen(true);
+
+    try {
+      const nextNum = await getNextAdvanceOrderNumber(currentUser?.institution_id);
+      setAdvanceFuelForm(prev => ({ ...prev, order_number: nextNum }));
+    } catch {
+      setAdvanceFuelForm(prev => ({ ...prev, order_number: 'ADT-0001' }));
+    }
   };
 
   const handleSaveAdvanceFuel = async (e: React.FormEvent) => {
@@ -1892,6 +1903,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       }
 
       const created = await registerAdvanceTravelFuelOrder({
+        order_number: advanceFuelForm.order_number === 'ADT-...' ? undefined : advanceFuelForm.order_number.trim() || undefined,
         vehicle_id: advanceFuelForm.vehicle_id,
         driver_name: advanceFuelForm.driver_name,
         station_name: advanceFuelForm.station_name || 'Posto em Viagem (Não Credenciado)',
@@ -2217,10 +2229,43 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
+        dispatchAgentOfficeEvent({
+          agentId: 'fleet-agent',
+          status: 'alert_critical',
+          isViolation: true,
+          bubbleText: `BLOQUEIO: ${res.audit.anomaly_reason?.slice(0, 48)}...`,
+          technicalDetail: {
+            orderNumber: selectedOrderForAction.order_number,
+            anomalyReason: res.audit.anomaly_reason,
+            litersSupplied: executionForm.liters_supplied
+          },
+          institutionId: currentUser?.institution_id
+        }).catch(() => {});
         showToast(`Abastecimento registrado com RISCO DE FRAUDE: ${res.audit.anomaly_reason}`, 'error');
       } else if (res.audit.anomaly_level === 'alerta_amarelo') {
+        dispatchAgentOfficeEvent({
+          agentId: 'fleet-agent',
+          status: 'waiting_approval',
+          isViolation: false,
+          bubbleText: `Alerta moderado: desvio de ${res.audit.deviation_percent}%`,
+          technicalDetail: {
+            orderNumber: selectedOrderForAction.order_number,
+            deviationPercent: res.audit.deviation_percent
+          },
+          institutionId: currentUser?.institution_id
+        }).catch(() => {});
         showToast(`Abastecimento registrado com ALERTA MODERADO (${res.audit.deviation_percent}% desvio).`, 'warning');
       } else {
+        dispatchAgentOfficeEvent({
+          agentId: 'fleet-agent',
+          status: 'working',
+          bubbleText: `Ordem #${selectedOrderForAction.order_number} auditada (${res.audit.calculated_km_per_liter} km/l)`,
+          technicalDetail: {
+            orderNumber: selectedOrderForAction.order_number,
+            calculatedKmL: res.audit.calculated_km_per_liter
+          },
+          institutionId: currentUser?.institution_id
+        }).catch(() => {});
         showToast(`Abastecimento registrado com sucesso! Consumo apurado: ${res.audit.calculated_km_per_liter} km/l`, 'success');
       }
 
@@ -3188,9 +3233,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       >
                         {/* 1. Número da Ordem & Data */}
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="font-mono font-black text-sm text-neutral-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors block">
-                            {order.order_number}
-                          </span>
+                          {isAdvanceTravelOrder(order) ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono font-black text-xs bg-cyan-500/15 text-cyan-700 dark:text-cyan-300 border border-cyan-500/40 shadow-xs">
+                              <Fuel size={11} className="text-cyan-600 dark:text-cyan-400 shrink-0" />
+                              {order.order_number}
+                            </span>
+                          ) : (
+                            <span className="font-mono font-black text-sm text-neutral-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors block">
+                              {order.order_number}
+                            </span>
+                          )}
                           <span className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1 font-semibold mt-0.5">
                             <Calendar size={11} className="text-amber-500 shrink-0" />
                             {(() => {
@@ -8008,6 +8060,29 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <form onSubmit={handleSaveAdvanceFuel} className="mt-4 space-y-3.5">
+                {/* Número Próprio Sequencial de Adiantamento (Ordem Própria) */}
+                <div className="p-3 rounded-2xl bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800/60">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="text-xs font-black text-cyan-800 dark:text-cyan-300 flex items-center gap-1.5">
+                      <Fuel size={13} className="text-cyan-600 dark:text-cyan-400" />
+                      Nº do Adiantamento / Requisição (Ordem Própria)
+                    </label>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-700 dark:text-cyan-300">
+                      Sequência Exclusiva
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={advanceFuelForm.order_number}
+                    onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, order_number: e.target.value.toUpperCase() })}
+                    placeholder="Ex: ADT-0001"
+                    className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-cyan-300 dark:border-cyan-700 rounded-xl text-sm font-mono font-black text-cyan-700 dark:text-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <p className="text-[10px] text-cyan-700/80 dark:text-cyan-400/80 mt-1 font-medium">
+                    Numeração própria (ADT-0001, ADT-0002...) independente das requisições comuns. Você pode manter a ordem automática ou digitar o número da requisição.
+                  </p>
+                </div>
+
                 <div className="relative">
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
                     Veículo (Buscar pela Placa ou Modelo) *
