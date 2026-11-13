@@ -569,22 +569,98 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   try {
     let { data, error } = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
 
-    // Se o schema remoto ainda não tiver a coluna budget_classification_id, retenta sem ela para garantir a gravação
-    if (error && (error.code === 'PGRST204' || error.message?.includes('budget_classification_id'))) {
-      delete orderRecord.budget_classification_id;
-      const retry = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
-      data = retry.data;
-      error = retry.error;
-    }
+    // Retentativas resilientes para diferenças de schema no Supabase remoto
+    for (let attempt = 0; attempt < 4 && error; attempt++) {
+      const errMsg = error.message || '';
+      const errCode = error.code || '';
 
-    // Se ocorrer colisão simultânea no número sequencial (UNIQUE order_number), recalcula o próximo número livre
-    if (error && error.code === '23505') {
-      const freshNumber = await getNextOrderNumber7Digits();
-      newOrder.order_number = freshNumber;
-      orderRecord.order_number = freshNumber;
-      const retryDup = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
-      data = retryDup.data;
-      error = retryDup.error;
+      // Coluna ausente no schema remoto (ex: migração pendente no Supabase)
+      if (errCode === 'PGRST204' || errCode === '42703') {
+        let stripped = false;
+        if ('budget_classification_id' in orderRecord && errMsg.includes('budget_classification_id')) {
+          delete orderRecord.budget_classification_id;
+          stripped = true;
+        }
+        if (('target_type' in orderRecord || 'galao_label' in orderRecord) && (errMsg.includes('target_type') || errMsg.includes('galao_label'))) {
+          delete orderRecord.target_type;
+          delete orderRecord.galao_label;
+          if (isGalao) {
+            orderRecord.emergency_call_reason = `[GALÃO] ${payload.galao_label?.trim() || 'Galão / Bombona de Combustível'}`;
+          }
+          stripped = true;
+        }
+        if (!stripped) {
+          // Fallback genérico caso PGRST204 cite outra coluna opcional
+          delete orderRecord.budget_classification_id;
+          delete orderRecord.target_type;
+          delete orderRecord.galao_label;
+        }
+        const retry = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
+        data = retry.data;
+        error = retry.error;
+        continue;
+      }
+
+      // vehicle_id ainda com NOT NULL no banco remoto: cria/vincula registro virtual 'GALÃO' em fleet_vehicles
+      if (isGalao && (errCode === '23502' || errMsg.includes('vehicle_id'))) {
+        let galaoVehId: string | null = null;
+        const { data: existingGalao } = await supabase
+          .from('fleet_vehicles')
+          .select('id')
+          .eq('plate', 'GALÃO')
+          .eq('institution_id', newOrder.institution_id)
+          .limit(1)
+          .maybeSingle();
+
+        if (existingGalao?.id) {
+          galaoVehId = existingGalao.id;
+        } else {
+          const virtualId = generateUUID();
+          const { data: createdGalao } = await supabase
+            .from('fleet_vehicles')
+            .insert([{
+              id: virtualId,
+              institution_id: newOrder.institution_id,
+              plate: 'GALÃO',
+              model: 'Galão / Bombona (Avulso)',
+              department: resolvedBudget?.department_local || 'Frota Municipal',
+              fuel_type: vehicle.fuel_type,
+              tank_capacity: 200,
+              metric_type: 'km',
+              expected_consumption: 0,
+              current_odometer: 0,
+              status: 'inativo'
+            }])
+            .select('id')
+            .single();
+          galaoVehId = createdGalao?.id || virtualId;
+        }
+
+        if (galaoVehId) {
+          orderRecord.vehicle_id = galaoVehId;
+          newOrder.vehicle_id = galaoVehId;
+          if (!orderRecord.emergency_call_reason) {
+            orderRecord.emergency_call_reason = `[GALÃO] ${payload.galao_label?.trim() || 'Galão / Bombona de Combustível'}`;
+          }
+          const retryVeh = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
+          data = retryVeh.data;
+          error = retryVeh.error;
+          continue;
+        }
+      }
+
+      // Colisão simultânea no número sequencial (UNIQUE order_number)
+      if (errCode === '23505') {
+        const freshNumber = await getNextOrderNumber7Digits();
+        newOrder.order_number = freshNumber;
+        orderRecord.order_number = freshNumber;
+        const retryDup = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
+        data = retryDup.data;
+        error = retryDup.error;
+        continue;
+      }
+
+      break;
     }
 
     if (!error && data) {
@@ -616,7 +692,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   }
 
   // Se o odômetro digitado manualmente for superior ao anterior, atualiza o veículo
-  if (current_odometer > previous_odometer) {
+  if (!isGalao && current_odometer > previous_odometer) {
     try {
       await supabase
         .from('fleet_vehicles')

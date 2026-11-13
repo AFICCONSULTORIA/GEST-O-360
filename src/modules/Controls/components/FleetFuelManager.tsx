@@ -4628,6 +4628,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <div className="max-h-56 overflow-y-auto space-y-1.5 border border-neutral-200 dark:border-neutral-800 rounded-2xl p-1.5">
                       {vehicles
                         .filter(v => {
+                          if (v.plate === 'GALÃO') return false;
                           const q = vehicleSearchFilter.toLowerCase().trim();
                           return !q || 
                             v.plate.toLowerCase().includes(q) || 
@@ -5367,7 +5368,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <div className="min-w-0 flex-1">
                             <strong className="text-[11px] block font-black uppercase tracking-tight">Trava de Tanque</strong>
                             <span className="text-[10px] opacity-85 block leading-tight">
-                              {isLitersOverCapacity
+                              {newOrderForm.target_type === 'galao'
+                                ? `${newOrderForm.liters_authorized}L (Galão / Bombona)`
+                                : isLitersOverCapacity
                                 ? `Excede capacidade (${selectedVehicleForNewOrder?.tank_capacity}L)`
                                 : newOrderForm.supply_mode === 'encher_tanque'
                                 ? `Top-Off liberado (teto ${selectedVehicleForNewOrder?.tank_capacity}L)`
@@ -5430,11 +5433,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                       <button
                         type="submit"
-                        disabled={!emissionSemaphore.canEmit || !newOrderForm.vehicle_id || !newOrderForm.driver_name}
-                        className={`px-5 py-2.5 text-xs font-black text-white rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-lg ${
-                          !emissionSemaphore.canEmit 
-                            ? 'bg-neutral-400 cursor-not-allowed opacity-60' 
-                            : 'bg-emerald-600 hover:bg-emerald-700'
+                        disabled={
+                          !emissionSemaphore.canEmit ||
+                          (newOrderForm.target_type === 'galao'
+                            ? !newOrderForm.galao_label.trim()
+                            : !newOrderForm.vehicle_id) ||
+                          !newOrderForm.driver_name
+                        }
+                        className={`px-5 py-2.5 text-xs font-black text-white rounded-xl transition-all flex items-center gap-2 shadow-lg ${
+                          !emissionSemaphore.canEmit ||
+                          (newOrderForm.target_type === 'galao'
+                            ? !newOrderForm.galao_label.trim()
+                            : !newOrderForm.vehicle_id) ||
+                          !newOrderForm.driver_name
+                            ? 'bg-neutral-400 cursor-not-allowed opacity-60'
+                            : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'
                         }`}
                       >
                         <Printer size={16} />

@@ -45,6 +45,8 @@ export interface FuelSupplyOrder {
   id: string;
   institution_id: string;
   order_number: string; // "ABAST-2026-0001"
+  target_type?: 'veiculo' | 'galao';
+  galao_label?: string;
   vehicle_id: string;
   vehicle?: FleetVehicle;
   driver_name: string;
@@ -798,8 +800,40 @@ export async function getFuelSupplyOrders(filters?: {
           allBudgets.find(b => b.id === resolvedBudgetId || b.invoice_sheet === resolvedBudgetId || b.id === toBudgetUUID(String(resolvedBudgetId))) ||
           allBudgets.find(b => b.id === cached?.budget_classification_id || b.invoice_sheet === cached?.budget_classification_id || b.id === toBudgetUUID(String(cached?.budget_classification_id)));
 
+        const isGalaoOrder =
+          ord.target_type === 'galao' ||
+          !ord.vehicle_id ||
+          ord.vehicle?.plate === 'GALÃO' ||
+          Boolean(ord.emergency_call_reason?.startsWith('[GALÃO]'));
+
+        const galaoLabel =
+          ord.galao_label ||
+          (ord.emergency_call_reason?.startsWith('[GALÃO]')
+            ? ord.emergency_call_reason.replace(/^\[GALÃO\]\s*/, '')
+            : undefined);
+
+        const resolvedVehicle: FleetVehicle | undefined = isGalaoOrder
+          ? {
+              id: ord.vehicle_id || '',
+              institution_id: ord.institution_id,
+              plate: 'GALÃO',
+              model: galaoLabel || ord.vehicle?.model || 'Galão / Bombona de Combustível',
+              department: resolvedBc?.department_local || ord.vehicle?.department || 'Frota Municipal',
+              fuel_type: ord.fuel_type,
+              tank_capacity: Math.max(Number(ord.liters_authorized || 20), 200),
+              metric_type: 'km',
+              expected_consumption: 0,
+              current_odometer: 0,
+              status: 'ativo',
+              created_at: ord.created_at
+            }
+          : ord.vehicle;
+
         return {
           ...ord,
+          target_type: isGalaoOrder ? 'galao' : (ord.target_type || 'veiculo'),
+          galao_label: galaoLabel || ord.galao_label,
+          vehicle: resolvedVehicle,
           budget_classification_id: resolvedBudgetId || resolvedBc?.id,
           budget_classification: resolvedBc,
           receipt_attachment_url: ord.receipt_attachment_url || ord.receipt_photo_url || cached?.receipt_attachment_url || cached?.receipt_photo_url,
