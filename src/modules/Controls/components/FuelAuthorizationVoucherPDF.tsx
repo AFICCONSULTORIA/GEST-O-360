@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { TwoWayFuelOrder } from '../../../lib/api/fleetFuelAudit';
-import { FleetVehicle, getLocalBudgetClassifications, toBudgetUUID } from '../../../lib/api/fleetFuel';
+import { FleetVehicle, formatExactLiters, getLocalBudgetClassifications, toBudgetUUID } from '../../../lib/api/fleetFuel';
 import { BRASAO_BASE64 } from '../../../utils/brasaoBase64';
 import { generateQrSvgSync } from '../../../utils/qrCodeGenerator';
 
@@ -167,7 +167,7 @@ export function gerarCanhotoDuasViasHtml(
         <div class="value-card ${isTopOff ? 'highlight-amber' : 'highlight-blue'}">
           <div class="val-title">${isTopOff ? 'REGIME DE LITRAGEM' : 'QUANTIDADE AUTORIZADA'}</div>
           <div class="val-number" style="${isTopOff ? 'font-size: 8.5px; color: #000000; padding-top: 2px;' : ''}">
-            ${isTopOff ? 'COMPLETAR TANQUE' : `${Number(order.liters_authorized).toFixed(2)} L`}
+            ${isTopOff ? 'COMPLETAR TANQUE' : `${formatExactLiters(order.liters_authorized)} L`}
           </div>
           <div class="val-sub">${isTopOff ? `Até Desarme (Tanque: ${tankCapacity.toFixed(0)}L)` : `Capacidade Tanque: ${tankCapacity.toFixed(0)}L`}</div>
         </div>
@@ -236,7 +236,7 @@ export function gerarCanhotoDuasViasHtml(
                 <span class="act-label">2. LITRAGEM REAL FORNECIDA NA BOMBA (L):</span>
                 ${isSupplied && order.liters_supplied ? `
                   <div class="act-confirmed-row">
-                    <span class="act-confirmed-val">${Number(order.liters_supplied).toFixed(2)} <span class="act-unit-sm">L</span></span>
+                    <span class="act-confirmed-val">${formatExactLiters(order.liters_supplied)} <span class="act-unit-sm">L</span></span>
                     <span class="act-confirmed-tag">✓ Visor da Bomba</span>
                   </div>
                 ` : `
@@ -245,7 +245,7 @@ export function gerarCanhotoDuasViasHtml(
                       <span class="act-handwrite-line">&nbsp;</span>
                       <span class="act-unit-badge">LITROS</span>
                     </div>
-                    <div class="act-limit-hint">${isTopOff ? 'Regime Tanque Cheio (Anotar visor da bomba)' : `Limite Autorizado: ${Number(order.liters_authorized).toFixed(2)} L`}</div>
+                    <div class="act-limit-hint">${isTopOff ? 'Regime Tanque Cheio (Anotar visor da bomba)' : `Limite Autorizado: ${formatExactLiters(order.liters_authorized)} L`}</div>
                   </div>
                 `}
               </div>

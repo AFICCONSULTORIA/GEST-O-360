@@ -387,24 +387,34 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       return;
     }
 
-    // 2. Validação da Foto do Odômetro
+    const isGalaoOrder =
+      order.target_type === 'galao' ||
+      order.vehicle?.plate === 'GALÃO' ||
+      Boolean(order.emergency_call_reason?.startsWith('[GALÃO]'));
+
+    // 2. Validação da Foto do Painel / Odômetro ou dos Galões (Obrigatória!)
     let effectiveOdometerFile: File | null = odometerPhoto;
     if (!effectiveOdometerFile && odometerPhotoPreview && odometerPhotoPreview.startsWith('data:')) {
-      effectiveOdometerFile = dataUrlToJpegFile(odometerPhotoPreview, 'odometro.jpg');
+      effectiveOdometerFile = dataUrlToJpegFile(odometerPhotoPreview, isGalaoOrder ? 'galoes.jpg' : 'odometro.jpg');
     }
     if (!effectiveOdometerFile && !order.odometer_photo_url && !odometerPhotoPreview) {
-      showToast('A foto do painel/odômetro do veículo é obrigatória!', 'warning');
+      showToast(
+        isGalaoOrder
+          ? 'A foto dos galões / bombonas abastecidos é obrigatória!'
+          : 'A foto do painel/odômetro do veículo é obrigatória!',
+        'warning'
+      );
       return;
     }
 
-    // 3. Validação da Quilometragem / Horímetro
-    const kmNumber = parseThousands(currentKmFormatted);
-    if (isNaN(kmNumber) || kmNumber <= 0) {
+    // 3. Validação da Quilometragem / Horímetro (Isento para galões)
+    const kmNumber = isGalaoOrder ? 0 : parseThousands(currentKmFormatted);
+    if (!isGalaoOrder && (isNaN(kmNumber) || kmNumber <= 0)) {
       showToast('Informe a leitura atual do painel do veículo.', 'error');
       return;
     }
 
-    if (order.previous_odometer > 0 && kmNumber < order.previous_odometer) {
+    if (!isGalaoOrder && order.previous_odometer > 0 && kmNumber < order.previous_odometer) {
       showToast(`A leitura atual (${formatThousands(kmNumber)}) não pode ser menor que a leitura anterior (${formatThousands(order.previous_odometer)}).`, 'error');
       return;
     }
@@ -479,8 +489,14 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
   const metricUnit = isHorimetro ? 'h' : 'km';
 
   const hasPumpReady = Boolean(pumpPhotoPreview || order?.pump_photo_url);
+  const isGalaoOrder = Boolean(
+    order &&
+    (order.target_type === 'galao' ||
+      order.vehicle?.plate === 'GALÃO' ||
+      order.emergency_call_reason?.startsWith('[GALÃO]'))
+  );
   const hasOdoReady = Boolean(odometerPhotoPreview || order?.odometer_photo_url);
-  const canSubmit = !submitting && !processingPump && !processingOdometer && hasPumpReady && hasOdoReady && Boolean(currentKmFormatted.trim()) && Boolean(litersSupplied.trim());
+  const canSubmit = !submitting && !processingPump && !processingOdometer && hasPumpReady && hasOdoReady && (isGalaoOrder || Boolean(currentKmFormatted.trim())) && Boolean(litersSupplied.trim());
 
   return (
     <div className={`min-h-screen ${darkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-slate-50 text-slate-900'} font-sans flex flex-col transition-colors duration-200`}>
@@ -522,11 +538,17 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
           <div className="flex items-center justify-between text-white pt-2">
             <div>
               <span className="text-[10px] font-black uppercase text-amber-400 block tracking-wider">
-                {liveCameraTarget === 'pump' ? '1. Foto do Visor da Bomba' : '2. Foto do Painel / Odômetro'}
+                {liveCameraTarget === 'pump'
+                  ? '1. Foto do Visor da Bomba'
+                  : isGalaoOrder
+                  ? '2. Foto dos Galões / Bombonas'
+                  : '2. Foto do Painel / Odômetro'}
               </span>
               <h3 className="text-sm font-bold text-neutral-100">
                 {liveCameraTarget === 'pump'
                   ? 'Aponte para os litros e valor na bomba'
+                  : isGalaoOrder
+                  ? 'Aponte para os galões ou bombonas abastecidos'
                   : `Aponte para a quilometragem (${metricUnit}) no painel`}
               </h3>
             </div>
@@ -551,7 +573,11 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
             {/* Moldura guia para o enquadramento */}
             <div className="absolute inset-x-6 inset-y-12 border-2 border-dashed border-amber-400/60 rounded-2xl pointer-events-none flex items-end justify-center pb-3">
               <span className="text-[11px] text-amber-300 font-bold bg-black/60 backdrop-blur-sm px-3.5 py-1 rounded-full shadow">
-                {liveCameraTarget === 'pump' ? 'Enquadre os litros e o valor' : 'Enquadre o odômetro no painel'}
+                {liveCameraTarget === 'pump'
+                  ? 'Enquadre os litros e o valor'
+                  : isGalaoOrder
+                  ? 'Enquadre os galões / bombonas'
+                  : 'Enquadre o odômetro no painel'}
               </span>
             </div>
           </div>
@@ -695,11 +721,11 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                 {successResult.order.odometer_photo_url && (
                   <div className="space-y-1">
                     <span className="text-[9px] font-black uppercase text-emerald-700 dark:text-emerald-300 block">
-                      Odômetro Comprovado
+                      {isGalaoOrder ? 'Galões Comprovados' : 'Odômetro Comprovado'}
                     </span>
                     <img
                       src={successResult.order.odometer_photo_url}
-                      alt="Odômetro"
+                      alt={isGalaoOrder ? 'Galões' : 'Odômetro'}
                       className="w-full h-28 object-cover rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-sm"
                     />
                   </div>
@@ -869,11 +895,11 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                     {order.odometer_photo_url && (
                       <div className="space-y-1.5">
                         <span className="text-[11px] font-black uppercase text-slate-500 block">
-                          Foto do Odômetro / Painel:
+                          {isGalaoOrder ? 'Foto dos Galões / Bombonas:' : 'Foto do Odômetro / Painel:'}
                         </span>
                         <img
                           src={order.odometer_photo_url}
-                          alt="Comprovante Odômetro"
+                          alt={isGalaoOrder ? 'Comprovante Galões' : 'Comprovante Odômetro'}
                           className="w-full h-44 object-cover rounded-2xl border border-slate-200 dark:border-neutral-700 shadow-inner"
                         />
                       </div>
@@ -1011,22 +1037,26 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                     )}
                   </div>
 
-                  {/* 2. FOTO DO ODÔMETRO (PAINEL DO VEÍCULO) */}
+                  {/* 2. FOTO DO ODÔMETRO (PAINEL DO VEÍCULO) OU DOS GALÕES / BOMBONAS */}
                   <div className="space-y-2">
                     <label className="block text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200">
-                      2. Foto do {isHorimetro ? 'Horímetro' : 'Odômetro'} (Painel do Veículo) *
+                      {isGalaoOrder
+                        ? '2. Foto dos Galões / Bombonas Abastecidos *'
+                        : `2. Foto do ${isHorimetro ? 'Horímetro' : 'Odômetro'} (Painel do Veículo) *`}
                     </label>
 
                     {processingOdometer ? (
                       <div className="w-full py-8 rounded-3xl border-2 border-sky-300 bg-sky-50/50 dark:bg-sky-950/20 flex flex-col items-center justify-center gap-2">
                         <RefreshCw className="animate-spin text-sky-600" size={24} />
-                        <span className="text-xs font-bold text-sky-800 dark:text-sky-200">Otimizando foto do painel...</span>
+                        <span className="text-xs font-bold text-sky-800 dark:text-sky-200">
+                          {isGalaoOrder ? 'Otimizando foto dos galões...' : 'Otimizando foto do painel...'}
+                        </span>
                       </div>
                     ) : odometerPhotoPreview ? (
                       <div className="relative rounded-2xl overflow-hidden border-2 border-emerald-500 dark:border-emerald-600 bg-black shadow-md">
                         <img
                           src={odometerPhotoPreview}
-                          alt="Foto do Odômetro"
+                          alt={isGalaoOrder ? 'Foto dos Galões' : 'Foto do Odômetro'}
                           className="w-full h-52 object-cover"
                         />
                         <div className="absolute top-2 right-2 flex gap-1.5">
@@ -1039,7 +1069,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                           </button>
                         </div>
                         <div className="absolute bottom-2 left-2 bg-emerald-600/90 text-white text-[10px] font-black uppercase px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1">
-                          <Check size={12} /> Painel do Veículo Registrado
+                          <Check size={12} /> {isGalaoOrder ? 'Galões / Bombonas Registrados' : 'Painel do Veículo Registrado'}
                         </div>
                       </div>
                     ) : (
@@ -1049,21 +1079,31 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                         className="w-full py-6 px-4 border-2 border-dashed border-sky-400 dark:border-sky-600 hover:border-sky-500 rounded-3xl bg-sky-50/60 dark:bg-sky-950/20 text-center flex flex-col items-center justify-center gap-2 transition-all hover:bg-sky-100/50 active:scale-[0.98] cursor-pointer group shadow-sm"
                       >
                         <div className="w-13 h-13 rounded-2xl bg-sky-500 text-white flex items-center justify-center shadow-md shadow-sky-500/30 group-hover:scale-105 transition-transform">
-                          <Gauge size={26} />
+                          {isGalaoOrder ? <Camera size={26} /> : <Gauge size={26} />}
                         </div>
                         <div>
                           <span className="text-xs font-black uppercase text-sky-900 dark:text-sky-200 block">
                             Abrir Câmera na Tela
                           </span>
                           <span className="text-[11px] text-sky-700/80 dark:text-sky-400/80 block mt-0.5 font-medium">
-                            Toque para fotografar a leitura atual visível no painel ({metricUnit})
+                            {isGalaoOrder
+                              ? 'Toque para fotografar os galões ou bombonas sendo abastecidos'
+                              : `Toque para fotografar a leitura atual visível no painel (${metricUnit})`}
                           </span>
                         </div>
                       </button>
                     )}
                   </div>
 
-                  {/* 3. QUILOMETRAGEM / HORÍMETRO DIGITADO */}
+                  {/* 3. QUILOMETRAGEM / HORÍMETRO DIGITADO (ISENTO PARA GALÃO) */}
+                  {isGalaoOrder ? (
+                    <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200">
+                      <strong className="uppercase block font-black">3. Destino: Galão / Bombona</strong>
+                      <span className="text-[11px] opacity-90 block mt-0.5">
+                        {order.galao_label || order.vehicle?.model || 'Galão / Bombona'} — Isento de leitura de odômetro.
+                      </span>
+                    </div>
+                  ) : (
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
@@ -1096,6 +1136,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                       </span>
                     </div>
                   </div>
+                  )}
 
                   {/* 4. PLACA E LITROS ABASTECIDOS */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">

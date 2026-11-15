@@ -758,16 +758,19 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-cyan-400/20 rounded-full blur-3xl pointer-events-none" />
         <svg
           viewBox="0 0 1200 120"
-          className="absolute top-12 left-0 w-full h-24 opacity-15 pointer-events-none"
+          className="absolute top-12 left-0 w-full h-24 opacity-25 pointer-events-none"
           preserveAspectRatio="none"
         >
-          <path
+          <motion.path
             d="M0,60 L240,60 L265,20 L290,100 L315,35 L335,60 L580,60 L605,15 L630,105 L655,40 L675,60 L920,60 L945,25 L970,95 L995,38 L1015,60 L1200,60"
             fill="none"
             stroke="#5eead4"
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
+            initial={{ pathLength: 0.15, opacity: 0.35 }}
+            animate={{ pathLength: 1, opacity: [0.35, 0.9, 0.35] }}
+            transition={{ duration: 3.6, repeat: Infinity, ease: 'easeInOut' }}
           />
         </svg>
 
@@ -1046,261 +1049,519 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
     );
   }
 
+  const activeAppointmentsCount = currentCitizen
+    ? patientAppointments.filter(a => a.status === 'Agendado').length
+    : 0;
+
+  const availableSpecialties = professionals.length > 0
+    ? Array.from(new Set(professionals.map(p => p.specialty)))
+    : COMMON_SPECIALTIES;
+
+  const availableUnits = units.length > 0
+    ? units.map(u => u.name)
+    : DEFAULT_HEALTH_UNITS;
+
+  const featuredSpecialties = [
+    { name: 'Clínico Geral', tag: 'Livre Demanda', desc: 'Atendimento médico inicial e check-up na UBS' },
+    { name: 'Pediatria', tag: 'Infantil', desc: 'Cuidado integral para bebês, crianças e adolescentes' },
+    { name: 'Ginecologia e Obstetrícia', tag: 'Saúde da Mulher', desc: 'Pré-natal, preventivo e acompanhamento feminino' },
+    { name: 'Cardiologia', tag: 'Especialista', desc: 'Avaliação do coração, hipertensão e exames' },
+    { name: 'Ortopedia', tag: 'Especialista', desc: 'Coluna, articulações, fraturas e reabilitação' },
+    { name: 'Odontologia', tag: 'Saúde Bucal', desc: 'Prevenção, restauração e urgência odontológica' },
+  ];
+
   return (
-    <div className={`min-h-screen py-10 px-4 flex flex-col items-center font-sans ${darkMode ? 'bg-neutral-950 text-white' : 'bg-neutral-50 text-neutral-900'}`}>
-      
-      {/* Barra Superior de Navegação & Status LGPD */}
-      <div className="w-full max-w-4xl flex flex-wrap justify-between items-center gap-3 mb-4">
-        <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-          <ShieldCheck size={16} className="text-emerald-500" />
-          <span>Ambiente Seguro e Conforme à <strong>LGPD (Lei nº 13.709/2018)</strong></span>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setPortalMode(professionalSession ? 'professional-workspace' : 'professional-login')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-600/10 hover:bg-teal-600/20 text-teal-700 dark:text-teal-300 border border-teal-500/30 rounded-2xl text-xs font-black transition-all cursor-pointer"
-          >
-            <Stethoscope size={14} /> {professionalSession ? 'Voltar ao Ambiente Servidor' : 'Acesso Servidor (Secretaria / Médico)'}
-          </button>
-          {currentCitizen ? (
-            <div className="flex items-center gap-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-3.5 py-1.5 rounded-2xl text-xs">
-              <User size={14} className="text-emerald-600 dark:text-emerald-400" />
-              <span className="font-bold text-emerald-900 dark:text-emerald-200">
-                {maskName(currentCitizen.name)}
-              </span>
-              <span className="text-neutral-400 font-mono text-[11px]">
-                ({maskCPF(currentCitizen.cpf)})
-              </span>
-              <button 
-                onClick={handleLogout}
-                title="Encerrar Sessão / Trocar Paciente"
-                className="ml-2 p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/30 rounded-lg transition-colors flex items-center gap-1 font-bold text-[10px]"
-              >
-                <LogOut size={12} /> Sair
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowLoginModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
-            >
-              <Lock size={14} /> Entrar / Identificar-se
-            </button>
-          )}
-
-          <a
-            href="/"
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-2xl text-xs font-bold transition-all ${
-              darkMode 
-                ? 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700 border-neutral-700' 
-                : 'bg-white text-neutral-700 hover:bg-neutral-100 border-neutral-200'
-            } border shadow-sm`}
-          >
-            <Home size={14} /> Início
-          </a>
-        </div>
+    <div className={`min-h-screen pb-16 font-sans relative overflow-x-hidden selection:bg-emerald-500 selection:text-white ${
+      darkMode
+        ? 'bg-[#050d0c] text-white'
+        : 'bg-[#f4f8f7] text-neutral-900'
+    }`}>
+      {/* Malha de Luzes Ambientais (Mesh Gradient) */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div className="absolute -top-40 left-1/4 w-[600px] h-[600px] bg-emerald-400/12 dark:bg-emerald-500/8 rounded-full blur-[120px]" />
+        <div className="absolute top-1/3 -right-32 w-[500px] h-[500px] bg-teal-400/10 dark:bg-teal-500/8 rounded-full blur-[120px]" />
+        <div className="absolute -bottom-40 left-10 w-[500px] h-[500px] bg-cyan-400/10 dark:bg-cyan-500/6 rounded-full blur-[120px]" />
       </div>
 
-      {/* Container Principal */}
-      <motion.div 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className={`w-full max-w-4xl rounded-[40px] shadow-2xl overflow-hidden border ${
-          darkMode ? 'bg-neutral-900 border-neutral-800' : 'bg-white border-neutral-100'
-        }`}
-      >
-        {/* Banner do Cabeçalho */}
-        <div className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-teal-600 p-8 md:p-10 text-white text-center relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at center, white 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
-          <HeartPulse size={48} className="mx-auto mb-3 text-emerald-100 drop-shadow-md" />
-          <h1 className="text-2xl md:text-3xl font-black tracking-tight uppercase">
-            {currentInstitution?.name || 'Prefeitura Municipal'} · Secretaria de Saúde
-          </h1>
-          <p className="text-emerald-100 font-medium text-xs md:text-sm mt-1 max-w-xl mx-auto">
-            Autoatendimento Oficial do SUS: Solicite consultas, acompanhe sua posição na fila de regulação, exames e medicamentos da Farmácia Popular.
-          </p>
-        </div>
+      {/* ========================================================= */}
+      {/* HEADER GLOBAL FIXO COM NAVEGAÇÃO UNIFICADA                */}
+      {/* ========================================================= */}
+      <header className={`sticky top-0 z-40 border-b backdrop-blur-xl transition-colors ${
+        darkMode
+          ? 'bg-[#071311]/85 border-emerald-950/80 shadow-xl shadow-black/20'
+          : 'bg-white/85 border-emerald-900/10 shadow-sm'
+      }`}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+          {/* Identidade Institucional */}
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 via-teal-600 to-cyan-700 text-white flex items-center justify-center shadow-lg shadow-emerald-600/25">
+                <HeartPulse size={22} />
+              </div>
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-neutral-900" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/20">
+                  SUS Digital 360°
+                </span>
+                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold text-neutral-400">
+                  <ShieldCheck size={12} className="text-emerald-500" /> LGPD Protegido
+                </span>
+              </div>
+              <h1 className="text-sm sm:text-base font-black tracking-tight text-neutral-900 dark:text-white leading-tight mt-0.5">
+                {currentInstitution?.name || 'Prefeitura Municipal'} · Secretaria de Saúde
+              </h1>
+            </div>
+          </div>
 
-        {/* Barra de Navegação das Abas Principais */}
-        <div className="flex justify-center p-6 md:p-8 pb-0">
-          <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl w-full max-w-3xl flex-wrap gap-1">
+          {/* Ações Rápidas de Sessão & Servidor */}
+          <div className="flex items-center gap-2">
+            {currentCitizen ? (
+              <div className={`flex items-center gap-2.5 pl-2.5 pr-3 py-1.5 rounded-2xl border text-xs ${
+                darkMode
+                  ? 'bg-emerald-950/50 border-emerald-800/70 text-emerald-100'
+                  : 'bg-emerald-50/90 border-emerald-200 text-emerald-950'
+              }`}>
+                <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                  {currentCitizen.name?.trim().charAt(0).toUpperCase() || 'M'}
+                </div>
+                <div className="leading-tight hidden sm:block">
+                  <span className="font-black block text-[11px]">{maskName(currentCitizen.name)}</span>
+                  <span className="text-[10px] font-mono opacity-75">{maskCPF(currentCitizen.cpf)}</span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  title="Encerrar Sessão / Trocar Paciente"
+                  className="ml-1 px-2 py-1 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 rounded-xl transition-colors flex items-center gap-1 font-bold text-[11px] cursor-pointer"
+                >
+                  <LogOut size={13} /> <span className="hidden md:inline">Sair</span>
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl text-xs font-black shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+              >
+                <Lock size={14} /> Identificar-se com CPF
+              </button>
+            )}
+
             <button
-              onClick={() => setActiveTab('agendar')}
-              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === 'agendar' 
-                  ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm' 
-                  : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+              type="button"
+              onClick={() => setPortalMode(professionalSession ? 'professional-workspace' : 'professional-login')}
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
+                darkMode
+                  ? 'bg-neutral-900 hover:bg-neutral-800 text-teal-300 border-neutral-800'
+                  : 'bg-white hover:bg-teal-50/60 text-teal-800 border-neutral-200/90 shadow-2xs'
               }`}
             >
-              <Calendar size={14} /> Agendamento SUS
+              <Stethoscope size={14} className="text-teal-600 dark:text-teal-400" />
+              <span className="hidden sm:inline">{professionalSession ? 'Painel Servidor' : 'Acesso Servidor'}</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('farmacia_sus')}
-              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                activeTab === 'farmacia_sus' 
-                  ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm' 
-                  : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+            <a
+              href="/"
+              className={`p-2.5 rounded-2xl border transition-all ${
+                darkMode
+                  ? 'bg-neutral-900 text-neutral-300 hover:bg-neutral-800 border-neutral-800'
+                  : 'bg-white text-neutral-600 hover:bg-neutral-100 border-neutral-200/90 shadow-2xs'
               }`}
+              title="Voltar ao Portal da Prefeitura"
             >
-              <Pill size={14} /> Farmácia SUS
-            </button>
-
-            <button
-              onClick={() => {
-                if (!currentCitizen) {
-                  setShowLoginModal(true);
-                } else {
-                  setActiveTab('minha_saude');
-                }
-              }}
-              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === 'minha_saude' 
-                  ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm' 
-                  : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
-              }`}
-            >
-              <Activity size={14} /> Minha Saúde 360°
-              {currentCitizen && patientAppointments.filter(a => a.status === 'Agendado').length > 0 && (
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              )}
-            </button>
-
-            <button
-              onClick={() => setActiveTab('cadastro')}
-              className={`flex-1 py-3 px-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${
-                activeTab === 'cadastro' 
-                  ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm' 
-                  : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
-              }`}
-            >
-              <UserPlus size={14} /> {currentCitizen ? 'Meus Dados' : 'Primeiro Cadastro'}
-            </button>
+              <Home size={15} />
+            </a>
           </div>
         </div>
 
-        {/* Conteúdo Principal */}
-        <div className="p-6 md:p-10 pt-6">
-          <AnimatePresence mode="wait">
+        {/* Barra de Navegação Única (Sem Duplicação) */}
+        <div className={`border-t ${darkMode ? 'border-neutral-800/70 bg-neutral-950/40' : 'border-neutral-200/60 bg-neutral-50/70'}`}>
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center gap-1.5 overflow-x-auto py-2 no-scrollbar">
+            {[
+              { id: 'agendar' as const, label: 'Agendar Consulta SUS', icon: <Calendar size={15} />, desc: 'Fila Digital' },
+              { id: 'farmacia_sus' as const, label: 'Farmácia Municipal', icon: <Pill size={15} />, desc: 'Estoque ao Vivo' },
+              {
+                id: 'minha_saude' as const,
+                label: 'Minha Saúde 360°',
+                icon: <Activity size={15} />,
+                desc: activeAppointmentsCount > 0 ? `${activeAppointmentsCount} agendada(s)` : 'Consultas e Laudos',
+                badge: activeAppointmentsCount > 0,
+              },
+              {
+                id: 'cadastro' as const,
+                label: currentCitizen ? 'Meu Cadastro SUS' : 'Primeiro Cadastro',
+                icon: <UserPlus size={15} />,
+                desc: 'Cartão CNS Digital',
+              },
+            ].map((nav) => {
+              const isActive = activeTab === nav.id;
+              return (
+                <button
+                  key={nav.id}
+                  type="button"
+                  onClick={() => {
+                    if (nav.id === 'minha_saude' && !currentCitizen) {
+                      setShowLoginModal(true);
+                    } else {
+                      setActiveTab(nav.id);
+                    }
+                  }}
+                  className={`relative flex items-center gap-2.5 px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                    isActive
+                      ? 'text-white'
+                      : darkMode
+                        ? 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
+                        : 'text-neutral-600 hover:text-neutral-900 hover:bg-white/80'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="saudeUnifiedNavPill"
+                      transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+                      className="absolute inset-0 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 shadow-md shadow-emerald-600/25"
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-2">
+                    {nav.icon}
+                    <span>{nav.label}</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full hidden md:inline ${
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : darkMode
+                          ? 'bg-neutral-800 text-neutral-400'
+                          : 'bg-neutral-200/70 text-neutral-600'
+                    }`}>
+                      {nav.desc}
+                    </span>
+                    {nav.badge && <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" />}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </header>
 
-            {/* ========================================================= */}
-            {/* ABA 0: FARMÁCIA SUS ONLINE (ESTOQUE EM TEMPO REAL)        */}
-            {/* ========================================================= */}
-            {activeTab === 'farmacia_sus' && (
+      {/* ========================================================= */}
+      {/* CORPO PRINCIPAL WIDE-SCREEN (MAX-W-6XL)                   */}
+      {/* ========================================================= */}
+      <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+        {/* HERO SHOWCASE ASSIMÉTRICO */}
+        <motion.section
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35 }}
+          className="relative rounded-[32px] overflow-hidden bg-gradient-to-br from-[#063b33] via-[#0b5248] to-[#0e4152] text-white shadow-2xl shadow-emerald-950/15 border border-emerald-400/20"
+        >
+          {/* Padrão geométrico sutil + ECG dinâmico */}
+          <div
+            className="absolute inset-0 opacity-10 pointer-events-none"
+            style={{ backgroundImage: 'radial-gradient(circle at center, white 1px, transparent 1px)', backgroundSize: '28px 28px' }}
+          />
+          <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-emerald-400/20 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-24 left-1/3 w-80 h-80 rounded-full bg-cyan-400/15 blur-3xl pointer-events-none" />
+
+          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 sm:p-8 md:p-10 items-center">
+            {/* Coluna Editorial Esquerda */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/15 border border-emerald-300/25 text-emerald-100 text-[11px] font-black uppercase tracking-widest">
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+                <span>Central de Regulação & Atenção Básica Online</span>
+              </div>
+
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight leading-[1.12]">
+                Cuidado médico municipal com <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-200 via-teal-100 to-cyan-200">agilidade, transparência e respeito</span> ao cidadão.
+              </h2>
+
+              <p className="text-xs sm:text-sm text-emerald-100/85 leading-relaxed max-w-xl">
+                Agende consultas nas Unidades Básicas de Saúde (UBS), consulte o estoque de medicamentos gratuitos em tempo real e acesse seus laudos de exames em PDF sem enfrentar filas presenciais.
+              </p>
+
+              {/* Emblemas de Confiança */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-[11px] font-bold text-emerald-50">
+                  <BadgeCheck size={14} className="text-emerald-300" /> Protocolo Digital Imediato
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-[11px] font-bold text-emerald-50">
+                  <ShieldCheck size={14} className="text-cyan-300" /> Dados Mascarados (LGPD)
+                </div>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md border border-white/15 text-[11px] font-bold text-emerald-50">
+                  <Sparkles size={14} className="text-amber-300" /> Prioridade Legal Automática
+                </div>
+              </div>
+            </div>
+
+            {/* Coluna Direita: Painel Interativo de Indicadores da Rede */}
+            <div className="lg:col-span-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setActiveTab('agendar')}
+                className={`text-left p-4 rounded-2xl border backdrop-blur-md transition-all cursor-pointer group ${
+                  activeTab === 'agendar'
+                    ? 'bg-white text-emerald-950 border-white shadow-xl'
+                    : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    activeTab === 'agendar' ? 'bg-emerald-600 text-white' : 'bg-emerald-400/20 text-emerald-200'
+                  }`}>
+                    <Stethoscope size={18} />
+                  </div>
+                  <ArrowRight size={14} className="opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <span className="text-lg font-black block leading-none">{availableSpecialties.length}+</span>
+                <span className={`text-[11px] font-bold block mt-1 ${activeTab === 'agendar' ? 'text-emerald-800' : 'text-emerald-100'}`}>
+                  Especialidades SUS
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('farmacia_sus')}
+                className={`text-left p-4 rounded-2xl border backdrop-blur-md transition-all cursor-pointer group ${
+                  activeTab === 'farmacia_sus'
+                    ? 'bg-white text-emerald-950 border-white shadow-xl'
+                    : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    activeTab === 'farmacia_sus' ? 'bg-teal-600 text-white' : 'bg-teal-400/20 text-teal-200'
+                  }`}>
+                    <Pill size={18} />
+                  </div>
+                  <ArrowRight size={14} className="opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <span className="text-lg font-black block leading-none">RENAME</span>
+                <span className={`text-[11px] font-bold block mt-1 ${activeTab === 'farmacia_sus' ? 'text-teal-800' : 'text-emerald-100'}`}>
+                  Farmácia & Estoque
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentCitizen) setShowLoginModal(true);
+                  else setActiveTab('minha_saude');
+                }}
+                className={`text-left p-4 rounded-2xl border backdrop-blur-md transition-all cursor-pointer group ${
+                  activeTab === 'minha_saude'
+                    ? 'bg-white text-emerald-950 border-white shadow-xl'
+                    : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    activeTab === 'minha_saude' ? 'bg-cyan-600 text-white' : 'bg-cyan-400/20 text-cyan-200'
+                  }`}>
+                    <FileText size={18} />
+                  </div>
+                  <ArrowRight size={14} className="opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <span className="text-lg font-black block leading-none">
+                  {currentCitizen ? `${patientExams.length} Exames` : 'PDF Online'}
+                </span>
+                <span className={`text-[11px] font-bold block mt-1 ${activeTab === 'minha_saude' ? 'text-cyan-800' : 'text-emerald-100'}`}>
+                  Laudos & Fila SUS
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('cadastro')}
+                className={`text-left p-4 rounded-2xl border backdrop-blur-md transition-all cursor-pointer group ${
+                  activeTab === 'cadastro'
+                    ? 'bg-white text-emerald-950 border-white shadow-xl'
+                    : 'bg-white/10 hover:bg-white/15 text-white border-white/15'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    activeTab === 'cadastro' ? 'bg-emerald-600 text-white' : 'bg-emerald-400/20 text-emerald-200'
+                  }`}>
+                    <Building2 size={18} />
+                  </div>
+                  <ArrowRight size={14} className="opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                </div>
+                <span className="text-lg font-black block leading-none">{availableUnits.length} UBS</span>
+                <span className={`text-[11px] font-bold block mt-1 ${activeTab === 'cadastro' ? 'text-emerald-800' : 'text-emerald-100'}`}>
+                  {currentCitizen ? 'Ficha Cadastral' : 'Cadastro Único'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </motion.section>
+
+        {/* CONTEÚDO DINÂMICO DAS ABAS */}
+        <AnimatePresence mode="wait">
+          {/* ========================================================= */}
+          {/* ABA 0: FARMÁCIA SUS ONLINE (ESTOQUE EM TEMPO REAL)        */}
+          {/* ========================================================= */}
+          {activeTab === 'farmacia_sus' && (
+            <motion.div
+              key="farmacia_sus"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+              className={`rounded-[32px] border shadow-xl overflow-hidden ${
+                darkMode
+                  ? 'bg-neutral-900/90 border-neutral-800'
+                  : 'bg-white border-neutral-200/80 shadow-emerald-950/5'
+              }`}
+            >
+              <PublicFarmaciaPortal darkMode={darkMode} currentInstitution={currentInstitution} embedded />
+            </motion.div>
+          )}
+
+          {/* ========================================================= */}
+          {/* ABA 1: AGENDAMENTO SUS (LAYOUT 2 COLUNAS COM CARDS VISUAIS)*/}
+          {/* ========================================================= */}
+          {activeTab === 'agendar' && (
+            createdProtocol ? (
               <motion.div
-                key="farmacia_sus"
+                key="sucesso"
+                initial={{ scale: 0.96, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className={`rounded-[32px] border p-8 md:p-12 text-center space-y-6 shadow-xl ${
+                  darkMode ? 'bg-neutral-900/90 border-neutral-800' : 'bg-white border-emerald-100'
+                }`}
+              >
+                <div className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-600 text-white rounded-3xl flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/30">
+                  <CheckCircle2 size={42} />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-[11px] font-black uppercase tracking-widest px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                    Comprovante Oficial de Regulação SUS
+                  </span>
+                  <h2 className="text-2xl md:text-3xl font-black tracking-tight pt-1">
+                    Solicitação Registrada com Sucesso!
+                  </h2>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
+                    Seu pedido de atendimento para <strong className="text-emerald-600 dark:text-emerald-400">{formData.specialty}</strong> já está na fila eletrônica da Central de Regulação.
+                  </p>
+                </div>
+
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50/60 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-3xl p-6 max-w-md mx-auto text-left space-y-3 shadow-inner">
+                  <div className="flex justify-between items-center border-b border-emerald-200/70 dark:border-emerald-800/60 pb-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                      Número do Protocolo
+                    </span>
+                    <span className="font-mono font-black text-lg text-emerald-800 dark:text-emerald-200 bg-white dark:bg-neutral-900 px-3 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                      {createdProtocol}
+                    </span>
+                  </div>
+
+                  <div className="text-xs text-neutral-700 dark:text-neutral-300 space-y-1.5 pt-1">
+                    <p className="flex justify-between">
+                      <span className="text-neutral-500">Paciente:</span>
+                      <strong>{currentCitizen ? maskName(currentCitizen.name) : 'Munícipe'}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-neutral-500">CPF Autenticado:</span>
+                      <strong className="font-mono">{currentCitizen ? maskCPF(currentCitizen.cpf) : '---'}</strong>
+                    </p>
+                    <p className="flex justify-between">
+                      <span className="text-neutral-500">Unidade UBS:</span>
+                      <strong>{formData.preferred_unit}</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row justify-center gap-3 max-w-md mx-auto pt-2">
+                  <button
+                    onClick={() => {
+                      setCreatedProtocol(null);
+                      setActiveTab('minha_saude');
+                    }}
+                    className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white py-3.5 px-6 rounded-2xl font-black text-xs shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Activity size={16} /> Acompanhar Posição na Fila
+                  </button>
+                  <button
+                    onClick={() => setCreatedProtocol(null)}
+                    className="px-6 py-3.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-700 dark:text-neutral-300 rounded-2xl font-bold text-xs transition-colors cursor-pointer"
+                  >
+                    Nova Solicitação
+                  </button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="form-agendar"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="-m-6 md:-m-10"
+                transition={{ duration: 0.22 }}
+                className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"
               >
-                <PublicFarmaciaPortal darkMode={darkMode} currentInstitution={currentInstitution} />
-              </motion.div>
-            )}
-
-            {/* ========================================================= */}
-            {/* ABA 1: NOVA SOLICITAÇÃO (AUTOPREENCHIDA)                  */}
-            {/* ========================================================= */}
-            {activeTab === 'agendar' && (
-              createdProtocol ? (
-                /* Confirmação de Sucesso */
-                <motion.div 
-                  key="sucesso"
-                  initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                  className="text-center py-6 space-y-6"
-                >
-                  <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
-                    <CheckCircle2 size={44} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <h2 className="text-2xl md:text-3xl font-black tracking-tight">Solicitação Registrada na Fila do SUS!</h2>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
-                      Seu pedido de consulta para <strong className="text-emerald-600 dark:text-emerald-400">{formData.specialty}</strong> foi registrado e vinculado ao seu prontuário com sucesso.
-                    </p>
-                  </div>
-
-                  <div className="bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-3xl p-6 max-w-md mx-auto text-left space-y-3">
-                    <div className="flex justify-between items-center border-b border-emerald-200/60 pb-3">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-emerald-700 dark:text-emerald-300">Protocolo da Solicitação</span>
-                      <span className="font-mono font-black text-lg text-emerald-800 dark:text-emerald-200">{createdProtocol}</span>
-                    </div>
-
-                    <div className="text-xs text-neutral-700 dark:text-neutral-300 space-y-1">
-                      <p><strong>Paciente:</strong> {currentCitizen ? maskName(currentCitizen.name) : 'Munícipe'}</p>
-                      <p><strong>CPF:</strong> {currentCitizen ? maskCPF(currentCitizen.cpf) : '---'}</p>
-                      <p><strong>Unidade de Referência:</strong> {formData.preferred_unit}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row justify-center gap-3 max-w-md mx-auto">
-                    <button 
-                      onClick={() => {
-                        setCreatedProtocol(null);
-                        setActiveTab('minha_saude');
-                      }}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Activity size={16} /> Acompanhar Minhas Solicitações
-                    </button>
-                    <button 
-                      onClick={() => setCreatedProtocol(null)}
-                      className="px-5 py-3.5 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 text-neutral-700 dark:text-neutral-300 rounded-2xl font-bold text-xs transition-colors"
-                    >
-                      Nova Solicitação
-                    </button>
-                  </div>
-                </motion.div>
-              ) : (
-                /* Formulário de Solicitação */
-                <motion.div 
-                  key="form-agendar"
-                  initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
-                  className="space-y-6"
-                >
-                  {/* Se o cidadão AINDA NÃO está identificado, exibe card de login / identificação segura */}
+                {/* COLUNA ESQUERDA (8 COLUNAS): FORMULÁRIO INTERATIVO */}
+                <div className="lg:col-span-8 space-y-6">
+                  {/* Card 1: Status de Identificação do Cidadão */}
                   {!currentCitizen ? (
-                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-3xl p-6 md:p-8 text-center space-y-4">
-                      <div className="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center mx-auto shadow-md shadow-emerald-500/20">
-                        <Lock size={24} />
-                      </div>
-                      <div className="space-y-1 max-w-md mx-auto">
-                        <h3 className="text-lg font-black text-neutral-900 dark:text-white">Identifique-se para Preenchimento Automático</h3>
-                        <p className="text-xs text-neutral-600 dark:text-neutral-400">
-                          Informe seu CPF e Data de Nascimento. Seus dados cadastrais serão reconhecidos de forma segura, sem expor seu CPF e sem precisar redigitar tudo.
-                        </p>
-                      </div>
+                    <div className={`rounded-[28px] p-6 border shadow-lg relative overflow-hidden ${
+                      darkMode
+                        ? 'bg-gradient-to-r from-emerald-950/60 via-neutral-900 to-teal-950/50 border-emerald-800/60'
+                        : 'bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/80 border-emerald-200/80'
+                    }`}>
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+                            <Lock size={22} />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 block">
+                              Passo 1 · Identificação Rápida
+                            </span>
+                            <h3 className="text-base sm:text-lg font-black text-neutral-900 dark:text-white">
+                              Identifique-se para Preenchimento Automático
+                            </h3>
+                            <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 max-w-lg">
+                              Informe seu CPF e Data de Nascimento para vincular o agendamento ao seu Cartão SUS sem precisar digitar seus dados novamente.
+                            </p>
+                          </div>
+                        </div>
 
-                      <div className="flex flex-wrap justify-center gap-3 pt-2">
-                        <button
-                          onClick={() => setShowLoginModal(true)}
-                          className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center gap-2 cursor-pointer"
-                        >
-                          <Lock size={15} /> Entrar com CPF & Nascimento
-                        </button>
-                        <button
-                          onClick={() => setActiveTab('cadastro')}
-                          className="px-6 py-3 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-200 border border-neutral-200 dark:border-neutral-700 rounded-2xl font-bold text-xs transition-all flex items-center gap-2"
-                        >
-                          <UserPlus size={15} /> Primeiro Cadastro no SUS
-                        </button>
+                        <div className="flex sm:flex-col gap-2 w-full sm:w-auto shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setShowLoginModal(true)}
+                            className="flex-1 sm:flex-initial px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-black text-xs shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            <Lock size={14} /> Entrar com CPF
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('cadastro')}
+                            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-2xl font-bold text-xs border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                              darkMode
+                                ? 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border-neutral-700'
+                                : 'bg-white hover:bg-neutral-50 text-neutral-700 border-neutral-200'
+                            }`}
+                          >
+                            <UserPlus size={14} /> Primeiro Cadastro
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ) : (
-                    /* Cidadão Identificado: Banner com dados reconhecidos e autopreenchidos */
-                    <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 rounded-3xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-md">
+                    <div className={`rounded-[28px] p-5 sm:p-6 border shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 ${
+                      darkMode
+                        ? 'bg-emerald-950/30 border-emerald-800/60'
+                        : 'bg-white border-emerald-200/80'
+                    }`}>
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-emerald-600/20">
                           {currentCitizen.name.charAt(0)}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-800/40 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 rounded-full">
-                              Cadastro Verificado ✓
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                              Paciente Autenticado ✓
                             </span>
-                            <span className="text-xs text-neutral-400">
+                            <span className="text-xs font-bold text-neutral-400">
                               {getAge(currentCitizen.birth_date)} anos
                             </span>
                           </div>
@@ -1308,182 +1569,545 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                             {currentCitizen.name}
                           </h3>
                           <p className="text-xs text-neutral-500 font-mono">
-                            CPF: {maskCPF(currentCitizen.cpf)} · SUS: {maskSUS(currentCitizen.sus_number)}
+                            CPF: {maskCPF(currentCitizen.cpf)} · Cartão SUS: {maskSUS(currentCitizen.sus_number)}
                           </p>
                         </div>
                       </div>
 
                       <button
+                        type="button"
                         onClick={handleLogout}
-                        className="text-xs font-bold text-neutral-500 hover:text-rose-600 underline transition-colors"
+                        className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline px-3 py-1.5 rounded-xl hover:bg-rose-500/10 transition-colors cursor-pointer"
                       >
-                        Não é você? Trocar de paciente
+                        Trocar paciente
                       </button>
                     </div>
                   )}
 
-                  {/* Formulário de Envio da Consulta */}
-                  <form onSubmit={handleSubmitAgendamento} className="space-y-6">
+                  {/* Card 2: Formulário Visual de Solicitação de Consulta */}
+                  <form
+                    onSubmit={handleSubmitAgendamento}
+                    className={`rounded-[32px] border p-6 sm:p-8 shadow-xl space-y-7 ${
+                      darkMode
+                        ? 'bg-neutral-900/90 border-neutral-800'
+                        : 'bg-white border-neutral-200/80 shadow-emerald-950/5'
+                    }`}
+                  >
                     {aptError && (
-                      <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl text-xs font-bold flex items-center gap-2">
-                        <XCircle size={16} /> {aptError}
+                      <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 rounded-2xl text-xs font-bold flex items-center gap-2.5">
+                        <XCircle size={18} className="shrink-0" /> {aptError}
                       </div>
                     )}
 
-                    <div className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-4">
-                      <h4 className="text-xs font-black uppercase tracking-widest text-neutral-500 flex items-center gap-2">
-                        <Stethoscope size={16} className="text-emerald-500" />
-                        Detalhes da Consulta
-                      </h4>
+                    {/* Seção A: Seleção Visual de Especialidade Médica */}
+                    <div className="space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 block">
+                            Especialidade Clínica
+                          </span>
+                          <h4 className="text-base font-black text-neutral-900 dark:text-white">
+                            Qual atendimento médico você precisa?
+                          </h4>
+                        </div>
+                        <span className="text-[11px] font-semibold text-neutral-400">
+                          Clique em um card ou selecione na lista
+                        </span>
+                      </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Especialidade Médica Desejada *</label>
-                          <select 
-                            value={formData.specialty}
-                            onChange={e => setFormData({...formData, specialty: e.target.value})}
+                      {/* Grid de Cards Clicáveis de Especialidades em Destaque */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                        {featuredSpecialties.map((spec) => {
+                          const isSelected = formData.specialty === spec.name;
+                          return (
+                            <button
+                              key={spec.name}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, specialty: spec.name })}
+                              className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
+                                isSelected
+                                  ? 'bg-emerald-50/90 dark:bg-emerald-950/50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
+                                  : darkMode
+                                    ? 'bg-neutral-800/50 hover:bg-neutral-800 border-neutral-800 text-neutral-300'
+                                    : 'bg-neutral-50/70 hover:bg-neutral-100/70 border-neutral-200/80 text-neutral-700'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                  isSelected
+                                    ? 'bg-emerald-600 text-white'
+                                    : spec.name === 'Clínico Geral'
+                                      ? 'bg-teal-500/15 text-teal-700 dark:text-teal-300'
+                                      : 'bg-neutral-200/80 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
+                                }`}>
+                                  {spec.tag}
+                                </span>
+                                {isSelected && <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />}
+                              </div>
+                              <div>
+                                <span className="text-xs font-black block text-neutral-900 dark:text-white">
+                                  {spec.name}
+                                </span>
+                                <span className="text-[11px] text-neutral-500 dark:text-neutral-400 line-clamp-1 mt-0.5">
+                                  {spec.desc}
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Select Completo para Todas as Especialidades */}
+                      <div className="pt-1">
+                        <label className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 block mb-1.5">
+                          Outras especialidades disponíveis na rede municipal:
+                        </label>
+                        <select
+                          value={formData.specialty}
+                          onChange={e => setFormData({ ...formData, specialty: e.target.value })}
+                          required
+                          className={`w-full px-4 py-3.5 rounded-2xl text-xs font-bold outline-none border transition-all ${
+                            darkMode
+                              ? 'bg-neutral-800 border-neutral-700 text-white focus:border-emerald-500'
+                              : 'bg-neutral-50 border-neutral-200 text-neutral-900 focus:bg-white focus:border-emerald-500 focus:ring-3 focus:ring-emerald-500/15'
+                          }`}
+                        >
+                          {availableSpecialties.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Seção B: Unidade Básica de Saúde (UBS) de Preferência */}
+                    <div className="space-y-3 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-teal-600 dark:text-teal-400 block">
+                          Unidade de Referência
+                        </span>
+                        <h4 className="text-base font-black text-neutral-900 dark:text-white">
+                          Em qual Unidade de Saúde (UBS) deseja ser atendido?
+                        </h4>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {availableUnits.slice(0, 4).map((unitName) => {
+                          const isSelected = formData.preferred_unit === unitName;
+                          return (
+                            <button
+                              key={unitName}
+                              type="button"
+                              onClick={() => setFormData({ ...formData, preferred_unit: unitName })}
+                              className={`text-left p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 ${
+                                isSelected
+                                  ? 'bg-teal-50/90 dark:bg-teal-950/50 border-teal-500 ring-2 ring-teal-500/20'
+                                  : darkMode
+                                    ? 'bg-neutral-800/50 hover:bg-neutral-800 border-neutral-800'
+                                    : 'bg-neutral-50/70 hover:bg-neutral-100/70 border-neutral-200/80'
+                              }`}
+                            >
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                isSelected
+                                  ? 'bg-teal-600 text-white'
+                                  : darkMode
+                                    ? 'bg-neutral-700 text-neutral-300'
+                                    : 'bg-white text-teal-700 border border-neutral-200'
+                              }`}>
+                                <Building2 size={16} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <span className="text-xs font-black block truncate text-neutral-900 dark:text-white">
+                                  {unitName}
+                                </span>
+                                <span className="text-[10px] text-neutral-500 dark:text-neutral-400 block">
+                                  Atendimento SUS · 07h às 17h
+                                </span>
+                              </div>
+                              {isSelected && <CheckCircle2 size={16} className="text-teal-600 dark:text-teal-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <select
+                        value={formData.preferred_unit}
+                        onChange={e => setFormData({ ...formData, preferred_unit: e.target.value })}
+                        className={`w-full px-4 py-3 rounded-2xl text-xs font-bold outline-none border transition-all ${
+                          darkMode
+                            ? 'bg-neutral-800 border-neutral-700 text-white focus:border-teal-500'
+                            : 'bg-neutral-50 border-neutral-200 text-neutral-900 focus:bg-white focus:border-teal-500'
+                        }`}
+                      >
+                        {availableUnits.map(u => (
+                          <option key={u} value={u}>{u}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Seção Condicional: Guia de Encaminhamento para Especialistas */}
+                    {formData.specialty !== 'Clínico Geral' && (
+                      <div className="p-5 bg-amber-50/90 dark:bg-amber-950/25 border border-amber-200 dark:border-amber-800/60 rounded-2xl space-y-3">
+                        <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300">
+                          <AlertTriangle size={16} className="shrink-0" />
+                          <span className="text-[11px] font-black uppercase tracking-wider">
+                            Requisito SUS para Especialidades: Guia de Encaminhamento da UBS *
+                          </span>
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={formData.referral_details}
+                          onChange={e => setFormData({ ...formData, referral_details: e.target.value })}
+                          placeholder="Informe o nome do médico ou UBS que emitiu o encaminhamento (Ex: Dr. Carlos - UBS Central)"
+                          className="w-full bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-800 px-4 py-3 rounded-xl text-xs outline-none dark:text-white"
+                        />
+                        <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+                          <input
+                            type="checkbox"
                             required
-                            className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
-                          >
-                            {professionals.length > 0
-                              ? Array.from(new Set(professionals.map(p => p.specialty))).map(s => <option key={s} value={s}>{s}</option>)
-                              : COMMON_SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Unidade de Atendimento de Preferência</label>
-                          <select 
-                            value={formData.preferred_unit}
-                            onChange={e => setFormData({...formData, preferred_unit: e.target.value})}
-                            className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 dark:text-white"
-                          >
-                            {units.length > 0
-                              ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
-                              : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                          </select>
-                        </div>
-
-                        {formData.specialty !== 'Clínico Geral' && (
-                          <div className="md:col-span-2 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl space-y-2">
-                            <label className="text-[10px] font-black uppercase tracking-widest text-amber-800 dark:text-amber-300">
-                              Médico Solicitante / Encaminhamento da UBS *
-                            </label>
-                            <input 
-                              type="text" required
-                              value={formData.referral_details}
-                              onChange={e => setFormData({...formData, referral_details: e.target.value})}
-                              placeholder="Ex: Dr. Carlos (UBS Central) - CRM 12345"
-                              className="w-full bg-white dark:bg-neutral-900 border border-amber-200 dark:border-amber-800 px-4 py-2.5 rounded-xl text-xs outline-none dark:text-white"
-                            />
-                            <label className="flex items-center gap-2 cursor-pointer pt-1">
-                              <input 
-                                type="checkbox" required
-                                checked={formData.has_referral}
-                                onChange={e => setFormData({...formData, has_referral: e.target.checked})}
-                                className="rounded text-amber-600"
-                              />
-                              <span className="text-[11px] font-bold text-amber-900 dark:text-amber-200">
-                                Declaro que possuo o encaminhamento físico em mãos para apresentar na consulta. *
-                              </span>
-                            </label>
-                          </div>
-                        )}
-
-                        <div className="space-y-1 md:col-span-2">
-                          <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Motivo / Principais Sintomas (Opcional)</label>
-                          <textarea 
-                            rows={3}
-                            value={formData.notes}
-                            onChange={e => setFormData({...formData, notes: e.target.value})}
-                            placeholder="Descreva brevemente o motivo da consulta para orientar a equipe de triagem..."
-                            className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white resize-none"
+                            checked={formData.has_referral}
+                            onChange={e => setFormData({ ...formData, has_referral: e.target.checked })}
+                            className="mt-0.5 rounded text-amber-600"
                           />
+                          <span className="text-xs font-bold text-amber-950 dark:text-amber-200 leading-snug">
+                            Declaro que possuo o encaminhamento médico físico em mãos para apresentar no dia da consulta. *
+                          </span>
+                        </label>
+                      </div>
+                    )}
+
+                    {/* Seção C: Sintomas / Observações */}
+                    <div className="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                      <label className="text-xs font-black text-neutral-800 dark:text-neutral-200 flex items-center justify-between">
+                        <span>Descreva brevemente o motivo da consulta ou sintomas</span>
+                        <span className="text-[10px] font-semibold text-neutral-400">Opcional</span>
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={formData.notes}
+                        onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                        placeholder="Ex: Dor de cabeça frequente há 5 dias, renovação de receita de pressão alta, acompanhamento de rotina..."
+                        className={`w-full px-4 py-3.5 rounded-2xl text-xs outline-none border resize-none transition-all ${
+                          darkMode
+                            ? 'bg-neutral-800 border-neutral-700 text-white focus:border-emerald-500'
+                            : 'bg-neutral-50 border-neutral-200 text-neutral-900 focus:bg-white focus:border-emerald-500 focus:ring-3 focus:ring-emerald-500/15'
+                        }`}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmittingApt}
+                      className="w-full py-4 px-6 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-sm shadow-xl shadow-emerald-600/25 transition-all flex items-center justify-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSubmittingApt ? (
+                        <>Registrando Solicitação na Regulação...</>
+                      ) : (
+                        <>
+                          <Calendar size={18} /> Confirmar e Enviar para a Fila do SUS
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+
+                {/* COLUNA DIREITA (4 COLUNAS): GUIA DE REGULAÇÃO & PRIORIDADE */}
+                <aside className="lg:col-span-4 space-y-5">
+                  {/* Card Explicativo: Fluxo de Atendimento */}
+                  <div className={`rounded-[28px] border p-6 space-y-5 shadow-lg ${
+                    darkMode
+                      ? 'bg-neutral-900/90 border-neutral-800'
+                      : 'bg-white border-neutral-200/80 shadow-emerald-950/5'
+                  }`}>
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                        <ClipboardCheck size={18} />
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 block">
+                          Transparência SUS
+                        </span>
+                        <h4 className="text-sm font-black text-neutral-900 dark:text-white">
+                          Como funciona o agendamento?
+                        </h4>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-emerald-500/20">
+                      {[
+                        {
+                          step: '1',
+                          title: 'Protocolo Digital Imediato',
+                          desc: 'Sua solicitação recebe um código único vinculado ao seu Cartão SUS e CPF.',
+                        },
+                        {
+                          step: '2',
+                          title: 'Classificação & Prioridade Legal',
+                          desc: 'Médicos reguladores analisam a urgência clínica, idade (60+), gestação e PCD.',
+                        },
+                        {
+                          step: '3',
+                          title: 'Confirmação de Data e Médico',
+                          desc: 'Acompanhe a data, horário e profissional liberado na aba "Minha Saúde 360°".',
+                        },
+                      ].map((item) => (
+                        <div key={item.step} className="relative flex items-start gap-3.5">
+                          <div className="w-7 h-7 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
+                            {item.step}
+                          </div>
+                          <div>
+                            <h5 className="text-xs font-black text-neutral-900 dark:text-white">{item.title}</h5>
+                            <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed mt-0.5">
+                              {item.desc}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Card Prioridades Legais */}
+                  <div className={`rounded-[28px] border p-6 space-y-3 ${
+                    darkMode
+                      ? 'bg-gradient-to-br from-teal-950/50 to-neutral-900 border-teal-800/50'
+                      : 'bg-gradient-to-br from-teal-50/90 to-emerald-50/50 border-teal-200/70'
+                  }`}>
+                    <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300">
+                      <ShieldCheck size={18} />
+                      <h4 className="text-xs font-black uppercase tracking-wider">
+                        Atendimento Prioritário (Lei 10.048)
+                      </h4>
+                    </div>
+                    <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                      O sistema calcula automaticamente a prioridade na fila para <strong>Idosos (60+ e 80+ anos)</strong>, <strong>Gestantes</strong> e <strong>Pessoas com Deficiência (PCD)</strong> com base no seu cadastro municipal.
+                    </p>
+                  </div>
+
+                  {/* Card Documentos */}
+                  <div className={`rounded-[28px] border p-6 space-y-3 ${
+                    darkMode ? 'bg-neutral-900/90 border-neutral-800' : 'bg-white border-neutral-200/80'
+                  }`}>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-neutral-500 flex items-center gap-2">
+                      <FileText size={15} className="text-emerald-500" /> O que levar no dia da consulta?
+                    </h4>
+                    <ul className="space-y-2 text-xs text-neutral-600 dark:text-neutral-300">
+                      <li className="flex items-center gap-2">
+                        <Check size={14} className="text-emerald-500 shrink-0" /> Documento oficial com foto e CPF
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check size={14} className="text-emerald-500 shrink-0" /> Cartão Nacional de Saúde (CNS)
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check size={14} className="text-emerald-500 shrink-0" /> Guia de encaminhamento (para especialistas)
+                      </li>
+                    </ul>
+                  </div>
+                </aside>
+              </motion.div>
+            )
+          )}
+
+          {/* ========================================================= */}
+          {/* ABA 2: MINHA SAÚDE 360° (CARTEIRA CNS & HISTÓRICO)        */}
+          {/* ========================================================= */}
+          {activeTab === 'minha_saude' && (
+            <motion.div
+              key="minha-saude"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+              className="space-y-6"
+            >
+              {!currentCitizen ? (
+                <div className={`rounded-[32px] border p-12 text-center space-y-4 shadow-xl ${
+                  darkMode ? 'bg-neutral-900/90 border-neutral-800' : 'bg-white border-neutral-200/80'
+                }`}>
+                  <div className="w-16 h-16 rounded-3xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center mx-auto">
+                    <Lock size={32} />
+                  </div>
+                  <h3 className="text-xl font-black">Prontuário Protegido do Munícipe</h3>
+                  <p className="text-xs text-neutral-500 max-w-md mx-auto leading-relaxed">
+                    Para proteger seu sigilo médico conforme a LGPD, identifique-se com seu CPF e Data de Nascimento para visualizar suas consultas, laudos de exames em PDF e retiradas na Farmácia.
+                  </p>
+                  <button
+                    onClick={() => setShowLoginModal(true)}
+                    className="px-6 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-emerald-600/25 cursor-pointer"
+                  >
+                    Acessar Meu Prontuário Agora
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Cartão Nacional de Saúde (CNS) Digital + Resumo 360° */}
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+                    {/* Cartão CNS Físico-Digital */}
+                    <div className="lg:col-span-7 bg-gradient-to-br from-emerald-700 via-teal-700 to-cyan-800 rounded-[32px] p-6 sm:p-7 text-white shadow-xl relative overflow-hidden flex flex-col justify-between border border-emerald-400/30">
+                      <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+                      <div className="flex items-center justify-between gap-4 relative z-10">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-white/15 backdrop-blur-md border border-white/25 flex items-center justify-center">
+                            <HeartPulse size={20} className="text-emerald-200" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-200 block">
+                              Ministério da Saúde · SUS Municipal
+                            </span>
+                            <span className="text-xs font-black tracking-wide">
+                              Cartão Nacional de Saúde Digital
+                            </span>
+                          </div>
+                        </div>
+                        <span className="px-3 py-1 rounded-full bg-emerald-400/20 border border-emerald-300/30 text-[10px] font-black uppercase tracking-wider">
+                          Ativo · LGPD
+                        </span>
+                      </div>
+
+                      <div className="my-5 relative z-10">
+                        <span className="text-[10px] uppercase tracking-widest text-emerald-200/80 font-bold block">
+                          Titular do Prontuário
+                        </span>
+                        <h3 className="text-xl sm:text-2xl font-black tracking-tight mt-0.5">
+                          {maskName(currentCitizen.name)}
+                        </h3>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-3 border-t border-white/15 relative z-10 text-xs">
+                        <div>
+                          <span className="text-[10px] text-emerald-200/80 block uppercase font-bold">CPF</span>
+                          <span className="font-mono font-black">{maskCPF(currentCitizen.cpf)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-emerald-200/80 block uppercase font-bold">Cartão SUS (CNS)</span>
+                          <span className="font-mono font-black">
+                            {maskSUS(currentCitizen.sus_card || currentCitizen.sus_number)}
+                          </span>
+                        </div>
+                        <div className="col-span-2 sm:col-span-1">
+                          <span className="text-[10px] text-emerald-200/80 block uppercase font-bold">UBS Vinculada</span>
+                          <span className="font-bold truncate block">{currentCitizen.ubs_reference || 'Rede Municipal'}</span>
                         </div>
                       </div>
                     </div>
 
-                    <button 
-                      type="submit"
-                      disabled={isSubmittingApt}
-                      className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm shadow-xl shadow-emerald-500/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-                    >
-                      {isSubmittingApt ? 'Registrando Solicitação...' : <><Calendar size={18} /> Enviar Solicitação para a Fila do SUS</>}
-                    </button>
-                  </form>
-                </motion.div>
-              )
-            )}
-
-            {/* ========================================================= */}
-            {/* ABA 2: MINHA SAÚDE 360° (PRONTUÁRIO DO CIDADÃO & LGPD)   */}
-            {/* ========================================================= */}
-            {activeTab === 'minha_saude' && (
-              <motion.div 
-                key="minha-saude"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="space-y-6"
-              >
-                {!currentCitizen ? (
-                  <div className="text-center py-12 space-y-4">
-                    <Lock size={36} className="mx-auto text-neutral-400" />
-                    <h3 className="text-lg font-black">Área Restrita do Munícipe</h3>
-                    <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                      Identifique-se com seu CPF e Data de Nascimento para visualizar suas consultas, exames e remédios retirados.
-                    </p>
-                    <button
-                      onClick={() => setShowLoginModal(true)}
-                      className="px-6 py-3 bg-emerald-600 text-white font-bold text-xs rounded-2xl shadow-md"
-                    >
-                      Entrar no Meu Prontuário
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Sub-menu do Prontuário */}
-                    <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 flex-wrap">
+                    {/* 3 Indicadores do Prontuário do Cidadão */}
+                    <div className="lg:col-span-5 grid grid-cols-3 lg:grid-cols-1 gap-3">
                       <button
+                        type="button"
                         onClick={() => setSubTabMinhaSaude('consultas')}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        className={`p-4 rounded-3xl border text-left transition-all flex items-center justify-between cursor-pointer ${
                           subTabMinhaSaude === 'consultas'
-                            ? 'bg-white dark:bg-neutral-900 text-emerald-600 shadow-sm'
-                            : 'text-neutral-500 hover:text-neutral-800'
+                            ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/20'
+                            : darkMode
+                              ? 'bg-neutral-900 border-neutral-800 hover:border-emerald-700'
+                              : 'bg-white border-neutral-200/80 hover:border-emerald-300'
                         }`}
                       >
-                        <Calendar size={14} /> Minhas Consultas ({patientAppointments.length})
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                            subTabMinhaSaude === 'consultas' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-600'
+                          }`}>
+                            <Calendar size={18} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black block">Consultas & Fila SUS</span>
+                            <span className={`text-[11px] ${subTabMinhaSaude === 'consultas' ? 'text-emerald-100' : 'text-neutral-400'}`}>
+                              Agendamentos e solicitações
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-black">{patientAppointments.length}</span>
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => setSubTabMinhaSaude('exames')}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        className={`p-4 rounded-3xl border text-left transition-all flex items-center justify-between cursor-pointer ${
                           subTabMinhaSaude === 'exames'
-                            ? 'bg-white dark:bg-neutral-900 text-blue-600 shadow-sm'
-                            : 'text-neutral-500 hover:text-neutral-800'
+                            ? 'bg-teal-600 text-white border-teal-500 shadow-lg shadow-teal-600/20'
+                            : darkMode
+                              ? 'bg-neutral-900 border-neutral-800 hover:border-teal-700'
+                              : 'bg-white border-neutral-200/80 hover:border-teal-300'
                         }`}
                       >
-                        <Activity size={14} /> Meus Exames ({patientExams.length})
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                            subTabMinhaSaude === 'exames' ? 'bg-white/20 text-white' : 'bg-teal-500/10 text-teal-600'
+                          }`}>
+                            <Activity size={18} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black block">Exames & Laudos PDF</span>
+                            <span className={`text-[11px] ${subTabMinhaSaude === 'exames' ? 'text-teal-100' : 'text-neutral-400'}`}>
+                              Resultados digitalizados
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-black">{patientExams.length}</span>
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => setSubTabMinhaSaude('farmacia')}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        className={`p-4 rounded-3xl border text-left transition-all flex items-center justify-between cursor-pointer ${
                           subTabMinhaSaude === 'farmacia'
-                            ? 'bg-white dark:bg-neutral-900 text-purple-600 shadow-sm'
-                            : 'text-neutral-500 hover:text-neutral-800'
+                            ? 'bg-cyan-700 text-white border-cyan-600 shadow-lg shadow-cyan-700/20'
+                            : darkMode
+                              ? 'bg-neutral-900 border-neutral-800 hover:border-cyan-700'
+                              : 'bg-white border-neutral-200/80 hover:border-cyan-300'
                         }`}
                       >
-                        <Pill size={14} /> Farmácia Popular ({patientDispensations.length})
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${
+                            subTabMinhaSaude === 'farmacia' ? 'bg-white/20 text-white' : 'bg-cyan-500/10 text-cyan-600'
+                          }`}>
+                            <Pill size={18} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black block">Medicamentos Retirados</span>
+                            <span className={`text-[11px] ${subTabMinhaSaude === 'farmacia' ? 'text-cyan-100' : 'text-neutral-400'}`}>
+                              Histórico da Farmácia SUS
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-xl font-black">{patientDispensations.length}</span>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Barra de Sub-Abas do Prontuário */}
+                  <div className={`rounded-[32px] border p-6 sm:p-8 shadow-xl space-y-6 ${
+                    darkMode ? 'bg-neutral-900/90 border-neutral-800' : 'bg-white border-neutral-200/80'
+                  }`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-100 dark:border-neutral-800 pb-4">
+                      <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 flex-wrap">
+                        {[
+                          { id: 'consultas' as const, label: `Consultas (${patientAppointments.length})`, icon: <Calendar size={14} /> },
+                          { id: 'exames' as const, label: `Exames & PDF (${patientExams.length})`, icon: <Activity size={14} /> },
+                          { id: 'farmacia' as const, label: `Farmácia (${patientDispensations.length})`, icon: <Pill size={14} /> },
+                          { id: 'dados' as const, label: 'Meus Contatos', icon: <Edit3 size={14} /> },
+                        ].map((st) => (
+                          <button
+                            key={st.id}
+                            type="button"
+                            onClick={() => setSubTabMinhaSaude(st.id)}
+                            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                              subTabMinhaSaude === st.id
+                                ? 'bg-white dark:bg-neutral-900 text-emerald-600 dark:text-emerald-400 shadow-xs'
+                                : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                            }`}
+                          >
+                            {st.icon} {st.label}
+                          </button>
+                        ))}
+                      </div>
 
                       <button
-                        onClick={() => setSubTabMinhaSaude('dados')}
-                        className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                          subTabMinhaSaude === 'dados'
-                            ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-sm'
-                            : 'text-neutral-500 hover:text-neutral-800'
-                        }`}
+                        type="button"
+                        onClick={() => setActiveTab('agendar')}
+                        className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
-                        <Edit3 size={14} /> Atualizar Meus Contatos
+                        <Calendar size={14} /> + Nova Consulta
                       </button>
                     </div>
 
@@ -1492,57 +2116,82 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                       <div className="space-y-4">
                         {patientAppointments.length === 0 ? (
                           <div className="p-12 text-center bg-neutral-50 dark:bg-neutral-800/30 rounded-3xl border border-neutral-100 dark:border-neutral-800">
-                            <CalendarCheck2 size={36} className="mx-auto mb-2 text-neutral-300" />
-                            <p className="font-bold text-sm">Você não possui consultas ou solicitações registradas.</p>
+                            <CalendarCheck2 size={40} className="mx-auto mb-3 text-neutral-300" />
+                            <p className="font-black text-sm">Você ainda não possui consultas ou solicitações na fila.</p>
                             <button
                               onClick={() => setActiveTab('agendar')}
-                              className="mt-4 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-md"
+                              className="mt-4 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs shadow-md cursor-pointer"
                             >
-                              Fazer Nova Solicitação
+                              Solicitar Consulta Agora
                             </button>
                           </div>
                         ) : (
-                          patientAppointments.map(apt => (
-                            <div key={apt.id} className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-3">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <span className="text-[10px] font-mono text-neutral-400">Protocolo: {apt.id.substring(0, 8).toUpperCase()}</span>
-                                  <h4 className="text-base font-black text-neutral-900 dark:text-white">{apt.specialty}</h4>
-                                  <p className="text-xs text-neutral-500">Unidade: {apt.unit_name || 'UBS de Referência'}</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {patientAppointments.map(apt => (
+                              <div
+                                key={apt.id}
+                                className={`p-5 rounded-3xl border space-y-3 transition-all ${
+                                  darkMode
+                                    ? 'bg-neutral-800/40 border-neutral-800'
+                                    : 'bg-neutral-50/70 border-neutral-200/80 hover:bg-white hover:shadow-md'
+                                }`}
+                              >
+                                <div className="flex justify-between items-start gap-2">
+                                  <div>
+                                    <span className="text-[10px] font-mono font-bold text-neutral-400">
+                                      PROTOCOLO #{apt.id.substring(0, 8).toUpperCase()}
+                                    </span>
+                                    <h4 className="text-base font-black text-neutral-900 dark:text-white mt-0.5">
+                                      {apt.specialty}
+                                    </h4>
+                                    <p className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
+                                      <Building2 size={12} /> {apt.unit_name || 'UBS de Referência'}
+                                    </p>
+                                  </div>
+                                  <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
+                                    apt.status === 'Agendado'
+                                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                      : apt.status === 'Atendido'
+                                        ? 'bg-blue-100 text-blue-800'
+                                        : apt.status === 'Cancelado'
+                                          ? 'bg-rose-100 text-rose-800'
+                                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                  }`}>
+                                    {apt.status}
+                                  </span>
                                 </div>
-                                <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
-                                  apt.status === 'Agendado' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' :
-                                  apt.status === 'Atendido' ? 'bg-blue-100 text-blue-800' :
-                                  apt.status === 'Cancelado' ? 'bg-rose-100 text-rose-800' :
-                                  'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 animate-pulse'
-                                }`}>
-                                  {apt.status}
-                                </span>
+
+                                {apt.status === 'Agendado' && (
+                                  <div className="p-3.5 bg-emerald-100/60 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs space-y-1">
+                                    <p className="font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                                      <CheckCircle2 size={14} /> Consulta Confirmada pela Regulação!
+                                    </p>
+                                    <p>
+                                      <strong>Data:</strong> {apt.appointment_date?.split('-').reverse().join('/')} às{' '}
+                                      <strong>{apt.appointment_time || '08:00'}</strong>
+                                    </p>
+                                    <p>
+                                      <strong>Profissional:</strong> {apt.doctor_name || 'Médico da Rede Municipal'}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {apt.status === 'Aguardando Regulação' && (
+                                  <div className="flex justify-between items-center pt-2 border-t border-neutral-200/60 dark:border-neutral-700/50">
+                                    <span className="text-[11px] text-neutral-400">
+                                      Em análise pela Central de Regulação.
+                                    </span>
+                                    <button
+                                      onClick={() => handleCancelByCitizen(apt.id)}
+                                      className="text-xs font-bold text-rose-600 hover:text-rose-700 underline cursor-pointer"
+                                    >
+                                      Liberar vaga
+                                    </button>
+                                  </div>
+                                )}
                               </div>
-
-                              {apt.status === 'Agendado' && (
-                                <div className="p-4 bg-emerald-100/50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs space-y-1">
-                                  <p className="font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
-                                    <CheckCircle2 size={14} /> Consulta Confirmada!
-                                  </p>
-                                  <p><strong>Data:</strong> {apt.appointment_date?.split('-').reverse().join('/')} às <strong>{apt.appointment_time || '08:00'}</strong></p>
-                                  <p><strong>Médico:</strong> {apt.doctor_name || 'Profissional da Rede'}</p>
-                                </div>
-                              )}
-
-                              {apt.status === 'Aguardando Regulação' && (
-                                <div className="flex justify-between items-center pt-2">
-                                  <span className="text-[11px] text-neutral-400">Aguardando definição de data pela regulação médica.</span>
-                                  <button
-                                    onClick={() => handleCancelByCitizen(apt.id)}
-                                    className="text-xs font-bold text-rose-600 hover:text-rose-700 underline"
-                                  >
-                                    Não preciso mais / Liberar vaga
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ))
+                            ))}
+                          </div>
                         )}
                       </div>
                     )}
@@ -1550,101 +2199,112 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                     {/* SUB-ABA 2: EXAMES */}
                     {subTabMinhaSaude === 'exames' && (
                       <div className="space-y-4">
-
                         {patientExams.length === 0 ? (
                           <div className="p-12 text-center bg-neutral-50 dark:bg-neutral-800/30 rounded-3xl border border-neutral-100 dark:border-neutral-800">
-                            <Activity size={36} className="mx-auto mb-2 text-neutral-300" />
-                            <p className="font-bold text-sm">Nenhum exame prescrito ou registrado para seu CPF.</p>
+                            <Activity size={40} className="mx-auto mb-3 text-neutral-300" />
+                            <p className="font-black text-sm">Nenhum exame laboratorial ou de imagem registrado para seu CPF.</p>
                           </div>
                         ) : (
-                          patientExams.map(exam => {
-                            const parsed = parseExamResult(exam.result_notes);
-                            const sameTypeExams = patientExams.filter(pe => pe.exam_name === exam.exam_name);
-
-                            return (
-                              <div key={exam.id} className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-3 text-xs">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <h4 className="text-base font-black text-neutral-900 dark:text-white">{exam.exam_name}</h4>
-                                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300">
-                                        {exam.category}
-                                      </span>
-                                    </div>
-                                    <p className="text-[11px] text-neutral-400 mt-0.5">
-                                      Solicitante: {exam.doctor_name} · Unidade: {exam.requesting_unit || 'UBS de Referência'}
-                                    </p>
-                                  </div>
-                                  <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
-                                    exam.status === 'Realizado' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' :
-                                    exam.status === 'Agendado' ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300' :
-                                    'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                                  }`}>
-                                    {exam.status}
-                                  </span>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2 text-neutral-500 pt-1 font-mono text-[11px]">
-                                  <span>Solicitado em: {exam.requested_date?.split('-').reverse().join('/')}</span>
-                                  {exam.performed_date ? (
-                                    <span className="text-emerald-600 font-bold">Feito em: {exam.performed_date.split('-').reverse().join('/')}</span>
-                                  ) : exam.scheduled_date ? (
-                                    <span className="text-purple-600 font-bold">Agendado p/: {exam.scheduled_date.split('-').reverse().join('/')}</span>
-                                  ) : null}
-                                </div>
-
-                                {/* Documento PDF do Exame / Laudo Disponível para o Munícipe */}
-                                {parsed?.pdf_url && (
-                                  <div className="mt-2 p-3 bg-rose-50/70 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex flex-wrap justify-between items-center gap-2">
-                                    <div className="flex items-center gap-2.5">
-                                      <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-xs">
-                                        <FileText size={16} />
-                                      </div>
-                                      <div>
-                                        <span className="font-black text-neutral-900 dark:text-white block text-xs truncate max-w-[200px]">
-                                          {parsed.pdf_name || `${exam.exam_name}.pdf`}
-                                        </span>
-                                        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
-                                          {formatFileSize(parsed.pdf_size)} · Laudo Digitalizado
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {patientExams.map(exam => {
+                              const parsed = parseExamResult(exam.result_notes);
+                              return (
+                                <div
+                                  key={exam.id}
+                                  className={`p-5 rounded-3xl border space-y-3 text-xs ${
+                                    darkMode ? 'bg-neutral-800/40 border-neutral-800' : 'bg-neutral-50/70 border-neutral-200/80'
+                                  }`}
+                                >
+                                  <div className="flex justify-between items-start gap-2">
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <h4 className="text-base font-black text-neutral-900 dark:text-white">{exam.exam_name}</h4>
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300">
+                                          {exam.category}
                                         </span>
                                       </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => openPdfInNewTab(parsed.pdf_url!, parsed.pdf_name)}
-                                        className="px-2.5 py-1 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-blue-600 dark:text-blue-400 border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
-                                      >
-                                        <Eye size={12} /> Ver Laudo
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => downloadPdfFile(parsed.pdf_url!, parsed.pdf_name)}
-                                        className="p-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 rounded-lg transition-all cursor-pointer shadow-xs"
-                                        title="Baixar Laudo em PDF"
-                                      >
-                                        <Download size={13} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Laudo Textual se houver */}
-                                {parsed?.conclusion && (
-                                  <div className="mt-2 p-3 bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200 dark:border-neutral-800 rounded-2xl text-xs space-y-1">
-                                    <span className="font-black text-[10px] uppercase text-neutral-600 dark:text-neutral-300 block">Síntese do Laudo:</span>
-                                    <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{parsed.conclusion}</p>
-                                    {parsed.professional_name && (
-                                      <p className="text-[10px] text-neutral-400 pt-1 font-mono">
-                                        Responsável: {parsed.professional_name} {parsed.professional_council ? `(${parsed.professional_council})` : ''}
+                                      <p className="text-[11px] text-neutral-400 mt-0.5">
+                                        Solicitante: {exam.doctor_name} · {exam.requesting_unit || 'UBS de Referência'}
                                       </p>
-                                    )}
+                                    </div>
+                                    <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
+                                      exam.status === 'Realizado'
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                        : exam.status === 'Agendado'
+                                          ? 'bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300'
+                                          : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                                    }`}>
+                                      {exam.status}
+                                    </span>
                                   </div>
-                                )}
-                              </div>
-                            );
-                          })
+
+                                  <div className="grid grid-cols-2 gap-2 text-neutral-500 pt-1 font-mono text-[11px]">
+                                    <span>Pedido: {exam.requested_date?.split('-').reverse().join('/')}</span>
+                                    {exam.performed_date ? (
+                                      <span className="text-emerald-600 font-bold">
+                                        Concluído: {exam.performed_date.split('-').reverse().join('/')}
+                                      </span>
+                                    ) : exam.scheduled_date ? (
+                                      <span className="text-purple-600 font-bold">
+                                        Data: {exam.scheduled_date.split('-').reverse().join('/')}
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  {parsed?.pdf_url && (
+                                    <div className="mt-2 p-3 bg-rose-50/80 dark:bg-rose-950/25 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex flex-wrap justify-between items-center gap-2">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold shadow-xs">
+                                          <FileText size={16} />
+                                        </div>
+                                        <div>
+                                          <span className="font-black text-neutral-900 dark:text-white block text-xs truncate max-w-[180px]">
+                                            {parsed.pdf_name || `${exam.exam_name}.pdf`}
+                                          </span>
+                                          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 font-mono">
+                                            {formatFileSize(parsed.pdf_size)} · Laudo Oficial PDF
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => openPdfInNewTab(parsed.pdf_url!, parsed.pdf_name)}
+                                          className="px-3 py-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-blue-600 dark:text-blue-400 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                                        >
+                                          <Eye size={12} /> Abrir
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => downloadPdfFile(parsed.pdf_url!, parsed.pdf_name)}
+                                          className="p-1.5 bg-white dark:bg-neutral-800 hover:bg-neutral-100 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 rounded-xl transition-all cursor-pointer shadow-xs"
+                                          title="Baixar Laudo em PDF"
+                                        >
+                                          <Download size={14} />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {parsed?.conclusion && (
+                                    <div className="mt-2 p-3 bg-white dark:bg-neutral-900 border border-neutral-200/80 dark:border-neutral-800 rounded-2xl text-xs space-y-1">
+                                      <span className="font-black text-[10px] uppercase text-neutral-500 block">
+                                        Conclusão Clínica:
+                                      </span>
+                                      <p className="text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">{parsed.conclusion}</p>
+                                      {parsed.professional_name && (
+                                        <p className="text-[10px] text-neutral-400 pt-1 font-mono">
+                                          Responsável: {parsed.professional_name}{' '}
+                                          {parsed.professional_council ? `(${parsed.professional_council})` : ''}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     )}
@@ -1654,30 +2314,46 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                       <div className="space-y-4">
                         {patientDispensations.length === 0 ? (
                           <div className="p-12 text-center bg-neutral-50 dark:bg-neutral-800/30 rounded-3xl border border-neutral-100 dark:border-neutral-800">
-                            <Pill size={36} className="mx-auto mb-2 text-neutral-300" />
-                            <p className="font-bold text-sm">Nenhuma retirada de medicamentos registrada em seu nome.</p>
+                            <Pill size={40} className="mx-auto mb-3 text-neutral-300" />
+                            <p className="font-black text-sm">Nenhuma retirada de medicamentos registrada em seu prontuário.</p>
                           </div>
                         ) : (
-                          patientDispensations.map(disp => (
-                            <div key={disp.id} className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-3 text-xs">
-                              <div className="flex justify-between items-start">
-                                <div>
-                                  <h4 className="text-base font-black text-emerald-700 dark:text-emerald-300">{disp.medication_name}</h4>
-                                  <p className="text-neutral-400">{disp.dosage} - {disp.form}</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {patientDispensations.map(disp => (
+                              <div
+                                key={disp.id}
+                                className={`p-5 rounded-3xl border space-y-3 text-xs ${
+                                  darkMode ? 'bg-neutral-800/40 border-neutral-800' : 'bg-neutral-50/70 border-neutral-200/80'
+                                }`}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div>
+                                    <h4 className="text-base font-black text-emerald-700 dark:text-emerald-300">
+                                      {disp.medication_name}
+                                    </h4>
+                                    <p className="text-neutral-400">
+                                      {disp.dosage} · {disp.form}
+                                    </p>
+                                  </div>
+                                  <span className="font-black text-sm px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
+                                    {disp.quantity_dispensed} un.
+                                  </span>
                                 </div>
-                                <span className="font-black text-sm text-emerald-600">{disp.quantity_dispensed} un.</span>
-                              </div>
 
-                              <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl text-[11px] text-amber-900 dark:text-amber-200">
-                                <strong>📅 Próxima retirada liberada a partir de:</strong> {disp.next_allowed_dispensation_date?.split('-').reverse().join('/') || '---'}
-                              </div>
+                                <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl text-[11px] text-amber-900 dark:text-amber-200">
+                                  <strong>Próxima retirada liberada a partir de:</strong>{' '}
+                                  {disp.next_allowed_dispensation_date?.split('-').reverse().join('/') || '---'}
+                                </div>
 
-                              <div className="grid grid-cols-2 gap-2 text-neutral-500 text-[11px]">
-                                <span>Retirado em: {disp.created_at ? new Date(disp.created_at).toLocaleDateString('pt-BR') : '---'}</span>
-                                <span>Prescritor: {disp.doctor_name || 'Médico da Rede'}</span>
+                                <div className="grid grid-cols-2 gap-2 text-neutral-500 text-[11px]">
+                                  <span>
+                                    Retirado em: {disp.created_at ? new Date(disp.created_at).toLocaleDateString('pt-BR') : '---'}
+                                  </span>
+                                  <span>Prescritor: {disp.doctor_name || 'Médico da Rede'}</span>
+                                </div>
                               </div>
-                            </div>
-                          ))
+                            ))}
+                          </div>
                         )}
                       </div>
                     )}
@@ -1690,206 +2366,301 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                             {registerSuccessMsg}
                           </div>
                         )}
-                        <div className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-4">
-                          <h4 className="text-xs font-black uppercase tracking-widest text-neutral-500">
-                            Atualização de Contato e Endereço
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Telefone / WhatsApp</label>
-                              <input 
-                                type="text" required
-                                value={registerForm.phone}
-                                onChange={e => setRegisterForm({...registerForm, phone: formatPhone(e.target.value)})}
-                                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Bairro</label>
-                              <input 
-                                type="text"
-                                value={registerForm.neighborhood}
-                                onChange={e => setRegisterForm({...registerForm, neighborhood: e.target.value})}
-                                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                              />
-                            </div>
-                            <div className="space-y-1 md:col-span-2">
-                              <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Endereço Completo</label>
-                              <input 
-                                type="text"
-                                value={registerForm.address}
-                                onChange={e => setRegisterForm({...registerForm, address: e.target.value})}
-                                className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                              />
-                            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Telefone / WhatsApp</label>
+                            <input
+                              type="text"
+                              required
+                              value={registerForm.phone}
+                              onChange={e => setRegisterForm({ ...registerForm, phone: formatPhone(e.target.value) })}
+                              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Bairro</label>
+                            <input
+                              type="text"
+                              value={registerForm.neighborhood}
+                              onChange={e => setRegisterForm({ ...registerForm, neighborhood: e.target.value })}
+                              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                            />
+                          </div>
+                          <div className="space-y-1 md:col-span-2">
+                            <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Endereço Completo</label>
+                            <input
+                              type="text"
+                              value={registerForm.address}
+                              onChange={e => setRegisterForm({ ...registerForm, address: e.target.value })}
+                              className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                            />
                           </div>
                         </div>
 
-                        <button 
+                        <button
                           type="submit"
                           disabled={isSubmittingRegister}
-                          className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/20"
+                          className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-500/20 cursor-pointer"
                         >
-                          {isSubmittingRegister ? 'Salvando...' : 'Salvar Alterações'}
+                          {isSubmittingRegister ? 'Salvando...' : 'Atualizar Meus Contatos no SUS'}
                         </button>
                       </form>
                     )}
                   </div>
-                )}
-              </motion.div>
-            )}
+                </div>
+              )}
+            </motion.div>
+          )}
 
-            {/* ========================================================= */}
-            {/* ABA 3: PRIMEIRO CADASTRO NO SUS MUNICIPAL                 */}
-            {/* ========================================================= */}
-            {activeTab === 'cadastro' && (
-              <motion.div 
-                key="form-cadastro"
-                initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-                className="space-y-6"
-              >
-                <div className="border-b border-neutral-100 dark:border-neutral-800 pb-4">
-                  <h3 className="text-lg font-black text-neutral-900 dark:text-white">
-                    {currentCitizen ? 'Ficha Cadastral do Munícipe' : 'Primeiro Cadastro no SUS Municipal'}
+          {/* ========================================================= */}
+          {/* ABA 3: CADASTRO SUS EM 3 SEÇÕES VISUAIS                   */}
+          {/* ========================================================= */}
+          {activeTab === 'cadastro' && (
+            <motion.div
+              key="form-cadastro"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.22 }}
+              className={`rounded-[32px] border p-6 sm:p-8 md:p-10 shadow-xl space-y-6 ${
+                darkMode ? 'bg-neutral-900/90 border-neutral-800' : 'bg-white border-neutral-200/80'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-neutral-100 dark:border-neutral-800 pb-5">
+                <div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400 block">
+                    Cadastro Único de Saúde Municipal
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white mt-0.5">
+                    {currentCitizen ? 'Ficha Cadastral do Munícipe' : 'Primeiro Cadastro no SUS Digital'}
                   </h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Cadastre-se uma única vez para acessar agendamentos, histórico de exames e retirada de remédios.
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Seus dados são protegidos pela LGPD e permitem agendar consultas e retirar medicamentos na rede municipal.
                   </p>
                 </div>
+              </div>
 
-                {registerSuccessMsg && (
-                  <div className="p-4 bg-emerald-50 text-emerald-700 rounded-2xl text-xs font-bold flex items-center gap-2">
-                    <CheckCircle2 size={18} /> {registerSuccessMsg}
+              {registerSuccessMsg && (
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 rounded-2xl text-xs font-bold flex items-center gap-2">
+                  <CheckCircle2 size={18} /> {registerSuccessMsg}
+                </div>
+              )}
+              {registerErrorMsg && (
+                <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-600 dark:text-rose-300 rounded-2xl text-xs font-bold flex items-center gap-2">
+                  <XCircle size={18} /> {registerErrorMsg}
+                </div>
+              )}
+
+              <form onSubmit={handleSavePatientProfile} className="space-y-6">
+                {/* Bloco 1: Identificação Pessoal & Cartão SUS */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${
+                  darkMode ? 'bg-neutral-800/40 border-neutral-800' : 'bg-neutral-50/70 border-neutral-200/70'
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center">
+                      1
+                    </span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-200">
+                      Identificação Pessoal e Documentos SUS
+                    </h4>
                   </div>
-                )}
-                {registerErrorMsg && (
-                  <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl text-xs font-bold flex items-center gap-2">
-                    <XCircle size={18} /> {registerErrorMsg}
-                  </div>
-                )}
 
-                <form onSubmit={handleSavePatientProfile} className="space-y-4">
-                  <div className="bg-neutral-50 dark:bg-neutral-800/40 p-6 rounded-3xl border border-neutral-100 dark:border-neutral-800 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-1 md:col-span-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nome Completo *</label>
-                        <input 
-                          type="text" required
-                          value={registerForm.name} onChange={e => setRegisterForm({...registerForm, name: e.target.value})}
-                          placeholder="Ex: João da Silva Santos"
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                        />
-                      </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                        Nome Completo do Paciente *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={registerForm.name}
+                        onChange={e => setRegisterForm({ ...registerForm, name: e.target.value })}
+                        placeholder="Ex: Maria Aparecida dos Santos"
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                      />
+                    </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">CPF *</label>
-                        <input 
-                          type="text" required
-                          value={registerForm.cpf} onChange={e => setRegisterForm({...registerForm, cpf: formatCPF(e.target.value)})}
-                          placeholder="000.000.000-00"
-                          disabled={!!currentCitizen}
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white disabled:opacity-60"
-                        />
-                      </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">CPF *</label>
+                      <input
+                        type="text"
+                        required
+                        value={registerForm.cpf}
+                        onChange={e => setRegisterForm({ ...registerForm, cpf: formatCPF(e.target.value) })}
+                        placeholder="000.000.000-00"
+                        disabled={!!currentCitizen}
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white disabled:opacity-60"
+                      />
+                    </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Cartão Nacional do SUS *</label>
-                        <input 
-                          type="text" required
-                          value={registerForm.sus_number} onChange={e => setRegisterForm({...registerForm, sus_number: formatSUS(e.target.value)})}
-                          placeholder="000 0000 0000 0000"
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white"
-                        />
-                      </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                        Cartão Nacional do SUS (CNS) *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={registerForm.sus_number}
+                        onChange={e => setRegisterForm({ ...registerForm, sus_number: formatSUS(e.target.value) })}
+                        placeholder="000 0000 0000 0000"
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-mono outline-none dark:text-white"
+                      />
+                    </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Data de Nascimento *</label>
-                        <input 
-                          type="date" required
-                          value={registerForm.birth_date} onChange={e => setRegisterForm({...registerForm, birth_date: e.target.value})}
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                        />
-                      </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                        Data de Nascimento *
+                      </label>
+                      <input
+                        type="date"
+                        required
+                        value={registerForm.birth_date}
+                        onChange={e => setRegisterForm({ ...registerForm, birth_date: e.target.value })}
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                      />
+                    </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Telefone / WhatsApp *</label>
-                        <input 
-                          type="text" required
-                          value={registerForm.phone} onChange={e => setRegisterForm({...registerForm, phone: formatPhone(e.target.value)})}
-                          placeholder="(00) 00000-0000"
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                        />
-                      </div>
-
-                      <div className="space-y-1 md:col-span-2">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Nome da Mãe</label>
-                        <input 
-                          type="text"
-                          value={registerForm.mother_name} onChange={e => setRegisterForm({...registerForm, mother_name: e.target.value})}
-                          placeholder="Ex: Maria de Souza Santos"
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Bairro</label>
-                        <input 
-                          type="text"
-                          value={registerForm.neighborhood} onChange={e => setRegisterForm({...registerForm, neighborhood: e.target.value})}
-                          placeholder="Ex: Centro, Bairro São José..."
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">UBS Mais Próxima</label>
-                        <select 
-                          value={registerForm.ubs_reference} onChange={e => setRegisterForm({...registerForm, ubs_reference: e.target.value})}
-                          className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
-                        >
-                          {units.length > 0
-                            ? units.map(u => <option key={u.id} value={u.name}>{u.name}</option>)
-                            : DEFAULT_HEALTH_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                        </select>
-                      </div>
-
-                      <div className="flex items-center gap-6 md:col-span-2 pt-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={registerForm.is_pregnant}
-                            onChange={e => setRegisterForm({...registerForm, is_pregnant: e.target.checked})}
-                            className="rounded text-amber-500"
-                          />
-                          <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Paciente Gestante</span>
-                        </label>
-
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={registerForm.is_pcd}
-                            onChange={e => setRegisterForm({...registerForm, is_pcd: e.target.checked})}
-                            className="rounded text-purple-500"
-                          />
-                          <span className="text-xs font-bold text-neutral-700 dark:text-neutral-300">Pessoa com Deficiência (PCD)</span>
-                        </label>
-                      </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                        Nome Completo da Mãe
+                      </label>
+                      <input
+                        type="text"
+                        value={registerForm.mother_name}
+                        onChange={e => setRegisterForm({ ...registerForm, mother_name: e.target.value })}
+                        placeholder="Ex: Ana de Souza Santos"
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                      />
                     </div>
                   </div>
+                </div>
 
-                  <button 
-                    type="submit"
-                    disabled={isSubmittingRegister}
-                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm shadow-xl shadow-emerald-500/30 transition-all flex items-center justify-center gap-2"
-                  >
-                    {isSubmittingRegister ? 'Gravando no Sistema...' : <><Check size={18} /> Salvar Cadastro no SUS Municipal</>}
-                  </button>
-                </form>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </motion.div>
+                {/* Bloco 2: Contato & UBS de Referência */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${
+                  darkMode ? 'bg-neutral-800/40 border-neutral-800' : 'bg-neutral-50/70 border-neutral-200/70'
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-teal-600 text-white font-black text-xs flex items-center justify-center">
+                      2
+                    </span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-200">
+                      Contato e Unidade de Saúde (UBS) Mais Próxima
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                        Telefone / WhatsApp *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={registerForm.phone}
+                        onChange={e => setRegisterForm({ ...registerForm, phone: formatPhone(e.target.value) })}
+                        placeholder="(00) 00000-0000"
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">Bairro</label>
+                      <input
+                        type="text"
+                        value={registerForm.neighborhood}
+                        onChange={e => setRegisterForm({ ...registerForm, neighborhood: e.target.value })}
+                        placeholder="Ex: Centro, Vila Nova..."
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-neutral-500">
+                        UBS de Referência
+                      </label>
+                      <select
+                        value={registerForm.ubs_reference}
+                        onChange={e => setRegisterForm({ ...registerForm, ubs_reference: e.target.value })}
+                        className="w-full bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs font-bold outline-none dark:text-white"
+                      >
+                        {availableUnits.map(u => (
+                          <option key={u} value={u}>{u}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bloco 3: Condições de Prioridade Legal */}
+                <div className={`p-6 rounded-3xl border space-y-4 ${
+                  darkMode ? 'bg-neutral-800/40 border-neutral-800' : 'bg-neutral-50/70 border-neutral-200/70'
+                }`}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-6 h-6 rounded-lg bg-cyan-600 text-white font-black text-xs flex items-center justify-center">
+                      3
+                    </span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-neutral-700 dark:text-neutral-200">
+                      Condições de Atendimento Prioritário (Opcional)
+                    </h4>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${
+                      registerForm.is_pregnant
+                        ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-400'
+                        : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={registerForm.is_pregnant}
+                        onChange={e => setRegisterForm({ ...registerForm, is_pregnant: e.target.checked })}
+                        className="rounded text-amber-500 w-4 h-4"
+                      />
+                      <div>
+                        <span className="text-xs font-black block text-neutral-900 dark:text-white">Paciente Gestante</span>
+                        <span className="text-[11px] text-neutral-500">Prioridade legal em consultas e pré-natal</span>
+                      </div>
+                    </label>
+
+                    <label className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer transition-all ${
+                      registerForm.is_pcd
+                        ? 'bg-purple-50 dark:bg-purple-950/30 border-purple-400'
+                        : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-700'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={registerForm.is_pcd}
+                        onChange={e => setRegisterForm({ ...registerForm, is_pcd: e.target.checked })}
+                        className="rounded text-purple-500 w-4 h-4"
+                      />
+                      <div>
+                        <span className="text-xs font-black block text-neutral-900 dark:text-white">
+                          Pessoa com Deficiência (PCD)
+                        </span>
+                        <span className="text-[11px] text-neutral-500">Atendimento prioritário conforme Lei Federal</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingRegister}
+                  className="w-full py-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-2xl font-black text-sm shadow-xl shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isSubmittingRegister ? (
+                    'Gravando no Sistema...'
+                  ) : (
+                    <>
+                      <Check size={18} /> Salvar Cadastro no SUS Municipal
+                    </>
+                  )}
+                </button>
+              </form>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </main>
 
       {/* ========================================================= */}
       {/* MODAL: LOGIN / IDENTIFICAÇÃO SEGURA EM 2 FATORES (LGPD)   */}
@@ -1897,22 +2668,25 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
       <AnimatePresence>
         {showLoginModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowLoginModal(false)}>
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 12 }}
+              transition={{ type: 'spring', stiffness: 360, damping: 28 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl border border-neutral-100 dark:border-neutral-800 p-6 space-y-5 text-neutral-900 dark:text-white"
+              className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl border border-emerald-500/20 p-6 space-y-5 text-neutral-900 dark:text-white"
             >
               <div className="flex justify-between items-center border-b border-neutral-100 dark:border-neutral-800 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-emerald-600 text-white rounded-xl">
+                  <div className="p-2.5 bg-gradient-to-br from-emerald-600 to-teal-600 text-white rounded-xl">
                     <Lock size={18} />
                   </div>
                   <div>
-                    <h3 className="font-black text-base">Identificação Segura</h3>
-                    <p className="text-[10px] text-neutral-400">Conforme diretrizes da LGPD</p>
+                    <h3 className="font-black text-base">Identificação Segura SUS</h3>
+                    <p className="text-[10px] text-neutral-400">Proteção de dados médicos · LGPD</p>
                   </div>
                 </div>
-                <button onClick={() => setShowLoginModal(false)} className="p-1 text-neutral-400 hover:text-neutral-600">
+                <button onClick={() => setShowLoginModal(false)} className="p-1 text-neutral-400 hover:text-neutral-600 cursor-pointer">
                   <XCircle size={20} />
                 </button>
               </div>
@@ -1926,8 +2700,9 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
               <form onSubmit={handleAuthenticateCitizen} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">CPF do Munícipe</label>
-                  <input 
-                    type="text" required
+                  <input
+                    type="text"
+                    required
                     value={loginCpf}
                     onChange={e => setLoginCpf(formatCPF(e.target.value))}
                     placeholder="000.000.000-00"
@@ -1937,18 +2712,19 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-black uppercase tracking-widest text-neutral-400">Data de Nascimento</label>
-                  <input 
-                    type="date" required
+                  <input
+                    type="date"
+                    required
                     value={loginBirthDate}
                     onChange={e => setLoginBirthDate(e.target.value)}
                     className="w-full bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 px-4 py-3 rounded-2xl text-xs outline-none dark:text-white"
                   />
                 </div>
 
-                <button 
+                <button
                   type="submit"
                   disabled={isLoggingIn}
-                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl font-black text-xs shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {isLoggingIn ? 'Validando Dados...' : <><ArrowRight size={16} /> Entrar e Preencher Automaticamente</>}
                 </button>
@@ -1962,7 +2738,7 @@ export const PublicSaudePortal: React.FC<PublicSaudePortalProps> = ({ darkMode, 
                     setRegisterForm(prev => ({ ...prev, cpf: loginCpf, birth_date: loginBirthDate }));
                     setActiveTab('cadastro');
                   }}
-                  className="text-xs font-bold text-emerald-600 hover:text-emerald-700 mt-1 cursor-pointer"
+                  className="text-xs font-black text-emerald-600 hover:text-emerald-700 mt-1 cursor-pointer"
                 >
                   Cadastrar-se no SUS Municipal agora →
                 </button>

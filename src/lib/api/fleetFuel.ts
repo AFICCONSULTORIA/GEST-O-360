@@ -10,6 +10,23 @@ export type FuelType = 'gasolina' | 'etanol' | 'diesel_s10' | 'diesel_s500' | 'a
 export type MetricType = 'km' | 'horimetro';
 export type FuelOrderStatus = 'autorizado_pendente' | 'autorizado' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'liquidado';
 
+/**
+ * Formata litragem sem arredondamento destrutivo para preservação contábil exata.
+ * Mantém no mínimo `minDecimals` casas decimais e preserva até 6 casas reais se existirem.
+ */
+export function formatExactLiters(value: number | string | null | undefined, minDecimals: number = 2): string {
+  const num = Number(value ?? 0);
+  if (isNaN(num)) return '0' + (minDecimals > 0 ? '.' + '0'.repeat(minDecimals) : '');
+  const clean = Number(num.toFixed(6));
+  const parts = clean.toString().split('.');
+  const intPart = parts[0];
+  const decPart = parts[1] || '';
+  if (decPart.length >= minDecimals) {
+    return `${intPart}.${decPart}`;
+  }
+  return `${intPart}.${decPart.padEnd(minDecimals, '0')}`;
+}
+
 export interface FleetBudgetClassification {
   id: string;
   institution_id: string;

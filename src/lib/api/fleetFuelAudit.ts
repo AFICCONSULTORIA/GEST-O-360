@@ -156,6 +156,8 @@ export interface TwoWayFuelOrder {
   id: string;
   institution_id: string;
   order_number: string; // "AUT-2026-XXXX"
+  target_type?: 'veiculo' | 'galao';
+  galao_label?: string;
   vehicle_id: string;
   vehicle?: FleetVehicle;
   driver_name: string;
@@ -793,18 +795,33 @@ export async function validateAndCompleteFuelOrder(
     };
   }
 
+  const isGalaoOrder =
+    order.target_type === 'galao' ||
+    vehicle.plate === 'GALÃO' ||
+    Boolean(order.emergency_call_reason?.startsWith('[GALÃO]'));
+
   const suppliedLiters = completionData.liters_supplied && completionData.liters_supplied > 0
     ? completionData.liters_supplied
     : order.liters_authorized;
 
-  // 3. Execução dos cálculos e motor antifraude
-  const audit = calculateRealtimeMetrics(
-    order.previous_odometer,
-    completionData.current_odometer,
-    suppliedLiters,
-    vehicle.expected_consumption || 8,
-    vehicle.tank_capacity || 200
-  );
+  // 3. Execução dos cálculos e motor antifraude (galões são isentos de odômetro)
+  const audit: ConsumptionAuditCalculation = isGalaoOrder
+    ? {
+        delta_km: 0,
+        effective_liters: suppliedLiters,
+        calculated_km_per_liter: 0,
+        expected_consumption: 0,
+        deviation_percent: 0,
+        anomaly_level: 'none',
+        is_blocked: false
+      }
+    : calculateRealtimeMetrics(
+        order.previous_odometer,
+        completionData.current_odometer,
+        suppliedLiters,
+        vehicle.expected_consumption || 8,
+        vehicle.tank_capacity || 200
+      );
 
   // 4. Determina status de confirmação na bomba (sempre 'abastecido', preservando anomalia para auditoria do gestor)
   const finalStatus: TwoWayOrderStatus = 'abastecido';
@@ -866,7 +883,7 @@ export async function validateAndCompleteFuelOrder(
   };
 
   // 6. Se o odômetro avançou, atualiza o odômetro do veículo na frota
-  if (completionData.current_odometer >= order.previous_odometer && vehicle.id) {
+  if (!isGalaoOrder && completionData.current_odometer >= order.previous_odometer && vehicle.id) {
     vehicle.current_odometer = completionData.current_odometer;
     try {
       const vehUpdate = await supabase

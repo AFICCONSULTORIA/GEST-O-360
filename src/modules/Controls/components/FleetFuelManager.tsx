@@ -67,6 +67,7 @@ import {
   getFleetVehicles,
   getFleetBudgetClassifications,
   getFuelSupplyOrders,
+  formatExactLiters,
   createFuelOrder,
   registerFuelExecution,
   uploadReceiptAttachment,
@@ -658,7 +659,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           orderNumber: ord.order_number,
           type: 'abastecimento',
           title: hasStationPhotos ? 'Abastecido no Posto • Fotos Recebidas' : 'Abastecimento Registrado no Posto',
-          message: `${v?.plate || 'Placa'} • ${v?.model || 'Veículo'} • ${Number(ord.liters_supplied || ord.liters_authorized || 0).toFixed(1)} L`,
+          message: `${v?.plate || 'Placa'} • ${v?.model || 'Veículo'} • ${formatExactLiters(ord.liters_supplied || ord.liters_authorized || 0)} L`,
           plate: v?.plate,
           vehicleModel: v?.model,
           driverName: ord.driver_name,
@@ -705,7 +706,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
     const v = ord.vehicle || vehicles.find(item => item.id === ord.vehicle_id);
     const plateLabel = v?.plate || ord.plate || '';
-    const litersLabel = Number(ord.liters_supplied || ord.liters_authorized || 0).toFixed(1);
+    const litersLabel = formatExactLiters(ord.liters_supplied || ord.liters_authorized || 0);
 
     playFuelAlertChime();
     sendDesktopNotification(
@@ -1486,7 +1487,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       pendingHomologationCount: pendingHomologationOrders.length,
       conformePendingCount: conformePendingOrders.length,
       yellowAlertCount: yellowAlertOrders.length,
-      totalLiters: totalLiters.toFixed(2),
+      totalLiters: formatExactLiters(totalLiters),
       totalSpent: totalSpent.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
       anomalousCount: anomalousOrders.length,
       auditedCount: auditedOrders.length,
@@ -2238,8 +2239,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     e.preventDefault();
     if (!selectedOrderForAction) return;
 
-    const currentKm = Number(executionForm.current_odometer);
-    if (isNaN(currentKm) || currentKm <= 0) {
+    const isGalaoOrder =
+      selectedOrderForAction.target_type === 'galao' ||
+      selectedOrderForAction.vehicle?.plate === 'GALÃO' ||
+      Boolean(selectedOrderForAction.emergency_call_reason?.startsWith('[GALÃO]'));
+
+    const currentKm = isGalaoOrder ? 0 : Number(executionForm.current_odometer);
+    if (!isGalaoOrder && (isNaN(currentKm) || currentKm <= 0)) {
       showToast('Por favor, informe a leitura atual do odômetro no painel do veículo.', 'warning');
       return;
     }
@@ -2740,7 +2746,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                               <div className="flex items-center gap-2 mt-0.5 text-[11px] text-neutral-500 dark:text-neutral-400">
                                 <span className="font-mono font-bold text-emerald-700 dark:text-emerald-400">
-                                  {Number(notif.liters || 0).toFixed(1)} L
+                                  {formatExactLiters(notif.liters || 0)} L
                                 </span>
                                 {notif.currentOdometer ? (
                                   <span className="font-mono">
@@ -3320,7 +3326,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         {/* 4. Volume, Valor & KM */}
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <div className="font-mono font-black text-xs text-neutral-900 dark:text-white">
-                            {effectiveLiters.toFixed(1)} L <span className="text-neutral-400 font-normal">•</span>{' '}
+                            {formatExactLiters(effectiveLiters)} L <span className="text-neutral-400 font-normal">•</span>{' '}
                             <span className="text-emerald-700 dark:text-emerald-400">
                               {formattedValue}
                             </span>
@@ -3481,7 +3487,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         </div>
                         <div className="flex justify-between">
                           <span className="text-neutral-400">Litragem Autorizada:</span>
-                          <span className="font-bold text-emerald-600">{order.liters_authorized.toFixed(2)} L</span>
+                          <span className="font-bold text-emerald-600">{formatExactLiters(order.liters_authorized)} L</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-neutral-400">Leitura Anterior:</span>
@@ -3632,9 +3638,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           {/* Litros */}
                           <td className="px-4 py-3.5">
                             <div className="flex items-center gap-1 text-neutral-900 dark:text-white font-bold">
-                              <span>{order.liters_supplied ? `${order.liters_supplied.toFixed(2)} L` : 'Pendente'}</span>
+                              <span>{order.liters_supplied ? `${formatExactLiters(order.liters_supplied)} L` : 'Pendente'}</span>
                               <span className="text-neutral-400 font-normal">
-                                / {order.supply_mode === 'encher_tanque' || order.is_full_tank_order ? 'Top-Off' : `${order.liters_authorized.toFixed(0)} L`}
+                                / {order.supply_mode === 'encher_tanque' || order.is_full_tank_order ? 'Top-Off' : `${formatExactLiters(order.liters_authorized)} L`}
                               </span>
                             </div>
                             <div className="text-[10px] text-neutral-500 font-mono">
@@ -5125,8 +5131,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <div className="flex items-center gap-2">
                         <input
                           type="number"
-                          step="0.1"
-                          min="1"
+                          step="any"
+                          min="0.001"
                           value={newOrderForm.liters_authorized}
                           onChange={e => setNewOrderForm({ ...newOrderForm, liters_authorized: parseFloat(e.target.value) || 0 })}
                           required
@@ -5550,7 +5556,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </label>
                     <input
                       type="number"
-                      step="0.01"
+                      step="any"
+                      min="0.001"
                       value={executionForm.liters_supplied}
                       onChange={e => setExecutionForm({ ...executionForm, liters_supplied: parseFloat(e.target.value) || 0 })}
                       required
@@ -5571,28 +5578,44 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </span>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Odômetro Atual no Painel (KM) *
-                    </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={executionForm.current_odometer ? formatThousands(executionForm.current_odometer) : ''}
-                      onChange={e => setExecutionForm({ ...executionForm, current_odometer: parseThousands(e.target.value) })}
-                      required
-                      className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 ${
-                        (!selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0)
-                          ? (executionForm.current_odometer <= 0 ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500')
-                          : (executionForm.current_odometer <= selectedOrderForAction.previous_odometer ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500')
-                      }`}
-                    />
-                    <span className="text-[10px] text-neutral-400">
-                      {!selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0
-                        ? '1º Abastecimento (Definição de KM Base)'
-                        : `Anterior: ${formatThousands(selectedOrderForAction.previous_odometer)} km`}
-                    </span>
-                  </div>
+                  {selectedOrderForAction.target_type === 'galao' ||
+                  selectedOrderForAction.vehicle?.plate === 'GALÃO' ||
+                  selectedOrderForAction.emergency_call_reason?.startsWith('[GALÃO]') ? (
+                    <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                      <span className="block text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase">
+                        Destino (Galão / Bombona)
+                      </span>
+                      <span className="text-xs font-black text-emerald-950 dark:text-emerald-200 block mt-0.5">
+                        {selectedOrderForAction.galao_label || selectedOrderForAction.vehicle?.model || 'Galão / Bombona'}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 dark:text-emerald-400 block">
+                        Isento de Odômetro
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        Odômetro Atual no Painel (KM) *
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={executionForm.current_odometer ? formatThousands(executionForm.current_odometer) : ''}
+                        onChange={e => setExecutionForm({ ...executionForm, current_odometer: parseThousands(e.target.value) })}
+                        required
+                        className={`w-full px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 ${
+                          (!selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0)
+                            ? (executionForm.current_odometer <= 0 ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500')
+                            : (executionForm.current_odometer <= selectedOrderForAction.previous_odometer ? 'border-rose-500 text-rose-600 focus:ring-rose-500' : 'border-neutral-200 dark:border-neutral-700 focus:ring-emerald-500')
+                        }`}
+                      />
+                      <span className="text-[10px] text-neutral-400">
+                        {!selectedOrderForAction.previous_odometer || selectedOrderForAction.previous_odometer <= 0
+                          ? '1º Abastecimento (Definição de KM Base)'
+                          : `Anterior: ${formatThousands(selectedOrderForAction.previous_odometer)} km`}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* PAINEL MATEMÁTICO DE AUDITORIA EM TEMPO REAL (ANTIFRAUDE) */}
@@ -5647,7 +5670,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         <div>
                           <span className="text-[10px] opacity-70 block">Faturado no Canhoto:</span>
                           <strong className={`text-xs font-mono ${isExcess ? 'text-rose-600 dark:text-rose-400 font-black' : ''}`}>
-                            {executionForm.liters_supplied.toFixed(1)} L
+                            {formatExactLiters(executionForm.liters_supplied)} L
                           </strong>
                         </div>
                       </div>
@@ -5737,17 +5760,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       </label>
                     </div>
 
-                    {/* Anexo 2: Foto do Painel / Odômetro */}
+                    {/* Anexo 2: Foto do Painel / Odômetro ou Galões */}
+                    {(() => {
+                      const isGalaoExec =
+                        selectedOrderForAction.target_type === 'galao' ||
+                        selectedOrderForAction.vehicle?.plate === 'GALÃO' ||
+                        Boolean(selectedOrderForAction.emergency_call_reason?.startsWith('[GALÃO]'));
+                      return (
                     <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
                       <div>
                         <span className="block text-[11px] font-black text-neutral-800 dark:text-neutral-200 mb-2 truncate">
-                          2. Painel / Odômetro *
+                          {isGalaoExec ? '2. Foto dos Galões *' : '2. Painel / Odômetro *'}
                         </span>
                         {executionForm.odometer_photo_url ? (
                           <div className="relative rounded-xl overflow-hidden border border-emerald-500/40 group">
                             <img
                               src={executionForm.odometer_photo_url}
-                              alt="Painel do Veículo"
+                              alt={isGalaoExec ? 'Galões / Bombonas' : 'Painel do Veículo'}
                               className="w-full h-24 object-cover"
                             />
                             <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
@@ -5757,7 +5786,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         ) : (
                           <div className="h-24 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl flex flex-col items-center justify-center p-2 text-neutral-400 bg-white dark:bg-neutral-900/50">
                             <Gauge size={22} className="text-neutral-400 mb-1" />
-                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">KM no Painel</span>
+                            <span className="text-[10px] font-bold text-neutral-600 dark:text-neutral-300">
+                              {isGalaoExec ? 'Galões / Bombonas' : 'KM no Painel'}
+                            </span>
                             <span className="text-[9px] text-neutral-400">Foto no ato do posto</span>
                           </div>
                         )}
@@ -5780,6 +5811,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                         </span>
                       </label>
                     </div>
+                      );
+                    })()}
 
                     {/* Anexo 3: Canhoto Físico Assinado (Opcional) */}
                     <div className="border border-neutral-200 dark:border-neutral-700 p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 text-center flex flex-col justify-between hover:border-emerald-500/50 transition-all">
@@ -5952,7 +5985,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200/70 dark:border-neutral-800">
                     <span className="text-[10px] font-bold uppercase text-neutral-400 block">Combustível</span>
                     <span className="text-sm font-black font-mono text-neutral-900 dark:text-white mt-0.5 block">
-                      {effectiveLiters.toFixed(2)} L
+                      {formatExactLiters(effectiveLiters)} L
                     </span>
                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase">
                       {ord.fuel_type.replace('_', ' ')} (Tanque {v?.tank_capacity || 0}L)
@@ -6730,7 +6763,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
                         <span className="text-neutral-400 block text-[10px] font-bold">Litragem Faturada:</span>
                         <strong className="font-mono text-xs text-emerald-600 dark:text-emerald-400">
-                          {Number(viewingAttachmentOrder.liters_supplied || viewingAttachmentOrder.liters_authorized || 0).toFixed(2)} L
+                          {formatExactLiters(viewingAttachmentOrder.liters_supplied || viewingAttachmentOrder.liters_authorized || 0)} L
                         </strong>
                       </div>
                       <div className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
@@ -6946,9 +6979,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               : 'border-neutral-200 dark:border-neutral-800 hover:border-blue-400'
                           }`}
                         >
-                          <img src={viewingAttachmentOrder.odometer_photo_url} alt="Odômetro" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                          <img src={viewingAttachmentOrder.odometer_photo_url} alt="Comprovante" className="w-12 h-12 rounded-lg object-cover shrink-0" />
                           <div className="min-w-0">
-                            <span className="text-[10px] font-black uppercase text-blue-600 block">Odômetro</span>
+                            <span className="text-[10px] font-black uppercase text-blue-600 block">
+                              {viewingAttachmentOrder.target_type === 'galao' ||
+                              viewingAttachmentOrder.vehicle?.plate === 'GALÃO' ||
+                              viewingAttachmentOrder.emergency_call_reason?.startsWith('[GALÃO]')
+                                ? 'Galões'
+                                : 'Odômetro'}
+                            </span>
                             <span className="text-[10px] text-neutral-500 truncate block">Ver foto</span>
                           </div>
                         </button>
@@ -8471,8 +8510,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </label>
                     <input
                       type="number"
-                      step="0.01"
-                      min="0.1"
+                      step="any"
+                      min="0.001"
                       required
                       value={advanceFuelForm.liters_supplied}
                       onChange={e => setAdvanceFuelForm({ ...advanceFuelForm, liters_supplied: e.target.value })}
