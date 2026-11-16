@@ -258,6 +258,243 @@ export interface OrderCompletionPayload {
   budget_classification_id?: string; // Permite alterar ou definir a Ficha Orçamentária
   budget_classification?: FleetBudgetClassification;
   allowAuditedEdit?: boolean; // Permite forçar edição mesmo se homologada
+  actor_name?: string;
+  actor_role?: string;
+  is_system_edit?: boolean;
+}
+
+export type FleetFuelAuditActionType =
+  | 'EDICAO_ABASTECIMENTO'
+  | 'ALTERACAO_DATA'
+  | 'ALTERACAO_DOTACAO'
+  | 'EMISSAO_ORDEM'
+  | 'HOMOLOGACAO_TCE'
+  | 'REABERTURA_ORDEM'
+  | 'GLOSA_ORDEM'
+  | 'RETIRADA_RISCO_FRAUDE'
+  | 'VINCULO_NOTA_FISCAL'
+  | 'EXCLUSAO_ORDEM';
+
+export interface FleetFuelAuditFieldChange {
+  field: string;
+  label: string;
+  oldValue: string;
+  newValue: string;
+}
+
+export interface FleetFuelAuditLog {
+  id: string;
+  institution_id: string;
+  order_id?: string;
+  order_number: string;
+  vehicle_plate?: string;
+  vehicle_model?: string;
+  action_type: FleetFuelAuditActionType;
+  action_label: string;
+  actor_name: string;
+  actor_role?: string;
+  fueling_date?: string;
+  changes: FleetFuelAuditFieldChange[];
+  notes?: string;
+  created_at: string;
+}
+
+const getAuditLogsStorageKey = (institutionId?: string) =>
+  `@gestao360:fleet_fuel_audit_logs_${institutionId || 'inst_1'}`;
+
+/**
+ * Extrai YYYY-MM-DD sem deslocamento de fuso horário (evita voltar 1 dia no UTC-3)
+ */
+export function extractOrderDateYYYYMMDD(raw?: string | null): string {
+  if (!raw) return '';
+  const trimmed = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T12:00:00/.test(trimmed)) {
+    return trimmed.slice(0, 10);
+  }
+  const d = new Date(trimmed);
+  if (isNaN(d.getTime())) {
+    return trimmed.slice(0, 10);
+  }
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+export function formatDateBRFromRaw(raw?: string | null): string {
+  const ymd = extractOrderDateYYYYMMDD(raw);
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return '-';
+  const [y, m, d] = ymd.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+export function getFleetFuelAuditLogs(institutionId: string = 'inst_1'): FleetFuelAuditLog[] {
+  try {
+    const raw = localStorage.getItem(getAuditLogsStorageKey(institutionId));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function saveLocalFleetFuelAuditLogs(logs: FleetFuelAuditLog[], institutionId: string = 'inst_1') {
+  try {
+    localStorage.setItem(getAuditLogsStorageKey(institutionId), JSON.stringify(logs.slice(0, 500)));
+  } catch {}
+}
+
+export async function getFleetFuelAuditLogsFromSupabase(institutionId: string = 'inst_1'): Promise<FleetFuelAuditLog[]> {
+  const targetInst = institutionId || 'inst_1';
+  const localLogs = getFleetFuelAuditLogs(targetInst);
+  const mergedMap = new Map<string, FleetFuelAuditLog>();
+  localLogs.forEach(l => mergedMap.set(l.id, l));
+
+  // 1. Tenta buscar da tabela dedicada fuel_supply_audit_logs
+  try {
+    let { data, error } = await supabase
+      .from('fuel_supply_audit_logs')
+      .select('*')
+      .or(`institution_id.eq.${targetInst},institution_id.eq.inst_1`)
+      .order('created_at', { ascending: false })
+      .limit(300);
+
+    if (error) {
+      const anonRes = await supabaseAnon
+        .from('fuel_supply_audit_logs')
+        .select('*')
+        .or(`institution_id.eq.${targetInst},institution_id.eq.inst_1`)
+        .order('created_at', { ascending: false })
+        .limit(300);
+      data = anonRes.data;
+      error = anonRes.error;
+    }
+
+    if (!error && Array.isArray(data)) {
+      for (const row of data) {
+        mergedMap.set(row.id, {
+          id: row.id,
+          institution_id: row.institution_id || targetInst,
+          order_id: row.order_id || undefined,
+          order_number: row.order_number || '-',
+          vehicle_plate: row.vehicle_plate || undefined,
+          vehicle_model: row.vehicle_model || undefined,
+          action_type: row.action_type as FleetFuelAuditActionType,
+          action_label: row.action_label || row.action_type,
+          actor_name: row.actor_name || 'Gestor da Frota',
+          actor_role: row.actor_role || undefined,
+          fueling_date: row.fueling_date || undefined,
+          changes: Array.isArray(row.changes) ? row.changes : [],
+          notes: row.notes || undefined,
+          created_at: row.created_at || new Date().toISOString()
+        });
+      }
+    }
+  } catch {}
+
+  // 2. Fallback sincronizado via institutions.notes (fuel_audit_logs)
+  try {
+    let { data: instData, error: instErr } = await supabase
+      .from('institutions')
+      .select('notes')
+      .eq('id', targetInst)
+      .maybeSingle();
+
+    if (instErr || !instData) {
+      const anonInst = await supabaseAnon
+        .from('institutions')
+        .select('notes')
+        .eq('id', targetInst)
+        .maybeSingle();
+      instData = anonInst.data;
+    }
+
+    if (instData?.notes) {
+      try {
+        const parsedNotes = JSON.parse(instData.notes);
+        if (Array.isArray(parsedNotes?.fuel_audit_logs)) {
+          for (const item of parsedNotes.fuel_audit_logs) {
+            if (item?.id && !mergedMap.has(item.id)) {
+              mergedMap.set(item.id, item);
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+
+  const sorted = Array.from(mergedMap.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  saveLocalFleetFuelAuditLogs(sorted, targetInst);
+  return sorted;
+}
+
+export async function recordFleetFuelAuditLog(
+  entry: Omit<FleetFuelAuditLog, 'id' | 'created_at'> & { id?: string; created_at?: string }
+): Promise<FleetFuelAuditLog> {
+  const targetInst = entry.institution_id || 'inst_1';
+  const newLog: FleetFuelAuditLog = {
+    ...entry,
+    id: entry.id || generateUUID(),
+    institution_id: targetInst,
+    created_at: entry.created_at || new Date().toISOString()
+  };
+
+  const currentLogs = getFleetFuelAuditLogs(targetInst);
+  const updatedLogs = [newLog, ...currentLogs.filter(l => l.id !== newLog.id)].slice(0, 500);
+  saveLocalFleetFuelAuditLogs(updatedLogs, targetInst);
+
+  // 1. Tenta persistir na tabela dedicada fuel_supply_audit_logs
+  try {
+    const dbRow = {
+      id: newLog.id,
+      institution_id: newLog.institution_id,
+      order_id: newLog.order_id || null,
+      order_number: newLog.order_number,
+      vehicle_plate: newLog.vehicle_plate || null,
+      vehicle_model: newLog.vehicle_model || null,
+      action_type: newLog.action_type,
+      action_label: newLog.action_label,
+      actor_name: newLog.actor_name,
+      actor_role: newLog.actor_role || null,
+      fueling_date: newLog.fueling_date || null,
+      changes: newLog.changes,
+      notes: newLog.notes || null,
+      created_at: newLog.created_at
+    };
+    const { error } = await supabase.from('fuel_supply_audit_logs').insert([dbRow]);
+    if (error) {
+      await supabaseAnon.from('fuel_supply_audit_logs').insert([dbRow]);
+    }
+  } catch {}
+
+  // 2. Sincroniza também os últimos 200 logs em institutions.notes para resiliência universal
+  try {
+    let currentNotesObj: Record<string, any> = {};
+    const { data: instData } = await supabase.from('institutions').select('notes').eq('id', targetInst).maybeSingle();
+    if (instData?.notes) {
+      try { currentNotesObj = JSON.parse(instData.notes); } catch {}
+    }
+    const existingRemoteLogs = Array.isArray(currentNotesObj.fuel_audit_logs) ? currentNotesObj.fuel_audit_logs : [];
+    currentNotesObj.fuel_audit_logs = [newLog, ...existingRemoteLogs.filter((l: any) => l?.id !== newLog.id)].slice(0, 200);
+
+    const { error } = await supabase.from('institutions').update({
+      notes: JSON.stringify(currentNotesObj)
+    }).eq('id', targetInst);
+
+    if (error) {
+      await supabaseAnon.from('institutions').update({
+        notes: JSON.stringify(currentNotesObj)
+      }).eq('id', targetInst);
+    }
+  } catch {}
+
+  return newLog;
 }
 
 export interface ConsumptionAuditCalculation {
@@ -856,6 +1093,96 @@ export async function validateAndCompleteFuelOrder(
   }
   let resolvedBudgetId = resolvedBudget?.id || (rawBudgetId ? toBudgetUUID(rawBudgetId) : undefined);
 
+  // PRESERVAÇÃO ESTRITA DE DATA: Nunca altera a data automaticamente em edições!
+  // Só altera a data se o usuário tiver informado explicitamente uma nova data diferente da atual.
+  const existingEffectiveRawDate = (order as any).fueling_date || order.supplied_at || order.created_at;
+  const existingYMD = extractOrderDateYYYYMMDD(existingEffectiveRawDate);
+  const requestedYMD = completionData.supplied_at ? extractOrderDateYYYYMMDD(completionData.supplied_at) : '';
+  const isExplicitDateChange = Boolean(requestedYMD && requestedYMD !== existingYMD);
+
+  let preservedSuppliedAt: string;
+  let preservedCreatedAt: string = order.created_at;
+
+  if (isExplicitDateChange) {
+    preservedSuppliedAt = `${requestedYMD}T12:00:00.000Z`;
+    preservedCreatedAt = `${requestedYMD}T12:00:00.000Z`;
+  } else if (existingEffectiveRawDate) {
+    preservedSuppliedAt = order.supplied_at || order.created_at || new Date().toISOString();
+  } else {
+    preservedSuppliedAt = new Date().toISOString();
+  }
+
+  // Rastreamento de alterações (Diff) para o Log de Auditoria do Sistema
+  const fieldChanges: FleetFuelAuditFieldChange[] = [];
+  if (isExplicitDateChange) {
+    fieldChanges.push({
+      field: 'supplied_at',
+      label: 'Data do Abastecimento',
+      oldValue: formatDateBRFromRaw(existingEffectiveRawDate),
+      newValue: formatDateBRFromRaw(preservedSuppliedAt)
+    });
+  }
+  if (finalOrderNumber !== order.order_number) {
+    fieldChanges.push({
+      field: 'order_number',
+      label: 'Nº da Ordem / Talão',
+      oldValue: order.order_number || '-',
+      newValue: finalOrderNumber
+    });
+  }
+  const prevLiters = Number(order.liters_supplied ?? order.liters_authorized ?? 0);
+  if (Math.abs(prevLiters - suppliedLiters) > 0.0001) {
+    fieldChanges.push({
+      field: 'liters_supplied',
+      label: 'Litros Abastecidos',
+      oldValue: `${prevLiters} L`,
+      newValue: `${suppliedLiters} L`
+    });
+  }
+  const prevOdo = Number(order.current_odometer ?? 0);
+  if (!isGalaoOrder && prevOdo !== Number(completionData.current_odometer || 0)) {
+    fieldChanges.push({
+      field: 'current_odometer',
+      label: 'Odômetro (KM)',
+      oldValue: `${prevOdo} km`,
+      newValue: `${completionData.current_odometer} km`
+    });
+  }
+  if (updatedDriverName !== order.driver_name) {
+    fieldChanges.push({
+      field: 'driver_name',
+      label: 'Motorista / Condutor',
+      oldValue: order.driver_name || '-',
+      newValue: updatedDriverName
+    });
+  }
+  const oldBudgetSheet = order.budget_classification?.invoice_sheet || order.budget_classification_id || '-';
+  const newBudgetSheet = resolvedBudget?.invoice_sheet || resolvedBudgetId || '-';
+  if (oldBudgetSheet !== newBudgetSheet && completionData.budget_classification_id !== undefined) {
+    fieldChanges.push({
+      field: 'budget_classification',
+      label: 'Ficha Orçamentária',
+      oldValue: String(oldBudgetSheet),
+      newValue: String(newBudgetSheet)
+    });
+  }
+  if (completionData.pump_photo_url && completionData.pump_photo_url !== order.pump_photo_url) {
+    fieldChanges.push({
+      field: 'pump_photo_url',
+      label: 'Foto Visor da Bomba',
+      oldValue: order.pump_photo_url ? 'Foto anterior' : 'Sem foto',
+      newValue: 'Nova foto anexada'
+    });
+  }
+  if (completionData.odometer_photo_url && completionData.odometer_photo_url !== order.odometer_photo_url) {
+    fieldChanges.push({
+      field: 'odometer_photo_url',
+      label: isGalaoOrder ? 'Foto dos Galões' : 'Foto do Odômetro',
+      oldValue: order.odometer_photo_url ? 'Foto anterior' : 'Sem foto',
+      newValue: 'Nova foto anexada'
+    });
+  }
+
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     order_number: finalOrderNumber,
@@ -879,7 +1206,8 @@ export async function validateAndCompleteFuelOrder(
     budget_classification_id: resolvedBudgetId,
     budget_classification: resolvedBudget,
     status: finalStatus,
-    supplied_at: completionData.supplied_at || new Date().toISOString()
+    created_at: preservedCreatedAt,
+    supplied_at: preservedSuppliedAt
   };
 
   // 6. Se o odômetro avançou, atualiza o odômetro do veículo na frota
@@ -938,6 +1266,9 @@ export async function validateAndCompleteFuelOrder(
     supplied_at: updatedOrder.supplied_at,
     budget_classification_id: (resolvedBudgetId && isValidUUID(resolvedBudgetId)) ? resolvedBudgetId : null
   };
+  if (isExplicitDateChange) {
+    updatePayload.created_at = preservedCreatedAt;
+  }
 
   let persistedRemotely = false;
   let lastDbError: any = null;
@@ -1029,6 +1360,45 @@ export async function validateAndCompleteFuelOrder(
     orders.unshift(updatedOrder);
   }
   saveLocalOrders(orders);
+
+  // 8.1 Registrar Trilha de Auditoria (Log) quando houver edição ou alteração de data/dados
+  if (fieldChanges.length > 0 || completionData.is_system_edit) {
+    const actionType: FleetFuelAuditActionType =
+      isExplicitDateChange && fieldChanges.length === 1 ? 'ALTERACAO_DATA' : 'EDICAO_ABASTECIMENTO';
+    const actionLabel =
+      actionType === 'ALTERACAO_DATA'
+        ? 'Alteração Manual da Data do Abastecimento'
+        : isExplicitDateChange
+          ? 'Edição de Dados e Data do Abastecimento'
+          : 'Edição de Dados do Abastecimento (Data Preservada)';
+
+    await recordFleetFuelAuditLog({
+      institution_id: updatedOrder.institution_id || 'inst_1',
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.order_number,
+      vehicle_plate: vehicle?.plate,
+      vehicle_model: vehicle?.model,
+      action_type: actionType,
+      action_label: actionLabel,
+      actor_name: completionData.actor_name || updatedOrder.authorized_by_name || 'Gestor da Frota',
+      actor_role: completionData.actor_role || updatedOrder.authorized_by_role || 'Responsável pela Frota',
+      fueling_date: formatDateBRFromRaw(updatedOrder.supplied_at || updatedOrder.created_at),
+      changes:
+        fieldChanges.length > 0
+          ? fieldChanges
+          : [
+              {
+                field: 'geral',
+                label: 'Revisão de Abastecimento',
+                oldValue: 'Dados conferidos',
+                newValue: 'Salvo sem alteração da data original'
+              }
+            ],
+      notes: isExplicitDateChange
+        ? `Data do abastecimento alterada manualmente pelo usuário.`
+        : `Alteração realizada mantendo a data original do abastecimento (${formatDateBRFromRaw(updatedOrder.supplied_at || updatedOrder.created_at)}).`
+    });
+  }
 
   // 9. Notificar gestor de frotas e outras abas em tempo real
   try {
@@ -2006,7 +2376,9 @@ export function generateLegacyVouchersExcelTemplate(): void {
 export async function updateFuelOrderBudgetClassification(
   orderId: string,
   budgetId: string,
-  _institutionId: string = 'inst_1'
+  _institutionId: string = 'inst_1',
+  actorName?: string,
+  actorRole?: string
 ): Promise<TwoWayFuelOrder> {
   const localBudgets = getLocalBudgetClassifications();
   const targetBudget = localBudgets.find(b => 
@@ -2034,6 +2406,10 @@ export async function updateFuelOrderBudgetClassification(
     } catch {}
   }
 
+  const oldSheet = baseOrder?.budget_classification?.invoice_sheet || baseOrder?.budget_classification_id || 'Não definida';
+  const newSheet = targetBudget ? `Ficha ${targetBudget.invoice_sheet} (${targetBudget.department_local})` : String(budgetId);
+
+  // Preserva integralmente supplied_at e created_at originais
   const updatedOrder: TwoWayFuelOrder = {
     ...(baseOrder || { id: orderId, order_number: orderId } as any),
     budget_classification_id: resolvedBudgetId,
@@ -2074,6 +2450,29 @@ export async function updateFuelOrderBudgetClassification(
     console.warn('[FleetFuelAudit] Aviso ao persistir ficha orçamentária no Supabase:', dbErr);
   }
 
+  // 2.1 Registrar log de auditoria da alteração de dotação (com data de abastecimento preservada)
+  await recordFleetFuelAuditLog({
+    institution_id: _institutionId || updatedOrder.institution_id || 'inst_1',
+    order_id: updatedOrder.id,
+    order_number: updatedOrder.order_number || orderId,
+    vehicle_plate: updatedOrder.vehicle?.plate,
+    vehicle_model: updatedOrder.vehicle?.model,
+    action_type: 'ALTERACAO_DOTACAO',
+    action_label: 'Reclassificação de Ficha Orçamentária (Data Preservada)',
+    actor_name: actorName || updatedOrder.authorized_by_name || 'Gestor da Frota',
+    actor_role: actorRole || 'Responsável pela Frota',
+    fueling_date: formatDateBRFromRaw(updatedOrder.supplied_at || updatedOrder.created_at),
+    changes: [
+      {
+        field: 'budget_classification',
+        label: 'Ficha Orçamentária',
+        oldValue: String(oldSheet).startsWith('Ficha') ? String(oldSheet) : `Ficha ${oldSheet}`,
+        newValue: newSheet
+      }
+    ],
+    notes: `Dotação alterada sem modificar a data original do abastecimento (${formatDateBRFromRaw(updatedOrder.supplied_at || updatedOrder.created_at)}).`
+  });
+
   // 3. Notificar abas em tempo real
   try {
     if (typeof window !== 'undefined') {
@@ -2085,6 +2484,117 @@ export async function updateFuelOrderBudgetClassification(
         bc.postMessage({ type: 'ORDER_BUDGET_UPDATED', order: updatedOrder });
         bc.close();
       }
+    }
+  } catch {}
+
+  return updatedOrder;
+}
+
+/**
+ * Permite alterar especificamente a Data do Abastecimento de qualquer ordem (autorizada, abastecida ou auditada),
+ * gravando no Supabase, no cache local e registrando a alteração no Log de Auditoria.
+ */
+export async function updateFuelOrderDate(
+  orderId: string,
+  newDateYYYYMMDD: string,
+  actorName: string = 'Gestor da Frota',
+  actorRole: string = 'Responsável pela Frota',
+  institutionId: string = 'inst_1'
+): Promise<TwoWayFuelOrder> {
+  const cleanYMD = extractOrderDateYYYYMMDD(newDateYYYYMMDD);
+  if (!cleanYMD || !/^\d{4}-\d{2}-\d{2}$/.test(cleanYMD)) {
+    throw new Error('Informe uma data válida para o abastecimento.');
+  }
+  const newIso = `${cleanYMD}T12:00:00.000Z`;
+
+  const orders = getLocalOrders();
+  const orderIdx = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  let baseOrder: TwoWayFuelOrder | null = orderIdx !== -1 ? orders[orderIdx] : null;
+
+  if (!baseOrder) {
+    try {
+      const { data } = await supabase
+        .from('fuel_supply_orders')
+        .select('*, vehicle:fleet_vehicles(*)')
+        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+        .maybeSingle();
+      if (data) baseOrder = data as TwoWayFuelOrder;
+    } catch {}
+  }
+
+  if (!baseOrder) {
+    throw new Error('Ordem de abastecimento não localizada.');
+  }
+
+  const oldRawDate = (baseOrder as any).fueling_date || baseOrder.supplied_at || baseOrder.created_at;
+  const oldDateBR = formatDateBRFromRaw(oldRawDate);
+  const newDateBR = formatDateBRFromRaw(newIso);
+
+  const updatedOrder: TwoWayFuelOrder = {
+    ...baseOrder,
+    created_at: newIso,
+    supplied_at: baseOrder.supplied_at ? newIso : newIso
+  };
+  (updatedOrder as any).fueling_date = cleanYMD;
+
+  if (orderIdx !== -1) {
+    orders[orderIdx] = updatedOrder;
+  } else {
+    orders.unshift(updatedOrder);
+  }
+  saveLocalOrders(orders);
+
+  try {
+    let { error } = await supabase
+      .from('fuel_supply_orders')
+      .update({
+        supplied_at: newIso,
+        created_at: newIso
+      })
+      .eq('id', updatedOrder.id);
+
+    if (error) {
+      await supabaseAnon
+        .from('fuel_supply_orders')
+        .update({
+          supplied_at: newIso,
+          created_at: newIso
+        })
+        .or(`id.eq.${updatedOrder.id},order_number.eq.${updatedOrder.order_number}`);
+    }
+  } catch (err) {
+    console.warn('[FleetFuelAudit] Aviso ao atualizar data no Supabase:', err);
+  }
+
+  if (oldDateBR !== newDateBR) {
+    await recordFleetFuelAuditLog({
+      institution_id: institutionId || updatedOrder.institution_id || 'inst_1',
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.order_number,
+      vehicle_plate: updatedOrder.vehicle?.plate,
+      vehicle_model: updatedOrder.vehicle?.model,
+      action_type: 'ALTERACAO_DATA',
+      action_label: 'Alteração Manual da Data do Abastecimento',
+      actor_name: actorName,
+      actor_role: actorRole,
+      fueling_date: newDateBR,
+      changes: [
+        {
+          field: 'supplied_at',
+          label: 'Data do Abastecimento',
+          oldValue: oldDateBR,
+          newValue: newDateBR
+        }
+      ],
+      notes: `Data do abastecimento alterada manualmente de ${oldDateBR} para ${newDateBR}.`
+    });
+  }
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+        detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
+      }));
     }
   } catch {}
 

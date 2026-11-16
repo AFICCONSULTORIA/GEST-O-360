@@ -54,7 +54,8 @@ import {
   Bell,
   BellRing,
   CheckCheck,
-  RotateCcw
+  RotateCcw,
+  History
 } from 'lucide-react';
 import {
   FleetVehicle,
@@ -119,7 +120,14 @@ import {
   linkInvoiceToFuelOrder,
   syncLocalOrdersToSupabase,
   updateFuelOrderBudgetClassification,
-  cancelFuelOrderHomologation
+  cancelFuelOrderHomologation,
+  FleetFuelAuditLog,
+  extractOrderDateYYYYMMDD,
+  formatDateBRFromRaw,
+  getFleetFuelAuditLogs,
+  getFleetFuelAuditLogsFromSupabase,
+  recordFleetFuelAuditLog,
+  updateFuelOrderDate
 } from '../../../lib/api/fleetFuelAudit';
 import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
@@ -325,7 +333,19 @@ interface FleetFuelManagerProps {
 
 export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser }) => {
   // Estado das Abas
-  const [activeTab, setActiveTab] = useState<'orders' | 'execution' | 'audit' | 'vehicles' | 'drivers' | 'stations'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'execution' | 'audit' | 'vehicles' | 'drivers' | 'stations' | 'logs'>('orders');
+
+  // Logs de Auditoria do Sistema (Edições, Datas, Dotações, Homologações)
+  const [auditLogs, setAuditLogs] = useState<FleetFuelAuditLog[]>(() =>
+    getFleetFuelAuditLogs(currentUser?.institution_id || 'inst_1')
+  );
+  const [auditLogSearchTerm, setAuditLogSearchTerm] = useState('');
+  const [auditLogTypeFilter, setAuditLogTypeFilter] = useState<string>('all');
+
+  // Edição rápida da Data do Abastecimento direto na Janela da Ordem
+  const [isEditingOrderDate, setIsEditingOrderDate] = useState(false);
+  const [orderDateEditInput, setOrderDateEditInput] = useState('');
+  const [savingOrderDate, setSavingOrderDate] = useState(false);
 
   // Dados
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
@@ -470,6 +490,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Formulário: Lançamento de Canhoto / Execução
   const [executionForm, setExecutionForm] = useState({
     custom_order_number: '',
+    supplied_at: '',
     liters_supplied: 0,
     current_odometer: 0,
     unit_price: 6.19,
@@ -823,19 +844,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     try {
       const instId = currentUser?.institution_id || 'inst_1';
 
-      const [vehList, ordList, drvList, staList, bclassList, bPrices] = await Promise.all([
+      const [vehList, ordList, drvList, staList, bclassList, bPrices, remoteLogs] = await Promise.all([
         getFleetVehicles(undefined, instId),
         getFuelSupplyOrders({ institutionId: instId }),
         getFleetDrivers({ institutionId: instId }),
         getFleetFuelStations({ institutionId: instId }),
         getFleetBudgetClassifications(instId),
-        getBiddedFuelPricesFromSupabase(instId)
+        getBiddedFuelPricesFromSupabase(instId),
+        getFleetFuelAuditLogsFromSupabase(instId)
       ]);
       setVehicles(vehList);
       setOrders(ordList);
       setDrivers(drvList);
       setStations(staList);
       setBudgetClassifications(bclassList);
+      setAuditLogs(remoteLogs);
       if (bPrices) {
         setBiddedPrices(bPrices);
       }
@@ -977,7 +1000,29 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       return;
     }
     try {
+      const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
       await deleteFuelSupplyOrder(order.id, order.order_number);
+      await recordFleetFuelAuditLog({
+        institution_id: currentUser?.institution_id || order.institution_id || 'inst_1',
+        order_id: order.id,
+        order_number: order.order_number,
+        vehicle_plate: v?.plate,
+        vehicle_model: v?.model,
+        action_type: 'EXCLUSAO_ORDEM',
+        action_label: 'Exclusão de Ordem de Abastecimento',
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        fueling_date: formatDateBRFromRaw((order as any).fueling_date || order.supplied_at || order.created_at),
+        changes: [
+          {
+            field: 'status',
+            label: 'Situação da Ordem',
+            oldValue: order.status,
+            newValue: 'Excluída'
+          }
+        ],
+        notes: `Ordem ${order.order_number} excluída pelo gestor.`
+      });
       showToast(`Ordem ${order.order_number} excluída do banco e do sistema! Próxima ordem continuará na sequência.`, 'success');
       loadData();
     } catch (err) {
@@ -1765,7 +1810,29 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!window.confirm(confirmMsg)) return;
 
     try {
+      const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
       await cancelFuelOrderHomologation(order.id, 'Cancelamento para correção de dados', currentUser?.id);
+      await recordFleetFuelAuditLog({
+        institution_id: currentUser?.institution_id || order.institution_id || 'inst_1',
+        order_id: order.id,
+        order_number: order.order_number,
+        vehicle_plate: v?.plate,
+        vehicle_model: v?.model,
+        action_type: 'REABERTURA_ORDEM',
+        action_label: `Reabertura de Ordem (${actionLabel} desfeita · Data Preservada)`,
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        fueling_date: formatDateBRFromRaw((order as any).fueling_date || order.supplied_at || order.created_at),
+        changes: [
+          {
+            field: 'status',
+            label: 'Status de Auditoria',
+            oldValue: order.status,
+            newValue: 'abastecido'
+          }
+        ],
+        notes: 'Reaberta para correção de dados mantendo a data original do abastecimento.'
+      });
       showToast(`A ${actionLabel} da ordem ${order.order_number} foi cancelada com sucesso! A ordem já pode ser editada.`, 'success');
       loadData(true);
     } catch (err: any) {
@@ -1787,12 +1854,33 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
     try {
       for (const ord of conformesToAudit) {
+        const v = ord.vehicle || vehicles.find(item => item.id === ord.vehicle_id);
         await auditFuelOrder(
           ord.id,
           'auditado',
           'Homologação em lote pelo Controle Interno — Semáforo TCE 100% Conforme.',
           currentUser?.id
         );
+        await recordFleetFuelAuditLog({
+          institution_id: currentUser?.institution_id || ord.institution_id || 'inst_1',
+          order_id: ord.id,
+          order_number: ord.order_number,
+          vehicle_plate: v?.plate,
+          vehicle_model: v?.model,
+          action_type: 'HOMOLOGACAO_TCE',
+          action_label: 'Homologação em Lote (Semáforo TCE 100% Conforme)',
+          actor_name: currentUser?.name || 'Gestor da Frota',
+          actor_role: currentUser?.role || 'Responsável pela Frota',
+          fueling_date: formatDateBRFromRaw((ord as any).fueling_date || ord.supplied_at || ord.created_at),
+          changes: [
+            {
+              field: 'status',
+              label: 'Status de Auditoria',
+              oldValue: ord.status,
+              newValue: 'auditado'
+            }
+          ]
+        });
       }
       showToast(`${conformesToAudit.length} ${conformesToAudit.length === 1 ? 'ordem homologada' : 'ordens homologadas'} com sucesso!`, 'success');
       loadData(true);
@@ -1807,6 +1895,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setShowGlossReasonBox(false);
     setShowFraudClearBox(false);
     setFraudClearObservation('');
+    setIsEditingOrderDate(false);
+    const rawOrderDate = (order as any).fueling_date || order.supplied_at || order.created_at;
+    setOrderDateEditInput(extractOrderDateYYYYMMDD(rawOrderDate));
     setAuditForm({
       status: order.status === 'glosado' ? 'glosado' : 'auditado',
       justification:
@@ -1814,6 +1905,33 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         'Documentação física, odômetro e comprovantes conferidos e homologados em conformidade com as diretrizes do Tribunal de Contas.'
     });
     setIsAuditModalOpen(true);
+  };
+
+  // Salvar edição rápida da Data do Abastecimento direto na Janela da Ordem
+  const handleQuickSaveOrderDate = async () => {
+    if (!selectedOrderForAction || !orderDateEditInput) return;
+    setSavingOrderDate(true);
+    try {
+      const updated = await updateFuelOrderDate(
+        selectedOrderForAction.id,
+        orderDateEditInput,
+        currentUser?.name || 'Gestor da Frota',
+        currentUser?.role || 'Responsável pela Frota',
+        currentUser?.institution_id || 'inst_1'
+      );
+      setSelectedOrderForAction(updated as any);
+      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
+      setIsEditingOrderDate(false);
+      showToast(
+        `Data do abastecimento da Ordem ${updated.order_number} alterada para ${formatDateBRFromRaw(orderDateEditInput)} e registrada no Log de Auditoria!`,
+        'success'
+      );
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao alterar data do abastecimento.', 'error');
+    } finally {
+      setSavingOrderDate(false);
+    }
   };
 
   // Retirada Manual do Risco de Fraude pelo Responsável pela Frota com Observação Obrigatória
@@ -1827,11 +1945,33 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
     setClearingFraudRisk(true);
     try {
+      const v = selectedOrderForAction.vehicle || vehicles.find(item => item.id === selectedOrderForAction.vehicle_id);
       const updated = await clearFuelOrderFraudRisk(
         selectedOrderForAction.id,
         fraudClearObservation,
         currentUser?.name || currentUser?.id || 'Responsável pela Frota'
       );
+      await recordFleetFuelAuditLog({
+        institution_id: currentUser?.institution_id || selectedOrderForAction.institution_id || 'inst_1',
+        order_id: selectedOrderForAction.id,
+        order_number: selectedOrderForAction.order_number,
+        vehicle_plate: v?.plate,
+        vehicle_model: v?.model,
+        action_type: 'RETIRADA_RISCO_FRAUDE',
+        action_label: 'Retirada Manual de Apontamento de Risco de Fraude (Data Preservada)',
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        fueling_date: formatDateBRFromRaw((selectedOrderForAction as any).fueling_date || selectedOrderForAction.supplied_at || selectedOrderForAction.created_at),
+        changes: [
+          {
+            field: 'anomaly_level',
+            label: 'Semáforo Antifraude',
+            oldValue: selectedOrderForAction.anomaly_reason || 'Risco de Fraude',
+            newValue: 'Conforme (Liberado com Justificativa)'
+          }
+        ],
+        notes: fraudClearObservation
+      });
       setIsAuditModalOpen(false);
       setShowFraudClearBox(false);
       setFraudClearObservation('');
@@ -1942,10 +2082,32 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Homologação Instantânea em 1 Clique dentro da Janela da Ordem
   const handleInstantHomologate = async (order: FuelSupplyOrder, customJustification?: string) => {
     try {
+      const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
       const justificationText =
         customJustification?.trim() ||
         'Documentação física, odômetro e comprovantes conferidos e homologados em conformidade com as diretrizes do Tribunal de Contas.';
       await auditFuelOrder(order.id, 'auditado', justificationText, currentUser?.id);
+      await recordFleetFuelAuditLog({
+        institution_id: currentUser?.institution_id || order.institution_id || 'inst_1',
+        order_id: order.id,
+        order_number: order.order_number,
+        vehicle_plate: v?.plate,
+        vehicle_model: v?.model,
+        action_type: 'HOMOLOGACAO_TCE',
+        action_label: 'Homologação de Ordem para Liquidação (Data Preservada)',
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        fueling_date: formatDateBRFromRaw((order as any).fueling_date || order.supplied_at || order.created_at),
+        changes: [
+          {
+            field: 'status',
+            label: 'Status de Auditoria',
+            oldValue: order.status,
+            newValue: 'auditado'
+          }
+        ],
+        notes: justificationText
+      });
       showToast(`Ordem ${order.order_number} homologada com sucesso!`, 'success');
       setIsAuditModalOpen(false);
       loadData(true);
@@ -1957,11 +2119,33 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Cancelamento de Homologação direto na Janela da Ordem (sem exigir prompt extra)
   const handleInstantCancelHomologation = async (order: FuelSupplyOrder, openEditAfter = false) => {
     try {
+      const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
       await cancelFuelOrderHomologation(
         order.id,
         'Homologação/Glosa cancelada pelo gestor na janela da ordem para revisão.',
         currentUser?.id
       );
+      await recordFleetFuelAuditLog({
+        institution_id: currentUser?.institution_id || order.institution_id || 'inst_1',
+        order_id: order.id,
+        order_number: order.order_number,
+        vehicle_plate: v?.plate,
+        vehicle_model: v?.model,
+        action_type: 'REABERTURA_ORDEM',
+        action_label: 'Reabertura de Ordem na Janela de Inspeção (Data Preservada)',
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        fueling_date: formatDateBRFromRaw((order as any).fueling_date || order.supplied_at || order.created_at),
+        changes: [
+          {
+            field: 'status',
+            label: 'Status de Auditoria',
+            oldValue: order.status,
+            newValue: 'abastecido'
+          }
+        ],
+        notes: 'Homologação desfeita para permitir revisão de dados mantendo a data original do abastecimento.'
+      });
       showToast(`Homologação cancelada! Ordem ${order.order_number} reaberta.`, 'info');
       setIsAuditModalOpen(false);
       await loadData(true);
@@ -1974,13 +2158,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
   };
 
-  // Abertura do modal de execução com pré-preenchimento
+  // Abertura do modal de execução com pré-preenchimento (preservando a data original do abastecimento)
   const handleOpenExecution = async (order: FuelSupplyOrder) => {
     if (order.status === 'auditado' || order.status === 'glosado') {
       const isGlosado = order.status === 'glosado';
       const actionName = isGlosado ? 'glosada' : 'homologada';
       const proceed = window.confirm(
-        `A Ordem nº ${order.order_number} está ${actionName}.\n\nDeseja cancelar a ${actionName} para reabrir esta ordem e editar os dados (odômetro, litragem ou fotos)?`
+        `A Ordem nº ${order.order_number} está ${actionName}.\n\nDeseja cancelar a ${actionName} para reabrir esta ordem e editar os dados (data, odômetro, litragem ou fotos)?`
       );
       if (!proceed) return;
 
@@ -1995,9 +2179,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
 
     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
+    const rawOrderDate = (order as any).fueling_date || order.supplied_at || order.created_at;
     setSelectedOrderForAction(order);
     setExecutionForm({
       custom_order_number: order.order_number || '',
+      supplied_at: extractOrderDateYYYYMMDD(rawOrderDate) || new Date().toISOString().slice(0, 10),
       liters_supplied: order.liters_supplied || order.liters_authorized,
       current_odometer: order.current_odometer && order.current_odometer > order.previous_odometer 
         ? order.current_odometer 
@@ -2254,6 +2440,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const res = await validateAndCompleteFuelOrder(selectedOrderForAction.id, {
         current_odometer: currentKm,
         liters_supplied: Number(executionForm.liters_supplied) || selectedOrderForAction.liters_authorized,
+        supplied_at: executionForm.supplied_at || undefined,
         receipt_photo_url: executionForm.receipt_attachment_url || undefined,
         odometer_photo_url: executionForm.odometer_photo_url || undefined,
         pump_photo_url: executionForm.pump_photo_url || undefined,
@@ -2263,7 +2450,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           ? formatOrderNumber7Digits(executionForm.custom_order_number.trim()) 
           : undefined,
         budget_classification_id: executionForm.budget_classification_id || undefined,
-        allowAuditedEdit: true
+        allowAuditedEdit: true,
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        is_system_edit: true
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
@@ -2323,7 +2513,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const updated = await updateFuelOrderBudgetClassification(
         viewingAttachmentOrder.id,
         viewerBudgetId,
-        currentUser?.institution_id || 'inst_1'
+        currentUser?.institution_id || 'inst_1',
+        currentUser?.name || 'Gestor da Frota',
+        currentUser?.role || 'Responsável pela Frota'
       );
       setViewingAttachmentOrder(updated as any);
       setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number || o.id === viewingAttachmentOrder.id ? (updated as any) : o)));
@@ -2354,7 +2546,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       const updated = await updateFuelOrderBudgetClassification(
         orderForBudgetEdit.id,
         budgetEditId,
-        currentUser?.institution_id || 'inst_1'
+        currentUser?.institution_id || 'inst_1',
+        currentUser?.name || 'Gestor da Frota',
+        currentUser?.role || 'Responsável pela Frota'
       );
       setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number || o.id === orderForBudgetEdit.id ? (updated as any) : o)));
       setOrderForBudgetEdit(null);
@@ -2374,12 +2568,35 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     if (!selectedOrderForAction) return;
 
     try {
+      const v = selectedOrderForAction.vehicle || vehicles.find(item => item.id === selectedOrderForAction.vehicle_id);
       await auditFuelOrder(
         selectedOrderForAction.id,
         auditForm.status,
         auditForm.justification,
         currentUser?.id
       );
+
+      await recordFleetFuelAuditLog({
+        institution_id: currentUser?.institution_id || selectedOrderForAction.institution_id || 'inst_1',
+        order_id: selectedOrderForAction.id,
+        order_number: selectedOrderForAction.order_number,
+        vehicle_plate: v?.plate,
+        vehicle_model: v?.model,
+        action_type: auditForm.status === 'glosado' ? 'GLOSA_ORDEM' : 'HOMOLOGACAO_TCE',
+        action_label: auditForm.status === 'glosado' ? 'Glosa / Bloqueio de Ordem de Abastecimento' : 'Homologação de Ordem de Abastecimento',
+        actor_name: currentUser?.name || 'Gestor da Frota',
+        actor_role: currentUser?.role || 'Responsável pela Frota',
+        fueling_date: formatDateBRFromRaw((selectedOrderForAction as any).fueling_date || selectedOrderForAction.supplied_at || selectedOrderForAction.created_at),
+        changes: [
+          {
+            field: 'status',
+            label: 'Status da Ordem',
+            oldValue: selectedOrderForAction.status,
+            newValue: auditForm.status
+          }
+        ],
+        notes: auditForm.justification
+      });
 
       const msg = auditForm.status === 'auditado' 
         ? 'Ordem homologada e aprovada para liquidação!' 
@@ -2513,7 +2730,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
         return {
           'Número da Ordem': ord.order_number,
-          'Data de Emissão': new Date(ord.created_at).toLocaleDateString('pt-BR'),
+          'Data de Emissão': formatDateBRFromRaw((ord as any).fueling_date || ord.supplied_at || ord.created_at),
           'Placa': v?.plate || '-',
           'Prefixo': v?.prefix_code || '-',
           'Modelo': v?.model || '-',
@@ -2551,6 +2768,81 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     } catch (err) {
       console.error(err);
       showToast('Erro ao exportar planilha Excel.', 'error');
+    }
+  };
+
+  // Filtragem e paginação da Trilha de Auditoria (Logs do Sistema)
+  const filteredAuditLogs = useMemo(() => {
+    const q = auditLogSearchTerm.trim().toLowerCase();
+    return auditLogs.filter(log => {
+      if (auditLogTypeFilter !== 'all' && log.action_type !== auditLogTypeFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const changesText = (log.changes || [])
+        .map(c => `${c.label} ${c.oldValue} ${c.newValue}`)
+        .join(' ')
+        .toLowerCase();
+      return (
+        (log.order_number || '').toLowerCase().includes(q) ||
+        (log.vehicle_plate || '').toLowerCase().includes(q) ||
+        (log.vehicle_model || '').toLowerCase().includes(q) ||
+        (log.actor_name || '').toLowerCase().includes(q) ||
+        (log.action_label || '').toLowerCase().includes(q) ||
+        (log.notes || '').toLowerCase().includes(q) ||
+        changesText.includes(q)
+      );
+    });
+  }, [auditLogs, auditLogSearchTerm, auditLogTypeFilter]);
+
+  const totalPagesAuditLogs = Math.ceil(filteredAuditLogs.length / ITEMS_PER_PAGE) || 1;
+  const paginatedAuditLogs = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredAuditLogs.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredAuditLogs, currentPage]);
+
+  const handleExportAuditLogsExcel = async () => {
+    try {
+      const columns = [
+        'Data e Hora do Evento',
+        'Nº da Ordem',
+        'Placa / Destino',
+        'Veículo / Equipamento',
+        'Data do Abastecimento',
+        'Tipo de Operação',
+        'Alterações Realizadas (De -> Para)',
+        'Responsável',
+        'Cargo',
+        'Observações'
+      ];
+
+      const data = filteredAuditLogs.map(log => ({
+        'Data e Hora do Evento': new Date(log.created_at).toLocaleString('pt-BR'),
+        'Nº da Ordem': log.order_number,
+        'Placa / Destino': log.vehicle_plate || '-',
+        'Veículo / Equipamento': log.vehicle_model || '-',
+        'Data do Abastecimento': log.fueling_date || '-',
+        'Tipo de Operação': log.action_label,
+        'Alterações Realizadas (De -> Para)': (log.changes || [])
+          .map(c => `${c.label}: [${c.oldValue}] -> [${c.newValue}]`)
+          .join(' | '),
+        'Responsável': log.actor_name,
+        'Cargo': log.actor_role || '-',
+        'Observações': log.notes || '-'
+      }));
+
+      await exportToExcel(columns, data, {
+        fileName: `Log_Auditoria_Frotas_${new Date().getFullYear()}`,
+        sheetName: 'Logs de Auditoria',
+        title: 'PREFEITURA MUNICIPAL • TRILHA DE AUDITORIA E HISTÓRICO DE ALTERAÇÕES (FROTAS)',
+        subtitle: `Registro Imutável de Alterações • Gerado em ${new Date().toLocaleString('pt-BR')} • Total de Eventos: ${filteredAuditLogs.length}`,
+        headerColor: 'FF0F766E'
+      });
+
+      showToast('Planilha de Logs de Auditoria exportada com sucesso!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Erro ao exportar logs de auditoria.', 'error');
     }
   };
 
@@ -2630,6 +2922,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
             >
               <Store size={15} />
               <span>Postos ({stations.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('logs')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'logs'
+                  ? 'bg-white dark:bg-neutral-700 text-amber-600 dark:text-amber-400 shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+              title="Trilha de Auditoria e Histórico de Edições de Abastecimentos"
+            >
+              <History size={15} />
+              <span>Logs ({auditLogs.length})</span>
             </button>
           </div>
 
@@ -4390,6 +4695,213 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         </div>
       )}
 
+      {/* ABA 7: TRILHA DE AUDITORIA & LOGS DE ALTERAÇÕES DO SISTEMA */}
+      {activeTab === 'logs' && (
+        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-4">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <History size={22} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                      Trilha de Auditoria & Logs de Alterações do Sistema
+                    </h3>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+                      Data Original Protegida
+                    </span>
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    Registro cronológico de todas as edições de abastecimento, alterações manuais de data, mudanças de dotação e homologações para auditorias futuras.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar ordem, placa, responsável ou campo..."
+                    value={auditLogSearchTerm}
+                    onChange={e => setAuditLogSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <select
+                  value={auditLogTypeFilter}
+                  onChange={e => setAuditLogTypeFilter(e.target.value)}
+                  className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                >
+                  <option value="all">Todas as Operações ({auditLogs.length})</option>
+                  <option value="EDICAO_ABASTECIMENTO">Edição de Dados (Data Preservada)</option>
+                  <option value="ALTERACAO_DATA">Alteração Manual de Data</option>
+                  <option value="ALTERACAO_DOTACAO">Alteração de Ficha Orçamentária</option>
+                  <option value="HOMOLOGACAO_TCE">Homologação TCE</option>
+                  <option value="REABERTURA_ORDEM">Reabertura de Ordem</option>
+                  <option value="RETIRADA_RISCO_FRAUDE">Retirada de Risco de Fraude</option>
+                  <option value="GLOSA_ORDEM">Glosa / Bloqueio</option>
+                  <option value="EXCLUSAO_ORDEM">Exclusão de Ordem</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={handleExportAuditLogsExcel}
+                  disabled={filteredAuditLogs.length === 0}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                >
+                  <FileSpreadsheet size={14} />
+                  <span>Exportar Logs (Excel)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Resumo Rápido dos Logs */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/70 dark:border-neutral-800">
+                <span className="text-[10px] font-bold uppercase text-neutral-400 block">Total de Eventos</span>
+                <span className="text-lg font-black text-neutral-900 dark:text-white">{auditLogs.length}</span>
+              </div>
+              <div className="p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-900/40">
+                <span className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400 block">Edições de Abastecimento</span>
+                <span className="text-lg font-black text-blue-700 dark:text-blue-300">
+                  {auditLogs.filter(l => l.action_type === 'EDICAO_ABASTECIMENTO').length}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40">
+                <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400 block">Alterações Manuais de Data</span>
+                <span className="text-lg font-black text-amber-700 dark:text-amber-300">
+                  {auditLogs.filter(l => l.action_type === 'ALTERACAO_DATA' || (l.changes || []).some(c => c.field === 'supplied_at')).length}
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-900/40">
+                <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400 block">Dotações & Homologações</span>
+                <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
+                  {auditLogs.filter(l => l.action_type === 'ALTERACAO_DOTACAO' || l.action_type === 'HOMOLOGACAO_TCE' || l.action_type === 'REABERTURA_ORDEM').length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
+                <tr>
+                  <th className="px-4 py-3.5">Data/Hora do Log</th>
+                  <th className="px-4 py-3.5">Ordem & Veículo</th>
+                  <th className="px-4 py-3.5">Data do Abastecimento</th>
+                  <th className="px-4 py-3.5">Operação</th>
+                  <th className="px-4 py-3.5">Alterações Registradas (De → Para)</th>
+                  <th className="px-4 py-3.5">Responsável</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
+                {filteredAuditLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-14 text-neutral-400">
+                      <History size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
+                      <p className="font-bold text-neutral-800 dark:text-white">
+                        Nenhum registro de alteração encontrado
+                      </p>
+                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
+                        Toda edição de quilometragem, litragem, ficha orçamentária ou data de abastecimento ficará gravada aqui automaticamente para auditoria.
+                      </p>
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedAuditLogs.map(log => {
+                    const badgeStyle =
+                      log.action_type === 'ALTERACAO_DATA'
+                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300'
+                        : log.action_type === 'EDICAO_ABASTECIMENTO'
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300'
+                          : log.action_type === 'ALTERACAO_DOTACAO'
+                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300'
+                            : log.action_type === 'EXCLUSAO_ORDEM' || log.action_type === 'GLOSA_ORDEM'
+                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300'
+                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300';
+
+                    return (
+                      <tr key={log.id} className="hover:bg-neutral-50/70 dark:hover:bg-neutral-800/40 transition-colors align-top">
+                        <td className="px-4 py-3.5 whitespace-nowrap font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
+                          <span className="font-bold text-neutral-900 dark:text-white block">
+                            {new Date(log.created_at).toLocaleDateString('pt-BR')}
+                          </span>
+                          <span className="text-[10px] text-neutral-400">
+                            às {new Date(log.created_at).toLocaleTimeString('pt-BR')}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="font-mono font-black text-xs text-amber-600 dark:text-amber-400 block">
+                            #{log.order_number}
+                          </span>
+                          <span className="text-[11px] text-neutral-600 dark:text-neutral-300 font-bold">
+                            {log.vehicle_plate || 'Frota'} {log.vehicle_model ? `• ${log.vehicle_model}` : ''}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 font-mono text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                            <Calendar size={12} className="text-amber-500" />
+                            {log.fueling_date || '-'}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${badgeStyle}`}>
+                            {log.action_label}
+                          </span>
+                          {log.notes && (
+                            <p className="text-[11px] text-neutral-400 mt-1 max-w-xs">
+                              {log.notes}
+                            </p>
+                          )}
+                        </td>
+
+                        <td className="px-4 py-3.5">
+                          <div className="space-y-1.5">
+                            {(log.changes || []).map((chg, idx) => (
+                              <div
+                                key={idx}
+                                className="flex flex-wrap items-center gap-1.5 text-[11px] bg-neutral-50 dark:bg-neutral-800/70 px-2.5 py-1.5 rounded-xl border border-neutral-200/70 dark:border-neutral-700/70"
+                              >
+                                <strong className="text-neutral-700 dark:text-neutral-200">{chg.label}:</strong>
+                                <span className="line-through text-rose-600 dark:text-rose-400 font-mono bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded">
+                                  {chg.oldValue}
+                                </span>
+                                <ArrowRight size={11} className="text-neutral-400 shrink-0" />
+                                <span className="text-emerald-700 dark:text-emerald-300 font-mono font-bold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
+                                  {chg.newValue}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="font-bold text-neutral-900 dark:text-white block">
+                            {log.actor_name}
+                          </span>
+                          <span className="text-[10px] text-neutral-400">
+                            {log.actor_role || 'Gestor'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {renderPagination(currentPage, totalPagesAuditLogs, filteredAuditLogs.length, setCurrentPage)}
+        </div>
+      )}
+
       {/* MODAL 1: EMISSÃO DE NOVA ORDEM DIGITAL GUIADA EM 3 PASSOS (UX FLUIDA) */}
       <AnimatePresence>
         {isNewOrderModalOpen && (
@@ -5496,27 +6008,51 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               </div>
 
               <form onSubmit={handleSaveExecution} className="mt-4 space-y-4">
-                {/* Número da Autorização / Talão Físico (Editável) */}
-                <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-                      <FileText size={14} className="text-emerald-500" />
-                      Número da Autorização / Talão em Papel
-                    </label>
-                    <span className="text-[10px] text-neutral-400">Pode alterar para seguir o talão físico</span>
+                {/* Número da Autorização / Talão Físico + Data do Abastecimento (Editáveis) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                        <FileText size={14} className="text-emerald-500" />
+                        Número da Autorização / Talão
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      value={executionForm.custom_order_number}
+                      onChange={e => setExecutionForm({ ...executionForm, custom_order_number: e.target.value.toUpperCase() })}
+                      onBlur={e => {
+                        if (e.target.value.trim()) {
+                          setExecutionForm(prev => ({ ...prev, custom_order_number: formatOrderNumber7Digits(e.target.value) }));
+                        }
+                      }}
+                      placeholder={selectedOrderForAction.order_number}
+                      className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <span className="text-[10px] text-neutral-400 block mt-0.5">Segue a sequência de 7 dígitos</span>
                   </div>
-                  <input
-                    type="text"
-                    value={executionForm.custom_order_number}
-                    onChange={e => setExecutionForm({ ...executionForm, custom_order_number: e.target.value.toUpperCase() })}
-                    onBlur={e => {
-                      if (e.target.value.trim()) {
-                        setExecutionForm(prev => ({ ...prev, custom_order_number: formatOrderNumber7Digits(e.target.value) }));
-                      }
-                    }}
-                    placeholder={selectedOrderForAction.order_number}
-                    className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
+                        <Calendar size={14} className="text-amber-500" />
+                        Data do Abastecimento *
+                      </label>
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+                        Não muda sozinha
+                      </span>
+                    </div>
+                    <input
+                      type="date"
+                      required
+                      value={executionForm.supplied_at}
+                      onChange={e => setExecutionForm({ ...executionForm, supplied_at: e.target.value })}
+                      className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <span className="text-[10px] text-neutral-400 block mt-0.5">
+                      Mantém a data original se você alterar outros campos
+                    </span>
+                  </div>
                 </div>
 
                 {/* Ficha Orçamentária / Dotação de Despesa (Editável) */}
@@ -5941,9 +6477,56 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           </span>
                         )}
                       </div>
-                      <p className="text-neutral-400 text-xs mt-0.5">
-                        Emitida em {new Date(ord.created_at).toLocaleString('pt-BR')} • {ord.station_name || 'Posto Credenciado'}
-                      </p>
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        {isEditingOrderDate ? (
+                          <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-700 px-2.5 py-1 rounded-xl">
+                            <Calendar size={13} className="text-amber-600 shrink-0" />
+                            <input
+                              type="date"
+                              value={orderDateEditInput}
+                              onChange={e => setOrderDateEditInput(e.target.value)}
+                              className="bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700 rounded-lg px-2 py-0.5 text-xs font-mono font-bold text-neutral-900 dark:text-white focus:outline-none"
+                            />
+                            <button
+                              type="button"
+                              disabled={savingOrderDate || !orderDateEditInput}
+                              onClick={handleQuickSaveOrderDate}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black cursor-pointer disabled:opacity-50"
+                            >
+                              {savingOrderDate ? 'Salvando...' : 'Salvar Data'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingOrderDate(false)}
+                              className="px-2 py-1 text-neutral-500 hover:text-neutral-800 dark:hover:text-white text-[11px] font-bold cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-xl">
+                              <Calendar size={12} className="text-amber-500" />
+                              Data do Abastecimento: <strong>{formatDateBRFromRaw((ord as any).fueling_date || ord.supplied_at || ord.created_at)}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const rawOrderDate = (ord as any).fueling_date || ord.supplied_at || ord.created_at;
+                                setOrderDateEditInput(extractOrderDateYYYYMMDD(rawOrderDate));
+                                setIsEditingOrderDate(true);
+                              }}
+                              className="px-2.5 py-1 rounded-xl text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Alterar a data deste abastecimento com registro no Log de Auditoria"
+                            >
+                              <Edit2 size={11} /> Editar Data
+                            </button>
+                            <span className="text-neutral-400 text-xs">
+                              • {ord.station_name || 'Posto Credenciado'}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <button
@@ -6212,6 +6795,57 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   </div>
                 )}
 
+                {/* Histórico de Alterações (Logs de Auditoria) desta Ordem */}
+                {(() => {
+                  const orderSpecificLogs = auditLogs.filter(
+                    l => l.order_id === ord.id || l.order_number === ord.order_number
+                  );
+                  if (orderSpecificLogs.length === 0) return null;
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-800 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 flex items-center gap-1.5">
+                          <History size={13} className="text-amber-500" />
+                          Histórico de Alterações desta Ordem ({orderSpecificLogs.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAuditModalOpen(false);
+                            setAuditLogSearchTerm(ord.order_number);
+                            setActiveTab('logs');
+                          }}
+                          className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                        >
+                          Ver na aba Logs →
+                        </button>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
+                        {orderSpecificLogs.slice(0, 5).map(log => (
+                          <div
+                            key={log.id}
+                            className="p-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-800 text-[11px] flex flex-col gap-1"
+                          >
+                            <div className="flex items-center justify-between text-[10px] text-neutral-400">
+                              <strong className="text-neutral-700 dark:text-neutral-200">{log.action_label}</strong>
+                              <span className="font-mono">
+                                {new Date(log.created_at).toLocaleString('pt-BR')} • {log.actor_name}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {(log.changes || []).map((chg, idx) => (
+                                <span key={idx} className="font-mono text-[10px] text-neutral-600 dark:text-neutral-300">
+                                  <strong>{chg.label}:</strong> {chg.oldValue} → <strong className="text-emerald-600 dark:text-emerald-400">{chg.newValue}</strong>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Barra de Ferramentas da Ordem (Todas as Ações Reunidas na Janela) */}
                 <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
@@ -6224,7 +6858,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       className="px-3 py-2 text-xs font-bold text-amber-900 dark:text-amber-200 bg-amber-100/80 hover:bg-amber-200 dark:bg-amber-950/60 rounded-xl cursor-pointer flex items-center gap-1.5"
                     >
                       <Edit2 size={13} />
-                      <span>Editar KM / Litros / Talão</span>
+                      <span>Editar Data / KM / Litros / Talão</span>
                     </button>
 
                     <button
