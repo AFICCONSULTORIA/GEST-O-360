@@ -37,13 +37,14 @@ import { SRCTimelineAuditoria } from './SRCTimelineAuditoria';
 import { generateSRCDossierHtml } from './SRCDossierImpressao';
 import { LivroAlteracoesContabeis } from './LivroAlteracoesContabeis';
 import { ContabilidadeSuplementacao } from '../../AdminFinancas/ContabilidadeSuplementacao';
-import { AdminUser } from '../../../types';
+import { AdminUser, Institution } from '../../../types';
 import { hasPermission } from '../../../lib/permissions';
 import { useMunicipalDepartments } from '../../../lib/api/departments';
 
 interface AccountingChangesControlProps {
   searchQuery?: string;
   currentUser?: AdminUser | null;
+  currentInstitution?: Institution | null;
 }
 
 const MONTH_NAMES = [
@@ -115,7 +116,8 @@ const formatFullDateExtenso = (dateStr?: string): string => {
 
 export const AccountingChangesControl: React.FC<AccountingChangesControlProps> = ({ 
   searchQuery = '',
-  currentUser
+  currentUser,
+  currentInstitution
 }) => {
   const canView = !currentUser || hasPermission(currentUser, 'accounting_changes', 'view');
   const canEdit = !currentUser || hasPermission(currentUser, 'accounting_changes', 'edit');
@@ -959,7 +961,7 @@ export const AccountingChangesControl: React.FC<AccountingChangesControlProps> =
       {accountingMode === 'livro' ? (
         <LivroAlteracoesContabeis searchQuery={searchQuery} />
       ) : accountingMode === 'suplementacao' ? (
-        <ContabilidadeSuplementacao currentUser={currentUser} />
+        <ContabilidadeSuplementacao currentUser={currentUser} currentInstitution={currentInstitution} />
       ) : (
         <>
           {/* Toast Notificação */}

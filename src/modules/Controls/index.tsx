@@ -142,7 +142,7 @@ const ControlsModule = ({
       </div>
 
       {controlsTab === 'accounting' ? (
-        <AccountingChangesControl searchQuery={searchTerm} currentUser={currentUser} />
+        <AccountingChangesControl searchQuery={searchTerm} currentUser={currentUser} currentInstitution={currentInstitution} />
       ) : controlsTab === 'verbas' ? (
         <VerbasIndenizatoriasControl currentUser={currentUser} currentInstitution={currentInstitution} searchQuery={searchTerm} />
       ) : (

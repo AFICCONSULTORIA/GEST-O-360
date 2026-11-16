@@ -669,11 +669,53 @@ export function parseFiorilliLines(lines: string[], pageCount = 1): ParsedFichas
 
 /**
  * Lê um arquivo PDF (Fiorilli / Execução Orçamentária - Fichas da Despesa) no navegador.
+ * Possui fallback automático em 3 níveis (Worker Local -> Worker em Memória na Thread Principal -> CDN)
+ * para garantir funcionamento em qualquer navegador, rede corporativa ou perfil de usuário.
  */
 export async function parseFiorilliFichasPdf(file: File): Promise<ParsedFichasDocument> {
   const arrayBuffer = await file.arrayBuffer();
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdf = await loadingTask.promise;
+
+  const loadPdfDocument = async () => {
+    // Tentativa 1: Worker local empacotado pelo Vite
+    try {
+      if (pdfWorkerUrl) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      }
+      const task1 = pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer.slice(0)),
+        useSystemFonts: true,
+      });
+      return await task1.promise;
+    } catch (err1) {
+      console.warn('[FiorilliParser] Tentativa 1 (worker local) falhou, ativando worker em memória:', err1);
+    }
+
+    // Tentativa 2: Worker carregado diretamente em memória (independe de URL externa, Service Worker ou bloqueio de rede)
+    try {
+      // @ts-ignore - import dinâmico do módulo do worker para execução in-thread
+      const workerModule = await import('pdfjs-dist/build/pdf.worker.min.mjs');
+      if (workerModule && typeof globalThis !== 'undefined') {
+        (globalThis as any).pdfjsWorker = workerModule;
+      }
+      const task2 = pdfjsLib.getDocument({
+        data: new Uint8Array(arrayBuffer.slice(0)),
+        useSystemFonts: true,
+      });
+      return await task2.promise;
+    } catch (err2) {
+      console.warn('[FiorilliParser] Tentativa 2 (worker em memória) falhou, tentando CDN:', err2);
+    }
+
+    // Tentativa 3: Fallback CDN unpkg
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version || '6.5.438'}/build/pdf.worker.min.mjs`;
+    const task3 = pdfjsLib.getDocument({
+      data: new Uint8Array(arrayBuffer.slice(0)),
+      useSystemFonts: true,
+    });
+    return await task3.promise;
+  };
+
+  const pdf = await loadPdfDocument();
 
   const allLines: string[] = [];
   for (let p = 1; p <= pdf.numPages; p++) {

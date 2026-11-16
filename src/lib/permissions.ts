@@ -50,13 +50,13 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
 
   // Auto-grant 'accounting_changes' for users who already have 'controls' (backward compatibility)
   if (
-    effectivePermissions.some(p => p === 'controls' || p.startsWith('controls:')) &&
+    effectivePermissions.some(p => p === 'controls' || p.startsWith('controls:') || p === 'financas' || p.startsWith('financas:') || p === 'admin_financas' || p.startsWith('admin_financas:') || p === 'fleet_fuel' || p.startsWith('fleet_fuel:')) &&
     !effectivePermissions.some(p => p === 'accounting_changes' || p.startsWith('accounting_changes:'))
   ) {
-    const controlsLevelGrant = effectivePermissions.find(p => p.startsWith('controls:'));
+    const controlsLevelGrant = effectivePermissions.find(p => p.startsWith('controls:') || p.startsWith('financas:') || p.startsWith('admin_financas:') || p.startsWith('fleet_fuel:'));
     if (controlsLevelGrant) {
-      effectivePermissions.push(controlsLevelGrant.replace('controls:', 'accounting_changes:'));
-    } else if (effectivePermissions.includes('controls')) {
+      effectivePermissions.push(`accounting_changes:${controlsLevelGrant.split(':')[1] || 'edit'}`);
+    } else if (effectivePermissions.some(p => p === 'controls' || p === 'financas' || p === 'admin_financas' || p === 'fleet_fuel')) {
       effectivePermissions.push('accounting_changes');
     }
   }
@@ -66,7 +66,7 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
     effectivePermissions.some(p => p === 'controls' || p.startsWith('controls:') || p === 'patrimonio') &&
     !effectivePermissions.some(p => p === 'fleet_fuel' || p.startsWith('fleet_fuel:'))
   ) {
-    const controlsLevelGrant = effectivePermissions.find(p => p.startsWith('controls:'));
+    const controlsLevelGrant = effectivePermissions.find(p => p.startsWith('controls:') || p.startsWith('financas:') || p.startsWith('admin_financas:') || p.startsWith('fleet_fuel:'));
     if (controlsLevelGrant) {
       effectivePermissions.push(controlsLevelGrant.replace('controls:', 'fleet_fuel:'));
     } else if (effectivePermissions.includes('controls') || effectivePermissions.includes('patrimonio')) {

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Landmark, ArrowRightLeft, ShieldCheck, FileSpreadsheet
+  Landmark, ArrowRightLeft, ShieldCheck, FileSpreadsheet, Layers
 } from 'lucide-react';
 
 import { Institution, AdminUser } from '../../types';
 import { RemanejamentoSaldos } from './RemanejamentoSaldos';
 import { ComparativoExtratos } from './ComparativoExtratos';
+import { ContabilidadeSuplementacao } from './ContabilidadeSuplementacao';
 
 interface FinanceModulesProps {
   currentInstitution?: Institution | null;
@@ -17,7 +18,7 @@ export const FinanceModules: React.FC<FinanceModulesProps> = ({
   currentInstitution,
   currentUser
 }) => {
-  const [activeTab, setActiveTab] = useState<'extratos' | 'remanejamento'>('extratos');
+  const [activeTab, setActiveTab] = useState<'extratos' | 'remanejamento' | 'suplementacao'>('extratos');
   const currentYear = new Date().getFullYear();
 
   return (
@@ -75,6 +76,18 @@ export const FinanceModules: React.FC<FinanceModulesProps> = ({
               <ArrowRightLeft size={16} />
               <span>Remanejamento de Saldos</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('suplementacao')}
+              className={`flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl font-black text-xs uppercase tracking-wider transition-all ${
+                activeTab === 'suplementacao'
+                  ? 'bg-gradient-to-r from-indigo-500 to-blue-600 text-white shadow-lg shadow-indigo-500/25'
+                  : 'text-slate-300 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Layers size={16} />
+              <span>Suplementação de Fichas</span>
+            </button>
           </div>
         </div>
       </div>
@@ -107,6 +120,21 @@ export const FinanceModules: React.FC<FinanceModulesProps> = ({
             >
               <RemanejamentoSaldos
                 currentInstitution={currentInstitution}
+              />
+            </motion.div>
+          )}
+
+          {activeTab === 'suplementacao' && (
+            <motion.div
+              key="suplementacao"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.2 }}
+            >
+              <ContabilidadeSuplementacao
+                currentInstitution={currentInstitution}
+                currentUser={currentUser}
               />
             </motion.div>
           )}
