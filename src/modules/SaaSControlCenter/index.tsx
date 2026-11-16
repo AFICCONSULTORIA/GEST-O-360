@@ -127,6 +127,7 @@ const ALL_SYSTEM_MODULES: ModulePermissionItem[] = [
 
   // Cidadania & Comunicação
   { id: 'institutional_site', label: 'Site Institucional Oficial (.gov.br)', category: 'citizenship' },
+  { id: 'institutional_email', label: 'E-mail Institucional & Webmail (.gov.br)', category: 'citizenship' },
   { id: 'diario_oficial', label: 'Diário Oficial Eletrônico (DOM)', category: 'citizenship' },
   { id: 'noticias', label: 'Notícias & Divulgação Institucional', category: 'citizenship' },
   { id: 'forms', label: 'Formulários & Consultas Populares', category: 'citizenship' },

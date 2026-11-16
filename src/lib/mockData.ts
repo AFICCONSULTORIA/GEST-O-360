@@ -28,6 +28,7 @@ import {
   MessageSquare,
   Scale,
   Activity,
+  Mail,
   Award,
   ClipboardList,
   Newspaper,
@@ -151,6 +152,7 @@ export const NAVBAR_CATEGORIES = [
     icon: MessageSquare,
     items: [
       { id: 'institutional_site', label: 'Site Institucional Oficial', icon: Globe },
+      { id: 'institutional_email', label: 'E-mail Institucional (.gov.br)', icon: Mail },
       { id: 'noticias', label: 'Notícias & Projetos', icon: Newspaper },
       { id: 'forms', label: 'Formulários & Consultas', icon: ClipboardList },
       { id: 'communication', label: 'Central WhatsApp', icon: MessageSquare },
@@ -199,6 +201,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'planejamento', label: 'Planejamento' },
   { id: 'camara', label: 'Câmara Municipal' },
   { id: 'institutional_site', label: 'Site Institucional Oficial (.gov.br)' },
+  { id: 'institutional_email', label: 'E-mail Institucional & Webmail (.gov.br)' },
   { id: 'noticias', label: 'Notícias & Divulgação Municipal' },
   { id: 'forms', label: 'Formulários & Consultas Populares' },
   { id: 'communication', label: 'Comunicação WhatsApp' },

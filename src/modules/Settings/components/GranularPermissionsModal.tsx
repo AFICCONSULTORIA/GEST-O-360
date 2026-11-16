@@ -117,6 +117,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     items: [
       { id: 'diario_oficial', label: 'Diário Oficial Eletrônico', desc: 'Publicação de edições oficiais, decretos, leis e editais municipais.', icon: BookOpen, badge: 'Imprensa Oficial', highlight: true },
       { id: 'institutional_site', label: 'Site Institucional Oficial', desc: 'Gestão do portal oficial do município, secretarias, links e identidade visual.', icon: Globe, badge: 'Portal Público' },
+      { id: 'institutional_email', label: 'E-mail Institucional & Webmail', desc: 'Gestão de caixas @municipio.gov.br, DNS/MX/SPF/DKIM e webmail integrado.', icon: MessageSquare, badge: 'Correio Oficial' },
       { id: 'noticias', label: 'Portal de Notícias', desc: 'Redação, edição e publicação de notícias e comunicados oficiais.', icon: Newspaper },
       { id: 'communication', label: 'Comunicação Interna & Avisos', desc: 'Murais, circulares e comunicados entre setores da prefeitura.', icon: MessageSquare },
       { id: 'forms', label: 'Formulários & Consultas', desc: 'Criação e divulgação de pesquisas e formulários para a população.', icon: ClipboardList },

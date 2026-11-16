@@ -44,6 +44,12 @@ export function getModulePermissionLevel(user: AdminUser | null | undefined, mod
   ) {
     effectivePermissions.push('institutional_site:admin');
   }
+  if (
+    effectivePermissions.some(p => p === 'institutional_site' || p.startsWith('institutional_site:') || p === 'settings' || p.startsWith('settings:')) &&
+    !effectivePermissions.some(p => p === 'institutional_email' || p.startsWith('institutional_email:'))
+  ) {
+    effectivePermissions.push('institutional_email:admin');
+  }
   if (effectivePermissions.includes('communication') && !effectivePermissions.includes('noticias')) {
     effectivePermissions.push('noticias');
   }

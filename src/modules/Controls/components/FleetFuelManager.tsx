@@ -48,6 +48,7 @@ import {
   ArrowRight,
   ArrowUpDown,
   ArrowUp,
+  BarChart3,
   ArrowDown,
   Camera,
   CloudUpload,
@@ -101,6 +102,7 @@ import { imprimirCanhotoDuasVias, formatFuelLabel } from './FuelAuthorizationVou
 import { DriverBatchImporter } from './DriverBatchImporter';
 import { BudgetClassificationsModal } from './BudgetClassificationsModal';
 import { LegacyVoucherModal } from './LegacyVoucherModal';
+import { FuelCostReportsPanel } from './FuelCostReportsPanel';
 import { MercosulPlate } from './MercosulPlate';
 import { useMunicipalDepartments, matchOfficialDepartmentName } from '../../../lib/api/departments';
 import { dispatchAgentOfficeEvent } from '../../../lib/agentOfficeTelemetry';
@@ -333,7 +335,7 @@ interface FleetFuelManagerProps {
 
 export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser }) => {
   // Estado das Abas
-  const [activeTab, setActiveTab] = useState<'orders' | 'execution' | 'audit' | 'vehicles' | 'drivers' | 'stations' | 'logs'>('orders');
+  const [activeTab, setActiveTab] = useState<'orders' | 'reports' | 'execution' | 'audit' | 'vehicles' | 'drivers' | 'stations' | 'logs'>('orders');
 
   // Logs de Auditoria do Sistema (Edições, Datas, Dotações, Homologações)
   const [auditLogs, setAuditLogs] = useState<FleetFuelAuditLog[]>(() =>
@@ -2936,6 +2938,19 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
               <History size={15} />
               <span>Logs ({auditLogs.length})</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                activeTab === 'reports'
+                  ? 'bg-white dark:bg-neutral-700 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
+              title="Comparativo de Custos Mês a Mês e Relatórios por Secretaria"
+            >
+              <BarChart3 size={15} />
+              <span>Relatórios</span>
+            </button>
           </div>
 
           {/* Campainha Minimalista: Abastecimentos no Posto (Bomba + Odômetro) */}
@@ -4693,6 +4708,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           {/* Paginação de 30 itens por página */}
           {renderPagination(currentPage, totalPagesStations, filteredStations.length, setCurrentPage)}
         </div>
+      )}
+
+      {/* ABA RELATÓRIOS: COMPARATIVO MÊS A MÊS E POR SECRETARIA */}
+      {activeTab === 'reports' && (
+        <FuelCostReportsPanel
+          orders={orders}
+          vehicles={vehicles}
+          officialDepartments={officialDepartments}
+          biddedPricesMap={biddedPrices}
+        />
       )}
 
       {/* ABA 7: TRILHA DE AUDITORIA & LOGS DE ALTERAÇÕES DO SISTEMA */}

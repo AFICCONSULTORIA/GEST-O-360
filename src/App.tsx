@@ -79,6 +79,8 @@ import { LandingPage } from './components/LandingPage';
 import { InstitutionalSite } from './components/InstitutionalSite';
 import { PublicSecretariatPortal } from './components/PublicSecretariatPortal';
 import { SiteInstitucionalModule } from './modules/SiteInstitucional';
+import { EmailInstitucionalModule } from './modules/EmailInstitucional';
+import { PublicWebmailPortal } from './modules/EmailInstitucional/PublicWebmailPortal';
 import { DiarioOficialModule } from './modules/DiarioOficial';
 import { PublicGazettePortal } from './modules/DiarioOficial/PublicGazettePortal';
 import { MunicipalityPortalHub } from './components/MunicipalityPortalHub';
@@ -735,6 +737,12 @@ export default function App() {
     cleanPath.startsWith('/diario-oficial/') ||
     portalHostPrefix === 'diario' ||
     (currentSubdomain && (currentSubdomain.toLowerCase() === 'diario' || currentSubdomain.toLowerCase() === 'diariooficial'));
+  const isWebmailPortal =
+    cleanPath === '/webmail' ||
+    cleanPath === '/email' ||
+    cleanPath.startsWith('/webmail/') ||
+    portalHostPrefix === 'webmail' ||
+    (currentSubdomain && (currentSubdomain.toLowerCase() === 'webmail' || currentSubdomain.toLowerCase() === 'mail'));
   const isCertificateValidatorPortal = 
     cleanPath === '/validar-documento' || 
     cleanPath === '/validar-certificado' || 
@@ -1146,6 +1154,34 @@ export default function App() {
     if (!isInstitutionModuleActive(resolvedPublicInstitution, 'diario_oficial')) return redirectInactivePublicPortal();
     return (
       <PublicGazettePortal
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        currentInstitution={resolvedPublicInstitution}
+      />
+    );
+  }
+
+  if (isWebmailPortal) {
+    if (!resolvedPublicInstitution) {
+      return (
+        <MunicipalityPortalHub
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          institutions={institutions}
+          onSelectMunicipality={(inst) => {
+            handleSelectInstitution(inst);
+            window.location.href = withInstitutionQuery('/webmail', inst);
+          }}
+          onNavigateToLandingPage={() => { window.location.href = '/landingpage'; }}
+          onNavigateToDemo={() => {
+            window.location.href = withInstitutionQuery('/webmail', DEMO_INSTITUTION);
+          }}
+        />
+      );
+    }
+    if (!isInstitutionModuleActive(resolvedPublicInstitution, 'institutional_email')) return redirectInactivePublicPortal();
+    return (
+      <PublicWebmailPortal
         darkMode={darkMode}
         setDarkMode={setDarkMode}
         currentInstitution={resolvedPublicInstitution}
@@ -1957,11 +1993,17 @@ export default function App() {
                 }}
               />
             )}
+            {activeView === 'institutional_email' && (
+              <EmailInstitucionalModule
+                currentUser={currentUser}
+                currentInstitution={currentInstitution}
+              />
+            )}
             {activeView === 'ouvidoria' && <OuvidoriaModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'notafiscal' && <PublicNotaFiscalAuditor />}
 
             {/* Trava Anti-Tela-Branca: Redirecionamento seguro para tela inicial */}
-            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'diario_oficial', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'institutional_site', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
+            {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'diario_oficial', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'institutional_site', 'institutional_email', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
               <div className="bg-white dark:bg-neutral-900 p-8 sm:p-12 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
                 <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto">
                   <AlertTriangle size={32} />

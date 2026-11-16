@@ -62,7 +62,7 @@ const cleanHostname = (rawHost?: string): string => {
 /**
  * Extrai prefixo de subdomínio de portal (ex: 'diario.torixoreu.gestao360sistema.com.br' -> 'diario').
  */
-export const getPortalHostPrefix = (rawHost?: string): 'diario' | 'site' | null => {
+export const getPortalHostPrefix = (rawHost?: string): 'diario' | 'site' | 'webmail' | null => {
   const hostname = cleanHostname(rawHost);
   if (!hostname || hostname === 'localhost' || hostname === '127.0.0.1') return null;
 
@@ -75,6 +75,10 @@ export const getPortalHostPrefix = (rawHost?: string): 'diario' | 'site' | null 
   if (first === 'site') {
     if (hostname.endsWith('.vercel.app') && parts.length <= 3) return null;
     return parts.length >= 3 ? 'site' : null;
+  }
+  if (first === 'webmail' || first === 'mail') {
+    if (hostname.endsWith('.vercel.app') && parts.length <= 3) return null;
+    return parts.length >= 3 ? 'webmail' : null;
   }
   return null;
 };

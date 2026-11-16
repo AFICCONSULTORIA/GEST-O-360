@@ -51,6 +51,7 @@ const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'camara', label: 'Câmara Municipal' },
   { id: 'forms', label: 'Formulários & Consultas Públicas' },
   { id: 'institutional_site', label: 'Site Institucional Oficial (.gov.br)' },
+  { id: 'institutional_email', label: 'E-mail Institucional & Webmail (.gov.br)' },
   { id: 'diario_oficial', label: 'Diário Oficial Eletrônico' },
   { id: 'ouvidoria', label: 'Ouvidoria Municipal' }
 ];
@@ -89,6 +90,7 @@ const PERMISSION_GROUPS: {
     items: [
       { id: 'forms', label: 'Formulários & Consultas', desc: 'Criação e divulgação de pesquisas para a população', icon: ClipboardList },
       { id: 'institutional_site', label: 'Site Institucional Oficial', desc: 'Configuração do portal oficial .gov.br, contato, cores e seções públicas', icon: Globe },
+      { id: 'institutional_email', label: 'E-mail Institucional & Webmail', desc: 'Caixas @municipio.gov.br por secretaria, webmail integrado e DNS oficial', icon: Globe },
       { id: 'protocol', label: 'Protocolo Digital', desc: 'Processos digitais, memorandos e trâmites', icon: FileText },
       { id: 'mayor', label: 'Visão do Prefeito', desc: 'Painel gerencial e indicadores estratégicos', icon: Activity },
       { id: 'contracts', label: 'Contratos & Licitações', desc: 'Contratos administrativos e licitações', icon: Briefcase },
