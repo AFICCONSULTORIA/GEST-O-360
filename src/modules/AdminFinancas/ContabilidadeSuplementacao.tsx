@@ -1601,7 +1601,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 const sRest = sAntes - r.valNum;
                 return `<tr>
                   <td style="text-align:center;font-weight:800">Ficha ${r.fObj!.ficha}</td>
-                  <td><strong>${r.fObj!.orgao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.acaoDescricao || r.fObj!.especificacao}</div></td>
+                  <td><strong>${r.fObj!.orgao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.acaoDescricao || r.fObj!.especificacao}${r.fObj!.fonteRecurso ? ` • Fonte: ${r.fObj!.fonteRecurso}` : ''}</div></td>
                   <td class="num">${formatBRL(sAntes)}</td>
                   <td class="num" style="color:#be123c">- ${formatBRL(r.valNum)}</td>
                   <td class="num" style="color:${sRest < -0.001 ? '#dc2626' : '#047857'}">${formatBRL(sRest)}</td>
@@ -3080,6 +3080,10 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 <p className="text-xs text-slate-500 mt-0.5">
                   {cobrirTargetFicha.orgao} • {cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}
                 </p>
+                <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                  <span>Fonte da Ficha:</span>
+                  <span className="font-mono">{cobrirTargetFicha.fonteRecurso || 'Não informada'}</span>
+                </div>
               </div>
               <button
                 type="button"
@@ -3203,8 +3207,17 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                                 className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-bold"
                               />
                               {origObj && (
-                                <div className="text-[10px] text-slate-500 mt-1 truncate">
-                                  {origObj.orgao} • Saldo: <strong>{formatBRL(saldoOrig || 0)}</strong>
+                                <div className="text-[10px] text-slate-500 mt-1 space-y-0.5">
+                                  <div className="truncate">
+                                    Fonte: <strong className="font-mono text-indigo-700 dark:text-indigo-300">{origObj.fonteRecurso || '—'}</strong> • Saldo: <strong>{formatBRL(saldoOrig || 0)}</strong>
+                                  </div>
+                                  {cobrirTargetFicha.fonteRecurso &&
+                                    origObj.fonteRecurso &&
+                                    origObj.fonteRecurso.split(' ')[0] !== cobrirTargetFicha.fonteRecurso.split(' ')[0] && (
+                                      <div className="text-[10px] font-bold text-amber-600">
+                                        Atenção: Fonte diferente da ficha destino ({cobrirTargetFicha.fonteRecurso.split(' ')[0]})
+                                      </div>
+                                    )}
                                 </div>
                               )}
                             </div>
@@ -3284,11 +3297,22 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                       <datalist id="contab-fichas-positivas-list">
                         {fichas
                           .filter((f) => f.ficha !== cobrirTargetFicha.ficha && getSaldoFicha(f) > 0)
-                          .map((f) => (
-                            <option key={f.ficha} value={f.ficha}>
-                              {`Ficha ${f.ficha} | Saldo: ${formatBRL(getSaldoFicha(f))} | ${f.orgao}`}
-                            </option>
-                          ))}
+                          .sort((a, b) => {
+                            const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
+                            const aMatch = targetPrefix && (a.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
+                            const bMatch = targetPrefix && (b.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
+                            if (aMatch !== bMatch) return aMatch - bMatch;
+                            return a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true });
+                          })
+                          .map((f) => {
+                            const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
+                            const isSameFonte = Boolean(targetPrefix && (f.fonteRecurso || '').startsWith(targetPrefix));
+                            return (
+                              <option key={f.ficha} value={f.ficha}>
+                                {`${isSameFonte ? '★ ' : ''}Fonte: ${f.fonteRecurso || '—'} | Saldo: ${formatBRL(getSaldoFicha(f))} | ${f.orgao}`}
+                              </option>
+                            );
+                          })}
                       </datalist>
                     </div>
 
