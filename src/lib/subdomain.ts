@@ -22,6 +22,8 @@ const RESERVED_PATH_PREFIXES = new Set([
   'validar-documento',
   'validar-certificado',
   'autenticidade',
+  'declaracao',
+  'declaracao-participacao',
   'validar-abastecimento',
   'validar-combustivel',
   'valida-abastecimento',

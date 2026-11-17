@@ -29,6 +29,7 @@ import {
   getActiveSitePopups,
 } from '../lib/api/institutionalSite';
 import { SitePopupCarouselModal } from './SitePopupCarouselModal';
+import { uploadOptimizedImageToStorage } from '../lib/imageUpload';
 import { showToast } from './ui/Toast';
 
 interface SitePopupManagerPanelProps {
@@ -49,40 +50,6 @@ const BADGE_PRESETS = [
 ];
 
 const DURATION_PRESETS = [5, 8, 10, 15, 20];
-
-async function compressImageToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Falha ao ler arquivo de imagem.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Arquivo selecionado não é uma imagem válida.'));
-      img.onload = () => {
-        const maxW = 1200;
-        const maxH = 1200;
-        let { width, height } = img;
-        const ratio = Math.min(maxW / width, maxH / height, 1);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(String(reader.result || ''));
-          return;
-        }
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.82));
-      };
-      img.src = String(reader.result || '');
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 const STATUS_BADGE_MAP: Record<
   ReturnType<typeof getPopupScheduleStatus>,
@@ -172,11 +139,17 @@ export const SitePopupManagerPanel: React.FC<SitePopupManagerPanelProps> = ({
   const handleUploadImage = async (id: string, file?: File | null) => {
     if (!file) return;
     try {
-      const dataUrl = await compressImageToDataUrl(file);
-      handleUpdateItem(id, { imageUrl: dataUrl });
-      showToast('Imagem adicionada e otimizada para o pop-up.', 'success');
+      const publicUrl = await uploadOptimizedImageToStorage(file, {
+        buckets: ['certidoes', 'leis'],
+        folder: 'site-popups',
+        maxDimension: 1200,
+        quality: 0.78,
+        preferWebp: true,
+      });
+      handleUpdateItem(id, { imageUrl: publicUrl });
+      showToast('Imagem otimizada e salva no Storage (URL leve no banco).', 'success');
     } catch (err: any) {
-      showToast(err?.message || 'Não foi possível carregar a imagem.', 'error');
+      showToast(err?.message || 'Não foi possível enviar a imagem.', 'error');
     }
   };
 

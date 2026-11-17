@@ -33,7 +33,6 @@ import { Institution, AdminUser } from '../../types';
 import {
   parseFiorilliFichasPdf,
   parseFichasSpreadsheet,
-  parsePtBrCurrency,
   ParsedFichaOrcamentaria
 } from './utils/fiorilliFichasParser';
 
@@ -92,13 +91,36 @@ function formatBRL(value: number): string {
 }
 
 function formatCurrencyInputPtBr(raw: string): string {
-  const digits = raw.replace(/\D/g, '');
-  if (!digits) return '';
-  const cents = parseInt(digits, 10);
-  return (cents / 100).toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  // Trata entrada como reais inteiros por padrão (ex: 5000 -> 5.000),
+  // permitindo centavos apenas se o usuário digitar vírgula (ex: 5000,50 -> 5.000,50)
+  const cleaned = raw.replace(/[^\d,]/g, '');
+  if (!cleaned) return '';
+
+  const commaIdx = cleaned.indexOf(',');
+  const intRaw = commaIdx >= 0 ? cleaned.slice(0, commaIdx) : cleaned;
+  const decRaw = commaIdx >= 0 ? cleaned.slice(commaIdx + 1).replace(/,/g, '').slice(0, 2) : null;
+
+  if (!intRaw && decRaw === null) return '';
+
+  const intNum = intRaw ? Number(intRaw) : 0;
+  const intFormatted = Number.isFinite(intNum) ? intNum.toLocaleString('pt-BR') : intRaw;
+
+  return decRaw !== null ? `${intFormatted},${decRaw}` : intFormatted;
+}
+
+function finalizeCurrencyInputPtBr(raw: string): string {
+  const formatted = formatCurrencyInputPtBr(raw);
+  if (!formatted) return '';
+  if (!formatted.includes(',')) return `${formatted},00`;
+  const [intPart, decPart = ''] = formatted.split(',');
+  return `${intPart},${decPart.padEnd(2, '0').slice(0, 2)}`;
+}
+
+function parseCurrencyInputPtBr(raw: string): number {
+  if (!raw) return 0;
+  const normalized = raw.trim().replace(/\./g, '').replace(',', '.');
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function formatLancamentoDateLabel(l: ContabilidadeLancamento): string {
@@ -898,7 +920,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     );
   }, [fichas, fichaDestinoInput]);
 
-  const valorNumericoPreview = useMemo(() => parsePtBrCurrency(valorInput), [valorInput]);
+  const valorNumericoPreview = useMemo(() => parseCurrencyInputPtBr(valorInput), [valorInput]);
 
   const saldoPreview = useMemo(() => {
     if (!selectedFichaObj || valorNumericoPreview <= 0) return null;
@@ -987,7 +1009,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       return;
     }
 
-    const valor = parsePtBrCurrency(valorInput);
+    const valor = parseCurrencyInputPtBr(valorInput);
     if (valor <= 0) {
       showToast('Informe um valor maior que zero para o lançamento.', 'warning');
       return;
@@ -1298,7 +1320,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       return;
     }
 
-    const dotAtual = parsePtBrCurrency(newFichaForm.dotacaoAtual);
+    const dotAtual = parseCurrencyInputPtBr(newFichaForm.dotacaoAtual);
     const nowIso = new Date().toISOString();
     const nova: ContabilidadeFicha = {
       id: generateUUID(),
@@ -1745,9 +1767,10 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
             <input
               ref={valorInputRef}
               type="text"
-              inputMode="numeric"
+              inputMode="decimal"
               value={valorInput}
               onChange={(e) => setValorInput(formatCurrencyInputPtBr(e.target.value))}
+              onBlur={() => setValorInput((prev) => finalizeCurrencyInputPtBr(prev))}
               placeholder="0,00"
               className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 text-sm font-black text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
@@ -2442,11 +2465,14 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                   <label className="block font-bold text-slate-600 dark:text-neutral-300 mb-1">Dotação Atual (R$)</label>
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode="decimal"
                     required
                     value={newFichaForm.dotacaoAtual}
                     onChange={(e) =>
                       setNewFichaForm({ ...newFichaForm, dotacaoAtual: formatCurrencyInputPtBr(e.target.value) })
+                    }
+                    onBlur={() =>
+                      setNewFichaForm((prev) => ({ ...prev, dotacaoAtual: finalizeCurrencyInputPtBr(prev.dotacaoAtual) }))
                     }
                     placeholder="0,00"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 font-bold"

@@ -60,6 +60,55 @@ Analise o PDF anexo e faça a transcrição completa e fiel do ato normativo em 
   "valor_total_credito": "R$ valor se for crédito adicional ou vazio",
   "texto_integral": "Transcrição integral e fiel de toda a norma com cabeçalho, epígrafe, ementa, preâmbulo, todos os artigos, todas as dotações orçamentárias (Órgão, Função, Subfunção, Programa, Projeto/Atividade, Natureza da Despesa, Fonte de Recurso) e fecho com assinatura."
 }`;
+    } else if (mode === 'salary_table_extractor') {
+      prompt = `
+Você é um especialista sênior em legislação de pessoal, planos de cargos e salários e tabelas de vencimentos municipais brasileiras.
+Analise todas as páginas do PDF anexo (Anexo de Lei Municipal com Tabelas de Vencimentos) e extraia TODAS as tabelas sem omitir nenhuma tabela, nenhum nível e nenhuma classe.
+${userInstructions ? `Instruções adicionais do usuário: ${userInstructions}` : ''}
+
+REGRAS OBRIGATÓRIAS:
+1. Retorne ESTRITAMENTE um objeto JSON válido (sem blocos markdown, sem texto antes ou depois).
+2. Converta todos os valores monetários brasileiros (ex: "1.980,00*" ou "2.079,00") para números decimais JSON (ex: 1980.00, 2079.00). Remova asteriscos (*) dos números.
+3. Preserve exatamente o número romano da tabela (ex: "I", "II", ..., "XXVII"), o nome do cargo (ex: "ALMOXARIFE", "ASSISTENTE SOCIAL") e todos os níveis (ex: "REF.", "I", "II", "III", "IV", "V", "VI").
+4. Estrutura exata do JSON:
+{
+  "lawNumber": "44/2022",
+  "annexName": "ANEXO IV",
+  "title": "Tabelas de Vencimentos - Lei Municipal nº 44/2022",
+  "tables": [
+    {
+      "tableRoman": "I",
+      "roleName": "ALMOXARIFE",
+      "classes": [
+        { "code": "A", "percent": "0%", "years": "0 a 5" },
+        { "code": "B", "percent": "5%", "years": "05 a 10" },
+        { "code": "C", "percent": "10%", "years": "10 a 15" },
+        { "code": "D", "percent": "15%", "years": "15 a 20" },
+        { "code": "E", "percent": "20%", "years": "20 a 25" },
+        { "code": "F", "percent": "25%", "years": "25 a 30" },
+        { "code": "G", "percent": "30%", "years": "30 a 35" },
+        { "code": "H", "percent": "35%", "years": "acima de 35" }
+      ],
+      "rows": [
+        {
+          "levelCode": "REF.",
+          "levelPercent": "SB*",
+          "values": {
+            "A": 1980.00,
+            "B": 2079.00,
+            "C": 2182.95,
+            "D": 2292.09,
+            "E": 2406.69,
+            "F": 2527.02,
+            "G": 2653.37,
+            "H": 2786.03
+          }
+        }
+      ]
+    }
+  ]
+}
+`;
     } else if (mode === 'table_extractor') {
       const columnsToExtract = (customColumns && Array.isArray(customColumns) && customColumns.length > 0)
         ? customColumns

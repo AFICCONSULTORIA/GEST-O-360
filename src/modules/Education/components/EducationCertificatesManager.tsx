@@ -3,8 +3,9 @@ import {
   FileBadge, Plus, Upload, Download, Search, CheckCircle2, 
   AlertTriangle, Eye, Copy, RefreshCw, Sparkles, FileText, 
   Calendar, Clock, User, ShieldCheck, ChevronRight, ChevronLeft, 
-  FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer, X
+  FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer, X, QrCode
 } from 'lucide-react';
+import { DeclarationQrManager } from './DeclarationQrManager';
 import { 
   CertificateTemplate, 
   IssuedCertificate, 
@@ -59,7 +60,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   currentInstitution,
   currentUser
 }) => {
-  const [activeTab, setActiveTab] = useState<'wizard' | 'bank'>('wizard');
+  const [activeTab, setActiveTab] = useState<'wizard' | 'declarations' | 'bank'>('wizard');
 
   // Estado do Wizard (Passos 1 a 4)
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
@@ -571,6 +572,17 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
             <span>Novo Lote de Certificados</span>
           </button>
           <button
+            onClick={() => setActiveTab('declarations')}
+            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              activeTab === 'declarations'
+                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <QrCode className="w-4 h-4 text-blue-500" />
+            <span>Declarações via QR Code</span>
+          </button>
+          <button
             onClick={() => setActiveTab('bank')}
             className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
               activeTab === 'bank'
@@ -579,7 +591,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
             }`}
           >
             <ShieldCheck className="w-4 h-4 text-emerald-500" />
-            <span>Banco de Certificados ({issuedHistory.length})</span>
+            <span>Banco de Documentos ({issuedHistory.length})</span>
           </button>
         </div>
       </div>
@@ -1397,6 +1409,31 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
       )}
 
       {/* ABA 2: BANCO DE CERTIFICADOS (HISTÓRICO & 2ª VIA) */}
+      {/* ABA 2: DECLARAÇÕES VIA QR CODE */}
+      {activeTab === 'declarations' && (
+        <DeclarationQrManager
+          currentInstitution={currentInstitution}
+          currentUser={currentUser}
+          defaultSecretariatName={secretariatName}
+          activityTypes={activityTypes}
+          onCampaignActivity={loadHistory}
+          onSendToCertificateWizard={(camp, collectedRecipients) => {
+            setRecipients(collectedRecipients);
+            setCourseTitle(camp.title);
+            setEventType(camp.event_type);
+            setWorkloadHours(camp.workload_hours);
+            setDateStart(camp.event_date_start);
+            setDateEnd(camp.event_date_end || camp.event_date_start);
+            setIssuerName(camp.issuer_name);
+            setIssuerRole(camp.issuer_role);
+            setPresetTheme(camp.preset_theme);
+            setWizardStep(4);
+            setActiveTab('wizard');
+            showToast(`${collectedRecipients.length} participantes carregados no emissor em lote!`, 'success');
+          }}
+        />
+      )}
+
       {activeTab === 'bank' && (
         <div className="space-y-6">
           {/* Barra de Filtros e Busca */}

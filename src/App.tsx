@@ -57,6 +57,7 @@ import { OuvidoriaModule } from './modules/Ouvidoria';
 import { PublicOuvidoriaPortal } from './modules/Ouvidoria/PublicPortal';
 import { PublicNotaFiscalAuditor } from './pages/PublicNotaFiscalAuditor';
 import { PublicCertificateValidator } from './pages/PublicCertificateValidator';
+import { PublicDeclarationForm } from './pages/PublicDeclarationForm';
 import { PublicFuelValidation } from './pages/PublicFuelValidation';
 
 // Lucide icons used directly in App.tsx
@@ -750,6 +751,11 @@ export default function App() {
     cleanPath === '/autenticidade' ||
     cleanPath.startsWith('/validar-documento/') ||
     cleanPath.startsWith('/validar-certificado/');
+  const isDeclarationPortal =
+    cleanPath === '/declaracao' ||
+    cleanPath === '/declaracao-participacao' ||
+    cleanPath.startsWith('/declaracao/') ||
+    cleanPath.startsWith('/declaracao-participacao/');
   const isFuelValidationPortal = 
     cleanPath === '/validar-abastecimento' || 
     cleanPath === '/validar-combustivel' || 
@@ -1211,6 +1217,16 @@ export default function App() {
         darkMode={darkMode} 
         setDarkMode={setDarkMode} 
         currentInstitution={currentInstitution} 
+      />
+    );
+  }
+
+  if (isDeclarationPortal) {
+    return (
+      <PublicDeclarationForm
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        currentInstitution={currentInstitution}
       />
     );
   }
@@ -1965,7 +1981,7 @@ export default function App() {
             {activeView === 'diario_oficial' && <DiarioOficialModule currentUser={currentUser} currentInstitution={currentInstitution} />}
             {activeView === 'obras' && <PlaceholderModule title="Secretaria de Viação e Obras" />}
             {activeView === 'admin_financas' && <FinanceModules currentInstitution={currentInstitution} currentUser={currentUser} />}
-            {activeView === 'administracao' && <AdministracaoModule />}
+            {activeView === 'administracao' && <AdministracaoModule currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'financas' && <FinanceModules currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'saude' && <SaudeHub currentInstitution={currentInstitution} currentUser={currentUser} />}
             {activeView === 'consultorio_medico' && <SaudeHub currentInstitution={currentInstitution} currentUser={currentUser} />}

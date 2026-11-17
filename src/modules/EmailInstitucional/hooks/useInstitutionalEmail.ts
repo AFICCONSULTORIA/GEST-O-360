@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { AdminUser, Institution } from '../../../types';
+import { supabase } from '../../../lib/supabase';
 import {
   useInstitutionalSiteConfig,
   resolveSiteAccentHex,
@@ -84,6 +85,32 @@ export function useInstitutionalEmail(
   useEffect(() => {
     reload();
   }, [reload]);
+
+  // Recebimento automático em tempo real (e-mails internos e externos via webhook inbound)
+  useEffect(() => {
+    if (!currentInstitution?.id) return;
+    const channel = supabase
+      .channel(`inst-email-inbox-${currentInstitution.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'institutional_email_messages',
+          filter: `institution_id=eq.${currentInstitution.id}`,
+        },
+        (payload) => {
+          const newMsg = payload.new as InstitutionalEmailMessage | undefined;
+          if (!newMsg || !newMsg.id) return;
+          setMessages((prev) => (prev.some((m) => m.id === newMsg.id) ? prev : [newMsg, ...prev]));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentInstitution?.id]);
 
   const primaryDomain = useMemo(
     () => domains.find((d) => d.is_primary) || domains[0] || null,
@@ -227,17 +254,22 @@ export function useInstitutionalEmail(
 
       if (payload.isDraft) {
         showToast('Rascunho salvo.', 'info');
-      } else if (result.deliveredInternallyCount > 0 && result.providerUsed === 'simulated') {
+      } else if (result.sentMessage.delivery_status === 'sent') {
+        showToast('E-mail oficial enviado com sucesso!', 'success');
+      } else if (result.sentMessage.delivery_status === 'failed') {
+        showToast(
+          `Falha no disparo externo: ${result.deliveryError || 'Verifique a Edge Function e RESEND_API_KEY.'}`,
+          'error'
+        );
+      } else if (result.deliveredInternallyCount > 0) {
         showToast(
           `E-mail entregue internamente para ${result.deliveredInternallyCount} caixa(s) da prefeitura.`,
           'success'
         );
-      } else if (result.sentMessage.delivery_status === 'sent') {
-        showToast('E-mail oficial enviado pelo provedor configurado.', 'success');
       } else {
         showToast(
-          'E-mail registrado na caixa de Enviados (modo MVP local; conecte Resend/SMTP para disparo externo).',
-          'success'
+          'E-mail salvo apenas localmente (provedor em modo Simulado). Selecione Resend API em Domínio & DNS para enviar para fora.',
+          'warning'
         );
       }
       return result;

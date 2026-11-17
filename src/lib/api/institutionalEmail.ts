@@ -410,6 +410,7 @@ export async function sendInstitutionalEmail(params: {
   sentMessage: InstitutionalEmailMessage;
   deliveredInternallyCount: number;
   providerUsed: EmailProviderType;
+  deliveryError?: string;
 }> {
   const { institutionId, senderAccount, domain, allAccounts, payload } = params;
   const now = new Date().toISOString();
@@ -420,6 +421,7 @@ export async function sendInstitutionalEmail(params: {
     ? 'queued'
     : 'simulated';
   let externalId: string | undefined;
+  let deliveryError: string | undefined;
 
   if (!payload.isDraft && (providerType === 'supabase_edge' || providerType === 'resend')) {
     try {
@@ -436,12 +438,17 @@ export async function sendInstitutionalEmail(params: {
           html: payload.bodyHtml,
         },
       });
-      if (!error) {
+      const respObj = data as { ok?: boolean; id?: string; error?: string } | null;
+      if (!error && respObj?.ok !== false) {
         deliveryStatus = 'sent';
-        externalId = (data as { id?: string } | null)?.id;
+        externalId = respObj?.id;
+      } else {
+        deliveryStatus = 'failed';
+        deliveryError = respObj?.error || error?.message || 'Falha ao chamar Edge Function de envio.';
       }
-    } catch {
-      // Keeps 'simulated' fallback if edge function is not yet deployed
+    } catch (err: unknown) {
+      deliveryStatus = 'failed';
+      deliveryError = err instanceof Error ? err.message : 'Edge Function não acessível.';
     }
   } else if (!payload.isDraft && providerType === 'smtp_imap' && providerConfig.webhook_url) {
     try {
@@ -461,9 +468,13 @@ export async function sendInstitutionalEmail(params: {
       });
       if (resp.ok) {
         deliveryStatus = 'sent';
+      } else {
+        deliveryStatus = 'failed';
+        deliveryError = `Webhook SMTP retornou HTTP ${resp.status}`;
       }
-    } catch {
-      // Keeps 'simulated' fallback
+    } catch (err: unknown) {
+      deliveryStatus = 'failed';
+      deliveryError = err instanceof Error ? err.message : 'Erro ao conectar ao webhook SMTP.';
     }
   }
 
@@ -525,6 +536,7 @@ export async function sendInstitutionalEmail(params: {
     sentMessage,
     deliveredInternallyCount: internalMessages.length,
     providerUsed: providerType,
+    deliveryError,
   };
 }
 

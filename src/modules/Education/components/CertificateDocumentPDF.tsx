@@ -190,6 +190,10 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
   };
 
   const selectedTheme = themeStyles[template.preset_theme] || themeStyles.classico_azul;
+  const isDeclaration =
+    template.document_kind === 'declaracao' ||
+    certificate.document_kind === 'declaracao' ||
+    (certificate.validation_hash || '').toUpperCase().startsWith('DECL-');
 
   return (
     <div
@@ -314,7 +318,9 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
                     overflow: 'visible'
                   }}
                 >
-                  Registro e Expedição de Certificados Oficiais
+                  {isDeclaration
+                    ? 'Registro e Expedição de Declarações Oficiais'
+                    : 'Registro e Expedição de Certificados Oficiais'}
                 </p>
               </div>
             </div>
@@ -341,20 +347,28 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
             )}
           </div>
 
-          {/* Centro: Título CERTIFICADO e Texto Personalizado */}
+          {/* Centro: Título CERTIFICADO / DECLARAÇÃO e Texto Personalizado */}
           <div className="my-auto text-center px-8">
             <div className="mb-4">
               <h1 
                 style={{ color: selectedTheme.titleColor }}
                 className="text-4xl font-serif font-black tracking-[0.25em] uppercase"
               >
-                C E R T I F I C A D O
+                {isDeclaration ? 'D E C L A R A Ç Ã O' : 'C E R T I F I C A D O'}
               </h1>
+              {isDeclaration && (
+                <p
+                  className="text-xs font-bold uppercase tracking-[0.35em] mt-1"
+                  style={{ color: '#64748b' }}
+                >
+                  DE PARTICIPAÇÃO
+                </p>
+              )}
               <div className="w-24 h-1 mx-auto mt-2 rounded-full" style={{ backgroundColor: '#d97706' }} />
             </div>
 
             <p className="text-base leading-relaxed font-serif max-w-4xl mx-auto" style={{ color: '#4b5563' }}>
-              Certificamos que
+              {isDeclaration ? 'Declaramos, para os devidos fins, que' : 'Certificamos que'}
             </p>
 
             <h2 
@@ -370,11 +384,22 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
             </h2>
 
             <p className="text-sm font-mono mb-4" style={{ color: '#6b7280' }}>
-              Documento: <strong style={{ color: '#1f2937' }}>{certificate.recipient_document}</strong>
+              {isDeclaration ? 'CPF: ' : 'Documento: '}
+              <strong style={{ color: '#1f2937' }}>{certificate.recipient_document}</strong>
             </p>
 
             <p className="text-base leading-relaxed max-w-4xl mx-auto font-normal" style={{ color: '#374151' }}>
-              concluiu com aproveitamento a atividade formativa na modalidade <strong>{getActivityTypeLabel(template.event_type).toUpperCase()}</strong>:
+              {isDeclaration ? (
+                <>
+                  participou da atividade na modalidade{' '}
+                  <strong>{getActivityTypeLabel(template.event_type).toUpperCase()}</strong>:
+                </>
+              ) : (
+                <>
+                  concluiu com aproveitamento a atividade formativa na modalidade{' '}
+                  <strong>{getActivityTypeLabel(template.event_type).toUpperCase()}</strong>:
+                </>
+              )}
             </p>
 
             <p className="text-xl font-bold mt-2 mb-3" style={{ color: '#0f172a' }}>
@@ -383,7 +408,8 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
 
             <p className="text-sm leading-relaxed max-w-3xl mx-auto" style={{ color: '#4b5563' }}>
               {roleText}, {dateRangeText}, totalizando uma carga horária de{' '}
-              <strong style={{ color: '#0f172a' }}>{template.workload_hours} horas</strong> de capacitação e desenvolvimento.
+              <strong style={{ color: '#0f172a' }}>{template.workload_hours} horas</strong>
+              {isDeclaration ? '.' : ' de capacitação e desenvolvimento.'}
             </p>
           </div>
 

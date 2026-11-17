@@ -8,6 +8,7 @@
 */
 
 import { supabase, supabaseAnon } from '../supabase';
+import { compressImageFile, uploadOptimizedImageToStorage } from '../imageUpload';
 import * as XLSX from 'xlsx';
 import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, getNextOrderNumber7Digits, formatOrderNumber7Digits, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel';
 
@@ -1677,127 +1678,41 @@ export async function auditFuelAuthorization(
  */
 export async function compressFuelPhoto(file: File): Promise<File> {
   if (typeof window === 'undefined' || file.type === 'application/pdf') return file;
-  const MAX_DIM = 1280;
-
-  const drawSourceToJpeg = (source: CanvasImageSource, origW: number, origH: number): Promise<File> => {
-    let width = origW;
-    let height = origH;
-    if (width > MAX_DIM || height > MAX_DIM) {
-      if (width > height) {
-        height = Math.round(height * (MAX_DIM / width));
-        width = MAX_DIM;
-      } else {
-        width = Math.round(width * (MAX_DIM / height));
-        height = MAX_DIM;
-      }
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(source, 0, 0, width, height);
-    }
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const cleanBase = (file.name || 'foto_abastecimento').replace(/\.[^/.]+$/, '');
-          resolve(new File([blob], `${cleanBase}.jpg`, { type: 'image/jpeg' }));
-        } else {
-          resolve(file);
-        }
-      }, 'image/jpeg', 0.80);
-    });
-  };
-
-  try {
-    if (typeof createImageBitmap === 'function') {
-      const bitmap = await createImageBitmap(file);
-      const out = await drawSourceToJpeg(bitmap, bitmap.width, bitmap.height);
-      try { bitmap.close(); } catch {}
-      return out;
-    }
-  } catch {
-    // Fallback para Image + ObjectURL (Safari iOS / WebViews Android)
-  }
-
-  try {
-    return await new Promise<File>((resolve) => {
-      const objUrl = URL.createObjectURL(file);
-      const img = new Image();
-      img.onload = async () => {
-        URL.revokeObjectURL(objUrl);
-        try {
-          const out = await drawSourceToJpeg(img, img.naturalWidth || img.width, img.naturalHeight || img.height);
-          resolve(out);
-        } catch {
-          resolve(file);
-        }
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(objUrl);
-        resolve(file);
-      };
-      img.src = objUrl;
-    });
-  } catch {
-    return file;
-  }
+  return compressImageFile(file, {
+    maxDimension: 960,
+    quality: 0.68,
+    preferWebp: true,
+  });
 }
 
 /**
  * Upload de comprovante físico (canhoto assinado, foto da bomba ou foto do odômetro)
- * Suporta fallback resiliente entre cliente autenticado, cliente anon, bucket secundário e Base64 compactado.
+ * Comprime em WebP/JPEG (~40-70KB) e envia ao Supabase Storage para não pesar o banco Postgres.
  */
 export async function uploadFuelDocumentPhoto(file: File, folder: 'receipts' | 'odometers' | 'pumps' | 'invoices'): Promise<string> {
-  const processedFile = await compressFuelPhoto(file);
-  const fileExt = processedFile.type === 'application/pdf' ? 'pdf' : 'jpg';
-  const contentType = processedFile.type || 'image/jpeg';
-  const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-
-  // 1. Tentar upload via Supabase Storage (bucket principal e fallback)
-  for (const targetBucket of [BUCKET_NAME, 'certidoes']) {
-    try {
-      let uploadRes = await supabase.storage
-        .from(targetBucket)
-        .upload(fileName, processedFile, {
-          contentType,
-          cacheControl: '3600',
-          upsert: true
-        });
-
-      if (uploadRes.error) {
-        uploadRes = await supabaseAnon.storage
-          .from(targetBucket)
-          .upload(fileName, processedFile, {
-            contentType,
-            cacheControl: '3600',
-            upsert: true
-          });
-      }
-
-      if (!uploadRes.error) {
-        const { data: publicUrlData } = supabaseAnon.storage
-          .from(targetBucket)
-          .getPublicUrl(fileName);
-
-        if (publicUrlData?.publicUrl) {
-          return publicUrlData.publicUrl;
-        }
-      }
-    } catch (err) {
-      console.warn(`[FleetFuelAudit] Exceção no upload de foto no bucket ${targetBucket}:`, err);
-    }
+  try {
+    return await uploadOptimizedImageToStorage(file, {
+      buckets: [BUCKET_NAME, 'certidoes', 'creche_documents'],
+      folder,
+      maxDimension: 960,
+      quality: 0.68,
+      preferWebp: true,
+    });
+  } catch (err) {
+    console.warn('[FleetFuelAudit] Storage indisponível, aplicando fallback ultra-compacto:', err);
   }
 
-  // 2. Fallback seguro em Base64 compactado caso o Storage esteja inacessível
+  // Fallback de emergência ultra-compactado (640px, qualidade 0.45) caso Storage esteja offline
+  const tinyFile = await compressImageFile(file, {
+    maxDimension: 640,
+    quality: 0.45,
+    preferWebp: true,
+  });
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = error => reject(error);
-    reader.readAsDataURL(processedFile);
+    reader.readAsDataURL(tinyFile);
   });
 }
 

@@ -3,9 +3,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Briefcase, Users, Car, Box, UserCheck, Calendar, FileText, 
   CheckCircle2, XCircle, Clock, AlertTriangle, Plus, Search, 
-  ChevronRight, Fuel, ShieldAlert, BadgeInfo, Pencil, Trash2 
+  ChevronRight, Fuel, ShieldAlert, BadgeInfo, Pencil, Trash2, FileSpreadsheet 
 } from 'lucide-react';
 import { showToast } from '../../components/ui/Toast';
+import { Institution, AdminUser } from '../../types';
+import { SalaryTablesManager } from './components/SalaryTablesManager';
 
 // --- TYPES ---
 export interface EmployeeRequest {
@@ -100,8 +102,16 @@ const MOCK_SUPPLIES: SupplyItem[] = [
   { id: 's_5', name: 'Álcool Gel 70%', category: 'Higiene', quantity: 4, minQuantity: 10, unit: 'Frascos' },
 ];
 
-export const AdministracaoModule = () => {
-  const [activeTab, setActiveTab] = useState<'rh' | 'frota' | 'almoxarifado'>('rh');
+interface AdministracaoModuleProps {
+  currentInstitution?: Institution | null;
+  currentUser?: AdminUser | null;
+}
+
+export const AdministracaoModule: React.FC<AdministracaoModuleProps> = ({
+  currentInstitution,
+  currentUser
+}) => {
+  const [activeTab, setActiveTab] = useState<'rh' | 'vencimentos' | 'frota' | 'almoxarifado'>('rh');
   const [employees, setEmployees] = useState<Employee[]>(MOCK_EMPLOYEES);
   const [isAddEmployeeOpen, setIsAddEmployeeOpen] = useState(false);
   const [newEmployee, setNewEmployee] = useState<Partial<Employee>>({ status: 'Ativo' });
@@ -391,6 +401,17 @@ export const AdministracaoModule = () => {
             aria-label="Aba de Recursos Humanos"
           >
             <UserCheck size={18} /> Recursos Humanos & Servidor
+          </button>
+          <button
+            onClick={() => setActiveTab('vencimentos')}
+            className={`flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all ${
+              activeTab === 'vencimentos'
+                ? 'bg-white dark:bg-[#171717] text-[#003B6F] dark:text-white shadow-sm border border-neutral-100 dark:border-neutral-800'
+                : 'text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+            }`}
+            aria-label="Aba de Tabelas de Vencimentos"
+          >
+            <FileSpreadsheet size={18} /> Tabelas de Vencimentos
           </button>
           <button
             onClick={() => setActiveTab('frota')}
@@ -778,6 +799,21 @@ export const AdministracaoModule = () => {
                     </tbody>
                   </table>
                 </div>
+              </motion.div>
+            )}
+
+            {/* ABA TABELAS DE VENCIMENTOS */}
+            {activeTab === 'vencimentos' && (
+              <motion.div
+                key="vencimentos"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <SalaryTablesManager
+                  institutionId={currentInstitution?.id || 'default'}
+                  userName={currentUser?.name}
+                />
               </motion.div>
             )}
 
