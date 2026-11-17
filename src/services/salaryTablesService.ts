@@ -328,3 +328,76 @@ export async function deleteSalaryLaw(institutionId: string, lawId: string): Pro
   delete cache.tablesByLaw[lawId];
   writeLocalCache(institutionId, cache);
 }
+
+export async function updateSalaryTableWithEntries(
+  institutionId: string,
+  table: SalaryTableRecord
+): Promise<{ savedToSupabase: boolean }> {
+  const refRow = table.entries.find(e => e.level_code.toUpperCase().startsWith('REF')) || table.entries[0];
+  const nextBaseSalary = refRow?.class_a ?? table.base_salary ?? null;
+  const updatedTable: SalaryTableRecord = { ...table, base_salary: nextBaseSalary };
+
+  let savedToSupabase = false;
+  try {
+    const { error: tableErr } = await supabase
+      .from('municipal_salary_tables')
+      .update({
+        table_roman: updatedTable.table_roman,
+        role_name: updatedTable.role_name,
+        base_salary: nextBaseSalary,
+        classes_metadata: updatedTable.classes_metadata,
+        updated_at: new Date().toISOString()
+      })
+      .eq('institution_id', institutionId)
+      .eq('id', updatedTable.id);
+
+    if (tableErr) throw tableErr;
+
+    // Substitui as linhas da tabela para manter ordem, adições e remoções sincronizadas
+    const { error: delErr } = await supabase
+      .from('municipal_salary_entries')
+      .delete()
+      .eq('institution_id', institutionId)
+      .eq('salary_table_id', updatedTable.id);
+
+    if (delErr) throw delErr;
+
+    if (updatedTable.entries.length > 0) {
+      const payload = updatedTable.entries.map((e, idx) => ({
+        institution_id: institutionId,
+        salary_table_id: updatedTable.id,
+        level_code: e.level_code,
+        level_order: idx,
+        level_percent: e.level_percent,
+        class_a: e.class_a,
+        class_b: e.class_b,
+        class_c: e.class_c,
+        class_d: e.class_d,
+        class_e: e.class_e,
+        class_f: e.class_f,
+        class_g: e.class_g,
+        class_h: e.class_h,
+        extra_classes: e.extra_classes || {}
+      }));
+
+      const { error: insErr } = await supabase
+        .from('municipal_salary_entries')
+        .insert(payload);
+
+      if (insErr) throw insErr;
+    }
+
+    savedToSupabase = true;
+  } catch (err) {
+    console.warn('Atualizando tabela de vencimentos no cache local:', err);
+  }
+
+  const cache = readLocalCache(institutionId);
+  const currentList = cache.tablesByLaw[updatedTable.law_id] || [];
+  cache.tablesByLaw[updatedTable.law_id] = currentList.map(t =>
+    t.id === updatedTable.id ? updatedTable : t
+  );
+  writeLocalCache(institutionId, cache);
+
+  return { savedToSupabase };
+}
