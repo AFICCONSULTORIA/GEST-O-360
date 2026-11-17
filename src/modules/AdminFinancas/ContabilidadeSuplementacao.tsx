@@ -1506,12 +1506,188 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     showToast(`Todas as fichas e lançamentos do Exercício ${exercicio} foram zerados.`, 'info');
   };
 
-  // Abre o assistente de cobertura de ficha negativa selecionando de quais fichas retirar saldo
+  // Abre o assistente de suplementação de ficha negativa selecionando de quais fichas retirar saldo
   const openCobrirModal = (target: ContabilidadeFicha) => {
+    const ultimoDecretoDaFicha = lancamentos.find((l) => l.ficha === target.ficha && l.documento)?.documento;
+    const ultimoDecretoGeral = lancamentos.find((l) => l.documento)?.documento;
     setCobrirTargetFicha(target);
-    setCobrirDecreto(documentoInput || '');
+    setCobrirDecreto(documentoInput.trim() || ultimoDecretoDaFicha || ultimoDecretoGeral || '');
     setCobrirData(dataLancamentoInput || new Date().toISOString().slice(0, 10));
     setCobrirSources([{ id: crypto.randomUUID(), fichaOrigem: '', valor: '' }]);
+  };
+
+  // Imprime de uma só vez o mapa geral de todas as suplementações (Origem -> Destino) e fichas negativas
+  const handlePrintMapaGeralCobertura = () => {
+    const fichaByNum = new Map<string, ContabilidadeFicha>(fichas.map((f) => [f.ficha, f]));
+    const allTransfers = lancamentos.filter((l) => l.tipo === 'suplementacao' && l.fichaContrapartida);
+    const groupedMap = new Map<
+      string,
+      {
+        fichaDestino: string;
+        destinoObj?: ContabilidadeFicha;
+        totalSuplementado: number;
+        itens: Array<{
+          fichaOrigem: string;
+          origemObj?: ContabilidadeFicha;
+          valor: number;
+          decreto: string;
+          data: string;
+        }>;
+      }
+    >();
+
+    for (const l of allTransfers) {
+      const origId = l.fichaContrapartida!;
+      const group = groupedMap.get(l.ficha) || {
+        fichaDestino: l.ficha,
+        destinoObj: fichaByNum.get(l.ficha),
+        totalSuplementado: 0,
+        itens: [],
+      };
+      group.totalSuplementado = Number((group.totalSuplementado + l.valor).toFixed(2));
+      group.itens.push({
+        fichaOrigem: origId,
+        origemObj: fichaByNum.get(origId),
+        valor: l.valor,
+        decreto: l.documento || '—',
+        data: formatLancamentoDateLabel(l),
+      });
+      groupedMap.set(l.ficha, group);
+    }
+
+    const groups = Array.from(groupedMap.values()).sort((a, b) =>
+      a.fichaDestino.localeCompare(b.fichaDestino, 'pt-BR', { numeric: true })
+    );
+
+    if (groups.length === 0 && totals.negativas.length === 0) {
+      showToast('Não há suplementações vinculadas nem fichas negativas para imprimir.', 'warning');
+      return;
+    }
+
+    const win = window.open('', '_blank', 'width=1100,height=780');
+    if (!win) {
+      showToast('Permita pop-ups para imprimir o mapa geral.', 'warning');
+      return;
+    }
+
+    const totalGeralRemanejado = groups.reduce((acc, g) => acc + g.totalSuplementado, 0);
+
+    const groupsHtml = groups
+      .map((g) => {
+        const rows = g.itens
+          .map(
+            (it) => `<tr>
+              <td style="font-weight:800;text-align:center;color:#be123c">Ficha ${it.fichaOrigem}</td>
+              <td><strong>${it.origemObj?.acaoDescricao || it.origemObj?.especificacao || '—'}</strong><div style="font-size:10px;color:#64748b">${it.origemObj?.orgao || ''}${it.origemObj?.fonteRecurso ? ` • Fonte: ${it.origemObj.fonteRecurso}` : ''}</div></td>
+              <td style="text-align:center">${it.decreto}</td>
+              <td style="text-align:center">${it.data}</td>
+              <td class="num" style="color:#be123c">- ${formatBRL(it.valor)}</td>
+            </tr>`
+          )
+          .join('');
+        return `
+          <div class="group-box">
+            <div class="group-head">
+              <div>
+                <strong>Ficha Suplementada: ${g.fichaDestino}</strong> — ${g.destinoObj?.acaoDescricao || g.destinoObj?.especificacao || '—'}
+                <div style="font-size:10px;color:#475569">${g.destinoObj?.orgao || ''}${g.destinoObj?.fonteRecurso ? ` • Fonte: ${g.destinoObj.fonteRecurso}` : ''}</div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:9px;text-transform:uppercase;color:#64748b">Total Suplementado</div>
+                <div style="font-size:13px;font-weight:800;color:#047857">+ ${formatBRL(g.totalSuplementado)}</div>
+              </div>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:90px;text-align:center">Ficha Origem</th>
+                  <th>Órgão / Ação / Fonte da Ficha de Origem (Retirada)</th>
+                  <th style="width:100px;text-align:center">Decreto</th>
+                  <th style="width:120px;text-align:center">Data / Período</th>
+                  <th style="width:130px;text-align:right">Valor Retirado</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `;
+      })
+      .join('');
+
+    const negativasHtml = totals.negativas.length > 0
+      ? `
+        <h2 style="font-size:13px;text-transform:uppercase;margin:16px 0 6px;color:#b91c1c;border-left:4px solid #dc2626;padding-left:8px;">
+          Fichas Ainda Negativas (Pendentes de Suplementação)
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:80px;text-align:center">Ficha</th>
+              <th>Órgão / Ação</th>
+              <th style="width:180px">Fonte de Recurso</th>
+              <th style="width:130px;text-align:right">Saldo Atual</th>
+              <th style="width:130px;text-align:right">Valor p/ Cobrir</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${totals.negativas
+              .map((nf) => {
+                const s = getSaldoFicha(nf);
+                return `<tr>
+                  <td style="text-align:center;font-weight:800;color:#dc2626">${nf.ficha}</td>
+                  <td><strong>${nf.orgao}</strong><div style="font-size:10px;color:#64748b">${nf.acaoDescricao || nf.especificacao}</div></td>
+                  <td style="font-family:monospace;font-size:10px">${nf.fonteRecurso || '—'}</td>
+                  <td class="num" style="color:#dc2626">${formatBRL(s)}</td>
+                  <td class="num" style="color:#0f172a">${formatBRL(Math.abs(s))}</td>
+                </tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      `
+      : '';
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Mapa Geral de Suplementação — Exercício ${exercicio}</title>
+        <style>
+          @page { size: A4 landscape; margin: 12mm; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; font-size: 11px; margin: 0; padding: 14px; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
+          h1 { font-size: 16px; margin: 2px 0; }
+          .group-box { border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; margin-bottom: 12px; page-break-inside: avoid; }
+          .group-head { background: #f8fafc; padding: 8px 12px; border-bottom: 1px solid #cbd5e1; display: flex; justify-content: space-between; align-items: center; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #e2e8f0; padding: 5px 8px; text-align: left; }
+          th { background: #1e293b; color: #fff; font-size: 9.5px; text-transform: uppercase; }
+          .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 32px; padding: 0 24px; page-break-inside: avoid; }
+          .sig { border-top: 1px solid #334155; padding-top: 6px; text-align: center; font-size: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase">${currentInstitution?.name || 'CONTABILIDADE MUNICIPAL'}</div>
+            <h1>Mapa Geral de Suplementação (Origem das Retiradas → Fichas Suplementadas)</h1>
+            <div>Exercício: <strong>${exercicio}</strong> &bull; Fichas Suplementadas: <strong>${groups.length}</strong> &bull; Total Remanejado: <strong>${formatBRL(totalGeralRemanejado)}</strong></div>
+          </div>
+          <div style="text-align:right;font-size:10px;color:#64748b">Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
+        </div>
+        ${groupsHtml}
+        ${negativasHtml}
+        <div class="signatures">
+          <div class="sig">Contabilidade / Responsável Técnico</div>
+          <div class="sig">Conferência / Controle Interno</div>
+        </div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `);
+    win.document.close();
   };
 
   const handlePrintCoberturaDraft = () => {
@@ -1574,7 +1750,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         <div class="box">
           <div style="font-size:10px;text-transform:uppercase;color:#475569;font-weight:700">Ficha Suplementada (Destino)</div>
           <div style="font-size:14px;font-weight:800;margin-top:2px">Ficha ${cobrirTargetFicha.ficha} — ${cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}</div>
-          <div style="color:#475569">${cobrirTargetFicha.orgao} ${cobrirTargetFicha.fonteRecurso ? `&bull; Fonte: ${cobrirTargetFicha.fonteRecurso}` : ''}</div>
+          <div style="color:#475569">${cobrirTargetFicha.orgao}${cobrirTargetFicha.fonteRecurso ? ` &bull; Fonte: ${cobrirTargetFicha.fonteRecurso}` : ''}</div>
         </div>
 
         <div class="grid">
@@ -1601,7 +1777,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 const sRest = sAntes - r.valNum;
                 return `<tr>
                   <td style="text-align:center;font-weight:800">Ficha ${r.fObj!.ficha}</td>
-                  <td><strong>${r.fObj!.orgao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.acaoDescricao || r.fObj!.especificacao}${r.fObj!.fonteRecurso ? ` • Fonte: ${r.fObj!.fonteRecurso}` : ''}</div></td>
+                  <td><strong>${r.fObj!.acaoDescricao || r.fObj!.especificacao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.orgao}${r.fObj!.fonteRecurso ? ` • Fonte: ${r.fObj!.fonteRecurso}` : ''}</div></td>
                   <td class="num">${formatBRL(sAntes)}</td>
                   <td class="num" style="color:#be123c">- ${formatBRL(r.valNum)}</td>
                   <td class="num" style="color:${sRest < -0.001 ? '#dc2626' : '#047857'}">${formatBRL(sRest)}</td>
@@ -2053,7 +2229,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                         className="px-2.5 py-1 bg-white hover:bg-red-100 text-red-700 text-[10px] font-black uppercase tracking-wider transition-colors"
                         title={`Escolher de quais fichas retirar saldo para suplementar a Ficha ${nf.ficha}`}
                       >
-                        Cobrir
+                        Suplementar
                       </button>
                     </div>
                   ))}
@@ -2061,13 +2237,24 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSinalFilter(sinalFilter === 'negativo' ? 'todos' : 'negativo')}
-              className="px-3.5 py-2 rounded-xl bg-white dark:bg-red-900/60 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-200 text-xs font-black uppercase tracking-wider shrink-0 hover:bg-red-100 transition-colors"
-            >
-              {sinalFilter === 'negativo' ? 'Mostrar Todas' : 'Filtrar Negativas'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handlePrintMapaGeralCobertura}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider transition-colors"
+                title="Imprimir de uma só vez o mapa de todas as fichas"
+              >
+                <Printer size={14} />
+                <span>Imprimir Mapa Geral</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSinalFilter(sinalFilter === 'negativo' ? 'todos' : 'negativo')}
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-red-900/60 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-200 text-xs font-black uppercase tracking-wider hover:bg-red-100 transition-colors"
+              >
+                {sinalFilter === 'negativo' ? 'Mostrar Todas' : 'Filtrar Negativas'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2555,8 +2742,8 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
             </button>
           </div>
         ) : (
-          <div className="w-full">
-            <table className="w-full table-fixed text-left border-collapse">
+          <div className="w-full overflow-x-auto lg:overflow-x-visible">
+            <table className="w-full min-w-[820px] lg:min-w-0 lg:table-fixed text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-neutral-800/60 border-b border-slate-200 dark:border-neutral-800 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-neutral-400">
                   <th className="py-3 px-2.5 w-[96px]">Sinal</th>
@@ -2710,7 +2897,16 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                   Período: <strong>{formatPeriodLabel()}</strong> • Exercício {exercicio}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePrintMapaGeralCobertura}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/70 dark:bg-indigo-950/40 text-xs font-bold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100"
+                  title="Imprimir de uma só vez todas as suplementações e fichas negativas"
+                >
+                  <Printer size={14} />
+                  <span>Mapa Geral</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleExportPeriodoExcel}
@@ -3068,33 +3264,41 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         </div>
       )}
 
-      {/* MODAL COBRIR FICHA NEGATIVA (ANULAÇÃO -> SUPLEMENTAÇÃO) */}
+      {/* MODAL SUPLEMENTAR FICHA NEGATIVA (ANULAÇÃO -> SUPLEMENTAÇÃO) */}
       {cobrirTargetFicha && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 print:hidden">
-          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-800 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-            <div className="p-5 border-b border-slate-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-              <div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-4 print:hidden">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-800 max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-neutral-800 flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <h4 className="text-base font-black text-slate-900 dark:text-white">
-                  Cobrir Ficha {cobrirTargetFicha.ficha} (Escolher Fichas de Origem)
+                  Suplementar Ficha {cobrirTargetFicha.ficha} (Escolher Fichas de Origem)
                 </h4>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
                   {cobrirTargetFicha.orgao} • {cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}
                 </p>
-                <div className="mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
-                  <span>Fonte da Ficha:</span>
-                  <span className="font-mono">{cobrirTargetFicha.fonteRecurso || 'Não informada'}</span>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300 max-w-full">
+                    <span className="shrink-0">Fonte da Ficha:</span>
+                    <span className="font-mono truncate">{cobrirTargetFicha.fonteRecurso || 'Não informada'}</span>
+                  </div>
+                  {(cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao) && (
+                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-[11px] font-bold text-slate-700 dark:text-neutral-200 max-w-full">
+                      <span className="shrink-0">Proj./Ativ.:</span>
+                      <span className="truncate">{cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setCobrirTargetFicha(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600"
+                className="p-1.5 text-slate-400 hover:text-slate-600 shrink-0"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmCobertura} className="p-5 space-y-4 overflow-y-auto">
+            <form onSubmit={handleConfirmCobertura} className="p-4 sm:p-5 space-y-4 overflow-y-auto">
               {(() => {
                 const saldoAntes = getSaldoFicha(cobrirTargetFicha);
                 const totalRetirado = cobrirSources.reduce(
@@ -3191,10 +3395,8 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                             key={src.id}
                             className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center p-3 rounded-xl border border-slate-200 dark:border-neutral-800 bg-slate-50/60 dark:bg-neutral-800/40 text-xs"
                           >
-                            <div className="sm:col-span-6">
-                              <input
-                                type="text"
-                                list="contab-fichas-positivas-list"
+                            <div className="sm:col-span-6 min-w-0">
+                              <select
                                 value={src.fichaOrigem}
                                 onChange={(e) =>
                                   setCobrirSources((prev) =>
@@ -3203,11 +3405,33 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                                     )
                                   )
                                 }
-                                placeholder="Digite ou selecione a Ficha de Origem..."
-                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-bold"
-                              />
+                                className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-bold text-xs truncate"
+                              >
+                                <option value="">Selecione a Ficha de Origem...</option>
+                                {fichas
+                                  .filter((f) => f.ficha !== cobrirTargetFicha.ficha && getSaldoFicha(f) > 0)
+                                  .sort((a, b) => {
+                                    const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
+                                    const aMatch = targetPrefix && (a.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
+                                    const bMatch = targetPrefix && (b.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
+                                    if (aMatch !== bMatch) return aMatch - bMatch;
+                                    return a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true });
+                                  })
+                                  .map((f) => {
+                                    const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
+                                    const isSameFonte = Boolean(targetPrefix && (f.fonteRecurso || '').startsWith(targetPrefix));
+                                    return (
+                                      <option key={f.ficha} value={f.ficha}>
+                                        {`${isSameFonte ? '★ ' : ''}Ficha ${f.ficha} | ${f.acaoDescricao || f.especificacao} | Fonte: ${f.fonteRecurso || '—'} | Saldo: ${formatBRL(getSaldoFicha(f))}`}
+                                      </option>
+                                    );
+                                  })}
+                              </select>
                               {origObj && (
                                 <div className="text-[10px] text-slate-500 mt-1 space-y-0.5">
+                                  <div className="font-semibold text-slate-700 dark:text-neutral-200 truncate">
+                                    Proj./Ativ.: {origObj.acaoDescricao || origObj.especificacao}
+                                  </div>
                                   <div className="truncate">
                                     Fonte: <strong className="font-mono text-indigo-700 dark:text-indigo-300">{origObj.fonteRecurso || '—'}</strong> • Saldo: <strong>{formatBRL(saldoOrig || 0)}</strong>
                                   </div>
@@ -3294,26 +3518,6 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                         );
                       })}
 
-                      <datalist id="contab-fichas-positivas-list">
-                        {fichas
-                          .filter((f) => f.ficha !== cobrirTargetFicha.ficha && getSaldoFicha(f) > 0)
-                          .sort((a, b) => {
-                            const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
-                            const aMatch = targetPrefix && (a.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
-                            const bMatch = targetPrefix && (b.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
-                            if (aMatch !== bMatch) return aMatch - bMatch;
-                            return a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true });
-                          })
-                          .map((f) => {
-                            const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
-                            const isSameFonte = Boolean(targetPrefix && (f.fonteRecurso || '').startsWith(targetPrefix));
-                            return (
-                              <option key={f.ficha} value={f.ficha}>
-                                {`${isSameFonte ? '★ ' : ''}Fonte: ${f.fonteRecurso || '—'} | Saldo: ${formatBRL(getSaldoFicha(f))} | ${f.orgao}`}
-                              </option>
-                            );
-                          })}
-                      </datalist>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-neutral-800">
@@ -3323,7 +3527,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                         className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 text-xs font-bold text-slate-700 dark:text-neutral-200 hover:bg-slate-50 dark:hover:bg-neutral-800"
                       >
                         <Printer size={14} />
-                        <span>Imprimir Mapa de Cobertura</span>
+                        <span>Imprimir Mapa desta Ficha</span>
                       </button>
 
                       <div className="flex items-center gap-2">
@@ -3339,7 +3543,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                           disabled={cobrirSaving || totalRetirado <= 0}
                           className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black disabled:opacity-50"
                         >
-                          {cobrirSaving ? 'Salvando...' : 'Confirmar Cobertura'}
+                          {cobrirSaving ? 'Salvando...' : 'Confirmar Suplementação'}
                         </button>
                       </div>
                     </div>
