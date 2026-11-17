@@ -174,6 +174,13 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
   const [dataLancamentoInput, setDataLancamentoInput] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [dataLancamentoFimInput, setDataLancamentoFimInput] = useState<string>('');
 
+  // Modal Cobrir Ficha Negativa (selecionar múltiplas fichas de origem -> destino negativa)
+  const [cobrirTargetFicha, setCobrirTargetFicha] = useState<ContabilidadeFicha | null>(null);
+  const [cobrirSources, setCobrirSources] = useState<Array<{ id: string; fichaOrigem: string; valor: string }>>([]);
+  const [cobrirDecreto, setCobrirDecreto] = useState<string>('');
+  const [cobrirData, setCobrirData] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [cobrirSaving, setCobrirSaving] = useState<boolean>(false);
+
   // Modal Nova Ficha Manual
   const [showNewFichaModal, setShowNewFichaModal] = useState<boolean>(false);
   const [newFichaForm, setNewFichaForm] = useState({
@@ -680,13 +687,138 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
   }, [fichas, searchTerm, orgaoFilter, sinalFilter]);
 
   const filteredLancamentos = useMemo(() => {
+    const parseBrToIso = (br: string) => {
+      const [d, m, y] = br.split('/');
+      return `${y}-${m}-${d}`;
+    };
+
     return lancamentos.filter((l) => {
-      const dateStr = (l.createdAt || '').slice(0, 10);
-      if (dataInicioFilter && dateStr < dataInicioFilter) return false;
-      if (dataFimFilter && dateStr > dataFimFilter) return false;
+      const startIso = (l.createdAt || '').slice(0, 10);
+      const rangeMatch = l.observacao?.match(/Período:\s*(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})/);
+      const itemStart = rangeMatch ? parseBrToIso(rangeMatch[1]) : startIso;
+      const itemEnd = rangeMatch ? parseBrToIso(rangeMatch[2]) : startIso;
+
+      if (dataInicioFilter && itemEnd < dataInicioFilter) return false;
+      if (dataFimFilter && itemStart > dataFimFilter) return false;
       return true;
     });
   }, [lancamentos, dataInicioFilter, dataFimFilter]);
+
+  const consolidatedPeriodoFichas = useMemo(() => {
+    const fichaByNum = new Map<string, ContabilidadeFicha>(fichas.map((f) => [f.ficha, f]));
+    const grouped = new Map<
+      string,
+      {
+        ficha: string;
+        orgao: string;
+        acaoDescricao: string;
+        lancamentosCount: number;
+        totalDescontado: number;
+        totalSuplementado: number;
+        decretos: string[];
+        origensMap: Map<string, number>;
+        destinosMap: Map<string, number>;
+        saldoAtualFicha: number | null;
+      }
+    >();
+
+    for (const l of filteredLancamentos) {
+      const fObj = fichaByNum.get(l.ficha);
+      const existing = grouped.get(l.ficha) || {
+        ficha: l.ficha,
+        orgao: fObj?.orgao || '—',
+        acaoDescricao: fObj?.acaoDescricao || fObj?.especificacao || '',
+        lancamentosCount: 0,
+        totalDescontado: 0,
+        totalSuplementado: 0,
+        decretos: [],
+        origensMap: new Map<string, number>(),
+        destinosMap: new Map<string, number>(),
+        saldoAtualFicha: fObj ? getSaldoFicha(fObj) : null,
+      };
+
+      existing.lancamentosCount += 1;
+      if (l.tipo === 'desconto') {
+        existing.totalDescontado = Number((existing.totalDescontado + l.valor).toFixed(2));
+        if (l.fichaContrapartida) {
+          existing.destinosMap.set(
+            l.fichaContrapartida,
+            Number(((existing.destinosMap.get(l.fichaContrapartida) || 0) + l.valor).toFixed(2))
+          );
+        }
+      } else {
+        existing.totalSuplementado = Number((existing.totalSuplementado + l.valor).toFixed(2));
+        if (l.fichaContrapartida) {
+          existing.origensMap.set(
+            l.fichaContrapartida,
+            Number(((existing.origensMap.get(l.fichaContrapartida) || 0) + l.valor).toFixed(2))
+          );
+        }
+      }
+      if (l.documento && !existing.decretos.includes(l.documento)) {
+        existing.decretos.push(l.documento);
+      }
+      grouped.set(l.ficha, existing);
+    }
+
+    return Array.from(grouped.values())
+      .map((item) => ({
+        ficha: item.ficha,
+        orgao: item.orgao,
+        acaoDescricao: item.acaoDescricao,
+        lancamentosCount: item.lancamentosCount,
+        totalDescontado: item.totalDescontado,
+        totalSuplementado: item.totalSuplementado,
+        decretos: item.decretos,
+        origens: Array.from(item.origensMap.entries()).map(([fichaOrigem, valor]) => ({ fichaOrigem, valor })),
+        destinos: Array.from(item.destinosMap.entries()).map(([fichaDestino, valor]) => ({ fichaDestino, valor })),
+        saldoAtualFicha: item.saldoAtualFicha,
+      }))
+      .sort((a, b) => a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true }));
+  }, [filteredLancamentos, fichas]);
+
+  // Mapa detalhado de transferências Origem (retirada) -> Destino (suplementada) no período
+  const origemDestinoPairs = useMemo(() => {
+    const fichaByNum = new Map<string, ContabilidadeFicha>(fichas.map((f) => [f.ficha, f]));
+    const pairMap = new Map<
+      string,
+      {
+        fichaOrigem: string;
+        origemDesc: string;
+        fichaDestino: string;
+        destinoDesc: string;
+        valorTotal: number;
+        decretos: string[];
+        datas: string[];
+      }
+    >();
+
+    for (const l of filteredLancamentos) {
+      if (l.tipo !== 'suplementacao' || !l.fichaContrapartida) continue;
+      const key = `${l.fichaContrapartida}=>${l.ficha}`;
+      const origObj = fichaByNum.get(l.fichaContrapartida);
+      const destObj = fichaByNum.get(l.ficha);
+      const entry = pairMap.get(key) || {
+        fichaOrigem: l.fichaContrapartida,
+        origemDesc: origObj?.acaoDescricao || origObj?.orgao || '',
+        fichaDestino: l.ficha,
+        destinoDesc: destObj?.acaoDescricao || destObj?.orgao || '',
+        valorTotal: 0,
+        decretos: [],
+        datas: [],
+      };
+      entry.valorTotal = Number((entry.valorTotal + l.valor).toFixed(2));
+      if (l.documento && !entry.decretos.includes(l.documento)) entry.decretos.push(l.documento);
+      const dt = formatLancamentoDateLabel(l);
+      if (dt && !entry.datas.includes(dt)) entry.datas.push(dt);
+      pairMap.set(key, entry);
+    }
+
+    return Array.from(pairMap.values()).sort((a, b) => {
+      const cmpDest = a.fichaDestino.localeCompare(b.fichaDestino, 'pt-BR', { numeric: true });
+      return cmpDest !== 0 ? cmpDest : a.fichaOrigem.localeCompare(b.fichaOrigem, 'pt-BR', { numeric: true });
+    });
+  }, [filteredLancamentos, fichas]);
 
   const periodoStats = useMemo(() => {
     let totalDescontado = 0;
@@ -717,92 +849,163 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     return 'Todo o exercício';
   };
 
-  // Exportar Relatório do Período para Excel
+  // Exportar Relatório do Período para Excel (somado por ficha + aba Origem -> Destino)
   const handleExportPeriodoExcel = () => {
-    if (filteredLancamentos.length === 0) {
+    if (consolidatedPeriodoFichas.length === 0) {
       showToast('Não há lançamentos no intervalo selecionado para exportar.', 'warning');
       return;
     }
-    const fichaByNum = new Map<string, ContabilidadeFicha>(fichas.map((f) => [f.ficha, f]));
-    const rows: Record<string, unknown>[] = filteredLancamentos.map((l) => {
-      const fObj = fichaByNum.get(l.ficha);
-      return {
-        Data: formatLancamentoDateLabel(l),
-        Operacao: l.tipo === 'desconto' ? 'Desconto (-)' : 'Suplementação (+)',
-        Ficha: l.ficha,
-        Orgao: fObj?.orgao || '',
-        Acao: fObj?.acaoDescricao || '',
-        Decreto: l.documento || '',
-        Valor: l.tipo === 'desconto' ? -l.valor : l.valor,
-        'Saldo Atual da Ficha': fObj ? getSaldoFicha(fObj) : 0,
-      };
-    });
+    const rows: Record<string, unknown>[] = consolidatedPeriodoFichas.map((item) => ({
+      Ficha: item.ficha,
+      Orgao: item.orgao,
+      Acao: item.acaoDescricao,
+      Decretos: item.decretos.join(', '),
+      'Qtd. Mov.': item.lancamentosCount,
+      'Descontado (-)': item.totalDescontado,
+      'Suplementado (+)': item.totalSuplementado,
+      'Líquido Período': item.totalSuplementado - item.totalDescontado,
+      'Retirado de (Origem)': item.origens.map((o) => `Ficha ${o.fichaOrigem}: ${formatBRL(o.valor)}`).join(' | '),
+      'Destinado para': item.destinos.map((d) => `Ficha ${d.fichaDestino}: ${formatBRL(d.valor)}`).join(' | '),
+      'Saldo Atual da Ficha': item.saldoAtualFicha ?? 0,
+    }));
     rows.push({
-      Data: 'TOTAL DO PERÍODO',
-      Operacao: `${periodoStats.count} lançamento(s)`,
-      Ficha: `${periodoStats.fichasCount} ficha(s)`,
-      Orgao: `Descontado: ${formatBRL(periodoStats.totalDescontado)}`,
-      Acao: `Suplementado: ${formatBRL(periodoStats.totalSuplementado)}`,
-      Decreto: '',
-      Valor: periodoStats.totalSuplementado - periodoStats.totalDescontado,
+      Ficha: 'TOTAL',
+      Orgao: `${periodoStats.fichasCount} ficha(s) movimentada(s)`,
+      Acao: `${periodoStats.count} lançamento(s) no período`,
+      Decretos: formatPeriodLabel(),
+      'Qtd. Mov.': periodoStats.count,
+      'Descontado (-)': periodoStats.totalDescontado,
+      'Suplementado (+)': periodoStats.totalSuplementado,
+      'Líquido Período': periodoStats.totalSuplementado - periodoStats.totalDescontado,
+      'Retirado de (Origem)': '',
+      'Destinado para': '',
       'Saldo Atual da Ficha': '',
     });
 
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [
-      { wch: 16 },
-      { wch: 18 },
       { wch: 10 },
-      { wch: 32 },
+      { wch: 30 },
+      { wch: 34 },
+      { wch: 20 },
+      { wch: 10 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 36 },
       { wch: 36 },
       { wch: 18 },
-      { wch: 16 },
-      { wch: 20 },
     ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Relatorio_Periodo');
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumo_Por_Ficha');
+
+    if (origemDestinoPairs.length > 0) {
+      const wsPairs = XLSX.utils.json_to_sheet(
+        origemDestinoPairs.map((p) => ({
+          'Ficha Suplementada (Destino)': p.fichaDestino,
+          'Descrição Destino': p.destinoDesc,
+          'Ficha de Origem (Retirada)': p.fichaOrigem,
+          'Descrição Origem': p.origemDesc,
+          'Valor Retirado (R$)': p.valorTotal,
+          Decretos: p.decretos.join(', '),
+          Datas: p.datas.join(', '),
+        }))
+      );
+      XLSX.utils.book_append_sheet(wb, wsPairs, 'Mapa_Origem_Destino');
+    }
+
     XLSX.writeFile(wb, `Relatorio_Suplementacao_${exercicio}_${dataInicioFilter || 'inicio'}_${dataFimFilter || 'fim'}.xlsx`);
     showToast('Relatório do período exportado em Excel!', 'success');
   };
 
-  // Imprimir / Salvar PDF do Relatório do Período
+  // Imprimir / Salvar PDF do Relatório do Período (somado por ficha + mapa Origem -> Destino)
   const handlePrintPeriodoReport = () => {
-    const fichaByNum = new Map<string, ContabilidadeFicha>(fichas.map((f) => [f.ficha, f]));
     const win = window.open('', '_blank', 'width=1100,height=780');
     if (!win) {
       showToast('Permita pop-ups para imprimir o relatório.', 'warning');
       return;
     }
     const instName = currentInstitution?.name || 'CONTABILIDADE MUNICIPAL';
-    const rowsHtml = filteredLancamentos
-      .map((l, idx) => {
-        const fObj = fichaByNum.get(l.ficha);
-        const saldoAtual = fObj ? getSaldoFicha(fObj) : null;
-        const isNeg = saldoAtual !== null && saldoAtual < -0.001;
+    const rowsHtml = consolidatedPeriodoFichas
+      .map((item, idx) => {
+        const liquido = item.totalSuplementado - item.totalDescontado;
+        const isNeg = item.saldoAtualFicha !== null && item.saldoAtualFicha < -0.001;
+        const vinculosParts: string[] = [];
+        if (item.origens.length > 0) {
+          vinculosParts.push(
+            `<strong>Veio de:</strong> ${item.origens
+              .map((o) => `Ficha ${o.fichaOrigem} (${formatBRL(o.valor)})`)
+              .join(' • ')}`
+          );
+        }
+        if (item.destinos.length > 0) {
+          vinculosParts.push(
+            `<strong>Foi p/:</strong> ${item.destinos
+              .map((d) => `Ficha ${d.fichaDestino} (${formatBRL(d.valor)})`)
+              .join(' • ')}`
+          );
+        }
         return `
           <tr style="background:${idx % 2 === 1 ? '#f8fafc' : '#ffffff'}">
-            <td class="nowrap">${formatLancamentoDateLabel(l)}</td>
-            <td class="nowrap">
-              <span class="badge ${l.tipo === 'desconto' ? 'badge-desc' : 'badge-supl'}">
-                ${l.tipo === 'desconto' ? 'DESCONTO (-)' : 'SUPLEMENTAÇÃO (+)'}
-              </span>
-            </td>
-            <td class="nowrap strong center">${l.ficha}</td>
+            <td class="nowrap strong center">${item.ficha}</td>
             <td>
-              <div class="strong">${fObj?.orgao || '—'}</div>
-              ${fObj?.acaoDescricao ? `<div class="muted">${fObj.acaoDescricao}</div>` : ''}
+              <div class="strong">${item.orgao}</div>
+              ${item.acaoDescricao ? `<div class="muted">${item.acaoDescricao}</div>` : ''}
+              ${vinculosParts.length > 0 ? `<div class="muted" style="color:#3730a3;margin-top:2px">${vinculosParts.join('<br/>')}</div>` : ''}
             </td>
-            <td class="nowrap">${l.documento || '—'}</td>
-            <td class="nowrap num strong" style="color:${l.tipo === 'desconto' ? '#be123c' : '#047857'}">
-              ${l.tipo === 'desconto' ? '-' : '+'} ${formatBRL(l.valor)}
+            <td class="nowrap">${item.decretos.length > 0 ? item.decretos.join(', ') : '—'}</td>
+            <td class="nowrap center">${item.lancamentosCount}</td>
+            <td class="nowrap num strong" style="color:#be123c">
+              ${item.totalDescontado > 0 ? `- ${formatBRL(item.totalDescontado)}` : '—'}
+            </td>
+            <td class="nowrap num strong" style="color:#047857">
+              ${item.totalSuplementado > 0 ? `+ ${formatBRL(item.totalSuplementado)}` : '—'}
+            </td>
+            <td class="nowrap num strong" style="color:${liquido < 0 ? '#be123c' : liquido > 0 ? '#047857' : '#0f172a'}">
+              ${liquido < 0 ? '-' : liquido > 0 ? '+' : ''} ${formatBRL(Math.abs(liquido))}
             </td>
             <td class="nowrap num strong" style="color:${isNeg ? '#dc2626' : '#0f172a'}">
-              ${saldoAtual !== null ? formatBRL(saldoAtual) : '—'}
+              ${item.saldoAtualFicha !== null ? formatBRL(item.saldoAtualFicha) : '—'}
             </td>
           </tr>
         `;
       })
       .join('');
+
+    const mapaPairsHtml = origemDestinoPairs.length > 0
+      ? `
+        <h2 style="font-size:13px;font-weight:800;text-transform:uppercase;margin:18px 0 6px;color:#1e293b;border-left:4px solid #4f46e5;padding-left:8px;">
+          Mapa de Remanejamento: De Qual Ficha Foi Retirado → Ficha Suplementada
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;text-align:center">Ficha Supl.</th>
+              <th>Destino (Ficha Suplementada)</th>
+              <th style="width:95px;text-align:center">Ficha Origem</th>
+              <th>Origem (De Onde Foi Retirado)</th>
+              <th style="width:115px">Decretos / Data</th>
+              <th style="width:125px;text-align:right">Valor Retirado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${origemDestinoPairs
+              .map(
+                (p, idx) => `
+              <tr style="background:${idx % 2 === 1 ? '#f8fafc' : '#ffffff'}">
+                <td class="nowrap strong center" style="color:#047857">Ficha ${p.fichaDestino}</td>
+                <td>${p.destinoDesc || '—'}</td>
+                <td class="nowrap strong center" style="color:#be123c">Ficha ${p.fichaOrigem}</td>
+                <td>${p.origemDesc || '—'}</td>
+                <td class="nowrap">${[...p.decretos, ...p.datas].join(' • ') || '—'}</td>
+                <td class="nowrap num strong" style="color:#1e293b">${formatBRL(p.valorTotal)}</td>
+              </tr>`
+              )
+              .join('')}
+          </tbody>
+        </table>
+      `
+      : '';
 
     const saldoLiquido = periodoStats.totalSuplementado - periodoStats.totalDescontado;
 
@@ -864,28 +1067,33 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         <table>
           <thead>
             <tr>
-              <th style="width:76px">Data</th>
-              <th style="width:120px">Operação</th>
               <th style="width:62px;text-align:center">Ficha</th>
-              <th>Órgão / Ação</th>
-              <th style="width:120px">Nº Decreto</th>
-              <th style="width:125px;text-align:right">Valor</th>
-              <th style="width:130px;text-align:right">Saldo Atual Ficha</th>
+              <th>Órgão / Ação / Origem-Destino</th>
+              <th style="width:115px">Decretos</th>
+              <th style="width:48px;text-align:center">Mov.</th>
+              <th style="width:112px;text-align:right">Descontado (-)</th>
+              <th style="width:112px;text-align:right">Suplementado (+)</th>
+              <th style="width:112px;text-align:right">Líquido Período</th>
+              <th style="width:118px;text-align:right">Saldo Atual Ficha</th>
             </tr>
           </thead>
           <tbody>
-            ${rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:18px;color:#64748b">Nenhum lançamento encontrado no período selecionado.</td></tr>'}
+            ${rowsHtml || '<tr><td colspan="8" style="text-align:center;padding:18px;color:#64748b">Nenhum lançamento encontrado no período selecionado.</td></tr>'}
           </tbody>
-          ${filteredLancamentos.length > 0 ? `
+          ${consolidatedPeriodoFichas.length > 0 ? `
           <tfoot>
             <tr>
-              <td colspan="5" style="text-align:right">RESUMO LÍQUIDO DO PERÍODO (SUPLEMENTAÇÕES - DESCONTOS):</td>
+              <td colspan="4" style="text-align:right">TOTAIS DO PERÍODO (${periodoStats.fichasCount} FICHAS / ${periodoStats.count} LANÇAMENTOS):</td>
+              <td class="num" style="color:#be123c">- ${formatBRL(periodoStats.totalDescontado)}</td>
+              <td class="num" style="color:#047857">+ ${formatBRL(periodoStats.totalSuplementado)}</td>
               <td class="num" style="color:${saldoLiquido < 0 ? '#be123c' : '#047857'}">${saldoLiquido < 0 ? '-' : '+'} ${formatBRL(Math.abs(saldoLiquido))}</td>
               <td class="num">—</td>
             </tr>
           </tfoot>
           ` : ''}
         </table>
+
+        ${mapaPairsHtml}
 
         <div class="signatures">
           <div class="sig-line">Contabilidade / Responsável Técnico</div>
@@ -1298,6 +1506,264 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     showToast(`Todas as fichas e lançamentos do Exercício ${exercicio} foram zerados.`, 'info');
   };
 
+  // Abre o assistente de cobertura de ficha negativa selecionando de quais fichas retirar saldo
+  const openCobrirModal = (target: ContabilidadeFicha) => {
+    setCobrirTargetFicha(target);
+    setCobrirDecreto(documentoInput || '');
+    setCobrirData(dataLancamentoInput || new Date().toISOString().slice(0, 10));
+    setCobrirSources([{ id: crypto.randomUUID(), fichaOrigem: '', valor: '' }]);
+  };
+
+  const handlePrintCoberturaDraft = () => {
+    if (!cobrirTargetFicha) return;
+    const validRows = cobrirSources
+      .map((s) => ({
+        ...s,
+        fObj: fichas.find((f) => f.ficha === s.fichaOrigem.trim()),
+        valNum: parseCurrencyInputPtBr(s.valor),
+      }))
+      .filter((s) => s.fObj && s.valNum > 0);
+
+    if (validRows.length === 0) {
+      showToast('Selecione ao menos uma ficha de origem e valor maior que zero para imprimir.', 'warning');
+      return;
+    }
+
+    const win = window.open('', '_blank', 'width=1000,height=720');
+    if (!win) {
+      showToast('Permita pop-ups para imprimir o mapa de cobertura.', 'warning');
+      return;
+    }
+
+    const saldoAntes = getSaldoFicha(cobrirTargetFicha);
+    const totalRetirado = validRows.reduce((acc, r) => acc + r.valNum, 0);
+    const saldoDepois = saldoAntes + totalRetirado;
+    const dataBr = cobrirData ? cobrirData.split('-').reverse().join('/') : new Date().toLocaleDateString('pt-BR');
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Mapa de Cobertura — Ficha ${cobrirTargetFicha.ficha}</title>
+        <style>
+          @page { size: A4 landscape; margin: 12mm; }
+          body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; font-size: 11px; margin: 0; padding: 14px; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 8px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: flex-end; }
+          h1 { font-size: 16px; margin: 2px 0; }
+          .box { border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; background: #f8fafc; margin-bottom: 12px; }
+          .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+          th { background: #1e293b; color: #fff; font-size: 10px; text-transform: uppercase; }
+          .num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+          .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 36px; padding: 0 24px; }
+          .sig { border-top: 1px solid #334155; padding-top: 6px; text-align: center; font-size: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#475569;text-transform:uppercase">${currentInstitution?.name || 'CONTABILIDADE MUNICIPAL'}</div>
+            <h1>Mapa de Cobertura de Ficha Negativa (Anulação → Suplementação)</h1>
+            <div>Exercício: <strong>${exercicio}</strong> &bull; Data: <strong>${dataBr}</strong> ${cobrirDecreto ? `&bull; Decreto: <strong>${cobrirDecreto}</strong>` : ''}</div>
+          </div>
+          <div style="text-align:right;font-size:10px;color:#64748b">Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
+        </div>
+
+        <div class="box">
+          <div style="font-size:10px;text-transform:uppercase;color:#475569;font-weight:700">Ficha Suplementada (Destino)</div>
+          <div style="font-size:14px;font-weight:800;margin-top:2px">Ficha ${cobrirTargetFicha.ficha} — ${cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}</div>
+          <div style="color:#475569">${cobrirTargetFicha.orgao} ${cobrirTargetFicha.fonteRecurso ? `&bull; Fonte: ${cobrirTargetFicha.fonteRecurso}` : ''}</div>
+        </div>
+
+        <div class="grid">
+          <div class="box" style="margin:0"><div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700">Saldo Anterior</div><div style="font-size:14px;font-weight:800;color:#dc2626">${formatBRL(saldoAntes)}</div></div>
+          <div class="box" style="margin:0"><div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700">Total Suplementado</div><div style="font-size:14px;font-weight:800;color:#047857">+ ${formatBRL(totalRetirado)}</div></div>
+          <div class="box" style="margin:0"><div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700">Saldo Após Cobertura</div><div style="font-size:14px;font-weight:800;color:${saldoDepois < -0.001 ? '#dc2626' : '#047857'}">${formatBRL(saldoDepois)}</div></div>
+          <div class="box" style="margin:0"><div style="font-size:9px;color:#64748b;text-transform:uppercase;font-weight:700">Fichas de Origem</div><div style="font-size:14px;font-weight:800">${validRows.length} ficha(s)</div></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="width:85px;text-align:center">Ficha Origem</th>
+              <th>Órgão / Ação da Ficha de Origem (Anulação)</th>
+              <th style="width:130px;text-align:right">Saldo Antes</th>
+              <th style="width:135px;text-align:right">Valor Retirado (-)</th>
+              <th style="width:135px;text-align:right">Saldo Restante</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${validRows
+              .map((r) => {
+                const sAntes = getSaldoFicha(r.fObj!);
+                const sRest = sAntes - r.valNum;
+                return `<tr>
+                  <td style="text-align:center;font-weight:800">Ficha ${r.fObj!.ficha}</td>
+                  <td><strong>${r.fObj!.orgao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.acaoDescricao || r.fObj!.especificacao}</div></td>
+                  <td class="num">${formatBRL(sAntes)}</td>
+                  <td class="num" style="color:#be123c">- ${formatBRL(r.valNum)}</td>
+                  <td class="num" style="color:${sRest < -0.001 ? '#dc2626' : '#047857'}">${formatBRL(sRest)}</td>
+                </tr>`;
+              })
+              .join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9">
+              <td colspan="3" style="text-align:right;font-weight:800">TOTAL RETIRADO PARA SUPLEMENTAR A FICHA ${cobrirTargetFicha.ficha}:</td>
+              <td class="num" style="color:#be123c">- ${formatBRL(totalRetirado)}</td>
+              <td class="num">—</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <div class="signatures">
+          <div class="sig">Contabilidade / Responsável Técnico</div>
+          <div class="sig">Conferência / Controle Interno</div>
+        </div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body>
+      </html>
+    `);
+    win.document.close();
+  };
+
+  const handleConfirmCobertura = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cobrirTargetFicha) return;
+
+    const validRows = cobrirSources
+      .map((s) => ({
+        fichaOrigem: s.fichaOrigem.trim(),
+        valor: parseCurrencyInputPtBr(s.valor),
+      }))
+      .filter((s) => s.fichaOrigem && s.valor > 0);
+
+    if (validRows.length === 0) {
+      showToast('Selecione ao menos uma ficha de origem e informe o valor a retirar.', 'warning');
+      return;
+    }
+
+    for (const r of validRows) {
+      if (r.fichaOrigem === cobrirTargetFicha.ficha) {
+        showToast('A ficha de origem não pode ser igual à ficha negativa.', 'warning');
+        return;
+      }
+      if (!fichas.some((f) => f.ficha === r.fichaOrigem)) {
+        showToast(`Ficha de origem ${r.fichaOrigem} não encontrada.`, 'warning');
+        return;
+      }
+    }
+
+    setCobrirSaving(true);
+    const nowIso = new Date().toISOString();
+    const lancDateIso = cobrirData ? `${cobrirData}T12:00:00.000Z` : nowIso;
+    const userLabel = currentUser?.name || 'Contabilidade';
+    const docClean = cobrirDecreto.trim() || undefined;
+
+    const updatedMap = new Map<string, ContabilidadeFicha>();
+    const newLancs: ContabilidadeLancamento[] = [];
+    let totalAdicionado = 0;
+
+    for (const r of validRows) {
+      const origBase = updatedMap.get(r.fichaOrigem) || fichas.find((f) => f.ficha === r.fichaOrigem)!;
+      const origUpdated: ContabilidadeFicha = {
+        ...origBase,
+        totalDescontado: Number((origBase.totalDescontado + r.valor).toFixed(2)),
+        updatedAt: nowIso,
+      };
+      updatedMap.set(origUpdated.ficha, origUpdated);
+      totalAdicionado = Number((totalAdicionado + r.valor).toFixed(2));
+
+      newLancs.push({
+        id: crypto.randomUUID(),
+        exercicio,
+        ficha: origUpdated.ficha,
+        tipo: 'desconto',
+        valor: r.valor,
+        documento: docClean,
+        observacao: `Anulação p/ cobrir Ficha ${cobrirTargetFicha.ficha}`,
+        fichaContrapartida: cobrirTargetFicha.ficha,
+        createdBy: userLabel,
+        createdAt: lancDateIso,
+      });
+
+      newLancs.push({
+        id: crypto.randomUUID(),
+        exercicio,
+        ficha: cobrirTargetFicha.ficha,
+        tipo: 'suplementacao',
+        valor: r.valor,
+        documento: docClean,
+        observacao: `Suplementação vinda da Ficha ${origUpdated.ficha}`,
+        fichaContrapartida: origUpdated.ficha,
+        createdBy: userLabel,
+        createdAt: lancDateIso,
+      });
+    }
+
+    const destUpdated: ContabilidadeFicha = {
+      ...cobrirTargetFicha,
+      totalSuplementado: Number((cobrirTargetFicha.totalSuplementado + totalAdicionado).toFixed(2)),
+      updatedAt: nowIso,
+    };
+    updatedMap.set(destUpdated.ficha, destUpdated);
+
+    const nextFichas = fichas.map((f) => updatedMap.get(f.ficha) || f);
+    const nextLanc = [...newLancs, ...lancamentos];
+    setFichas(nextFichas);
+    setLancamentos(nextLanc);
+    persistLocal(nextFichas, nextLanc);
+
+    try {
+      setCloudStatus('syncing');
+      for (const f of updatedMap.values()) {
+        await runWithSupabaseFallback((client) =>
+          client
+            .from('fin_contabilidade_fichas')
+            .update({
+              total_descontado: f.totalDescontado,
+              total_suplementado: f.totalSuplementado,
+              updated_by: userLabel,
+              updated_at: nowIso,
+            })
+            .eq('institution_id', instId)
+            .eq('exercicio', exercicio)
+            .eq('ficha', f.ficha)
+        );
+      }
+
+      await runWithSupabaseFallback((client) =>
+        client.from('fin_contabilidade_lancamentos').insert(
+          newLancs.map((l) => ({
+            id: l.id,
+            institution_id: instId,
+            exercicio: l.exercicio,
+            ficha: l.ficha,
+            tipo: l.tipo,
+            valor: l.valor,
+            documento: l.documento || null,
+            observacao: l.observacao || null,
+            ficha_contrapartida: l.fichaContrapartida || null,
+            created_by: l.createdBy || null,
+            created_at: l.createdAt,
+          }))
+        )
+      );
+      setCloudStatus('synced');
+    } catch {
+      setCloudStatus('local');
+    }
+
+    setCobrirSaving(false);
+    setCobrirTargetFicha(null);
+    showToast(
+      `Ficha ${destUpdated.ficha} suplementada com ${formatBRL(totalAdicionado)} a partir de ${validRows.length} ficha(s)!`,
+      'success'
+    );
+  };
+
   // Seleção rápida clicando em uma linha da tabela
   const handleSelectFichaFromRow = (fichaNum: string, op: 'desconto' | 'suplementacao') => {
     setOperacao(op);
@@ -1565,19 +2031,31 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 </p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {totals.negativas.map((nf) => (
-                    <button
+                    <div
                       key={nf.ficha}
-                      type="button"
-                      onClick={() => {
-                        setSinalFilter('negativo');
-                        setSearchTerm(nf.ficha);
-                        handleSelectFichaFromRow(nf.ficha, 'suplementacao');
-                      }}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm transition-colors"
+                      className="inline-flex items-center rounded-lg overflow-hidden shadow-sm border border-red-700"
                     >
-                      <span className="w-2 h-2 rounded-full bg-white animate-ping" />
-                      <span>Ficha {nf.ficha}: {formatBRL(getSaldoFicha(nf))}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSinalFilter('negativo');
+                          setSearchTerm(nf.ficha);
+                          handleSelectFichaFromRow(nf.ficha, 'suplementacao');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                        <span>Ficha {nf.ficha}: {formatBRL(getSaldoFicha(nf))}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openCobrirModal(nf)}
+                        className="px-2.5 py-1 bg-white hover:bg-red-100 text-red-700 text-[10px] font-black uppercase tracking-wider transition-colors"
+                        title={`Escolher de quais fichas retirar saldo para suplementar a Ficha ${nf.ficha}`}
+                      >
+                        Cobrir
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -2313,73 +2791,121 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 </div>
               </div>
 
-              {filteredLancamentos.length === 0 ? (
+              {consolidatedPeriodoFichas.length === 0 ? (
                 <div className="text-center py-8 text-xs text-slate-500">
                   Nenhum lançamento encontrado para o período selecionado.
                 </div>
               ) : (
-                <div className="border border-slate-200 dark:border-neutral-800 rounded-xl overflow-hidden">
-                  <table className="w-full table-fixed text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-neutral-800 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200 dark:border-neutral-700">
-                        <th className="py-2.5 px-2.5 w-[84px]">Data</th>
-                        <th className="py-2.5 px-2.5 w-[112px]">Operação</th>
-                        <th className="py-2.5 px-2 w-[72px]">Ficha</th>
-                        <th className="py-2.5 px-2.5">Órgão / Ação</th>
-                        <th className="py-2.5 px-2 w-[90px]">Decreto</th>
-                        <th className="py-2.5 px-2.5 w-[112px] text-right">Valor</th>
-                        <th className="py-2.5 px-2.5 w-[118px] text-right">Saldo Ficha</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
-                      {filteredLancamentos.map((l) => {
-                        const fObj = fichas.find((f) => f.ficha === l.ficha);
-                        const saldoAtual = fObj ? getSaldoFicha(fObj) : null;
-                        return (
-                          <tr key={l.id} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40">
-                            <td className="py-2 px-3 whitespace-nowrap">{formatLancamentoDateLabel(l)}</td>
-                            <td className="py-2 px-3 whitespace-nowrap">
-                              <span
-                                className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase ${
-                                  l.tipo === 'desconto'
-                                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
-                                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
-                                }`}
-                              >
-                                {l.tipo === 'desconto' ? 'Desconto (-)' : 'Suplementação (+)'}
-                              </span>
-                            </td>
-                            <td className="py-2 px-3 font-black whitespace-nowrap">Ficha {l.ficha}</td>
-                            <td className="py-2 px-3 max-w-xs">
-                              <div className="font-semibold text-slate-800 dark:text-neutral-200 truncate">
-                                {fObj?.orgao || '—'}
+                <div className="space-y-4">
+                  <div className="border border-slate-200 dark:border-neutral-800 rounded-xl overflow-hidden">
+                    <table className="w-full table-fixed text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-neutral-800 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200 dark:border-neutral-700">
+                          <th className="py-2.5 px-2.5 w-[74px]">Ficha</th>
+                          <th className="py-2.5 px-2.5">Órgão / Ação / Origem-Destino</th>
+                          <th className="py-2.5 px-2 w-[96px]">Decretos</th>
+                          <th className="py-2.5 px-2 w-[50px] text-center">Mov.</th>
+                          <th className="py-2.5 px-2.5 w-[106px] text-right">Descontado</th>
+                          <th className="py-2.5 px-2.5 w-[110px] text-right">Suplementado</th>
+                          <th className="py-2.5 px-2.5 w-[112px] text-right">Saldo Ficha</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                        {consolidatedPeriodoFichas.map((item) => (
+                          <tr key={item.ficha} className="hover:bg-slate-50/70 dark:hover:bg-neutral-800/40">
+                            <td className="py-2 px-2.5 font-black whitespace-nowrap align-top">Ficha {item.ficha}</td>
+                            <td className="py-2 px-2.5 min-w-0">
+                              <div className="font-semibold text-slate-800 dark:text-neutral-200 truncate" title={item.orgao}>
+                                {item.orgao}
                               </div>
-                              {fObj?.acaoDescricao && (
-                                <div className="text-[11px] text-slate-500 truncate">{fObj.acaoDescricao}</div>
+                              {item.acaoDescricao && (
+                                <div className="text-[11px] text-slate-500 truncate" title={item.acaoDescricao}>
+                                  {item.acaoDescricao}
+                                </div>
+                              )}
+                              {item.origens.length > 0 && (
+                                <div className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                                  Veio de:{' '}
+                                  {item.origens
+                                    .map((o) => `Ficha ${o.fichaOrigem} (${formatBRL(o.valor)})`)
+                                    .join(' • ')}
+                                </div>
+                              )}
+                              {item.destinos.length > 0 && (
+                                <div className="text-[10px] font-bold text-rose-700 dark:text-rose-300 mt-0.5">
+                                  Foi p/:{' '}
+                                  {item.destinos
+                                    .map((d) => `Ficha ${d.fichaDestino} (${formatBRL(d.valor)})`)
+                                    .join(' • ')}
+                                </div>
                               )}
                             </td>
-                            <td className="py-2 px-3 whitespace-nowrap">{l.documento || '—'}</td>
-                            <td
-                              className={`py-2 px-3 text-right font-black tabular-nums whitespace-nowrap ${
-                                l.tipo === 'desconto' ? 'text-rose-600' : 'text-emerald-600'
-                              }`}
-                            >
-                              {l.tipo === 'desconto' ? '-' : '+'} {formatBRL(l.valor)}
+                            <td className="py-2 px-2 truncate align-top" title={item.decretos.join(', ') || '—'}>
+                              {item.decretos.length > 0 ? item.decretos.join(', ') : '—'}
+                            </td>
+                            <td className="py-2 px-2 text-center font-bold text-slate-500 tabular-nums align-top">
+                              {item.lancamentosCount}
+                            </td>
+                            <td className="py-2 px-2.5 text-right font-black text-rose-600 tabular-nums whitespace-nowrap align-top">
+                              {item.totalDescontado > 0 ? `- ${formatBRL(item.totalDescontado)}` : '—'}
+                            </td>
+                            <td className="py-2 px-2.5 text-right font-black text-emerald-600 tabular-nums whitespace-nowrap align-top">
+                              {item.totalSuplementado > 0 ? `+ ${formatBRL(item.totalSuplementado)}` : '—'}
                             </td>
                             <td
-                              className={`py-2 px-3 text-right font-bold tabular-nums whitespace-nowrap ${
-                                saldoAtual !== null && saldoAtual < -0.001
+                              className={`py-2 px-2.5 text-right font-bold tabular-nums whitespace-nowrap align-top ${
+                                item.saldoAtualFicha !== null && item.saldoAtualFicha < -0.001
                                   ? 'text-red-600'
                                   : 'text-slate-700 dark:text-neutral-200'
                               }`}
                             >
-                              {saldoAtual !== null ? formatBRL(saldoAtual) : '—'}
+                              {item.saldoAtualFicha !== null ? formatBRL(item.saldoAtualFicha) : '—'}
                             </td>
                           </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {origemDestinoPairs.length > 0 && (
+                    <div className="border border-indigo-200 dark:border-indigo-900/50 rounded-xl overflow-hidden">
+                      <div className="px-3 py-2 bg-indigo-50 dark:bg-indigo-950/40 border-b border-indigo-200 dark:border-indigo-900/50 text-[11px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">
+                        Mapa Origem → Destino (De qual ficha foi retirado para suplementar)
+                      </div>
+                      <table className="w-full table-fixed text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 dark:bg-neutral-800 text-[10px] font-black uppercase text-slate-500 border-b border-slate-200 dark:border-neutral-700">
+                            <th className="py-2 px-2.5 w-[96px]">Ficha Supl.</th>
+                            <th className="py-2 px-2.5">Destino (Suplementada)</th>
+                            <th className="py-2 px-2.5 w-[96px]">Ficha Origem</th>
+                            <th className="py-2 px-2.5">Origem (Retirada)</th>
+                            <th className="py-2 px-2.5 w-[120px] text-right">Valor Retirado</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-neutral-800">
+                          {origemDestinoPairs.map((p) => (
+                            <tr key={`${p.fichaOrigem}-${p.fichaDestino}`}>
+                              <td className="py-2 px-2.5 font-black text-emerald-700 dark:text-emerald-400">
+                                Ficha {p.fichaDestino}
+                              </td>
+                              <td className="py-2 px-2.5 truncate" title={p.destinoDesc}>
+                                {p.destinoDesc || '—'}
+                              </td>
+                              <td className="py-2 px-2.5 font-black text-rose-600 dark:text-rose-400">
+                                Ficha {p.fichaOrigem}
+                              </td>
+                              <td className="py-2 px-2.5 truncate" title={p.origemDesc}>
+                                {p.origemDesc || '—'}
+                              </td>
+                              <td className="py-2 px-2.5 text-right font-black tabular-nums">
+                                {formatBRL(p.valorTotal)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2538,6 +3064,265 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 <span>{clearingFichas ? 'Zerando...' : 'Confirmar e Zerar Tudo'}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL COBRIR FICHA NEGATIVA (ANULAÇÃO -> SUPLEMENTAÇÃO) */}
+      {cobrirTargetFicha && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 print:hidden">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-800 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="p-5 border-b border-slate-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+              <div>
+                <h4 className="text-base font-black text-slate-900 dark:text-white">
+                  Cobrir Ficha {cobrirTargetFicha.ficha} (Escolher Fichas de Origem)
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {cobrirTargetFicha.orgao} • {cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCobrirTargetFicha(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmCobertura} className="p-5 space-y-4 overflow-y-auto">
+              {(() => {
+                const saldoAntes = getSaldoFicha(cobrirTargetFicha);
+                const totalRetirado = cobrirSources.reduce(
+                  (acc, s) => acc + parseCurrencyInputPtBr(s.valor),
+                  0
+                );
+                const saldoDepois = saldoAntes + totalRetirado;
+                const faltaCobrir = Math.max(0, -saldoDepois);
+
+                return (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50">
+                        <div className="text-[10px] font-bold uppercase text-red-600">Saldo Atual da Ficha</div>
+                        <div className="text-lg font-black text-red-700 dark:text-red-400 tabular-nums">
+                          {formatBRL(saldoAntes)}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50">
+                        <div className="text-[10px] font-bold uppercase text-indigo-600">Total a Retirar das Origens</div>
+                        <div className="text-lg font-black text-indigo-700 dark:text-indigo-300 tabular-nums">
+                          + {formatBRL(totalRetirado)}
+                        </div>
+                      </div>
+                      <div
+                        className={`p-3 rounded-xl border ${
+                          saldoDepois < -0.001
+                            ? 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900/50'
+                            : 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50'
+                        }`}
+                      >
+                        <div className="text-[10px] font-bold uppercase text-slate-500">Novo Saldo Após Cobertura</div>
+                        <div
+                          className={`text-lg font-black tabular-nums ${
+                            saldoDepois < -0.001 ? 'text-amber-700' : 'text-emerald-700 dark:text-emerald-400'
+                          }`}
+                        >
+                          {formatBRL(saldoDepois)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="block font-bold text-slate-600 dark:text-neutral-300 mb-1">
+                          Nº do Decreto
+                        </label>
+                        <input
+                          type="text"
+                          value={cobrirDecreto}
+                          onChange={(e) => setCobrirDecreto(e.target.value)}
+                          placeholder="Ex: Dec. 015/2026"
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="block font-bold text-slate-600 dark:text-neutral-300 mb-1">
+                          Data da Cobertura
+                        </label>
+                        <input
+                          type="date"
+                          value={cobrirData}
+                          onChange={(e) => setCobrirData(e.target.value)}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800 font-semibold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-neutral-200">
+                          Fichas de Origem (De onde será retirado o saldo)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCobrirSources((prev) => [
+                              ...prev,
+                              { id: crypto.randomUUID(), fichaOrigem: '', valor: '' },
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold"
+                        >
+                          <Plus size={13} />
+                          <span>Adicionar Ficha Origem</span>
+                        </button>
+                      </div>
+
+                      {cobrirSources.map((src) => {
+                        const origObj = fichas.find((f) => f.ficha === src.fichaOrigem.trim());
+                        const saldoOrig = origObj ? getSaldoFicha(origObj) : null;
+                        return (
+                          <div
+                            key={src.id}
+                            className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center p-3 rounded-xl border border-slate-200 dark:border-neutral-800 bg-slate-50/60 dark:bg-neutral-800/40 text-xs"
+                          >
+                            <div className="sm:col-span-6">
+                              <input
+                                type="text"
+                                list="contab-fichas-positivas-list"
+                                value={src.fichaOrigem}
+                                onChange={(e) =>
+                                  setCobrirSources((prev) =>
+                                    prev.map((item) =>
+                                      item.id === src.id ? { ...item, fichaOrigem: e.target.value } : item
+                                    )
+                                  )
+                                }
+                                placeholder="Digite ou selecione a Ficha de Origem..."
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-bold"
+                              />
+                              {origObj && (
+                                <div className="text-[10px] text-slate-500 mt-1 truncate">
+                                  {origObj.orgao} • Saldo: <strong>{formatBRL(saldoOrig || 0)}</strong>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="sm:col-span-4">
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={src.valor}
+                                onChange={(e) =>
+                                  setCobrirSources((prev) =>
+                                    prev.map((item) =>
+                                      item.id === src.id
+                                        ? { ...item, valor: formatCurrencyInputPtBr(e.target.value) }
+                                        : item
+                                    )
+                                  )
+                                }
+                                onBlur={() =>
+                                  setCobrirSources((prev) =>
+                                    prev.map((item) =>
+                                      item.id === src.id
+                                        ? { ...item, valor: finalizeCurrencyInputPtBr(item.valor) }
+                                        : item
+                                    )
+                                  )
+                                }
+                                placeholder="Valor a retirar (0,00)"
+                                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-black text-right"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2 flex items-center justify-end gap-1">
+                              {faltaCobrir > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentThis = parseCurrencyInputPtBr(src.valor);
+                                    const sugestao = currentThis + faltaCobrir;
+                                    setCobrirSources((prev) =>
+                                      prev.map((item) =>
+                                        item.id === src.id
+                                          ? {
+                                              ...item,
+                                              valor: sugestao.toLocaleString('pt-BR', {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              }),
+                                            }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className="px-2 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-black"
+                                  title="Preencher o valor restante para zerar a ficha negativa"
+                                >
+                                  Completar
+                                </button>
+                              )}
+                              {cobrirSources.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setCobrirSources((prev) => prev.filter((item) => item.id !== src.id))
+                                  }
+                                  className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-lg"
+                                  title="Remover linha"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      <datalist id="contab-fichas-positivas-list">
+                        {fichas
+                          .filter((f) => f.ficha !== cobrirTargetFicha.ficha && getSaldoFicha(f) > 0)
+                          .map((f) => (
+                            <option key={f.ficha} value={f.ficha}>
+                              {`Ficha ${f.ficha} | Saldo: ${formatBRL(getSaldoFicha(f))} | ${f.orgao}`}
+                            </option>
+                          ))}
+                      </datalist>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200 dark:border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={handlePrintCoberturaDraft}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 text-xs font-bold text-slate-700 dark:text-neutral-200 hover:bg-slate-50 dark:hover:bg-neutral-800"
+                      >
+                        <Printer size={14} />
+                        <span>Imprimir Mapa de Cobertura</span>
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCobrirTargetFicha(null)}
+                          className="px-4 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 text-xs font-bold text-slate-600"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={cobrirSaving || totalRetirado <= 0}
+                          className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black disabled:opacity-50"
+                        >
+                          {cobrirSaving ? 'Salvando...' : 'Confirmar Cobertura'}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </form>
           </div>
         </div>
       )}
