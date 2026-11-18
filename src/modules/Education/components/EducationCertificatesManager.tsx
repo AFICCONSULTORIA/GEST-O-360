@@ -542,15 +542,15 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Top Header */}
-      <div className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
+      <div className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-mono">
               Gestão Municipal · Todas as Secretarias · Lei Federal 14.063/2020
             </span>
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white mt-1 flex items-center gap-2">
-            <FileBadge className="w-6 h-6 text-amber-500" />
+            <FileBadge className="w-6 h-6 text-amber-500 shrink-0" />
             Emissor em Lote & Banco de Certificados
           </h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -559,38 +559,38 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
         </div>
 
         {/* Abas Principais */}
-        <div className="flex bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 w-full md:w-auto">
+        <div className="flex flex-wrap items-center bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 w-full xl:w-auto shrink-0">
           <button
             onClick={() => setActiveTab('wizard')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
               activeTab === 'wizard'
                 ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
                 : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-amber-500" />
+            <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
             <span>Novo Lote de Certificados</span>
           </button>
           <button
             onClick={() => setActiveTab('declarations')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
               activeTab === 'declarations'
                 ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
                 : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
-            <QrCode className="w-4 h-4 text-blue-500" />
+            <QrCode className="w-4 h-4 text-blue-500 shrink-0" />
             <span>Declarações via QR Code</span>
           </button>
           <button
             onClick={() => setActiveTab('bank')}
-            className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
               activeTab === 'bank'
                 ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
                 : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
             }`}
           >
-            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>Banco de Documentos ({issuedHistory.length})</span>
           </button>
         </div>
