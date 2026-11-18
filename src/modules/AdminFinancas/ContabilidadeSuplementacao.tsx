@@ -220,7 +220,8 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     targetEx: number,
     updatedBy: string,
     nowIso: string,
-    overrideInstId?: string
+    overrideInstId?: string,
+    includeEmpenhado = true
   ) => ({
     institution_id: overrideInstId || instId,
     exercicio: targetEx,
@@ -236,6 +237,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     dotacao_inicial: f.dotacaoInicial,
     alteracao_pdf: f.alteracaoPdf,
     dotacao_atual: f.dotacaoAtual,
+    ...(includeEmpenhado ? { empenhado: f.empenhado ?? 0 } : {}),
     total_descontado: f.totalDescontado,
     total_suplementado: f.totalSuplementado,
     updated_by: updatedBy,
@@ -252,17 +254,28 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     setCloudStatus('syncing');
     const CHUNK = 150;
     let savedToTable = true;
+    let includeEmpenhado = true;
 
     for (let i = 0; i < rows.length; i += CHUNK) {
       const chunkRows = rows.slice(i, i + CHUNK);
-      const slicePrimary = chunkRows.map((f) => toDbFichaRow(f, targetEx, updatedBy, nowIso, instId));
+      const slicePrimary = chunkRows.map((f) => toDbFichaRow(f, targetEx, updatedBy, nowIso, instId, includeEmpenhado));
       let { error } = await runWithSupabaseFallback((client) =>
         client.from('fin_contabilidade_fichas').upsert(slicePrimary, { onConflict: 'institution_id,exercicio,ficha' })
       );
 
+      // Se a coluna empenhado ainda não existir no banco remoto, reenvia sem ela
+      if (error && includeEmpenhado && String(error.message || '').includes('empenhado')) {
+        includeEmpenhado = false;
+        const sliceNoEmp = chunkRows.map((f) => toDbFichaRow(f, targetEx, updatedBy, nowIso, instId, false));
+        const retryNoEmp = await runWithSupabaseFallback((client) =>
+          client.from('fin_contabilidade_fichas').upsert(sliceNoEmp, { onConflict: 'institution_id,exercicio,ficha' })
+        );
+        error = retryNoEmp.error;
+      }
+
       // Se o usuário não-administrador tiver seu instId bloqueado por RLS, faz fallback imediato para 'default' (permitido pela policy para todos os perfis)
       if (error && instId !== 'default') {
-        const sliceDefault = chunkRows.map((f) => toDbFichaRow(f, targetEx, updatedBy, nowIso, 'default'));
+        const sliceDefault = chunkRows.map((f) => toDbFichaRow(f, targetEx, updatedBy, nowIso, 'default', includeEmpenhado));
         const retryDefault = await runWithSupabaseFallback((client) =>
           client.from('fin_contabilidade_fichas').upsert(sliceDefault, { onConflict: 'institution_id,exercicio,ficha' })
         );
@@ -458,6 +471,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 dotacaoInicial: Number(row.dotacao_inicial) || 0,
                 alteracaoPdf: Number(row.alteracao_pdf) || 0,
                 dotacaoAtual: Number(row.dotacao_atual) || 0,
+                empenhado: Number(row.empenhado) || 0,
                 totalDescontado: Number(row.total_descontado) || 0,
                 totalSuplementado: Number(row.total_suplementado) || 0,
                 updatedAt: row.updated_at || new Date().toISOString(),
@@ -2750,15 +2764,16 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
             <table className="w-full min-w-[820px] lg:min-w-0 lg:table-fixed text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 dark:bg-neutral-800/60 border-b border-slate-200 dark:border-neutral-800 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-neutral-400">
-                  <th className="py-3 px-2.5 w-[96px]">Sinal</th>
-                  <th className="py-3 px-2 w-[66px]">Ficha</th>
-                  <th className="py-3 px-2.5">Órgão / Ação / Natureza</th>
-                  <th className="py-3 px-2 w-[124px]">Fonte</th>
-                  <th className="py-3 px-2 w-[112px] text-right">Saldo PDF</th>
-                  <th className="py-3 px-2 w-[104px] text-right">Descontado</th>
-                  <th className="py-3 px-2 w-[108px] text-right">Suplementado</th>
-                  <th className="py-3 px-2 w-[122px] text-right">Saldo Atual</th>
-                  <th className="py-3 px-2 w-[104px] text-center print:hidden">Lançar</th>
+                  <th className="py-3 px-2 w-[88px]">Sinal</th>
+                  <th className="py-3 px-2 w-[60px]">Ficha</th>
+                  <th className="py-3 px-2">Órgão / Ação / Natureza</th>
+                  <th className="py-3 px-2 w-[108px]">Fonte</th>
+                  <th className="py-3 px-2 w-[100px] text-right">Empenhado</th>
+                  <th className="py-3 px-2 w-[104px] text-right">Saldo PDF</th>
+                  <th className="py-3 px-2 w-[96px] text-right">Descontado</th>
+                  <th className="py-3 px-2 w-[100px] text-right">Suplementado</th>
+                  <th className="py-3 px-2 w-[114px] text-right">Saldo Atual</th>
+                  <th className="py-3 px-2 w-[96px] text-center print:hidden">Lançar</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-neutral-800 text-xs">
@@ -2835,6 +2850,10 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                         title={f.fonteRecurso || '—'}
                       >
                         {f.fonteRecurso || '—'}
+                      </td>
+
+                      <td className="py-2.5 px-2 whitespace-nowrap text-right font-semibold text-amber-700 dark:text-amber-300 tabular-nums">
+                        {formatBRL(f.empenhado || 0)}
                       </td>
 
                       <td className="py-2.5 px-2 whitespace-nowrap text-right font-semibold text-slate-700 dark:text-neutral-300 tabular-nums">
@@ -3437,6 +3456,9 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 font-mono font-bold">
                                       Fonte: {origObj.fonteRecurso || '—'}
                                     </span>
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200 font-bold">
+                                      Empenhado: {formatBRL(origObj.empenhado || 0)}
+                                    </span>
                                     <span
                                       className={`inline-flex items-center px-1.5 py-0.5 rounded font-black ${
                                         (saldoOrig || 0) < 0
@@ -3681,9 +3703,14 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                           </span>
                         </div>
                       </div>
-                      <span className="self-start sm:self-center px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 font-black text-sm tabular-nums shrink-0">
-                        {formatBRL(saldoF)}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-center">
+                        <span className="px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800 font-bold text-xs tabular-nums">
+                          Emp.: {formatBRL(f.empenhado || 0)}
+                        </span>
+                        <span className="px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 font-black text-sm tabular-nums">
+                          {formatBRL(saldoF)}
+                        </span>
+                      </div>
                     </button>
                   );
                 });

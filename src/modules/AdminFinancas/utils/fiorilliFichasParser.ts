@@ -26,6 +26,7 @@ export interface ParsedFichaOrcamentaria {
   dotacaoInicial: number;
   alteracaoPdf: number;
   dotacaoAtual: number;
+  empenhado?: number;
 }
 
 export interface ParsedFichasDocument {
@@ -449,7 +450,8 @@ function parseListagemFichasLines(lines: string[], pageCount = 1): ParsedFichasD
         const caDesc = rest.slice(0, rest.length - numsMatch[0].length).trim();
         activeFicha.fonteRecurso = `${fr} ${ca} ${caDesc}`.trim();
         if (vals.length >= 2) {
-          // Puxa exclusivamente o Saldo Atual (2º número da linha 2), nunca Empenhado
+          // Captura o Empenhado (penúltimo número) e o Saldo Atual (último número da linha 2)
+          activeFicha.empenhado = vals[vals.length - 2];
           activeFicha.dotacaoAtual = vals[vals.length - 1];
         }
       }
