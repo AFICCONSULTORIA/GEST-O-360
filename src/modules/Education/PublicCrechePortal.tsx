@@ -44,6 +44,9 @@ export const DEFAULT_CRECHE_SETTINGS: CrecheSettings = {
 export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrechePortalProps) => {
   const [settings, setSettings] = useState<CrecheSettings>(DEFAULT_CRECHE_SETTINGS);
   const [activeTab, setActiveTab] = useState<'vagas' | 'criterios' | 'documentos' | 'faq'>('vagas');
+  const [waitingQueue, setWaitingQueue] = useState<
+    Array<{ id: string; position: number; child_name: string; stage: string; status: string }>
+  >([]);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -68,6 +71,32 @@ export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrech
         }
       } catch (err) {
         console.error('Error fetching creche settings', err);
+      }
+
+      try {
+        const { data: qData, error: qErr } = await supabase
+          .from('creche_waiting_queue')
+          .select('id, position, child_name, stage, status')
+          .in('status', ['aguardando', 'convocado'])
+          .order('position', { ascending: true });
+        if (!qErr && Array.isArray(qData)) {
+          setWaitingQueue(qData);
+          return;
+        }
+      } catch {
+        // fallback below
+      }
+
+      try {
+        const raw = localStorage.getItem('gestao360_creche_waiting_queue');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setWaitingQueue(parsed.filter((q: any) => q.status === 'aguardando' || q.status === 'convocado'));
+          }
+        }
+      } catch {
+        // ignore
       }
     };
 
@@ -263,6 +292,65 @@ export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrech
                       </div>
                     </div>
                   </div>
+
+                  {/* Fila de Espera - Próximos da Fila */}
+                  {waitingQueue.length > 0 && (
+                    <div className="bg-white dark:bg-neutral-900 p-6 sm:p-8 rounded-[2rem] border border-neutral-100 dark:border-neutral-800 shadow-lg shadow-neutral-200/20 dark:shadow-none">
+                      <div className="flex items-center justify-between gap-3 mb-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-2xl bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 flex items-center justify-center">
+                            <Users size={22} />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+                              Fila de Espera — Próximos da Fila
+                            </h3>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                              Ordem oficial de atendimento para novas vagas no CMEI
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-3 py-1 rounded-full bg-pink-50 dark:bg-pink-900/30 text-pink-600 dark:text-pink-300 text-xs font-black">
+                          {waitingQueue.length} na fila
+                        </span>
+                      </div>
+
+                      <div className="divide-y divide-neutral-100 dark:divide-neutral-800 border border-neutral-100 dark:border-neutral-800 rounded-2xl overflow-hidden">
+                        {waitingQueue.map((q, idx) => (
+                          <div key={q.id} className="px-4 py-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                                  idx === 0
+                                    ? 'bg-pink-600 text-white'
+                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
+                                }`}
+                              >
+                                #{q.position}
+                              </span>
+                              <div className="min-w-0">
+                                <p className="font-bold text-sm text-neutral-900 dark:text-white truncate">
+                                  {q.child_name}
+                                </p>
+                                <p className="text-[11px] text-neutral-500">{q.stage}</p>
+                              </div>
+                            </div>
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 ${
+                                idx === 0
+                                  ? 'bg-pink-600 text-white'
+                                  : q.status === 'convocado'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+                              }`}
+                            >
+                              {idx === 0 ? 'Próximo da Fila' : q.status === 'convocado' ? 'Convocado' : 'Aguardando'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </motion.div>
               )}
 
