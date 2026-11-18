@@ -808,3 +808,5 @@ export const EducationCrecheAdmin: React.FC = () => {
     </div>
   );
 };
+
+export default EducationCrecheAdmin;
