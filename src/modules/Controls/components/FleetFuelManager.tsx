@@ -75,6 +75,7 @@ import {
   uploadReceiptAttachment,
   auditFuelOrder,
   clearFuelOrderFraudRisk,
+  applyFuelOrderFraudRisk,
   createFleetVehicle,
   updateFleetVehicle,
   deleteFleetVehicle,
@@ -523,6 +524,27 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const [showFraudClearBox, setShowFraudClearBox] = useState(false);
   const [fraudClearObservation, setFraudClearObservation] = useState('');
   const [clearingFraudRisk, setClearingFraudRisk] = useState(false);
+
+  // Popup de Decisão sobre Risco de Fraude (Aplicar ou Ignorar com Justificativa)
+  const [fraudDecisionPopup, setFraudDecisionPopup] = useState<{
+    isOpen: boolean;
+    mode: 'existing_order' | 'execution_submit' | 'new_order_submit';
+    order?: FuelSupplyOrder | null;
+    anomalyReason: string;
+    vehicleLabel?: string;
+    orderNumberLabel?: string;
+    selectedChoice: 'aplicar' | 'ignorar';
+    justification: string;
+    processing: boolean;
+  }>({
+    isOpen: false,
+    mode: 'existing_order',
+    order: null,
+    anomalyReason: '',
+    selectedChoice: 'aplicar',
+    justification: '',
+    processing: false
+  });
 
   // Formulário: Novo Veículo
   const [newVehicleForm, setNewVehicleForm] = useState({
@@ -1936,7 +1958,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
   };
 
-  // Retirada Manual do Risco de Fraude pelo Responsável pela Frota com Observação Obrigatória
+  // Abrir Popup de Decisão sobre Risco de Fraude para uma ordem existente
+  const openFraudDecisionPopupForOrder = (order: FuelSupplyOrder) => {
+    const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
+    setFraudDecisionPopup({
+      isOpen: true,
+      mode: 'existing_order',
+      order,
+      anomalyReason: order.anomaly_reason || 'Inconsistência crítica de odômetro, tanque ou desvio de consumo (>25%).',
+      vehicleLabel: v ? `${v.plate} • ${v.model}` : (order.galao_label || 'Veículo Oficial'),
+      orderNumberLabel: order.order_number,
+      selectedChoice: 'ignorar',
+      justification: '',
+      processing: false
+    });
+  };
   const handleClearFraudRisk = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedOrderForAction) return;
@@ -2334,30 +2370,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     setIsNewOrderModalOpen(true);
   };
 
-  // Envio de nova ordem com emissão em duas vias e parâmetros travados
-  const handleCreateOrder = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Execução efetiva da criação de nova ordem (após validação ou decisão no popup de risco de fraude)
+  const executeCreateOrder = async (ignoreFraudRisk: boolean = false, fraudJustification: string = '') => {
     const isGalao = newOrderForm.target_type === 'galao';
-    if (isGalao) {
-      if (!newOrderForm.galao_label.trim()) {
-        showToast('Informe a identificação ou finalidade do galão/bombona.', 'warning');
-        return;
-      }
-    } else {
-      if (!newOrderForm.vehicle_id) {
-        showToast('Selecione um veículo da frota.', 'warning');
-        return;
-      }
-      if (isLitersOverCapacity) {
-        showToast('A litragem excede a capacidade do tanque do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
-        return;
-      }
-      if (isOdometerInvalid) {
-        showToast('O odômetro informado não pode ser menor que o odômetro anterior do veículo. Operação bloqueada pelo Semáforo do TCE.', 'error');
-        return;
-      }
-    }
-
     try {
       const created = await issueFuelAuthorization({
         target_type: newOrderForm.target_type,
@@ -2381,13 +2396,41 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           (!isGalao ? selectedVehicleForNewOrder?.budget_classification : undefined),
         custom_order_number: newOrderForm.custom_order_number?.trim() 
           ? formatOrderNumber7Digits(newOrderForm.custom_order_number.trim()) 
-          : undefined
+          : undefined,
+        ignore_fraud_risk: ignoreFraudRisk,
+        fraud_risk_justification: fraudJustification || undefined
       });
+
+      if (ignoreFraudRisk && fraudJustification.trim()) {
+        await recordFleetFuelAuditLog({
+          institution_id: currentUser?.institution_id || created.institution_id || 'inst_1',
+          order_id: created.id,
+          order_number: created.order_number,
+          vehicle_plate: selectedVehicleForNewOrder?.plate,
+          vehicle_model: selectedVehicleForNewOrder?.model,
+          action_type: 'RETIRADA_RISCO_FRAUDE',
+          action_label: 'Risco de Fraude Ignorado na Emissão da Ordem',
+          actor_name: currentUser?.name || newOrderForm.authorized_by_name || 'Gestor da Frota',
+          actor_role: currentUser?.role || newOrderForm.authorized_by_role || 'Responsável pela Frota',
+          fueling_date: formatDateBRFromRaw(created.created_at),
+          changes: [
+            {
+              field: 'anomaly_level',
+              label: 'Semáforo de Emissão',
+              oldValue: emissionSemaphore.reason || 'Risco de Fraude na Emissão',
+              newValue: 'Ignorado com Justificativa'
+            }
+          ],
+          notes: fraudJustification.trim()
+        });
+      }
 
       showToast(
         isGalao
           ? `Autorização de Galão ${created.order_number} emitida com sucesso! Via do Sistema registrada.`
-          : `Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`,
+          : ignoreFraudRisk
+            ? `Autorização ${created.order_number} emitida (Risco de Fraude ignorado mediante justificativa)!`
+            : `Autorização ${created.order_number} emitida com sucesso! Via do Sistema registrada.`,
         'success'
       );
       setIsNewOrderModalOpen(false);
@@ -2422,9 +2465,43 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
   };
 
-  // Envio de execução / baixa de canhoto no próprio sistema
-  const handleSaveExecution = async (e: React.FormEvent) => {
+  // Envio de nova ordem com emissão em duas vias e parâmetros travados
+  const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
+    const isGalao = newOrderForm.target_type === 'galao';
+    if (isGalao) {
+      if (!newOrderForm.galao_label.trim()) {
+        showToast('Informe a identificação ou finalidade do galão/bombona.', 'warning');
+        return;
+      }
+    } else {
+      if (!newOrderForm.vehicle_id) {
+        showToast('Selecione um veículo da frota.', 'warning');
+        return;
+      }
+      if (isLitersOverCapacity || isOdometerInvalid) {
+        setFraudDecisionPopup({
+          isOpen: true,
+          mode: 'new_order_submit',
+          order: null,
+          anomalyReason: emissionSemaphore.reason,
+          vehicleLabel: selectedVehicleForNewOrder
+            ? `${selectedVehicleForNewOrder.plate} • ${selectedVehicleForNewOrder.model}`
+            : 'Veículo Oficial',
+          orderNumberLabel: newOrderForm.custom_order_number || 'Nova Autorização',
+          selectedChoice: 'aplicar',
+          justification: '',
+          processing: false
+        });
+        return;
+      }
+    }
+
+    await executeCreateOrder(false, '');
+  };
+
+  // Execução efetiva da validação / baixa de abastecimento
+  const executeSaveExecution = async (ignoreFraudRisk: boolean = false, fraudJustification: string = '') => {
     if (!selectedOrderForAction) return;
 
     const isGalaoOrder =
@@ -2433,10 +2510,6 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       Boolean(selectedOrderForAction.emergency_call_reason?.startsWith('[GALÃO]'));
 
     const currentKm = isGalaoOrder ? 0 : Number(executionForm.current_odometer);
-    if (!isGalaoOrder && (isNaN(currentKm) || currentKm <= 0)) {
-      showToast('Por favor, informe a leitura atual do odômetro no painel do veículo.', 'warning');
-      return;
-    }
 
     try {
       const res = await validateAndCompleteFuelOrder(selectedOrderForAction.id, {
@@ -2455,7 +2528,9 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         allowAuditedEdit: true,
         actor_name: currentUser?.name || 'Gestor da Frota',
         actor_role: currentUser?.role || 'Responsável pela Frota',
-        is_system_edit: true
+        is_system_edit: true,
+        ignore_fraud_risk: ignoreFraudRisk,
+        fraud_risk_justification: fraudJustification || undefined
       });
 
       if (res.audit.anomaly_level === 'bloqueio_critico') {
@@ -2471,7 +2546,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           },
           institutionId: currentUser?.institution_id
         }).catch(() => {});
-        showToast(`Abastecimento registrado com RISCO DE FRAUDE: ${res.audit.anomaly_reason}`, 'error');
+        showToast(`Abastecimento registrado com RISCO DE FRAUDE aplicado: ${res.audit.anomaly_reason}`, 'error');
       } else if (res.audit.anomaly_level === 'alerta_amarelo') {
         dispatchAgentOfficeEvent({
           agentId: 'fleet-agent',
@@ -2496,7 +2571,12 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           },
           institutionId: currentUser?.institution_id
         }).catch(() => {});
-        showToast(`Abastecimento registrado com sucesso! Consumo apurado: ${res.audit.calculated_km_per_liter} km/l`, 'success');
+        showToast(
+          ignoreFraudRisk
+            ? `Abastecimento salvo! Risco de Fraude ignorado mediante justificativa registrada.`
+            : `Abastecimento registrado com sucesso! Consumo apurado: ${res.audit.calculated_km_per_liter} km/l`,
+          'success'
+        );
       }
 
       setIsExecutionModalOpen(false);
@@ -2504,6 +2584,169 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
       loadData();
     } catch (err: any) {
       showToast(err.message || 'Erro ao registrar baixa do odômetro.', 'error');
+    }
+  };
+
+  // Envio de execução / baixa de canhoto no próprio sistema (abre popup se detectar Risco de Fraude)
+  const handleSaveExecution = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedOrderForAction) return;
+
+    const isGalaoOrder =
+      selectedOrderForAction.target_type === 'galao' ||
+      selectedOrderForAction.vehicle?.plate === 'GALÃO' ||
+      Boolean(selectedOrderForAction.emergency_call_reason?.startsWith('[GALÃO]'));
+
+    const currentKm = isGalaoOrder ? 0 : Number(executionForm.current_odometer);
+    if (!isGalaoOrder && (isNaN(currentKm) || currentKm <= 0)) {
+      showToast('Por favor, informe a leitura atual do odômetro no painel do veículo.', 'warning');
+      return;
+    }
+
+    const v = selectedOrderForAction.vehicle || vehicles.find(item => item.id === selectedOrderForAction.vehicle_id);
+    const suppliedLiters = Number(executionForm.liters_supplied) || selectedOrderForAction.liters_authorized;
+
+    if (!isGalaoOrder) {
+      const previewAudit = calculateRealtimeMetrics(
+        selectedOrderForAction.previous_odometer,
+        currentKm,
+        suppliedLiters,
+        v?.expected_consumption || 8,
+        v?.tank_capacity || 200
+      );
+
+      if (previewAudit.anomaly_level === 'bloqueio_critico') {
+        setFraudDecisionPopup({
+          isOpen: true,
+          mode: 'execution_submit',
+          order: selectedOrderForAction,
+          anomalyReason: previewAudit.anomaly_reason || 'Risco de Fraude detectado nos parâmetros do abastecimento.',
+          vehicleLabel: v ? `${v.plate} • ${v.model}` : 'Veículo Oficial',
+          orderNumberLabel: executionForm.custom_order_number || selectedOrderForAction.order_number,
+          selectedChoice: 'aplicar',
+          justification: '',
+          processing: false
+        });
+        return;
+      }
+    }
+
+    await executeSaveExecution(false, '');
+  };
+
+  // Confirmação da decisão no Popup de Risco de Fraude (Aplicar ou Ignorar com Justificativa)
+  const handleConfirmFraudDecisionPopup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { mode, order, selectedChoice, justification, anomalyReason } = fraudDecisionPopup;
+
+    if (selectedChoice === 'ignorar' && !justification.trim()) {
+      showToast('Informe a justificativa obrigatória para ignorar o Risco de Fraude.', 'warning');
+      return;
+    }
+
+    setFraudDecisionPopup(prev => ({ ...prev, processing: true }));
+    try {
+      if (mode === 'new_order_submit') {
+        if (selectedChoice === 'aplicar') {
+          setFraudDecisionPopup(prev => ({ ...prev, isOpen: false, processing: false }));
+          showToast('Risco de Fraude aplicado: emissão mantida bloqueada para correção da litragem ou odômetro.', 'warning');
+        } else {
+          setFraudDecisionPopup(prev => ({ ...prev, isOpen: false, processing: false }));
+          await executeCreateOrder(true, justification.trim());
+        }
+        return;
+      }
+
+      if (mode === 'execution_submit') {
+        setFraudDecisionPopup(prev => ({ ...prev, isOpen: false, processing: false }));
+        if (selectedChoice === 'aplicar') {
+          await executeSaveExecution(false, '');
+        } else {
+          await executeSaveExecution(true, justification.trim());
+        }
+        return;
+      }
+
+      // mode === 'existing_order'
+      if (!order) {
+        setFraudDecisionPopup(prev => ({ ...prev, isOpen: false, processing: false }));
+        return;
+      }
+
+      const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
+      if (selectedChoice === 'ignorar') {
+        const updated = await clearFuelOrderFraudRisk(
+          order.id,
+          justification.trim(),
+          currentUser?.name || currentUser?.id || 'Responsável pela Frota'
+        );
+        await recordFleetFuelAuditLog({
+          institution_id: currentUser?.institution_id || order.institution_id || 'inst_1',
+          order_id: order.id,
+          order_number: order.order_number,
+          vehicle_plate: v?.plate,
+          vehicle_model: v?.model,
+          action_type: 'RETIRADA_RISCO_FRAUDE',
+          action_label: 'Risco de Fraude Ignorado mediante Justificativa (Data Preservada)',
+          actor_name: currentUser?.name || 'Gestor da Frota',
+          actor_role: currentUser?.role || 'Responsável pela Frota',
+          fueling_date: formatDateBRFromRaw((order as any).fueling_date || order.supplied_at || order.created_at),
+          changes: [
+            {
+              field: 'anomaly_level',
+              label: 'Decisão sobre Risco de Fraude',
+              oldValue: anomalyReason || order.anomaly_reason || 'Risco de Fraude',
+              newValue: 'Ignorado com Justificativa'
+            }
+          ],
+          notes: justification.trim()
+        });
+        setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? updated : o)));
+        if (selectedOrderForAction && (selectedOrderForAction.id === updated.id || selectedOrderForAction.order_number === updated.order_number)) {
+          setSelectedOrderForAction(updated);
+        }
+        setFraudDecisionPopup(prev => ({ ...prev, isOpen: false, processing: false, justification: '' }));
+        setShowFraudClearBox(false);
+        showToast(`Risco de Fraude ignorado na ordem ${updated.order_number} com justificativa registrada!`, 'success');
+        loadData(true);
+      } else {
+        const updated = await applyFuelOrderFraudRisk(
+          order.id,
+          anomalyReason || order.anomaly_reason,
+          currentUser?.name || currentUser?.id || 'Responsável pela Frota'
+        );
+        await recordFleetFuelAuditLog({
+          institution_id: currentUser?.institution_id || order.institution_id || 'inst_1',
+          order_id: order.id,
+          order_number: order.order_number,
+          vehicle_plate: v?.plate,
+          vehicle_model: v?.model,
+          action_type: 'GLOSA_ORDEM',
+          action_label: 'Aplicação / Confirmação de Risco de Fraude na Ordem',
+          actor_name: currentUser?.name || 'Gestor da Frota',
+          actor_role: currentUser?.role || 'Responsável pela Frota',
+          fueling_date: formatDateBRFromRaw((order as any).fueling_date || order.supplied_at || order.created_at),
+          changes: [
+            {
+              field: 'anomaly_level',
+              label: 'Decisão sobre Risco de Fraude',
+              oldValue: order.anomaly_reason || 'Em análise',
+              newValue: 'Risco de Fraude Aplicado'
+            }
+          ],
+          notes: anomalyReason || order.anomaly_reason || 'Risco de Fraude confirmado pelo gestor.'
+        });
+        setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? updated : o)));
+        if (selectedOrderForAction && (selectedOrderForAction.id === updated.id || selectedOrderForAction.order_number === updated.order_number)) {
+          setSelectedOrderForAction(updated);
+        }
+        setFraudDecisionPopup(prev => ({ ...prev, isOpen: false, processing: false }));
+        showToast(`Risco de Fraude aplicado/mantido na ordem ${updated.order_number}.`, 'warning');
+        loadData(true);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao processar decisão de Risco de Fraude.', 'error');
+      setFraudDecisionPopup(prev => ({ ...prev, processing: false }));
     }
   };
 
@@ -3665,9 +3908,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                               <Ban size={12} /> Glosado
                             </span>
                           ) : order.anomaly_level === 'bloqueio_critico' || order.is_anomaly ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openFraudDecisionPopupForOrder(order);
+                              }}
+                              title="Clique para decidir: Aplicar ou Ignorar Risco de Fraude (com justificativa)"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-black bg-rose-100 hover:bg-rose-200 text-rose-800 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 dark:text-rose-300 border border-rose-300 dark:border-rose-800 transition-colors cursor-pointer shadow-xs"
+                            >
                               <AlertTriangle size={12} className="text-rose-600" /> Risco de Fraude
-                            </span>
+                            </button>
                           ) : order.anomaly_level === 'alerta_amarelo' ? (
                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
                               <AlertTriangle size={12} className="text-amber-600" /> Alerta Consumo
@@ -4060,10 +4311,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                           <td className="px-4 py-3.5 max-w-[220px]">
                             {order.anomaly_level === 'bloqueio_critico' || order.is_anomaly ? (
                               <div className="space-y-1">
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-600 text-white animate-pulse">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openFraudDecisionPopupForOrder(order);
+                                  }}
+                                  title="Clique para decidir: Aplicar ou Ignorar Risco de Fraude (com justificativa)"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide bg-rose-600 hover:bg-rose-700 text-white animate-pulse cursor-pointer transition-colors"
+                                >
                                   <AlertTriangle size={11} />
                                   🔴 Risco de Fraude
-                                </span>
+                                </button>
                                 <div className="text-[10px] font-bold text-rose-700 dark:text-rose-300 leading-tight">
                                   {order.anomaly_reason || 'Inconsistência grave no odômetro ou consumo discrepante (>25%).'}
                                 </div>
@@ -6661,11 +6920,11 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       {(ord.is_anomaly || ord.anomaly_level === 'bloqueio_critico') && !showFraudClearBox && (
                         <button
                           type="button"
-                          onClick={() => setShowFraudClearBox(true)}
+                          onClick={() => openFraudDecisionPopupForOrder(ord)}
                           className="px-3 py-1.5 text-[11px] font-black text-rose-800 dark:text-rose-100 bg-white dark:bg-rose-900/60 hover:bg-rose-100 dark:hover:bg-rose-900 border border-rose-300 dark:border-rose-700 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center gap-1.5 shadow-xs"
                         >
                           <ShieldCheck size={14} />
-                          <span>Retirar Risco de Fraude</span>
+                          <span>Avaliar Risco (Aplicar / Ignorar)</span>
                         </button>
                       )}
                     </div>
@@ -9320,6 +9579,181 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                   >
                     <CheckCircle2 size={14} />
                     <span>{savingAdvanceFuel ? 'Salvando...' : 'Registrar Abastecimento'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* POPUP DE DECISÃO SOBRE RISCO DE FRAUDE (APLICAR OU IGNORAR COM JUSTIFICATIVA) */}
+      <AnimatePresence>
+        {fraudDecisionPopup.isOpen && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-lg bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-rose-200 dark:border-rose-900/60 overflow-hidden"
+            >
+              {/* Cabeçalho do Popup */}
+              <div className="px-6 py-4 bg-gradient-to-r from-rose-600 to-red-700 text-white flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center shrink-0">
+                    <AlertTriangle size={22} className="text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wide">
+                      Alerta de Risco de Fraude
+                    </h3>
+                    <p className="text-[11px] text-rose-100 font-medium">
+                      Ordem #{fraudDecisionPopup.orderNumberLabel || '-'} • {fraudDecisionPopup.vehicleLabel || 'Frota Municipal'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFraudDecisionPopup(prev => ({ ...prev, isOpen: false }))}
+                  className="p-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <form onSubmit={handleConfirmFraudDecisionPopup} className="p-6 space-y-4">
+                {/* Motivo apontado pelo Semáforo Antifraude */}
+                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/80 text-xs text-rose-900 dark:text-rose-200 space-y-1">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 dark:text-rose-400 block">
+                    Inconsistência Detectada pelo Sistema:
+                  </span>
+                  <p className="font-bold leading-relaxed">
+                    {fraudDecisionPopup.anomalyReason}
+                  </p>
+                </div>
+
+                {/* Pergunta de Decisão: Aplicar ou Ignorar */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-black text-neutral-800 dark:text-neutral-200">
+                    Como deseja proceder com este Risco de Fraude?
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setFraudDecisionPopup(prev => ({ ...prev, selectedChoice: 'aplicar' }))}
+                      className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                        fraudDecisionPopup.selectedChoice === 'aplicar'
+                          ? 'border-rose-600 bg-rose-50/80 dark:bg-rose-950/50 text-rose-950 dark:text-rose-100 shadow-xs'
+                          : 'border-neutral-200 dark:border-neutral-800 hover:border-rose-300 dark:hover:border-rose-800 text-neutral-700 dark:text-neutral-300'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                        fraudDecisionPopup.selectedChoice === 'aplicar'
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
+                      }`}>
+                        <AlertTriangle size={12} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black block">Aplicar Risco de Fraude</span>
+                        <span className="text-[10px] opacity-80 block mt-0.5 leading-snug">
+                          Mantém o alerta crítico ativo para bloqueio ou auditoria do Controle Interno.
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setFraudDecisionPopup(prev => ({ ...prev, selectedChoice: 'ignorar' }))}
+                      className={`p-3.5 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                        fraudDecisionPopup.selectedChoice === 'ignorar'
+                          ? 'border-emerald-600 bg-emerald-50/80 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-100 shadow-xs'
+                          : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-300 dark:hover:border-emerald-800 text-neutral-700 dark:text-neutral-300'
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                        fraudDecisionPopup.selectedChoice === 'ignorar'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
+                      }`}>
+                        <ShieldCheck size={12} />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black block">Ignorar Risco de Fraude</span>
+                        <span className="text-[10px] opacity-80 block mt-0.5 leading-snug">
+                          Libera a ordem como conforme mediante justificativa formal obrigatória.
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Campo de Justificativa Obrigatória quando escolher "Ignorar" */}
+                {fraudDecisionPopup.selectedChoice === 'ignorar' && (
+                  <div className="space-y-2 pt-1 animate-in fade-in duration-200">
+                    <label className="block text-xs font-black text-neutral-800 dark:text-neutral-200">
+                      Justificativa para Ignorar o Risco de Fraude <span className="text-rose-600">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'Correção de odômetro / troca de painel velocímetro',
+                        'Abastecimento complementar autorizado para serviço contínuo',
+                        'Operação severa em estrada rural / marcha lenta prolongada',
+                        'Erro de digitação no odômetro do abastecimento anterior'
+                      ].map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => setFraudDecisionPopup(prev => ({ ...prev, justification: sug }))}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-neutral-100 hover:bg-emerald-100 dark:bg-neutral-800 dark:hover:bg-emerald-950/60 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700 transition-colors cursor-pointer"
+                        >
+                          + {sug}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      rows={3}
+                      required
+                      value={fraudDecisionPopup.justification}
+                      onChange={e => setFraudDecisionPopup(prev => ({ ...prev, justification: e.target.value }))}
+                      placeholder="Descreva o motivo técnico ou operacional pelo qual este Risco de Fraude deve ser ignorado..."
+                      className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 border border-emerald-300 dark:border-emerald-700 rounded-2xl text-xs font-medium text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                      A justificativa ficará gravada na ordem e na aba <strong>Logs de Auditoria</strong>, preservando a data original do abastecimento.
+                    </p>
+                  </div>
+                )}
+
+                {/* Rodapé de Ações */}
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                  <button
+                    type="button"
+                    onClick={() => setFraudDecisionPopup(prev => ({ ...prev, isOpen: false }))}
+                    className="px-4 py-2.5 text-xs font-bold text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={fraudDecisionPopup.processing}
+                    className={`px-5 py-2.5 text-xs font-black text-white rounded-xl shadow-md cursor-pointer flex items-center gap-1.5 disabled:opacity-50 transition-all ${
+                      fraudDecisionPopup.selectedChoice === 'ignorar'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+                        : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                    }`}
+                  >
+                    {fraudDecisionPopup.selectedChoice === 'ignorar' ? (
+                      <>
+                        <ShieldCheck size={15} />
+                        <span>{fraudDecisionPopup.processing ? 'Salvando...' : 'Ignorar Risco e Salvar Justificativa'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle size={15} />
+                        <span>{fraudDecisionPopup.processing ? 'Aplicando...' : 'Confirmar e Aplicar Risco de Fraude'}</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

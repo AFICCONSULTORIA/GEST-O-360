@@ -238,6 +238,8 @@ export interface IssueOrderPayload {
   budget_classification?: FleetBudgetClassification;
   institution_id?: string;
   custom_order_number?: string; // Número personalizado para seguir requisições em papel
+  ignore_fraud_risk?: boolean;
+  fraud_risk_justification?: string;
 }
 
 export interface OrderCompletionPayload {
@@ -262,6 +264,8 @@ export interface OrderCompletionPayload {
   actor_name?: string;
   actor_role?: string;
   is_system_edit?: boolean;
+  ignore_fraud_risk?: boolean;
+  fraud_risk_justification?: string;
 }
 
 export type FleetFuelAuditActionType =
@@ -674,7 +678,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     throw new Error('A litragem autorizada deve ser superior a zero.');
   }
 
-  if (!isGalao && payload.liters_authorized > vehicle.tank_capacity) {
+  if (!isGalao && payload.liters_authorized > vehicle.tank_capacity && !payload.ignore_fraud_risk) {
     throw new Error(
       `BLOQUEIO DE AUDITORIA: Litragem autorizada (${payload.liters_authorized.toFixed(2)}L) ultrapassa a capacidade máxima do tanque (${vehicle.tank_capacity.toFixed(2)}L - ${vehicle.model}).`
     );
@@ -737,6 +741,9 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
       : undefined,
     deviation_percent: undefined,
     anomaly_level: 'none',
+    audit_justification: payload.ignore_fraud_risk && payload.fraud_risk_justification?.trim()
+      ? `[Risco de Fraude ignorado na emissão por ${payload.authorized_by_name || 'Gestor de Frotas'}]: ${payload.fraud_risk_justification.trim()}`
+      : undefined,
     supply_mode: supply_mode,
     is_full_tank_order: !isGalao && (!!payload.is_full_tank_order || supply_mode === 'encher_tanque'),
     emergency_call_reason: payload.emergency_call_reason,
@@ -1061,6 +1068,14 @@ export async function validateAndCompleteFuelOrder(
         vehicle.tank_capacity || 200
       );
 
+  const originalDetectedFraudReason = audit.anomaly_reason || order.anomaly_reason;
+  const isIgnoringFraudRisk = Boolean(completionData.ignore_fraud_risk && completionData.fraud_risk_justification?.trim());
+  if (isIgnoringFraudRisk) {
+    audit.anomaly_level = 'none';
+    audit.anomaly_reason = undefined;
+    audit.is_blocked = false;
+  }
+
   // 4. Determina status de confirmação na bomba (sempre 'abastecido', preservando anomalia para auditoria do gestor)
   const finalStatus: TwoWayOrderStatus = 'abastecido';
 
@@ -1184,6 +1199,23 @@ export async function validateAndCompleteFuelOrder(
     });
   }
 
+  if (isIgnoringFraudRisk && completionData.fraud_risk_justification?.trim()) {
+    fieldChanges.push({
+      field: 'anomaly_level',
+      label: 'Risco de Fraude (Ignorado com Justificativa)',
+      oldValue: originalDetectedFraudReason || 'Risco de Fraude detectado',
+      newValue: `Ignorado: ${completionData.fraud_risk_justification.trim()}`
+    });
+  }
+
+  const ignoredJustificationNote = isIgnoringFraudRisk && completionData.fraud_risk_justification?.trim()
+    ? `[Risco de Fraude ignorado por ${completionData.actor_name || 'Gestor da Frota'}]: ${completionData.fraud_risk_justification.trim()}`
+    : '';
+  const mergedAuditJustification = [
+    completionData.audit_justification?.trim() || order.audit_justification?.trim() || '',
+    ignoredJustificationNote
+  ].filter(Boolean).join('\n') || undefined;
+
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     order_number: finalOrderNumber,
@@ -1203,7 +1235,7 @@ export async function validateAndCompleteFuelOrder(
     invoice_coupon_number: completionData.invoice_coupon_number?.trim() || order.invoice_coupon_number,
     anomaly_level: audit.anomaly_level,
     anomaly_reason: audit.anomaly_reason,
-    audit_justification: completionData.audit_justification || order.audit_justification,
+    audit_justification: mergedAuditJustification,
     budget_classification_id: resolvedBudgetId,
     budget_classification: resolvedBudget,
     status: finalStatus,

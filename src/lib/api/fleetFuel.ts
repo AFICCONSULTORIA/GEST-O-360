@@ -1446,19 +1446,42 @@ export async function clearFuelOrderFraudRisk(
 ): Promise<FuelSupplyOrder> {
   const cleanObs = observation.trim();
   if (!cleanObs) {
-    throw new Error('Informe uma observação explicando a situação para retirar o Risco de Fraude.');
+    throw new Error('Informe uma justificativa explicando a situação para ignorar o Risco de Fraude.');
   }
 
   const orders = getLocalRealOrders();
-  const index = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  let index = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  let order: FuelSupplyOrder | undefined = index !== -1 ? orders[index] : undefined;
 
-  if (index === -1) {
+  if (!order) {
+    try {
+      let { data, error } = await supabase
+        .from('fuel_supply_orders')
+        .select('*, vehicle:fleet_vehicles(*)')
+        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+        .maybeSingle();
+
+      if (error || !data) {
+        const anonRes = await supabaseAnon
+          .from('fuel_supply_orders')
+          .select('*, vehicle:fleet_vehicles(*)')
+          .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+          .maybeSingle();
+        if (anonRes.data) data = anonRes.data;
+      }
+
+      if (data) {
+        order = data as FuelSupplyOrder;
+      }
+    } catch {}
+  }
+
+  if (!order) {
     throw new Error('Ordem de abastecimento não encontrada.');
   }
 
-  const order = orders[index];
   const nowIso = new Date().toISOString();
-  const auditNote = `[Risco de Fraude retirado manualmente${clearedBy ? ` por ${clearedBy}` : ''}]: ${cleanObs}`;
+  const auditNote = `[Risco de Fraude ignorado${clearedBy ? ` por ${clearedBy}` : ''}]: ${cleanObs}`;
   const updatedJustification = order.audit_justification
     ? `${order.audit_justification}\n${auditNote}`
     : auditNote;
@@ -1473,18 +1496,115 @@ export async function clearFuelOrderFraudRisk(
   };
 
   try {
-    await supabase.from('fuel_supply_orders').update({
+    const payload = {
       is_anomaly: false,
       anomaly_level: 'none',
       anomaly_reason: null,
-      audit_justification: updatedOrder.audit_justification,
-      updated_at: updatedOrder.updated_at
-    }).eq('id', order.id);
+      audit_justification: updatedOrder.audit_justification
+    };
+    const { error } = await supabase.from('fuel_supply_orders').update(payload).eq('id', order.id);
+    if (error) {
+      const anonRetry = await supabaseAnon.from('fuel_supply_orders').update(payload).eq('id', order.id);
+      if (anonRetry.error) {
+        await supabaseAnon.from('fuel_supply_orders').update({
+          anomaly_level: 'none',
+          anomaly_reason: null,
+          audit_justification: updatedOrder.audit_justification
+        }).eq('id', order.id);
+      }
+    }
   } catch (err) {
-    console.warn('[FleetFuel] Erro ao retirar Risco de Fraude no Supabase:', err);
+    console.warn('[FleetFuel] Erro ao ignorar Risco de Fraude no Supabase:', err);
   }
 
-  orders[index] = updatedOrder;
+  if (index !== -1) {
+    orders[index] = updatedOrder;
+  } else {
+    orders.unshift(updatedOrder);
+  }
+  saveLocalRealOrders(orders);
+  return updatedOrder;
+}
+
+export async function applyFuelOrderFraudRisk(
+  orderId: string,
+  reason?: string,
+  appliedBy?: string
+): Promise<FuelSupplyOrder> {
+  const orders = getLocalRealOrders();
+  let index = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  let order: FuelSupplyOrder | undefined = index !== -1 ? orders[index] : undefined;
+
+  if (!order) {
+    try {
+      let { data, error } = await supabase
+        .from('fuel_supply_orders')
+        .select('*, vehicle:fleet_vehicles(*)')
+        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+        .maybeSingle();
+
+      if (error || !data) {
+        const anonRes = await supabaseAnon
+          .from('fuel_supply_orders')
+          .select('*, vehicle:fleet_vehicles(*)')
+          .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+          .maybeSingle();
+        if (anonRes.data) data = anonRes.data;
+      }
+
+      if (data) {
+        order = data as FuelSupplyOrder;
+      }
+    } catch {}
+  }
+
+  if (!order) {
+    throw new Error('Ordem de abastecimento não encontrada.');
+  }
+
+  const nowIso = new Date().toISOString();
+  const finalReason = reason?.trim() || order.anomaly_reason || 'Risco de Fraude aplicado/confirmado pela auditoria da frota.';
+  const auditNote = `[Risco de Fraude aplicado/confirmado${appliedBy ? ` por ${appliedBy}` : ''}]: ${finalReason}`;
+  const updatedJustification = order.audit_justification
+    ? `${order.audit_justification}\n${auditNote}`
+    : auditNote;
+
+  const updatedOrder: FuelSupplyOrder = {
+    ...order,
+    is_anomaly: true,
+    anomaly_level: 'bloqueio_critico',
+    anomaly_reason: finalReason,
+    audit_justification: updatedJustification,
+    updated_at: nowIso
+  };
+
+  try {
+    const payload = {
+      is_anomaly: true,
+      anomaly_level: 'bloqueio_critico',
+      anomaly_reason: finalReason,
+      audit_justification: updatedOrder.audit_justification
+    };
+    const { error } = await supabase.from('fuel_supply_orders').update(payload).eq('id', order.id);
+    if (error) {
+      const anonRetry = await supabaseAnon.from('fuel_supply_orders').update(payload).eq('id', order.id);
+      if (anonRetry.error) {
+        await supabaseAnon.from('fuel_supply_orders').update({
+          anomaly_level: 'bloqueio_critico',
+          anomaly_reason: finalReason,
+          audit_justification: updatedOrder.audit_justification
+        }).eq('id', order.id);
+      }
+    }
+  } catch (err) {
+    console.warn('[FleetFuel] Erro ao aplicar Risco de Fraude no Supabase:', err);
+  }
+
+  if (index !== -1) {
+    orders[index] = updatedOrder;
+  } else {
+    orders.unshift(updatedOrder);
+  }
   saveLocalRealOrders(orders);
   return updatedOrder;
 }
