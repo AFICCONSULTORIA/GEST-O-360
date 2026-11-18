@@ -210,10 +210,10 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
     return (
       <div
         style={{
+          display: 'inline-block',
           transform: scale !== 1 ? `scale(${scale})` : undefined,
           transformOrigin: 'top left',
         }}
-        className="inline-block"
       >
         {/* Folha A4 Retrato (Papel Timbrado Oficial da Prefeitura): 210mm x 297mm (794px x 1123px) */}
         <div
@@ -221,33 +221,61 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
           id={`certificate-render-${certificate.id}`}
           data-orientation="portrait"
           style={{
+            position: 'relative',
             width: '794px',
             height: '1123px',
             backgroundColor: '#ffffff',
             color: '#1e293b',
-            padding: '56px 64px 48px 64px'
+            padding: '52px 60px 44px 60px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+            overflow: 'hidden',
+            fontFamily: 'Arial, Helvetica, sans-serif'
           }}
-          className="relative overflow-hidden flex flex-col justify-between box-border font-sans select-none"
         >
-          {/* Barra superior institucional sutil */}
+          {/* Barra superior institucional */}
           <div
-            className="absolute top-0 left-0 right-0 h-2"
-            style={{ backgroundColor: selectedTheme.titleColor }}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              height: '8px',
+              backgroundColor: selectedTheme.titleColor
+            }}
           />
 
           {/* TIMBRE OFICIAL DA PREFEITURA & SECRETARIA ORGANIZADORA */}
-          <div>
-            <div className="flex items-center gap-5 pb-5">
+          <div style={{ width: '100%' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '20px',
+                paddingBottom: '18px'
+              }}
+            >
               <div
-                className="flex items-center justify-center shrink-0"
-                style={{ width: '84px', height: '84px' }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  maxWidth: '170px',
+                  minWidth: '76px',
+                  height: '76px'
+                }}
               >
                 <img
                   src={logoSrc}
                   alt="Brasão Oficial da Prefeitura"
                   style={{
-                    maxHeight: '82px',
-                    maxWidth: '82px',
+                    maxHeight: '74px',
+                    maxWidth: '170px',
+                    width: 'auto',
+                    height: 'auto',
                     objectFit: 'contain'
                   }}
                   onError={() => {
@@ -258,60 +286,102 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
                 />
               </div>
 
-              <div className="flex-1 min-w-0">
-                <p
-                  className="text-xs font-bold uppercase tracking-widest"
-                  style={{ color: '#64748b', letterSpacing: '0.12em' }}
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  borderLeftWidth: '2px',
+                  borderLeftStyle: 'solid',
+                  borderLeftColor: '#cbd5e1',
+                  paddingLeft: '18px'
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.14em',
+                    color: '#64748b',
+                    margin: 0
+                  }}
                 >
                   República Federativa do Brasil
-                </p>
-                <h2
-                  className="text-xl font-black uppercase tracking-tight mt-0.5"
-                  style={{ color: '#0f172a', lineHeight: '1.2' }}
+                </div>
+                <div
+                  style={{
+                    fontSize: '19px',
+                    fontWeight: 900,
+                    textTransform: 'uppercase',
+                    color: '#0f172a',
+                    lineHeight: 1.2,
+                    marginTop: '3px'
+                  }}
                 >
                   {institution?.name || 'Prefeitura Municipal'}
-                </h2>
-                <p
-                  className="text-sm font-extrabold uppercase tracking-wide mt-1"
-                  style={{ color: selectedTheme.titleColor }}
+                </div>
+                <div
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    color: selectedTheme.titleColor,
+                    marginTop: '3px'
+                  }}
                 >
                   {organizingSecretariat}
-                </p>
+                </div>
                 {(institution?.cnpj || institution?.city) && (
-                  <p className="text-[11px] mt-1" style={{ color: '#64748b' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
                     {institution?.cnpj ? `CNPJ: ${institution.cnpj}` : ''}
                     {institution?.cnpj && institution?.city ? ' · ' : ''}
                     {institution?.city ? `${institution.city}${institution.state ? ` - ${institution.state}` : ''}` : ''}
-                  </p>
+                  </div>
                 )}
               </div>
             </div>
 
             {/* Filete duplo oficial de papel timbrado */}
-            <div style={{ borderTopWidth: '2px', borderTopStyle: 'solid', borderTopColor: selectedTheme.titleColor }} />
-            <div className="mt-1" style={{ borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: '#cbd5e1' }} />
+            <div style={{ borderTopWidth: '2.5px', borderTopStyle: 'solid', borderTopColor: selectedTheme.titleColor }} />
+            <div style={{ marginTop: '3px', borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: '#cbd5e1' }} />
           </div>
 
           {/* CORPO DA DECLARAÇÃO OFICIAL */}
-          <div className="my-auto py-8">
-            <div className="text-center mb-12">
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '24px 0' }}>
+            <div style={{ textAlign: 'center', marginBottom: '44px' }}>
               <h1
-                className="text-2xl font-black uppercase tracking-[0.22em]"
-                style={{ color: '#0f172a' }}
+                style={{
+                  fontSize: '24px',
+                  fontWeight: 900,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.18em',
+                  color: '#0f172a',
+                  margin: 0
+                }}
               >
                 DECLARAÇÃO DE PARTICIPAÇÃO
               </h1>
               <div
-                className="w-20 h-0.5 mx-auto mt-3"
-                style={{ backgroundColor: selectedTheme.titleColor }}
+                style={{
+                  width: '90px',
+                  height: '3px',
+                  backgroundColor: selectedTheme.titleColor,
+                  margin: '12px auto 0 auto'
+                }}
               />
             </div>
 
             <div
-              className="text-[16px] leading-[1.95] text-justify space-y-6"
-              style={{ color: '#1e293b', fontFamily: 'Georgia, Cambria, "Times New Roman", serif' }}
+              style={{
+                fontSize: '16px',
+                lineHeight: 1.9,
+                textAlign: 'justify',
+                color: '#1e293b',
+                fontFamily: 'Georgia, Cambria, "Times New Roman", serif'
+              }}
             >
-              <p style={{ textIndent: '40px' }}>
+              <p style={{ textIndent: '44px', margin: '0 0 22px 0' }}>
                 Declaramos, para os devidos fins que se fizerem necessários, que{' '}
                 <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>
                   {certificate.recipient_name}
@@ -330,93 +400,161 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
                 <strong style={{ color: '#0f172a' }}>{template.workload_hours} horas</strong>.
               </p>
 
-              <p style={{ textIndent: '40px' }}>
+              <p style={{ textIndent: '44px', margin: 0 }}>
                 Por ser expressão da verdade, firmamos a presente declaração para que produza os seus
                 devidos efeitos legais.
               </p>
             </div>
 
             <p
-              className="text-right text-[15px] mt-12"
-              style={{ color: '#334155', fontFamily: 'Georgia, Cambria, "Times New Roman", serif' }}
+              style={{
+                textAlign: 'right',
+                fontSize: '15px',
+                marginTop: '44px',
+                marginBottom: 0,
+                color: '#334155',
+                fontFamily: 'Georgia, Cambria, "Times New Roman", serif'
+              }}
             >
-              {institution?.city ? `${institution.city}${institution.state ? `/${institution.state}` : ''}` : (institution?.name || 'Município')},{' '}
+              {institution?.city ? `${institution.city}${institution.state ? ` - ${institution.state}` : ''}` : (institution?.name || 'Município')},{' '}
               {todayExtenso}.
             </p>
 
             {/* BLOCO DE ASSINATURA DO SECRETÁRIO(A) */}
-            <div className="mt-16 flex flex-col items-center text-center">
+            <div
+              style={{
+                marginTop: '56px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                textAlign: 'center'
+              }}
+            >
               {template.secretary_signature_url ? (
                 <img
                   src={template.secretary_signature_url}
                   alt={`Assinatura de ${template.issuer_name}`}
                   style={{
-                    maxHeight: '72px',
+                    maxHeight: '70px',
                     maxWidth: '240px',
+                    width: 'auto',
+                    height: 'auto',
                     objectFit: 'contain',
                     marginBottom: '-6px'
                   }}
                 />
               ) : (
-                <div className="mb-1 px-4 py-1.5 rounded-lg" style={{ backgroundColor: '#f8fafc', borderWidth: '1px', borderStyle: 'dashed', borderColor: '#cbd5e1' }}>
-                  <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: '#64748b' }}>
+                <div
+                  style={{
+                    marginBottom: '6px',
+                    padding: '6px 16px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f8fafc',
+                    borderWidth: '1px',
+                    borderStyle: 'dashed',
+                    borderColor: '#cbd5e1'
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      fontFamily: 'monospace',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.06em',
+                      color: '#64748b'
+                    }}
+                  >
                     Assinado eletronicamente por {template.issuer_name}
-                  </p>
+                  </span>
                 </div>
               )}
 
               <div
-                className="w-80 mb-2"
-                style={{ borderBottomWidth: '1.5px', borderBottomStyle: 'solid', borderBottomColor: '#0f172a' }}
+                style={{
+                  width: '320px',
+                  borderBottomWidth: '1.5px',
+                  borderBottomStyle: 'solid',
+                  borderBottomColor: '#0f172a',
+                  marginBottom: '8px'
+                }}
               />
-              <p className="text-sm font-black uppercase tracking-wide" style={{ color: '#0f172a' }}>
+              <div style={{ fontSize: '13px', fontWeight: 900, textTransform: 'uppercase', color: '#0f172a' }}>
                 {template.issuer_name}
-              </p>
-              <p className="text-xs font-semibold mt-0.5" style={{ color: '#475569' }}>
+              </div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginTop: '2px' }}>
                 {template.issuer_role || 'Secretário(a) Municipal'}
-              </p>
-              <p className="text-[11px] font-medium uppercase mt-0.5" style={{ color: '#64748b' }}>
+              </div>
+              <div style={{ fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', color: '#64748b', marginTop: '2px' }}>
                 {organizingSecretariat}
-              </p>
+              </div>
             </div>
           </div>
 
           {/* RODAPÉ OFICIAL COM QR CODE DE AUTENTICIDADE */}
           <div
-            className="pt-4 flex items-center justify-between gap-4"
-            style={{ borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: '#cbd5e1' }}
+            style={{
+              paddingTop: '14px',
+              borderTopWidth: '1px',
+              borderTopStyle: 'solid',
+              borderTopColor: '#cbd5e1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '16px'
+            }}
           >
-            <div className="flex items-center gap-3">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0 }}>
               <div
-                className="w-16 h-16 p-1 rounded-lg shrink-0"
-                style={{ backgroundColor: '#ffffff', borderWidth: '1px', borderStyle: 'solid', borderColor: '#cbd5e1' }}
+                style={{
+                  width: '68px',
+                  height: '68px',
+                  padding: '4px',
+                  borderRadius: '8px',
+                  backgroundColor: '#ffffff',
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  borderColor: '#cbd5e1',
+                  flexShrink: 0,
+                  boxSizing: 'border-box'
+                }}
               >
                 <img
                   src={qrUrl}
                   alt="QR Code de Autenticidade"
-                  className="w-full h-full object-contain"
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
                 />
               </div>
-              <div className="text-left text-[10px] leading-snug" style={{ color: '#64748b' }}>
-                <span className="font-bold block text-[11px] font-mono" style={{ color: '#0f172a' }}>
+              <div style={{ textAlign: 'left', fontSize: '10px', lineHeight: 1.4, color: '#64748b' }}>
+                <div style={{ fontWeight: 800, fontSize: '11px', fontFamily: 'monospace', color: '#0f172a' }}>
                   AUTENTICIDADE: {certificate.validation_hash}
-                </span>
-                <span className="block mt-0.5">
+                </div>
+                <div style={{ marginTop: '2px' }}>
                   Documento oficial validável conforme a Lei Federal nº 14.063/2020.
-                </span>
-                <span className="block text-[9px] mt-0.5" style={{ color: '#94a3b8' }}>
+                </div>
+                <div style={{ fontSize: '9px', marginTop: '2px', color: '#94a3b8', wordBreak: 'break-all' }}>
                   Conferência: {certificate.qr_code_url}
-                </span>
+                </div>
               </div>
             </div>
 
             {isSecondIssue && (
               <div
-                className="px-3 py-1.5 rounded-lg text-right shrink-0"
-                style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: '#fca5a5', backgroundColor: '#fff1f2', color: '#be123c' }}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  textAlign: 'right',
+                  flexShrink: 0,
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  borderColor: '#fca5a5',
+                  backgroundColor: '#fff1f2',
+                  color: '#be123c'
+                }}
               >
-                <span className="text-[10px] font-black uppercase block font-mono">2ª Via</span>
-                <span className="text-[9px] block">{new Date().toLocaleDateString('pt-BR')}</span>
+                <div style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', fontFamily: 'monospace' }}>
+                  2ª Via
+                </div>
+                <div style={{ fontSize: '9px' }}>{new Date().toLocaleDateString('pt-BR')}</div>
               </div>
             )}
           </div>

@@ -682,11 +682,11 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
         </div>
       </main>
 
-      {/* Container Oculto para Renderização do PDF na 2ª Etapa (Tarde) */}
+      {/* Container Oculto para Renderização do PDF na 2ª Etapa (Vespertino) */}
       {issuedResult && (
         <div
           aria-hidden="true"
-          style={{ position: 'fixed', left: '-99999px', top: 0, pointerEvents: 'none', opacity: 0 }}
+          style={{ position: 'fixed', left: '-99999px', top: 0, pointerEvents: 'none' }}
         >
           <CertificateDocumentPDF
             ref={pdfRenderRef}
