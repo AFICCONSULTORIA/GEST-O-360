@@ -65,6 +65,7 @@ export interface CertificateTemplate {
   issuer_name: string;
   issuer_role: string;
   secretariat_name?: string | null;
+  secretary_signature_url?: string | null;
   background_mode: CertificateBackgroundMode;
   preset_theme: CertificatePresetTheme;
   custom_background_url?: string | null;
@@ -105,6 +106,7 @@ export interface DeclarationCampaign {
   issuer_name: string;
   issuer_role: string;
   secretariat_name?: string | null;
+  secretary_signature_url?: string | null;
   preset_theme: CertificatePresetTheme;
   sender_email?: string | null;
   is_active: boolean;

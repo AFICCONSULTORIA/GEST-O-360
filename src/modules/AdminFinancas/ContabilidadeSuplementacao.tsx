@@ -2801,8 +2801,10 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                       </td>
 
                       <td className="py-2.5 px-2 whitespace-nowrap">
-                        <div className="font-black text-sm text-slate-900 dark:text-white">{f.ficha}</div>
-                        {f.cloc && <div className="text-[10px] text-slate-400 font-mono truncate">{f.cloc}</div>}
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 font-black text-xs">
+                          {f.ficha}
+                        </span>
+                        {f.cloc && <div className="text-[10px] text-slate-400 font-mono truncate mt-0.5">{f.cloc}</div>}
                       </td>
 
                       <td className="py-2.5 px-2.5 min-w-0">
@@ -2843,16 +2845,18 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                         {f.totalSuplementado > 0 ? `+ ${formatBRL(f.totalSuplementado)}` : '—'}
                       </td>
 
-                      <td
-                        className={`py-2.5 px-2 whitespace-nowrap text-right font-black text-[13px] tabular-nums ${
-                          sinal === 'negativo'
-                            ? 'text-red-600 dark:text-red-400'
-                            : sinal === 'zerado' || sinal === 'critico'
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-emerald-700 dark:text-emerald-400'
-                        }`}
-                      >
-                        {formatBRL(saldo)}
+                      <td className="py-2.5 px-2 whitespace-nowrap text-right">
+                        <span
+                          className={`inline-flex items-center justify-end px-2 py-0.5 rounded-lg font-black text-[12px] tabular-nums ${
+                            sinal === 'negativo'
+                              ? 'bg-red-600 text-white shadow-sm'
+                              : sinal === 'zerado' || sinal === 'critico'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/60 dark:text-amber-200 dark:border-amber-800'
+                              : 'bg-emerald-100 text-emerald-800 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-200 dark:border-emerald-800'
+                          }`}
+                        >
+                          {formatBRL(saldo)}
+                        </span>
                       </td>
 
                       <td className="py-2.5 px-2 whitespace-nowrap text-center print:hidden">
@@ -3432,8 +3436,19 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                                   <div className="font-semibold text-slate-700 dark:text-neutral-200 truncate">
                                     Proj./Ativ.: {origObj.acaoDescricao || origObj.especificacao}
                                   </div>
-                                  <div className="truncate">
-                                    Fonte: <strong className="font-mono text-indigo-700 dark:text-indigo-300">{origObj.fonteRecurso || '—'}</strong> • Saldo: <strong>{formatBRL(saldoOrig || 0)}</strong>
+                                  <div className="truncate flex flex-wrap items-center gap-1.5 mt-0.5">
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 font-mono font-bold">
+                                      Fonte: {origObj.fonteRecurso || '—'}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center px-1.5 py-0.5 rounded font-black ${
+                                        (saldoOrig || 0) < 0
+                                          ? 'bg-red-600 text-white'
+                                          : 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                                      }`}
+                                    >
+                                      Saldo: {formatBRL(saldoOrig || 0)}
+                                    </span>
                                   </div>
                                   {cobrirTargetFicha.fonteRecurso &&
                                     origObj.fonteRecurso &&

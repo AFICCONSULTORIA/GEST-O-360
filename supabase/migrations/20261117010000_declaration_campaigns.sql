@@ -5,7 +5,8 @@
 
 -- 1. DIFERENCIAÇÃO DE TIPO DE DOCUMENTO NOS TEMPLATES E CERTIFICADOS
 ALTER TABLE public.education_certificate_templates
-    ADD COLUMN IF NOT EXISTS document_kind TEXT NOT NULL DEFAULT 'certificado';
+    ADD COLUMN IF NOT EXISTS document_kind TEXT NOT NULL DEFAULT 'certificado',
+    ADD COLUMN IF NOT EXISTS secretary_signature_url TEXT;
 
 ALTER TABLE public.education_issued_certificates
     ADD COLUMN IF NOT EXISTS document_kind TEXT NOT NULL DEFAULT 'certificado';
@@ -23,8 +24,9 @@ CREATE TABLE IF NOT EXISTS public.education_declaration_campaigns (
     event_date_end DATE,
     location TEXT,
     issuer_name TEXT NOT NULL,
-    issuer_role TEXT NOT NULL DEFAULT 'Coordenação',
+    issuer_role TEXT NOT NULL DEFAULT 'Secretário(a) Municipal',
     secretariat_name TEXT,
+    secretary_signature_url TEXT,
     preset_theme TEXT NOT NULL DEFAULT 'classico_azul',
     sender_email TEXT,
     is_active BOOLEAN NOT NULL DEFAULT true,

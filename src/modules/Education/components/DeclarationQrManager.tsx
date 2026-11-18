@@ -24,7 +24,9 @@ import {
   Award,
   Loader2,
   Sunrise,
-  Sunset
+  Sunset,
+  Upload,
+  AlertTriangle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -38,6 +40,7 @@ import {
 } from '../types/certificates';
 import {
   buildTemplateFromCampaign,
+  checkDeclarationTablesHealth,
   confirmManualMorningCheckin,
   createDeclarationCampaign,
   deleteDeclarationCampaign,
@@ -98,13 +101,15 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
   const [dateStart, setDateStart] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [dateEnd, setDateEnd] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [location, setLocation] = useState('');
-  const [issuerName, setIssuerName] = useState(currentUser?.name || 'Coordenação do Evento');
-  const [issuerRole, setIssuerRole] = useState('Coordenação / Organização');
+  const [issuerName, setIssuerName] = useState(currentUser?.name || 'Secretário(a) Municipal');
+  const [issuerRole, setIssuerRole] = useState('Secretário(a) Municipal');
   const [secretariatName, setSecretariatName] = useState(defaultSecretariatName);
+  const [secretarySignatureUrl, setSecretarySignatureUrl] = useState<string>('');
   const [presetTheme, setPresetTheme] = useState<CertificatePresetTheme>('classico_azul');
   const [senderEmail, setSenderEmail] = useState('');
   const [requireMorningCheckin, setRequireMorningCheckin] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [dbHealth, setDbHealth] = useState<{ ok: boolean; error?: string } | null>(null);
 
   // Modal de Projeção em Tela Cheia
   const [projectedCampaign, setProjectedCampaign] = useState<DeclarationCampaign | null>(null);
@@ -147,7 +152,24 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
   useEffect(() => {
     loadCampaigns();
+    checkDeclarationTablesHealth().then(setDbHealth);
   }, [currentInstitution?.id]);
+
+  const handleSignatureUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      showToast('A imagem da assinatura deve ter no máximo 1 MB.', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setSecretarySignatureUrl(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const openSubmissionsModal = async (campaign: DeclarationCampaign) => {
     setInspectCampaign(campaign);
@@ -191,9 +213,10 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
         event_date_start: dateStart,
         event_date_end: dateEnd || dateStart,
         location: location.trim() || null,
-        issuer_name: issuerName.trim() || 'Coordenação do Evento',
-        issuer_role: issuerRole.trim() || 'Coordenação',
+        issuer_name: issuerName.trim() || 'Secretário(a) Municipal',
+        issuer_role: issuerRole.trim() || 'Secretário(a) Municipal',
         secretariat_name: secretariatName.trim() || defaultSecretariatName,
+        secretary_signature_url: secretarySignatureUrl || null,
         preset_theme: presetTheme,
         sender_email: senderEmail.trim() || null,
         is_active: true,
@@ -407,6 +430,20 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Alerta de Saúde do Banco de Dados (Coleta em Tempo Real) */}
+      {dbHealth && !dbHealth.ok && (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-200 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5 text-rose-600" />
+          <div className="text-xs leading-relaxed">
+            <p className="font-black">Atenção: Tabelas de Coleta não localizadas no Supabase</p>
+            <p className="mt-0.5 opacity-90">
+              Para receber automaticamente os dados e avaliações dos participantes que escaneiam o QR Code, aplique a migração{' '}
+              <code className="font-mono font-bold">20261117010000_declaration_campaigns.sql</code> no Supabase. ({dbHealth.error})
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Barra de Ação Superior */}
       <div className="bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-start gap-3">
@@ -546,53 +583,97 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                Responsável pela Assinatura *
+                Nome do Secretário(a) *
               </label>
               <input
                 type="text"
                 required
                 value={issuerName}
                 onChange={(e) => setIssuerName(e.target.value)}
+                placeholder="Ex: Maria da Silva"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                Cargo / Função
+                Cargo do Secretário(a) *
               </label>
               <input
                 type="text"
+                required
                 value={issuerRole}
                 onChange={(e) => setIssuerRole(e.target.value)}
+                placeholder="Ex: Secretário(a) Municipal de Educação"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                Secretaria / Órgão
+                Secretaria Organizadora *
               </label>
               <input
                 type="text"
+                required
                 value={secretariatName}
                 onChange={(e) => setSecretariatName(e.target.value)}
+                placeholder="Ex: Secretaria Municipal de Educação"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                Tema Visual (para emissão posterior)
+                Assinatura do Secretário(a) (PNG/JPG opcional)
+              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex-1 px-3 py-2.5 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-semibold text-neutral-600 dark:text-neutral-300 hover:border-amber-500 cursor-pointer flex items-center justify-center gap-2 truncate">
+                  <Upload className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="truncate">
+                    {secretarySignatureUrl ? 'Assinatura carregada (trocar)' : 'Enviar imagem da assinatura'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleSignatureUpload}
+                    className="hidden"
+                  />
+                </label>
+                {secretarySignatureUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setSecretarySignatureUrl('')}
+                    className="p-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-red-500 hover:bg-red-50 cursor-pointer"
+                    title="Remover assinatura"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              {secretarySignatureUrl && (
+                <div className="mt-2 p-2 rounded-xl bg-white border border-neutral-200 flex items-center justify-center">
+                  <img
+                    src={secretarySignatureUrl}
+                    alt="Prévia da assinatura"
+                    className="max-h-12 object-contain"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                Cor do Timbre da Declaração
               </label>
               <select
                 value={presetTheme}
                 onChange={(e) => setPresetTheme(e.target.value as CertificatePresetTheme)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
               >
-                <option value="classico_azul">Clássico Azul Institucional</option>
+                <option value="classico_azul">Azul Institucional</option>
                 <option value="verde_institucional">Verde Institucional</option>
-                <option value="elegante_dourado">Elegante Dourado</option>
+                <option value="elegante_dourado">Dourado Institucional</option>
               </select>
             </div>
 

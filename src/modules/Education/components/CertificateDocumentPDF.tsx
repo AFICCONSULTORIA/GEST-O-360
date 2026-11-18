@@ -195,6 +195,236 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
     certificate.document_kind === 'declaracao' ||
     (certificate.validation_hash || '').toUpperCase().startsWith('DECL-');
 
+  const organizingSecretariat =
+    template.secretariat_name?.trim() ||
+    (template.issuer_role.toLowerCase().includes('secret') ? template.issuer_role : '') ||
+    'Secretaria Municipal Organizadora';
+
+  const todayExtenso = new Date().toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  if (isDeclaration) {
+    return (
+      <div
+        style={{
+          transform: scale !== 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top left',
+        }}
+        className="inline-block"
+      >
+        {/* Folha A4 Retrato (Papel Timbrado Oficial da Prefeitura): 210mm x 297mm (794px x 1123px) */}
+        <div
+          ref={ref}
+          id={`certificate-render-${certificate.id}`}
+          data-orientation="portrait"
+          style={{
+            width: '794px',
+            height: '1123px',
+            backgroundColor: '#ffffff',
+            color: '#1e293b',
+            padding: '56px 64px 48px 64px'
+          }}
+          className="relative overflow-hidden flex flex-col justify-between box-border font-sans select-none"
+        >
+          {/* Barra superior institucional sutil */}
+          <div
+            className="absolute top-0 left-0 right-0 h-2"
+            style={{ backgroundColor: selectedTheme.titleColor }}
+          />
+
+          {/* TIMBRE OFICIAL DA PREFEITURA & SECRETARIA ORGANIZADORA */}
+          <div>
+            <div className="flex items-center gap-5 pb-5">
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{ width: '84px', height: '84px' }}
+              >
+                <img
+                  src={logoSrc}
+                  alt="Brasão Oficial da Prefeitura"
+                  style={{
+                    maxHeight: '82px',
+                    maxWidth: '82px',
+                    objectFit: 'contain'
+                  }}
+                  onError={() => {
+                    if (logoSrc !== '/brasao-municipio.png') {
+                      setLogoSrc('/brasao-municipio.png');
+                    }
+                  }}
+                />
+              </div>
+
+              <div className="flex-1 min-w-0">
+                <p
+                  className="text-xs font-bold uppercase tracking-widest"
+                  style={{ color: '#64748b', letterSpacing: '0.12em' }}
+                >
+                  República Federativa do Brasil
+                </p>
+                <h2
+                  className="text-xl font-black uppercase tracking-tight mt-0.5"
+                  style={{ color: '#0f172a', lineHeight: '1.2' }}
+                >
+                  {institution?.name || 'Prefeitura Municipal'}
+                </h2>
+                <p
+                  className="text-sm font-extrabold uppercase tracking-wide mt-1"
+                  style={{ color: selectedTheme.titleColor }}
+                >
+                  {organizingSecretariat}
+                </p>
+                {(institution?.cnpj || institution?.city) && (
+                  <p className="text-[11px] mt-1" style={{ color: '#64748b' }}>
+                    {institution?.cnpj ? `CNPJ: ${institution.cnpj}` : ''}
+                    {institution?.cnpj && institution?.city ? ' · ' : ''}
+                    {institution?.city ? `${institution.city}${institution.state ? ` - ${institution.state}` : ''}` : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Filete duplo oficial de papel timbrado */}
+            <div style={{ borderTopWidth: '2px', borderTopStyle: 'solid', borderTopColor: selectedTheme.titleColor }} />
+            <div className="mt-1" style={{ borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: '#cbd5e1' }} />
+          </div>
+
+          {/* CORPO DA DECLARAÇÃO OFICIAL */}
+          <div className="my-auto py-8">
+            <div className="text-center mb-12">
+              <h1
+                className="text-2xl font-black uppercase tracking-[0.22em]"
+                style={{ color: '#0f172a' }}
+              >
+                DECLARAÇÃO DE PARTICIPAÇÃO
+              </h1>
+              <div
+                className="w-20 h-0.5 mx-auto mt-3"
+                style={{ backgroundColor: selectedTheme.titleColor }}
+              />
+            </div>
+
+            <div
+              className="text-[16px] leading-[1.95] text-justify space-y-6"
+              style={{ color: '#1e293b', fontFamily: 'Georgia, Cambria, "Times New Roman", serif' }}
+            >
+              <p style={{ textIndent: '40px' }}>
+                Declaramos, para os devidos fins que se fizerem necessários, que{' '}
+                <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>
+                  {certificate.recipient_name}
+                </strong>
+                , inscrito(a) no CPF sob o nº{' '}
+                <strong style={{ color: '#0f172a' }}>{certificate.recipient_document}</strong>,
+                participou da atividade na modalidade{' '}
+                <strong style={{ color: '#0f172a' }}>
+                  {getActivityTypeLabel(template.event_type).toUpperCase()}
+                </strong>{' '}
+                intitulada{' '}
+                <strong style={{ color: '#0f172a' }}>"{template.title}"</strong>,
+                promovida pela{' '}
+                <strong style={{ color: '#0f172a' }}>{organizingSecretariat}</strong>,{' '}
+                {dateRangeText}, totalizando uma carga horária de{' '}
+                <strong style={{ color: '#0f172a' }}>{template.workload_hours} horas</strong>.
+              </p>
+
+              <p style={{ textIndent: '40px' }}>
+                Por ser expressão da verdade, firmamos a presente declaração para que produza os seus
+                devidos efeitos legais.
+              </p>
+            </div>
+
+            <p
+              className="text-right text-[15px] mt-12"
+              style={{ color: '#334155', fontFamily: 'Georgia, Cambria, "Times New Roman", serif' }}
+            >
+              {institution?.city ? `${institution.city}${institution.state ? `/${institution.state}` : ''}` : (institution?.name || 'Município')},{' '}
+              {todayExtenso}.
+            </p>
+
+            {/* BLOCO DE ASSINATURA DO SECRETÁRIO(A) */}
+            <div className="mt-16 flex flex-col items-center text-center">
+              {template.secretary_signature_url ? (
+                <img
+                  src={template.secretary_signature_url}
+                  alt={`Assinatura de ${template.issuer_name}`}
+                  style={{
+                    maxHeight: '72px',
+                    maxWidth: '240px',
+                    objectFit: 'contain',
+                    marginBottom: '-6px'
+                  }}
+                />
+              ) : (
+                <div className="mb-1 px-4 py-1.5 rounded-lg" style={{ backgroundColor: '#f8fafc', borderWidth: '1px', borderStyle: 'dashed', borderColor: '#cbd5e1' }}>
+                  <p className="text-[10px] font-mono uppercase tracking-wider" style={{ color: '#64748b' }}>
+                    Assinado eletronicamente por {template.issuer_name}
+                  </p>
+                </div>
+              )}
+
+              <div
+                className="w-80 mb-2"
+                style={{ borderBottomWidth: '1.5px', borderBottomStyle: 'solid', borderBottomColor: '#0f172a' }}
+              />
+              <p className="text-sm font-black uppercase tracking-wide" style={{ color: '#0f172a' }}>
+                {template.issuer_name}
+              </p>
+              <p className="text-xs font-semibold mt-0.5" style={{ color: '#475569' }}>
+                {template.issuer_role || 'Secretário(a) Municipal'}
+              </p>
+              <p className="text-[11px] font-medium uppercase mt-0.5" style={{ color: '#64748b' }}>
+                {organizingSecretariat}
+              </p>
+            </div>
+          </div>
+
+          {/* RODAPÉ OFICIAL COM QR CODE DE AUTENTICIDADE */}
+          <div
+            className="pt-4 flex items-center justify-between gap-4"
+            style={{ borderTopWidth: '1px', borderTopStyle: 'solid', borderTopColor: '#cbd5e1' }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-16 h-16 p-1 rounded-lg shrink-0"
+                style={{ backgroundColor: '#ffffff', borderWidth: '1px', borderStyle: 'solid', borderColor: '#cbd5e1' }}
+              >
+                <img
+                  src={qrUrl}
+                  alt="QR Code de Autenticidade"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              <div className="text-left text-[10px] leading-snug" style={{ color: '#64748b' }}>
+                <span className="font-bold block text-[11px] font-mono" style={{ color: '#0f172a' }}>
+                  AUTENTICIDADE: {certificate.validation_hash}
+                </span>
+                <span className="block mt-0.5">
+                  Documento oficial validável conforme a Lei Federal nº 14.063/2020.
+                </span>
+                <span className="block text-[9px] mt-0.5" style={{ color: '#94a3b8' }}>
+                  Conferência: {certificate.qr_code_url}
+                </span>
+              </div>
+            </div>
+
+            {isSecondIssue && (
+              <div
+                className="px-3 py-1.5 rounded-lg text-right shrink-0"
+                style={{ borderWidth: '1px', borderStyle: 'solid', borderColor: '#fca5a5', backgroundColor: '#fff1f2', color: '#be123c' }}
+              >
+                <span className="text-[10px] font-black uppercase block font-mono">2ª Via</span>
+                <span className="text-[9px] block">{new Date().toLocaleDateString('pt-BR')}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -537,9 +767,11 @@ export async function generateCertificatePdfBlob(element: HTMLElement): Promise<
     });
 
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    const isPortrait =
+      element.dataset?.orientation === 'portrait' || element.offsetHeight > element.offsetWidth;
 
     const pdf = new jsPDF({
-      orientation: 'landscape',
+      orientation: isPortrait ? 'portrait' : 'landscape',
       unit: 'mm',
       format: 'a4'
     });

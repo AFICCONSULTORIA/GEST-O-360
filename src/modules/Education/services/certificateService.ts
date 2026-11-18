@@ -426,6 +426,7 @@ export function buildTemplateFromCampaign(campaign: DeclarationCampaign): Certif
     issuer_name: campaign.issuer_name,
     issuer_role: campaign.issuer_role,
     secretariat_name: campaign.secretariat_name || null,
+    secretary_signature_url: campaign.secretary_signature_url || null,
     background_mode: 'preset',
     preset_theme: campaign.preset_theme || 'classico_azul',
     created_at: campaign.created_at
@@ -457,6 +458,7 @@ export async function createDeclarationCampaign(
       issuer_name: payload.issuer_name,
       issuer_role: payload.issuer_role,
       secretariat_name: payload.secretariat_name || null,
+      secretary_signature_url: payload.secretary_signature_url || null,
       background_mode: 'preset',
       preset_theme: payload.preset_theme || 'classico_azul',
       created_at: now
@@ -488,7 +490,11 @@ export async function createDeclarationCampaign(
       .maybeSingle();
 
     if (error) {
-      console.warn('[CertificateService] Aviso ao salvar campanha no Supabase:', error.message);
+      console.error('[CertificateService] Erro ao salvar campanha no Supabase:', error);
+      return {
+        success: false,
+        error: `Não foi possível salvar a campanha no Supabase (${error.message}). Verifique se a migração 20261117010000_declaration_campaigns.sql foi aplicada.`
+      };
     }
 
     const saved = (data as DeclarationCampaign) || campaign;
@@ -1260,6 +1266,36 @@ export async function confirmManualMorningCheckin(submissionId: string): Promise
     return { success: true };
   } catch {
     return { success: false };
+  }
+}
+
+/**
+ * Verifica se as tabelas de campanhas e coletas no Supabase estão acessíveis
+ */
+export async function checkDeclarationTablesHealth(): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  try {
+    const { error: campErr } = await supabase
+      .from('education_declaration_campaigns')
+      .select('id')
+      .limit(1);
+    if (campErr) {
+      return { ok: false, error: campErr.message };
+    }
+
+    const { error: subErr } = await supabase
+      .from('education_declaration_submissions')
+      .select('id')
+      .limit(1);
+    if (subErr) {
+      return { ok: false, error: subErr.message };
+    }
+
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || 'Erro de conexão com o Supabase.' };
   }
 }
 
