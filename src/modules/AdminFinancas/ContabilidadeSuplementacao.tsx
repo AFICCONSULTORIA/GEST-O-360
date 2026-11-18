@@ -1596,7 +1596,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
           .map(
             (it) => `<tr>
               <td style="font-weight:800;text-align:center;color:#be123c">Ficha ${it.fichaOrigem}</td>
-              <td><strong>${it.origemObj?.acaoDescricao || it.origemObj?.especificacao || '—'}</strong><div style="font-size:10px;color:#64748b">${it.origemObj?.orgao || ''}${it.origemObj?.fonteRecurso ? ` • Fonte: ${it.origemObj.fonteRecurso}` : ''}</div></td>
+              <td><strong>${it.origemObj?.acaoDescricao || it.origemObj?.especificacao || '—'}</strong><div style="font-size:10px;color:#64748b">${it.origemObj?.orgao || ''}${it.origemObj?.categoria ? ` • Natureza: ${it.origemObj.categoria}${it.origemObj.especificacao ? ` (${it.origemObj.especificacao})` : ''}` : ''}${it.origemObj?.fonteRecurso ? ` • Fonte: ${it.origemObj.fonteRecurso}` : ''}</div></td>
               <td style="text-align:center">${it.decreto}</td>
               <td style="text-align:center">${it.data}</td>
               <td class="num" style="color:#be123c">- ${formatBRL(it.valor)}</td>
@@ -1608,7 +1608,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
             <div class="group-head">
               <div>
                 <strong>Ficha Suplementada: ${g.fichaDestino}</strong> — ${g.destinoObj?.acaoDescricao || g.destinoObj?.especificacao || '—'}
-                <div style="font-size:10px;color:#475569">${g.destinoObj?.orgao || ''}${g.destinoObj?.fonteRecurso ? ` • Fonte: ${g.destinoObj.fonteRecurso}` : ''}</div>
+                <div style="font-size:10px;color:#475569">${g.destinoObj?.orgao || ''}${g.destinoObj?.categoria ? ` • Natureza: ${g.destinoObj.categoria}${g.destinoObj.especificacao ? ` (${g.destinoObj.especificacao})` : ''}` : ''}${g.destinoObj?.fonteRecurso ? ` • Fonte: ${g.destinoObj.fonteRecurso}` : ''}</div>
               </div>
               <div style="text-align:right">
                 <div style="font-size:9px;text-transform:uppercase;color:#64748b">Total Suplementado</div>
@@ -1768,7 +1768,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         <div class="box">
           <div style="font-size:10px;text-transform:uppercase;color:#475569;font-weight:700">Ficha Suplementada (Destino)</div>
           <div style="font-size:14px;font-weight:800;margin-top:2px">Ficha ${cobrirTargetFicha.ficha} — ${cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}</div>
-          <div style="color:#475569">${cobrirTargetFicha.orgao}${cobrirTargetFicha.fonteRecurso ? ` &bull; Fonte: ${cobrirTargetFicha.fonteRecurso}` : ''}</div>
+          <div style="color:#475569">${cobrirTargetFicha.orgao}${cobrirTargetFicha.categoria ? ` &bull; Natureza: ${cobrirTargetFicha.categoria}${cobrirTargetFicha.especificacao ? ` (${cobrirTargetFicha.especificacao})` : ''}` : ''}${cobrirTargetFicha.fonteRecurso ? ` &bull; Fonte: ${cobrirTargetFicha.fonteRecurso}` : ''}</div>
         </div>
 
         <div class="grid">
@@ -1795,7 +1795,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 const sRest = sAntes - r.valNum;
                 return `<tr>
                   <td style="text-align:center;font-weight:800">Ficha ${r.fObj!.ficha}</td>
-                  <td><strong>${r.fObj!.acaoDescricao || r.fObj!.especificacao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.orgao}${r.fObj!.fonteRecurso ? ` • Fonte: ${r.fObj!.fonteRecurso}` : ''}</div></td>
+                  <td><strong>${r.fObj!.acaoDescricao || r.fObj!.especificacao}</strong><div style="font-size:10px;color:#64748b">${r.fObj!.orgao}${r.fObj!.categoria ? ` • Natureza: ${r.fObj!.categoria}${r.fObj!.especificacao ? ` (${r.fObj!.especificacao})` : ''}` : ''}${r.fObj!.fonteRecurso ? ` • Fonte: ${r.fObj!.fonteRecurso}` : ''}</div></td>
                   <td class="num">${formatBRL(sAntes)}</td>
                   <td class="num" style="color:#be123c">- ${formatBRL(r.valNum)}</td>
                   <td class="num" style="color:${sRest < -0.001 ? '#dc2626' : '#047857'}">${formatBRL(sRest)}</td>
@@ -3314,6 +3314,14 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                       <span className="truncate">{cobrirTargetFicha.acaoDescricao || cobrirTargetFicha.especificacao}</span>
                     </div>
                   )}
+                  {(cobrirTargetFicha.categoria || cobrirTargetFicha.especificacao) && (
+                    <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950/50 border border-violet-200 dark:border-violet-800 text-[11px] font-bold text-violet-700 dark:text-violet-300 max-w-full">
+                      <span className="shrink-0">Natureza:</span>
+                      <span className="font-mono truncate">
+                        {[cobrirTargetFicha.categoria, cobrirTargetFicha.especificacao].filter(Boolean).join(' - ')}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               <button
@@ -3452,6 +3460,11 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                                   <div className="font-semibold text-slate-700 dark:text-neutral-200 truncate">
                                     Proj./Ativ.: {origObj.acaoDescricao || origObj.especificacao}
                                   </div>
+                                  {(origObj.categoria || origObj.especificacao) && (
+                                    <div className="text-[10px] font-bold text-violet-700 dark:text-violet-300 truncate">
+                                      Natureza: <span className="font-mono">{[origObj.categoria, origObj.especificacao].filter(Boolean).join(' - ')}</span>
+                                    </div>
+                                  )}
                                   <div className="truncate flex flex-wrap items-center gap-1.5 mt-0.5">
                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 font-mono font-bold">
                                       Fonte: {origObj.fonteRecurso || '—'}
@@ -3645,6 +3658,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                     return (
                       f.ficha.toLowerCase().includes(q) ||
                       (f.acaoDescricao || '').toLowerCase().includes(q) ||
+                      (f.categoria || '').toLowerCase().includes(q) ||
                       (f.especificacao || '').toLowerCase().includes(q) ||
                       (f.fonteRecurso || '').toLowerCase().includes(q) ||
                       (f.orgao || '').toLowerCase().includes(q)
@@ -3698,6 +3712,11 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                         </div>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                           <span className="text-slate-500 dark:text-neutral-400">{f.orgao}</span>
+                          {(f.categoria || f.especificacao) && (
+                            <span className="font-mono font-bold text-violet-700 dark:text-violet-300">
+                              Natureza: {[f.categoria, f.especificacao].filter(Boolean).join(' - ')}
+                            </span>
+                          )}
                           <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300">
                             Fonte: {f.fonteRecurso || '—'}
                           </span>
