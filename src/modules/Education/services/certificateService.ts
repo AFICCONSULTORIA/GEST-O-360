@@ -409,8 +409,14 @@ function generateCampaignSlug(title: string): string {
 }
 
 export function getDeclarationFormUrl(slug: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://gestao360sistema.com.br';
-  return `${origin}/declaracao/${encodeURIComponent(slug)}`;
+  if (typeof window === 'undefined') {
+    return `https://gestao360sistema.com.br/declaracao/${encodeURIComponent(slug)}`;
+  }
+  const url = new URL(window.location.origin);
+  if (url.hostname.startsWith('admin.')) {
+    url.hostname = url.hostname.slice(6);
+  }
+  return `${url.origin}/declaracao/${encodeURIComponent(slug)}`;
 }
 
 export function buildTemplateFromCampaign(campaign: DeclarationCampaign): CertificateTemplate {

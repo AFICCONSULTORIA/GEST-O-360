@@ -302,7 +302,7 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
 
   return (
     <div
-      className={`min-h-screen ${
+      className={`min-h-dvh ${
         darkMode ? 'dark bg-neutral-950 text-neutral-100' : 'bg-gradient-to-b from-slate-50 to-slate-100 text-neutral-800'
       } transition-colors duration-200 flex flex-col`}
     >
@@ -552,12 +552,13 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                       <input
                         type="text"
                         inputMode="numeric"
+                        autoComplete="off"
                         required
                         maxLength={14}
                         value={cpf}
                         onChange={(e) => handleCpfChange(e.target.value)}
                         placeholder="000.000.000-00"
-                        className="w-full pl-10 pr-10 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm font-mono text-neutral-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
+                        className="w-full pl-10 pr-10 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-base sm:text-sm font-mono text-neutral-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
                       />
                       {lookingUpCpf && (
                         <Loader2 className="w-4 h-4 text-amber-500 animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
@@ -573,11 +574,13 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                       <User className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
+                        autoCapitalize="words"
+                        autoComplete="name"
                         required
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Como deve constar na declaração"
-                        className="w-full pl-10 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
+                        className="w-full pl-10 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-base sm:text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
                       />
                     </div>
                   </div>
@@ -590,11 +593,14 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                       <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        autoComplete="email"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="seuemail@exemplo.com"
-                        className="w-full pl-10 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
+                        className="w-full pl-10 pr-4 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-base sm:text-sm text-neutral-900 dark:text-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition"
                       />
                     </div>
                   </div>

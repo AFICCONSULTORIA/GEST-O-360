@@ -180,6 +180,8 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
   const [cobrirDecreto, setCobrirDecreto] = useState<string>('');
   const [cobrirData, setCobrirData] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [cobrirSaving, setCobrirSaving] = useState<boolean>(false);
+  const [openOriginPickerId, setOpenOriginPickerId] = useState<string | null>(null);
+  const [originPickerSearch, setOriginPickerSearch] = useState<string>('');
 
   // Modal Nova Ficha Manual
   const [showNewFichaModal, setShowNewFichaModal] = useState<boolean>(false);
@@ -1514,6 +1516,8 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
     setCobrirDecreto(documentoInput.trim() || ultimoDecretoDaFicha || ultimoDecretoGeral || '');
     setCobrirData(dataLancamentoInput || new Date().toISOString().slice(0, 10));
     setCobrirSources([{ id: crypto.randomUUID(), fichaOrigem: '', valor: '' }]);
+    setOpenOriginPickerId(null);
+    setOriginPickerSearch('');
   };
 
   // Imprime de uma só vez o mapa geral de todas as suplementações (Origem -> Destino) e fichas negativas
@@ -3400,37 +3404,30 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                             className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center p-3 rounded-xl border border-slate-200 dark:border-neutral-800 bg-slate-50/60 dark:bg-neutral-800/40 text-xs"
                           >
                             <div className="sm:col-span-6 min-w-0">
-                              <select
-                                value={src.fichaOrigem}
-                                onChange={(e) =>
-                                  setCobrirSources((prev) =>
-                                    prev.map((item) =>
-                                      item.id === src.id ? { ...item, fichaOrigem: e.target.value } : item
-                                    )
-                                  )
-                                }
-                                className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 font-bold text-xs truncate"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenOriginPickerId(src.id);
+                                  setOriginPickerSearch('');
+                                }}
+                                className="w-full min-w-0 px-3 py-2 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-left flex items-center justify-between gap-2 hover:border-indigo-400 transition-colors"
                               >
-                                <option value="">Selecione a Ficha de Origem...</option>
-                                {fichas
-                                  .filter((f) => f.ficha !== cobrirTargetFicha.ficha && getSaldoFicha(f) > 0)
-                                  .sort((a, b) => {
-                                    const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
-                                    const aMatch = targetPrefix && (a.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
-                                    const bMatch = targetPrefix && (b.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
-                                    if (aMatch !== bMatch) return aMatch - bMatch;
-                                    return a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true });
-                                  })
-                                  .map((f) => {
-                                    const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
-                                    const isSameFonte = Boolean(targetPrefix && (f.fonteRecurso || '').startsWith(targetPrefix));
-                                    return (
-                                      <option key={f.ficha} value={f.ficha}>
-                                        {`${isSameFonte ? '★ ' : ''}Ficha ${f.ficha} | ${f.acaoDescricao || f.especificacao} | Fonte: ${f.fonteRecurso || '—'} | Saldo: ${formatBRL(getSaldoFicha(f))}`}
-                                      </option>
-                                    );
-                                  })}
-                              </select>
+                                {origObj ? (
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white font-black text-[11px] shrink-0">
+                                      Ficha {origObj.ficha}
+                                    </span>
+                                    <span className="font-semibold text-slate-800 dark:text-neutral-100 truncate text-xs">
+                                      {origObj.acaoDescricao || origObj.especificacao}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs font-bold text-slate-500">
+                                    Clique para escolher a Ficha de Origem...
+                                  </span>
+                                )}
+                                <span className="text-[10px] text-indigo-600 font-bold shrink-0">Selecionar</span>
+                              </button>
                               {origObj && (
                                 <div className="text-[10px] text-slate-500 mt-1 space-y-0.5">
                                   <div className="font-semibold text-slate-700 dark:text-neutral-200 truncate">
@@ -3566,6 +3563,132 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 );
               })()}
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* POPUP AMPLIADO DE SELEÇÃO DA FICHA DE ORIGEM */}
+      {cobrirTargetFicha && openOriginPickerId && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-2 sm:p-4 print:hidden"
+          onClick={() => setOpenOriginPickerId(null)}
+        >
+          <div
+            className="bg-white dark:bg-neutral-900 rounded-2xl border border-slate-200 dark:border-neutral-800 max-w-4xl w-full max-h-[86vh] flex flex-col shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-neutral-800 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="text-base font-black text-slate-900 dark:text-white">
+                  Selecionar Ficha de Origem (Saldo Positivo)
+                </h4>
+                <p className="text-xs text-slate-500 mt-0.5 truncate">
+                  Para suplementar a <strong>Ficha {cobrirTargetFicha.ficha}</strong> • Fonte:{' '}
+                  <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                    {cobrirTargetFicha.fonteRecurso || 'Não informada'}
+                  </span>
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenOriginPickerId(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 shrink-0"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-3 sm:p-4 border-b border-slate-100 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-800/60">
+              <div className="relative">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={originPickerSearch}
+                  onChange={(e) => setOriginPickerSearch(e.target.value)}
+                  placeholder="Buscar por número da ficha, projeto/atividade, órgão ou fonte..."
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-neutral-800">
+              {(() => {
+                const q = originPickerSearch.trim().toLowerCase();
+                const targetPrefix = (cobrirTargetFicha.fonteRecurso || '').split(' ')[0];
+                const list = fichas
+                  .filter((f) => f.ficha !== cobrirTargetFicha.ficha && getSaldoFicha(f) > 0)
+                  .filter((f) => {
+                    if (!q) return true;
+                    return (
+                      f.ficha.toLowerCase().includes(q) ||
+                      (f.acaoDescricao || '').toLowerCase().includes(q) ||
+                      (f.especificacao || '').toLowerCase().includes(q) ||
+                      (f.fonteRecurso || '').toLowerCase().includes(q) ||
+                      (f.orgao || '').toLowerCase().includes(q)
+                    );
+                  })
+                  .sort((a, b) => {
+                    const aMatch = targetPrefix && (a.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
+                    const bMatch = targetPrefix && (b.fonteRecurso || '').startsWith(targetPrefix) ? 0 : 1;
+                    if (aMatch !== bMatch) return aMatch - bMatch;
+                    return a.ficha.localeCompare(b.ficha, 'pt-BR', { numeric: true });
+                  });
+
+                if (list.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-sm text-slate-400">
+                      Nenhuma ficha com saldo positivo encontrada para essa busca.
+                    </div>
+                  );
+                }
+
+                return list.map((f) => {
+                  const isSameFonte = Boolean(targetPrefix && (f.fonteRecurso || '').startsWith(targetPrefix));
+                  const saldoF = getSaldoFicha(f);
+                  return (
+                    <button
+                      key={f.ficha}
+                      type="button"
+                      onClick={() => {
+                        setCobrirSources((prev) =>
+                          prev.map((item) =>
+                            item.id === openOriginPickerId ? { ...item, fichaOrigem: f.ficha } : item
+                          )
+                        );
+                        setOpenOriginPickerId(null);
+                      }}
+                      className="w-full px-4 sm:px-5 py-3 text-left hover:bg-indigo-50/70 dark:hover:bg-indigo-950/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-4"
+                    >
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {isSameFonte && (
+                            <span className="text-amber-500 font-black text-sm" title="Mesma Fonte">
+                              ★
+                            </span>
+                          )}
+                          <span className="px-2.5 py-0.5 rounded-lg bg-indigo-600 text-white font-black text-xs shrink-0">
+                            Ficha {f.ficha}
+                          </span>
+                          <span className="font-bold text-slate-900 dark:text-white text-sm">
+                            {f.acaoDescricao || f.especificacao}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                          <span className="text-slate-500 dark:text-neutral-400">{f.orgao}</span>
+                          <span className="font-mono font-bold text-indigo-700 dark:text-indigo-300">
+                            Fonte: {f.fonteRecurso || '—'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="self-start sm:self-center px-3 py-1 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800 font-black text-sm tabular-nums shrink-0">
+                        {formatBRL(saldoF)}
+                      </span>
+                    </button>
+                  );
+                });
+              })()}
+            </div>
           </div>
         </div>
       )}

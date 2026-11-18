@@ -684,6 +684,25 @@ export default function App() {
     }
   }, [activeView, currentUser?.id]);
 
+  // Atalho direto e imediato para o Formulário Público de Declaração / Presença via QR Code
+  // Roda antes de loadingInstitution, isSuperAdminPortal ou qualquer redirecionamento (essencial para iPhone/Safari)
+  const rawPathnameLower = decodeURIComponent(window.location.pathname || '/').toLowerCase();
+  const rawSegments = rawPathnameLower.split('/').filter(Boolean);
+  const isDirectDeclarationRoute =
+    rawSegments.includes('declaracao') ||
+    rawSegments.includes('declaracao-participacao') ||
+    new URLSearchParams(window.location.search).has('evento');
+
+  if (isDirectDeclarationRoute) {
+    return (
+      <PublicDeclarationForm
+        darkMode={darkMode}
+        setDarkMode={setDarkMode}
+        currentInstitution={currentInstitution}
+      />
+    );
+  }
+
   if (loadingInstitution) {
     return (
       <div className="min-h-dvh bg-[#F9F9F8] dark:bg-neutral-950 flex items-center justify-center">
