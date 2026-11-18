@@ -109,3 +109,18 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.education_declaration_campaigns T
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.education_declaration_submissions TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE ON public.education_certificate_templates TO anon, authenticated, service_role;
 GRANT SELECT, INSERT, UPDATE ON public.education_issued_certificates TO anon, authenticated, service_role;
+
+-- Garante adição das colunas caso as tabelas já tenham sido criadas em versão anterior
+ALTER TABLE public.education_declaration_campaigns
+    ADD COLUMN IF NOT EXISTS require_morning_checkin BOOLEAN NOT NULL DEFAULT true,
+    ADD COLUMN IF NOT EXISTS secretary_signature_url TEXT;
+
+ALTER TABLE public.education_declaration_submissions
+    ADD COLUMN IF NOT EXISTS morning_checkin_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS afternoon_checkin_at TIMESTAMPTZ;
+
+ALTER TABLE public.education_declaration_submissions
+    ALTER COLUMN rating DROP NOT NULL;
+
+-- Atualiza o schema cache do PostgREST/Supabase imediatamente
+NOTIFY pgrst, 'reload schema';

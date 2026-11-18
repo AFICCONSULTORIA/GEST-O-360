@@ -33,14 +33,12 @@ import {
 import {
   fetchDeclarationCampaignBySlug,
   lookupSubmissionByCpf,
-  sendDeclarationEmail,
   submitAfternoonAndIssue,
   submitMorningCheckin
 } from '../modules/Education/services/certificateService';
 import {
   CertificateDocumentPDF,
-  downloadCertificatePdf,
-  generateCertificatePdfBlob
+  downloadCertificatePdf
 } from '../modules/Education/components/CertificateDocumentPDF';
 
 interface PublicDeclarationFormProps {
@@ -56,18 +54,6 @@ const RATING_LABELS: Record<number, string> = {
   4: 'Muito Bom',
   5: 'Excelente'
 };
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      resolve(result.includes(',') ? result.split(',')[1] : result);
-    };
-    reader.onerror = () => reject(new Error('Falha ao ler PDF em base64.'));
-    reader.readAsDataURL(blob);
-  });
-}
 
 function formatDatePtBr(dateStr?: string | null): string {
   if (!dateStr) return '';
@@ -112,8 +98,6 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
     declaration: IssuedCertificate;
     template: CertificateTemplate;
     alreadyIssued?: boolean;
-    emailSent: boolean;
-    emailMessage?: string;
   } | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
   const pdfRenderRef = useRef<HTMLDivElement>(null);
@@ -138,7 +122,12 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
         }
 
         const lastSeg = (parts[parts.length - 1] || '').toLowerCase();
-        if (etapaParam === 'tarde' || lastSeg === 'tarde') {
+        if (
+          etapaParam === 'tarde' ||
+          etapaParam === 'vespertino' ||
+          lastSeg === 'tarde' ||
+          lastSeg === 'vespertino'
+        ) {
           setStage('tarde');
         } else {
           setStage('manha');
@@ -199,12 +188,13 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
           setMorningFoundNotice(
             existing.emission_status === 'emitido'
               ? 'Sua declaração já foi emitida! Confirme abaixo para baixar o PDF novamente.'
-              : '1ª presença confirmada! Avalie o evento abaixo para emitir sua Declaração de Participação.'
+              : 'Presença no matutino confirmada! Avalie o evento abaixo para emitir sua Declaração de Participação.'
           );
         } else {
-          // Se não veio explicitamente com ?etapa=tarde, mantém na 1ª etapa (Manhã)
+          // Se não veio explicitamente com ?etapa=tarde ou vespertino, mantém na 1ª etapa (Matutino)
           const params = new URLSearchParams(window.location.search);
-          if (params.get('etapa')?.toLowerCase() !== 'tarde') {
+          const et = params.get('etapa')?.toLowerCase();
+          if (et !== 'tarde' && et !== 'vespertino') {
             setStage('manha');
           }
         }
@@ -284,39 +274,7 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
       setIssuedResult({
         declaration: res.declaration,
         template: res.template,
-        alreadyIssued: res.alreadyIssued,
-        emailSent: false
-      });
-
-      await new Promise((r) => setTimeout(r, 250));
-
-      let pdfBase64: string | undefined;
-      if (pdfRenderRef.current) {
-        try {
-          const blob = await generateCertificatePdfBlob(pdfRenderRef.current);
-          pdfBase64 = await blobToBase64(blob);
-        } catch (pdfErr) {
-          console.warn('[PublicDeclarationForm] Falha ao gerar PDF:', pdfErr);
-        }
-      }
-
-      const emailRes = await sendDeclarationEmail({
-        declaration: res.declaration,
-        template: res.template,
-        institutionName: institution?.name || 'Prefeitura Municipal',
-        senderEmail: campaign.sender_email,
-        recipientEmail: cleanEmail,
-        pdfBase64
-      });
-
-      setIssuedResult({
-        declaration: res.declaration,
-        template: res.template,
-        alreadyIssued: res.alreadyIssued,
-        emailSent: emailRes.success,
-        emailMessage: emailRes.success
-          ? `Enviada com sucesso para ${cleanEmail}`
-          : emailRes.error || 'Não foi possível enviar o e-mail automaticamente, mas você pode baixar o PDF abaixo.'
+        alreadyIssued: res.alreadyIssued
       });
     } catch (err: any) {
       console.error('[PublicDeclarationForm] Erro ao processar formulário:', err);
@@ -429,22 +387,22 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 mb-2">
                   <Sunrise className="w-3.5 h-3.5" />
-                  {morningSuccess.alreadyCheckedIn ? 'Presença da Manhã Já Confirmada' : '1ª Etapa Concluída'}
+                  {morningSuccess.alreadyCheckedIn ? 'Presença do Matutino Já Confirmada' : '1ª Etapa Concluída'}
                 </span>
                 <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
                   Presença Confirmada, {morningSuccess.submission.participant_name.split(' ')[0]}!
                 </h2>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                  Seu credenciamento no período da manhã em <strong>{campaign.title}</strong> foi registrado.
+                  Seu credenciamento no período matutino em <strong>{campaign.title}</strong> foi registrado.
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 text-amber-900 dark:text-amber-200 flex items-start gap-3">
                 <Sunset className="w-5 h-5 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                 <div className="text-xs leading-relaxed">
-                  <p className="font-bold">Próximo Passo (Período da Tarde)</p>
+                  <p className="font-bold">Próximo Passo (Período Vespertino)</p>
                   <p className="mt-0.5 opacity-90">
-                    No período da tarde, escaneie <strong>este mesmo QR Code</strong> e informe seu CPF para avaliar o evento e emitir sua <strong>Declaração de Participação</strong>.
+                    No período vespertino, escaneie <strong>este mesmo QR Code</strong> e informe seu CPF para avaliar o evento e emitir sua <strong>Declaração de Participação</strong>.
                   </p>
                 </div>
               </div>
@@ -486,24 +444,6 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                 <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                   Presença confirmada e declaração de participação em <strong>{campaign.title}</strong> emitida com sucesso.
                 </p>
-              </div>
-
-              <div
-                className={`p-4 rounded-2xl border flex items-start gap-3 ${
-                  issuedResult.emailSent
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/50 text-emerald-800 dark:text-emerald-300'
-                    : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300'
-                }`}
-              >
-                <Mail className="w-5 h-5 shrink-0 mt-0.5" />
-                <div className="text-xs leading-relaxed">
-                  <p className="font-bold">
-                    {issuedResult.emailSent
-                      ? 'Declaração enviada para o seu e-mail!'
-                      : 'Aviso sobre o envio por e-mail'}
-                  </p>
-                  <p className="mt-0.5 opacity-90">{issuedResult.emailMessage}</p>
-                </div>
               </div>
 
               <button
@@ -552,8 +492,8 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-bold uppercase tracking-wider mb-3">
                   {stage === 'manha' ? <Sunrise className="w-3.5 h-3.5" /> : <Sunset className="w-3.5 h-3.5" />}
                   {stage === 'manha'
-                    ? '1ª Etapa · Manhã · Confirmação de Presença'
-                    : '2ª Etapa · Tarde · Avaliação & Declaração'}
+                    ? '1ª Etapa · Matutino · Confirmação de Presença'
+                    : '2ª Etapa · Vespertino · Avaliação & Declaração'}
                   {' · '}
                   {getActivityTypeLabel(campaign.event_type)}
                 </div>
@@ -584,7 +524,7 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
               <form onSubmit={handleSubmit} className="p-6 sm:p-7 space-y-5">
                 <p className="text-xs text-neutral-500 dark:text-neutral-400">
                   {stage === 'manha'
-                    ? 'Digite seu CPF para iniciar. Se for seu primeiro acesso hoje, confirmaremos sua presença da manhã; se já confirmou pela manhã, liberaremos a avaliação e a emissão da declaração.'
+                    ? 'Digite seu CPF para iniciar. Se for seu primeiro acesso hoje, confirmaremos sua presença no matutino; se já confirmou no matutino, liberaremos a avaliação e a emissão da declaração.'
                     : 'Confirme seus dados, avalie o evento e emita sua Declaração de Participação na hora.'}
                 </p>
 
@@ -724,8 +664,8 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                     <>
                       <CheckCircle2 className="w-5 h-5" />
                       {stage === 'manha'
-                        ? 'Confirmar Presença (Manhã)'
-                        : 'Confirmar Presença (Tarde) e Emitir Declaração'}
+                        ? 'Confirmar Presença (Matutino)'
+                        : 'Confirmar Presença (Vespertino) e Emitir Declaração'}
                     </>
                   )}
                 </button>
@@ -733,7 +673,7 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
                 <p className="text-[11px] text-center text-neutral-400 dark:text-neutral-500 flex items-center justify-center gap-1.5">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
                   {stage === 'manha'
-                    ? '1ª Etapa: Credenciamento da Manhã'
+                    ? '1ª Etapa: Credenciamento Matutino'
                     : '2ª Etapa: Documento oficial com QR Code de autenticidade (Lei 14.063/2020)'}
                 </p>
               </form>

@@ -106,7 +106,7 @@ export async function createBatchCertificates({
 
       const savedCerts = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify([...issuedList, ...savedCerts]));
-    } catch {}
+    } catch { }
 
     return {
       success: true,
@@ -164,7 +164,7 @@ export async function syncLocalCertificatesToSupabase(): Promise<void> {
  */
 export async function fetchIssuedCertificates(institutionId?: string | null): Promise<IssuedCertificate[]> {
   // Dispara sincronização em segundo plano de eventuais certificados locais pendentes
-  syncLocalCertificatesToSupabase().catch(() => {});
+  syncLocalCertificatesToSupabase().catch(() => { });
 
   try {
     let query = supabase
@@ -226,13 +226,13 @@ export async function registerCertificateDownload(certificateId: string): Promis
     // 2. Atualiza LocalStorage
     try {
       const local = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
-      const updated = local.map((c: IssuedCertificate) => 
-        c.id === certificateId 
-          ? { ...c, download_count: nextCount, last_download_at: now } 
+      const updated = local.map((c: IssuedCertificate) =>
+        c.id === certificateId
+          ? { ...c, download_count: nextCount, last_download_at: now }
           : c
       );
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(updated));
-    } catch {}
+    } catch { }
 
     return nextCount;
   } catch {
@@ -316,17 +316,17 @@ export async function fetchCertificateByHash(queryStr: string): Promise<IssuedCe
       const vh = (c.validation_hash || '').toUpperCase();
       const doc = (c.recipient_document || '').replace(/\D/g, '');
       return vh === cleanInput ||
-             vh === `CERT-${currentYear}-${cleanInput}` ||
-             vh.includes(cleanInput) ||
-             (digitsOnly.length === 11 && doc === digitsOnly);
+        vh === `CERT-${currentYear}-${cleanInput}` ||
+        vh.includes(cleanInput) ||
+        (digitsOnly.length === 11 && doc === digitsOnly);
     });
 
     if (found) {
       // Se encontrou no LocalStorage, sincroniza em segundo plano com o Supabase
-      syncLocalCertificatesToSupabase().catch(() => {});
+      syncLocalCertificatesToSupabase().catch(() => { });
       return found as IssuedCertificate;
     }
-  } catch {}
+  } catch { }
 
   return null;
 }
@@ -351,7 +351,7 @@ export async function deleteIssuedCertificate(certificateId: string): Promise<{ 
       const local = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
       const filtered = local.filter((c: IssuedCertificate) => c.id !== certificateId);
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(filtered));
-    } catch {}
+    } catch { }
 
     return { success: true };
   } catch (err: any) {
@@ -383,7 +383,7 @@ export async function deleteBatchIssuedCertificates(certificateIds: string[]): P
       const idSet = new Set(certificateIds);
       const filtered = local.filter((c: IssuedCertificate) => !idSet.has(c.id));
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(filtered));
-    } catch {}
+    } catch { }
 
     return { success: true };
   } catch (err: any) {
@@ -502,7 +502,7 @@ export async function createDeclarationCampaign(
     try {
       const local: DeclarationCampaign[] = JSON.parse(localStorage.getItem(STORAGE_CAMPAIGNS_KEY) || '[]');
       localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify([saved, ...local]));
-    } catch {}
+    } catch { }
 
     return { success: true, campaign: saved };
   } catch (err: any) {
@@ -568,6 +568,67 @@ export async function fetchDeclarationCampaignBySlug(slug: string): Promise<Decl
 }
 
 /**
+ * Atualiza os dados de uma campanha de QR Code existente (mantendo o mesmo slug/QR Code)
+ */
+export async function updateDeclarationCampaign(
+  campaignId: string,
+  updates: Partial<
+    Pick<
+      DeclarationCampaign,
+      | 'title'
+      | 'event_type'
+      | 'workload_hours'
+      | 'event_date_start'
+      | 'event_date_end'
+      | 'location'
+      | 'issuer_name'
+      | 'issuer_role'
+      | 'secretariat_name'
+      | 'secretary_signature_url'
+      | 'preset_theme'
+      | 'require_morning_checkin'
+    >
+  >,
+  templateId?: string | null
+): Promise<{ success: boolean; campaign?: DeclarationCampaign; error?: string }> {
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await supabase
+      .from('education_declaration_campaigns')
+      .update({ ...updates, updated_at: now })
+      .eq('id', campaignId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    if (templateId) {
+      await supabase
+        .from('education_certificate_templates')
+        .update({
+          title: updates.title,
+          event_type: updates.event_type,
+          workload_hours: updates.workload_hours,
+          event_date_start: updates.event_date_start,
+          event_date_end: updates.event_date_end || null,
+          issuer_name: updates.issuer_name,
+          issuer_role: updates.issuer_role,
+          secretariat_name: updates.secretariat_name || null,
+          secretary_signature_url: updates.secretary_signature_url || null,
+          preset_theme: updates.preset_theme
+        })
+        .eq('id', templateId);
+    }
+
+    return { success: true, campaign: (data as DeclarationCampaign) || undefined };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erro ao atualizar campanha.' };
+  }
+}
+
+/**
  * Ativa ou pausa uma campanha de QR Code
  */
 export async function toggleDeclarationCampaignStatus(
@@ -588,7 +649,7 @@ export async function toggleDeclarationCampaignStatus(
       const local: DeclarationCampaign[] = JSON.parse(localStorage.getItem(STORAGE_CAMPAIGNS_KEY) || '[]');
       const updated = local.map(c => (c.id === campaignId ? { ...c, is_active: isActive } : c));
       localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(updated));
-    } catch {}
+    } catch { }
 
     return { success: true };
   } catch (err: any) {
@@ -613,7 +674,7 @@ export async function deleteDeclarationCampaign(campaignId: string): Promise<{ s
     try {
       const local: DeclarationCampaign[] = JSON.parse(localStorage.getItem(STORAGE_CAMPAIGNS_KEY) || '[]');
       localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(local.filter(c => c.id !== campaignId)));
-    } catch {}
+    } catch { }
 
     return { success: true };
   } catch (err: any) {
@@ -723,7 +784,7 @@ export async function issueParticipationDeclaration({
     try {
       const savedCerts = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify([newDeclaration, ...savedCerts]));
-    } catch {}
+    } catch { }
 
     return { success: true, declaration: newDeclaration, template, alreadyIssued: false };
   } catch (err: any) {
@@ -923,7 +984,7 @@ export async function submitDeclarationParticipation({
     try {
       const local: DeclarationSubmission[] = JSON.parse(localStorage.getItem(STORAGE_SUBMISSIONS_KEY) || '[]');
       localStorage.setItem(STORAGE_SUBMISSIONS_KEY, JSON.stringify([saved, ...local]));
-    } catch {}
+    } catch { }
 
     return { success: true, submission: saved, alreadyRegistered: false };
   } catch (err: any) {
@@ -988,7 +1049,7 @@ export async function markSubmissionAsIssued(
         : s
     );
     localStorage.setItem(STORAGE_SUBMISSIONS_KEY, JSON.stringify(updated));
-  } catch {}
+  } catch { }
 }
 
 // ============================================================================
@@ -1014,7 +1075,7 @@ export async function lookupSubmissionByCpf(
       .maybeSingle();
 
     if (!error && data) return data as DeclarationSubmission;
-  } catch {}
+  } catch { }
 
   try {
     const local: DeclarationSubmission[] = JSON.parse(localStorage.getItem(STORAGE_SUBMISSIONS_KEY) || '[]');
@@ -1125,7 +1186,7 @@ export async function submitMorningCheckin({
     try {
       const local: DeclarationSubmission[] = JSON.parse(localStorage.getItem(STORAGE_SUBMISSIONS_KEY) || '[]');
       localStorage.setItem(STORAGE_SUBMISSIONS_KEY, JSON.stringify([saved, ...local]));
-    } catch {}
+    } catch { }
 
     return { success: true, submission: saved, alreadyCheckedIn: false };
   } catch (err: any) {
@@ -1176,7 +1237,7 @@ export async function submitAfternoonAndIssue({
         success: false,
         missingMorningCheckin: true,
         error:
-          'Presença do período da manhã não localizada para este CPF. Caso tenha participado pela manhã e não conseguiu registrar, procure a organização do evento.'
+          'Presença do período matutino não localizada para este CPF. Caso tenha participado no matutino e não conseguiu registrar, procure a organização do evento.'
       };
     }
 

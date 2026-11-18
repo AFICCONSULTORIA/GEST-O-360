@@ -26,7 +26,8 @@ import {
   Sunrise,
   Sunset,
   Upload,
-  AlertTriangle
+  AlertTriangle,
+  Pencil
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -49,8 +50,8 @@ import {
   getDeclarationFormUrl,
   issueParticipationDeclaration,
   markSubmissionAsIssued,
-  sendDeclarationEmail,
-  toggleDeclarationCampaignStatus
+  toggleDeclarationCampaignStatus,
+  updateDeclarationCampaign
 } from '../services/certificateService';
 import {
   CertificateDocumentPDF,
@@ -109,6 +110,7 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
   const [senderEmail, setSenderEmail] = useState('');
   const [requireMorningCheckin, setRequireMorningCheckin] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState<DeclarationCampaign | null>(null);
   const [dbHealth, setDbHealth] = useState<{ ok: boolean; error?: string } | null>(null);
 
   // Modal de Projeção em Tela Cheia
@@ -192,6 +194,31 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
     return () => clearInterval(timer);
   }, [inspectCampaign]);
 
+  const handleStartEdit = (camp: DeclarationCampaign) => {
+    setEditingCampaign(camp);
+    setTitle(camp.title);
+    setEventType(camp.event_type || 'evento');
+    setWorkloadHours(camp.workload_hours || 4);
+    setDateStart(camp.event_date_start);
+    setDateEnd(camp.event_date_end || camp.event_date_start);
+    setLocation(camp.location || '');
+    setIssuerName(camp.issuer_name);
+    setIssuerRole(camp.issuer_role);
+    setSecretariatName(camp.secretariat_name || defaultSecretariatName);
+    setSecretarySignatureUrl(camp.secretary_signature_url || '');
+    setPresetTheme(camp.preset_theme || 'classico_azul');
+    setRequireMorningCheckin(camp.require_morning_checkin !== false);
+    setShowCreateForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingCampaign(null);
+    setTitle('');
+    setLocation('');
+    setSecretarySignatureUrl('');
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentInstitution?.id) {
@@ -205,6 +232,38 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
     setCreating(true);
     try {
+      if (editingCampaign) {
+        const updRes = await updateDeclarationCampaign(
+          editingCampaign.id,
+          {
+            title: title.trim(),
+            event_type: eventType,
+            workload_hours: Math.max(1, Number(workloadHours) || 1),
+            event_date_start: dateStart,
+            event_date_end: dateEnd || dateStart,
+            location: location.trim() || null,
+            issuer_name: issuerName.trim() || 'Secretário(a) Municipal',
+            issuer_role: issuerRole.trim() || 'Secretário(a) Municipal',
+            secretariat_name: secretariatName.trim() || defaultSecretariatName,
+            secretary_signature_url: secretarySignatureUrl || null,
+            preset_theme: presetTheme,
+            require_morning_checkin: requireMorningCheckin
+          },
+          editingCampaign.template_id
+        );
+
+        if (!updRes.success) {
+          showToast(updRes.error || 'Erro ao atualizar dados do QR Code.', 'error');
+          return;
+        }
+
+        showToast('Dados do QR Code atualizados com sucesso!', 'success');
+        handleCancelEdit();
+        setShowCreateForm(false);
+        await loadCampaigns();
+        return;
+      }
+
       const res = await createDeclarationCampaign({
         institution_id: currentInstitution.id,
         title: title.trim(),
@@ -299,11 +358,8 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
     setEmittingPending(true);
     let issuedCount = 0;
-    let emailSuccessCount = 0;
 
     try {
-      const tmpl = buildTemplateFromCampaign(inspectCampaign);
-
       for (let i = 0; i < pending.length; i++) {
         const sub = pending[i];
         setEmitProgress(`Emitindo ${i + 1} de ${pending.length}: ${sub.participant_name}`);
@@ -317,27 +373,6 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
         if (res.success && res.declaration) {
           issuedCount++;
-          setRenderTarget({ declaration: res.declaration, template: tmpl });
-          await new Promise((r) => setTimeout(r, 220));
-
-          let pdfBase64: string | undefined;
-          if (pdfRenderRef.current) {
-            try {
-              const blob = await generateCertificatePdfBlob(pdfRenderRef.current);
-              pdfBase64 = await blobToBase64(blob);
-            } catch {}
-          }
-
-          const emailRes = await sendDeclarationEmail({
-            declaration: res.declaration,
-            template: tmpl,
-            institutionName: currentInstitution?.name || 'Prefeitura Municipal',
-            senderEmail: inspectCampaign.sender_email,
-            recipientEmail: sub.participant_email,
-            pdfBase64
-          });
-
-          if (emailRes.success) emailSuccessCount++;
           await markSubmissionAsIssued(sub.id, res.declaration.id);
         }
       }
@@ -347,13 +382,12 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
       onCampaignActivity?.();
 
       showToast(
-        `${issuedCount} declarações emitidas (${emailSuccessCount} enviadas por e-mail).`,
+        `${issuedCount} declarações emitidas e salvas no Banco de Documentos!`,
         issuedCount > 0 ? 'success' : 'error'
       );
     } finally {
       setEmittingPending(false);
       setEmitProgress('');
-      setRenderTarget(null);
     }
   };
 
@@ -408,8 +442,8 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
             </div>
             <div class="steps">
               <strong>Use este mesmo QR Code nas duas etapas:</strong><br/>
-              <strong>1. Manhã (Presença):</strong> Escaneie, informe CPF, Nome e E-mail.<br/>
-              <strong>2. Tarde (Declaração):</strong> Escaneie novamente, digite seu CPF, avalie o evento e emita sua Declaração na hora!
+              <strong>1. Matutino (Presença):</strong> Escaneie, informe CPF, Nome e E-mail.<br/>
+              <strong>2. Vespertino (Declaração):</strong> Escaneie novamente, digite seu CPF, avalie o evento e emita sua Declaração na hora!
             </div>
             <p class="url">${formUrl}</p>
           </div>
@@ -486,11 +520,24 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
           onSubmit={handleCreate}
           className="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm space-y-5"
         >
-          <div className="flex items-center gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
-            <Sparkles className="w-4 h-4 text-amber-500" />
-            <h4 className="text-sm font-black text-neutral-900 dark:text-white">
-              Configurar Evento para Coleta de Participantes & Avaliação
-            </h4>
+          <div className="flex items-center justify-between gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <h4 className="text-sm font-black text-neutral-900 dark:text-white">
+                {editingCampaign
+                  ? `Editar Evento do QR Code: ${editingCampaign.title}`
+                  : 'Configurar Evento para Coleta de Participantes & Avaliação'}
+              </h4>
+            </div>
+            {editingCampaign && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="text-xs font-bold text-neutral-500 hover:text-neutral-900 dark:hover:text-white cursor-pointer"
+              >
+                Cancelar edição
+              </button>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -702,17 +749,32 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                 onChange={(e) => setRequireMorningCheckin(e.target.checked)}
                 className="w-4 h-4 rounded accent-amber-500"
               />
-              Exigir confirmação de presença da manhã para liberar emissão na etapa da tarde
+              Exigir confirmação de presença no matutino para liberar emissão no vespertino
             </label>
 
-            <button
-              type="submit"
-              disabled={creating}
-              className="px-6 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-amber-500 dark:hover:bg-amber-600 text-white dark:text-neutral-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
-            >
-              <QrCode className="w-4 h-4" />
-              {creating ? 'Gerando QR Codes...' : 'Gerar QR Codes (Manhã e Tarde)'}
-            </button>
+            <div className="flex items-center gap-2">
+              {editingCampaign && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 font-bold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              )}
+              <button
+                type="submit"
+                disabled={creating}
+                className="px-6 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-amber-500 dark:hover:bg-amber-600 text-white dark:text-neutral-950 font-black text-xs flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+              >
+                <QrCode className="w-4 h-4" />
+                {creating
+                  ? 'Salvando...'
+                  : editingCampaign
+                  ? 'Salvar Alterações do QR Code'
+                  : 'Gerar QR Code Único (Matutino e Vespertino)'}
+              </button>
+            </div>
           </div>
         </form>
       )}
@@ -831,6 +893,15 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                     >
                       <Copy className="w-3.5 h-3.5" />
                       Link
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(camp)}
+                      className="px-2.5 py-1.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                      title="Editar dados do evento/QR Code"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                      Editar
                     </button>
                     <a
                       href={formUrl}
@@ -979,7 +1050,7 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                                 : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
                             }`}
                           >
-                            {sub.morning_checkin_at ? 'Manhã ✓' : 'Manhã —'}
+                            {sub.morning_checkin_at ? 'Matutino ✓' : 'Matutino —'}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
@@ -988,7 +1059,7 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                                 : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
                             }`}
                           >
-                            {sub.afternoon_checkin_at ? 'Tarde ✓' : 'Tarde —'}
+                            {sub.afternoon_checkin_at ? 'Vespertino ✓' : 'Vespertino —'}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
@@ -1012,12 +1083,12 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                                         : item
                                     )
                                   );
-                                  showToast('Presença da manhã confirmada manualmente.', 'success');
+                                  showToast('Presença no matutino confirmada manualmente.', 'success');
                                 }
                               }}
                               className="px-2 py-0.5 rounded-lg bg-blue-600 text-white text-[10px] font-bold cursor-pointer"
                             >
-                              Confirmar Manhã
+                              Confirmar Matutino
                             </button>
                           )}
                         </div>
@@ -1093,7 +1164,7 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                 Aponte a câmera do seu celular para o QR Code
               </p>
               <p className="text-xs sm:text-sm text-slate-500">
-                <strong>Manhã:</strong> Confirme sua presença. <strong>Tarde:</strong> Escaneie o mesmo QR Code, avalie o evento e emita sua Declaração.
+                <strong>Matutino:</strong> Confirme sua presença. <strong>Vespertino:</strong> Escaneie o mesmo QR Code, avalie o evento e emita sua Declaração.
               </p>
             </div>
 
