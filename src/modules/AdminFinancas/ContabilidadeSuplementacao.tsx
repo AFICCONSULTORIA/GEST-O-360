@@ -3623,6 +3623,26 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                     {cobrirTargetFicha.fonteRecurso || 'Não informada'}
                   </span>
                 </p>
+                {(() => {
+                  const saldoTarget = getSaldoFicha(cobrirTargetFicha);
+                  const jaPreenchido = cobrirSources.reduce(
+                    (acc, s) => acc + parseCurrencyInputPtBr(s.valor),
+                    0
+                  );
+                  const faltaZerar = Math.max(0, -(saldoTarget + jaPreenchido));
+                  return (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-red-600 text-white text-xs font-black tabular-nums shadow-xs">
+                        Saldo da Ficha {cobrirTargetFicha.ficha}: {formatBRL(saldoTarget)}
+                      </span>
+                      {faltaZerar > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-800 text-xs font-black tabular-nums">
+                          Falta para zerar: {formatBRL(faltaZerar)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               <button
                 type="button"
