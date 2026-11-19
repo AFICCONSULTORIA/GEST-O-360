@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   HeartHandshake,
   ShieldCheck,
@@ -7,7 +7,11 @@ import {
   Smartphone,
   Calendar,
   CreditCard,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Share,
+  MoreVertical,
+  X
 } from 'lucide-react';
 import { Institution } from '../../types';
 import { supabase, supabaseAnon } from '../../lib/supabase';
@@ -18,6 +22,11 @@ import { showToast } from '../../components/ui/Toast';
 interface PublicFamilyPortalProps {
   darkMode?: boolean;
   currentInstitution?: Institution | null;
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
 const LAST_STUDENT_STORAGE_KEY = 'gestao360_family_portal_student';
@@ -52,6 +61,123 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
     }
   });
   const [showInstallTip, setShowInstallTip] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isInstalledApp, setIsInstalledApp] = useState(false);
+
+  useEffect(() => {
+    const checkStandalone = () => {
+      const standalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+      setIsInstalledApp(standalone);
+    };
+    checkStandalone();
+
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsInstalledApp(true);
+      setShowInstallTip(false);
+      showToast('App instalado na tela inicial do seu telefone!', 'success');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      try {
+        await deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          setDeferredPrompt(null);
+          setIsInstalledApp(true);
+          showToast('Instalando o aplicativo...', 'success');
+          return;
+        }
+      } catch {
+        // fallback to manual instructions modal
+      }
+    }
+    setShowInstallTip(true);
+  };
+
+  const renderInstallModal = () =>
+    showInstallTip ? (
+      <div
+        className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-4"
+        onClick={() => setShowInstallTip(false)}
+      >
+        <div
+          className="w-full max-w-md bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-5 shadow-2xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-600 to-emerald-600 text-white flex items-center justify-center shrink-0">
+                <Download size={20} />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-neutral-900 dark:text-white">
+                  Instalar App no Telefone
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  Acesse o boletim direto da tela inicial como aplicativo.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowInstallTip(false)}
+              className="p-1.5 rounded-xl text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="space-y-2.5 text-xs text-neutral-700 dark:text-neutral-300">
+            <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200/70 dark:border-neutral-700 flex items-start gap-2.5">
+              <MoreVertical size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-black text-neutral-900 dark:text-white">Android (Chrome)</div>
+                <p className="mt-0.5">
+                  Toque nos <strong>3 pontinhos (⋮)</strong> no canto superior direito e escolha{' '}
+                  <strong>&ldquo;Instalar aplicativo&rdquo;</strong> ou{' '}
+                  <strong>&ldquo;Adicionar à tela inicial&rdquo;</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200/70 dark:border-neutral-700 flex items-start gap-2.5">
+              <Share size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-black text-neutral-900 dark:text-white">iPhone / iPad (Safari)</div>
+                <p className="mt-0.5">
+                  Toque no botão <strong>Compartilhar</strong> na barra inferior e escolha{' '}
+                  <strong>&ldquo;Adicionar à Tela de Início&rdquo;</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowInstallTip(false)}
+            className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider"
+          >
+            Entendi
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   const openStudentSession = (ctx: FamilyPortalStudentContext) => {
     setSelectedStudent(ctx);
@@ -188,15 +314,17 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowInstallTip((prev) => !prev)}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold"
-                title="Salvar como aplicativo no celular"
-              >
-                <Smartphone size={13} />
-                <span className="hidden sm:inline">App</span>
-              </button>
+              {!isInstalledApp && (
+                <button
+                  type="button"
+                  onClick={handleInstallClick}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black shadow-xs transition-all active:scale-95"
+                  title="Instalar aplicativo no telefone"
+                >
+                  <Smartphone size={13} />
+                  <span>Instalar App</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleLogout}
@@ -207,32 +335,16 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
               </button>
             </div>
           </div>
-
-          {showInstallTip && (
-            <div className="max-w-5xl mx-auto px-4 pb-3">
-              <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between gap-2">
-                <span>
-                  Toque no menu do navegador e escolha <strong>&ldquo;Adicionar à tela inicial&rdquo;</strong> para usar como aplicativo no celular.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowInstallTip(false)}
-                  className="font-black text-indigo-700 dark:text-indigo-300 px-2 py-1"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-          )}
         </header>
 
-        <main className="px-3 sm:px-6 py-4 sm:py-6">
+        <main className="px-3 sm:px-6 py-4 sm:py-6 pb-24 md:pb-8">
           <FamilyPortalView
             mode="student"
             initialStudentId={selectedStudent.id}
             studentProfile={selectedStudent}
           />
         </main>
+        {renderInstallModal()}
       </div>
     );
   }
@@ -317,7 +429,21 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
             <ArrowRight size={17} />
           </button>
         </form>
+
+        {!isInstalledApp && (
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={handleInstallClick}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-neutral-900 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 text-xs font-black shadow-xs hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition-all"
+            >
+              <Download size={15} />
+              <span>Instalar App no Telefone</span>
+            </button>
+          </div>
+        )}
       </div>
+      {renderInstallModal()}
     </div>
   );
 };

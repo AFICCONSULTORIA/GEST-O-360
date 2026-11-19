@@ -21,7 +21,8 @@ import {
   HelpCircle,
   Zap,
   Compass,
-  Check
+  Check,
+  LayoutDashboard
 } from 'lucide-react';
 import {
   AnnouncementRecord,
@@ -477,39 +478,50 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
         )}
       </div>
 
-      {/* Navegação Rápida por Abas no Celular (App dos Pais) */}
-      <div className="md:hidden sticky top-2 z-30 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-lg grid grid-cols-4 gap-1">
+      {/* Navegação Inferior Fixa no Celular (App dos Pais) */}
+      <nav
+        aria-label="Navegação do Portal dos Pais"
+        className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-t border-neutral-200 dark:border-neutral-800 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] grid grid-cols-4 gap-1"
+      >
         {(
           [
-            { id: 'resumo', label: 'Resumo' },
-            { id: 'materias', label: 'Matérias' },
-            { id: 'pareceres', label: 'Pareceres' },
-            { id: 'recados', label: 'Recados', badge: pendingAnnouncementsCount },
+            { id: 'resumo', label: 'Resumo', icon: LayoutDashboard },
+            { id: 'materias', label: 'Matérias', icon: BookOpen },
+            { id: 'pareceres', label: 'Pareceres', icon: MessageSquare },
+            { id: 'recados', label: 'Recados', icon: Bell, badge: pendingAnnouncementsCount },
           ] as const
-        ).map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setMobileTab(tab.id)}
-            className={`relative py-2.5 px-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
-              mobileTab === tab.id
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-            }`}
-          >
-            <span>{tab.label}</span>
-            {'badge' in tab && (tab.badge ?? 0) > 0 && (
-              <span
-                className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${
-                  mobileTab === tab.id ? 'bg-white text-indigo-700' : 'bg-rose-600 text-white'
-                }`}
-              >
-                {tab.badge}
+        ).map((tab) => {
+          const Icon = tab.icon;
+          const isActive = mobileTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setMobileTab(tab.id);
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              className={`relative py-2 px-1 rounded-2xl transition-all flex flex-col items-center justify-center gap-0.5 ${
+                isActive
+                  ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/90 dark:bg-indigo-950/50'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/70'
+              }`}
+            >
+              <div className="relative">
+                <Icon size={19} strokeWidth={isActive ? 2.4 : 2} />
+                {'badge' in tab && (tab.badge ?? 0) > 0 && (
+                  <span className="absolute -top-1.5 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center">
+                    {tab.badge}
+                  </span>
+                )}
+              </div>
+              <span className={`text-[10px] leading-tight ${isActive ? 'font-black' : 'font-bold'}`}>
+                {tab.label}
               </span>
-            )}
-          </button>
-        ))}
-      </div>
+            </button>
+          );
+        })}
+      </nav>
 
       {/* Guia das 4 Etapas (compacto e recolhido por padrão para não poluir a tela) */}
       <div className={`${mobileTab === 'resumo' ? 'block' : 'hidden md:block'}`}>
