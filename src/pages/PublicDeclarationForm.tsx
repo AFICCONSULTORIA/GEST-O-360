@@ -100,8 +100,6 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
     alreadyIssued?: boolean;
   } | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [reloadNonce, setReloadNonce] = useState(0);
-  const [pendingOfflineSave, setPendingOfflineSave] = useState(false);
   const pdfRenderRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -109,113 +107,67 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
       setLoadingCampaign(true);
       setCampaignError(null);
 
-      const params = new URLSearchParams(window.location.search);
-      let slug = params.get('evento') || params.get('slug') || params.get('c') || '';
-      const etapaParam = (params.get('etapa') || params.get('periodo') || '').toLowerCase();
+      try {
+        const params = new URLSearchParams(window.location.search);
+        let slug = params.get('evento') || params.get('slug') || params.get('c') || '';
+        const etapaParam = (params.get('etapa') || params.get('periodo') || '').toLowerCase();
 
-      const parts = window.location.pathname.split('/').filter(Boolean);
-      const declIndex = parts.findIndex(
-        (p) => p.toLowerCase() === 'declaracao' || p.toLowerCase() === 'declaracao-participacao'
-      );
+        const parts = window.location.pathname.split('/').filter(Boolean);
+        const declIndex = parts.findIndex(
+          (p) => p.toLowerCase() === 'declaracao' || p.toLowerCase() === 'declaracao-participacao'
+        );
 
-      if (!slug && declIndex >= 0 && parts[declIndex + 1]) {
-        slug = parts[declIndex + 1];
-      }
-
-      const lastSeg = (parts[parts.length - 1] || '').toLowerCase();
-      if (
-        etapaParam === 'tarde' ||
-        etapaParam === 'vespertino' ||
-        lastSeg === 'tarde' ||
-        lastSeg === 'vespertino'
-      ) {
-        setStage('tarde');
-      } else {
-        setStage('manha');
-      }
-
-      if (!slug) {
-        setCampaignError('Link inválido. Escaneie novamente o QR Code do evento.');
-        setLoadingCampaign(false);
-        return;
-      }
-
-      const cacheKey = `gestao360_qr_campaign_${slug}`;
-      let found: DeclarationCampaign | null = null;
-
-      // Retenta até 3 vezes em caso de internet móvel instável
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          found = await fetchDeclarationCampaignBySlug(slug);
-          if (found) break;
-        } catch {
-          // continua para próxima tentativa
+        if (!slug && declIndex >= 0 && parts[declIndex + 1]) {
+          slug = parts[declIndex + 1];
         }
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+
+        const lastSeg = (parts[parts.length - 1] || '').toLowerCase();
+        if (
+          etapaParam === 'tarde' ||
+          etapaParam === 'vespertino' ||
+          lastSeg === 'tarde' ||
+          lastSeg === 'vespertino'
+        ) {
+          setStage('tarde');
+        } else {
+          setStage('manha');
         }
-      }
 
-      // Fallback para cache local caso a conexão esteja muito ruim
-      if (!found) {
-        try {
-          const cached = localStorage.getItem(cacheKey);
-          if (cached) {
-            const parsed = JSON.parse(cached) as {
-              campaign: DeclarationCampaign;
-              institution?: Institution | null;
-            };
-            if (parsed?.campaign) {
-              found = parsed.campaign;
-              if (parsed.institution && !institution) {
-                setInstitution(parsed.institution);
-              }
-            }
-          }
-        } catch {
-          // ignora falha de storage
+        if (!slug) {
+          setCampaignError('Link inválido. Escaneie novamente o QR Code do evento.');
+          setLoadingCampaign(false);
+          return;
         }
-      }
 
-      if (!found) {
-        setCampaignError('Conexão instável ou evento não localizado. Toque em "Tentar Novamente".');
-        setLoadingCampaign(false);
-        return;
-      }
+        const found = await fetchDeclarationCampaignBySlug(slug);
+        if (!found) {
+          setCampaignError('Evento ou formulário não encontrado.');
+          setLoadingCampaign(false);
+          return;
+        }
 
-      setCampaign(found);
-      let resolvedInst: Institution | null = currentInstitution || null;
+        setCampaign(found);
 
-      if (!currentInstitution || currentInstitution.id !== found.institution_id) {
-        try {
+        if (!currentInstitution || currentInstitution.id !== found.institution_id) {
           const { data: instData } = await supabase
             .from('institutions')
             .select('*')
             .eq('id', found.institution_id)
             .maybeSingle();
           if (instData) {
-            resolvedInst = instData as Institution;
-            setInstitution(resolvedInst);
+            setInstitution(instData as Institution);
           }
-        } catch {
-          // segue mesmo se a busca da instituição falhar por rede ruim
         }
+      } catch (err) {
+        console.error('[PublicDeclarationForm] Erro ao carregar campanha:', err);
+        setCampaignError('Não foi possível carregar as informações do evento.');
+      } finally {
+        setLoadingCampaign(false);
       }
-
-      try {
-        localStorage.setItem(
-          cacheKey,
-          JSON.stringify({ campaign: found, institution: resolvedInst })
-        );
-      } catch {
-        // ignora quota de storage
-      }
-
-      setLoadingCampaign(false);
     };
 
     loadCampaign();
-  }, [currentInstitution, reloadNonce]);
+  }, [currentInstitution]);
 
   // Detecta automaticamente a etapa pelo CPF (1 único QR Code para Manhã e Tarde!)
   const handleCpfChange = async (rawValue: string) => {
@@ -324,13 +276,9 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
         template: res.template,
         alreadyIssued: res.alreadyIssued
       });
-      setPendingOfflineSave(false);
     } catch (err: any) {
       console.error('[PublicDeclarationForm] Erro ao processar formulário:', err);
-      setPendingOfflineSave(true);
-      setFormError(
-        'Conexão instável no momento do envio. Seus dados foram preservados nesta tela — toque no botão abaixo para enviar novamente.'
-      );
+      setFormError(err?.message || 'Ocorreu um erro ao enviar seus dados.');
     } finally {
       setSubmitting(false);
     }
@@ -414,16 +362,9 @@ export const PublicDeclarationForm: React.FC<PublicDeclarationFormProps> = ({
               <h2 className="text-lg font-black text-neutral-900 dark:text-white mb-2">
                 Formulário Indisponível
               </h2>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-5">
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">
                 {campaignError || 'Não foi possível localizar este evento.'}
               </p>
-              <button
-                type="button"
-                onClick={() => setReloadNonce((n) => n + 1)}
-                className="px-6 py-3 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black uppercase tracking-wider transition cursor-pointer"
-              >
-                Tentar Novamente
-              </button>
             </div>
           ) : !campaign.is_active ? (
             <div className="bg-white dark:bg-neutral-900 rounded-3xl p-8 border border-neutral-200 dark:border-neutral-800 shadow-sm text-center">
