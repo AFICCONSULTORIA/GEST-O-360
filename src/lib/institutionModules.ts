@@ -118,7 +118,7 @@ export function withInstitutionQuery(path: string, institution?: Institution | n
   }
 
   const tenantPrefix = `/${encodeURIComponent(slug)}`;
-  if (normalizedPath === '/' || normalizedPath === '/site' || normalizedPath === '/portal-oficial') {
+  if (normalizedPath === '/') {
     return appendParams(tenantPrefix);
   }
 

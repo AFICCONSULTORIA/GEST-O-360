@@ -1,10 +1,6 @@
-import React from 'react';
+import React, { lazy } from 'react';
 import { supabase, signUpNewUser } from './lib/supabase';
 import { ToastContainer, showToast } from './components/ui/Toast';
-import { CertificatesModule } from './modules/Certificates';
-import { LawsModule } from './modules/Laws';
-import { SettingsModule } from './modules/Settings';
-import { ProtocolModule } from './modules/Protocol';
 import { hasPermission } from './lib/permissions';
 import {
   getSubdomain,
@@ -15,50 +11,57 @@ import {
   isCustomMunicipalDomain,
 } from './lib/subdomain';
 import { extractSiteConfigFromInstitution } from './lib/api/institutionalSite';
-import { SaaSControlCenter } from './modules/SaaSControlCenter';
-
-import { ReportsModule, PatrimonioPrintLayout } from './modules/Reports';
-import { ControlsModule } from './modules/Controls';
-import { AccountingChangesControl } from './modules/Controls/components/AccountingChangesControl';
-import { FleetFuelManager } from './modules/Controls/components/FleetFuelManager';
-import { RiskModule } from './modules/Risk';
-import { PNTPModule } from './modules/PNTP';
-import { DocumentNumbersModule } from './modules/DocumentNumbers';
-import { OrdersModule } from './modules/Orders';
-import { PatrimonioModule } from './modules/Patrimonio';
 import { mapDbRowToPatrimonioItem, packPatrimonioDescription } from './lib/patrimonioMeta';
-import { TemplatesModule } from './modules/Templates';
-import { SaudeModule, ConsultorioModule, SaudeHub } from './modules/Saude';
-import { PublicSaudePortal } from './modules/Saude/PublicPortal';
-import { PublicFarmaciaPortal } from './modules/Saude/PublicFarmacia';
-import { ServicosPublicosModule } from './modules/ServicosPublicos';
-import { PublicServicosPortal } from './modules/ServicosPublicos/PublicPortal';
-import { PublicEducacaoPortal } from './modules/Education/PublicPortal';
-import { PublicCrechePortal } from './modules/Education/PublicCrechePortal';
-import { PublicVotingPortal } from './modules/Education/PublicVotingPortal';
-import { MeioAmbienteModule } from './modules/MeioAmbiente';
-import { PublicMeioAmbientePortal } from './modules/MeioAmbiente/PublicPortal';
-import { CamaraModule } from './modules/Camara';
-import { ContractsModule } from './modules/Contracts';
-import { EducationModule } from './modules/Education';
-import { EducationCertificatesManager } from './modules/Education/components/EducationCertificatesManager';
-import { CalendarModule } from './modules/Calendar';
-import { NormsModule } from './modules/Norms';
-import { SupportModule } from './modules/Support';
-import { AssistenciaSocialModule } from './modules/AssistenciaSocial';
-import { FinanceModules } from './modules/AdminFinancas';
-import { AdministracaoModule } from './modules/Administracao';
-import { CommunicationCenter } from './modules/CommunicationCenter';
-import { PublicFormsModule } from './modules/PublicForms';
-import { PublicFormRouteLoader } from './modules/PublicForms/PublicFormRouteLoader';
-import { NoticiasModule } from './modules/Noticias';
-import { PublicNewsPortal } from './modules/Noticias/PublicNewsPortal';
-import { OuvidoriaModule } from './modules/Ouvidoria';
-import { PublicOuvidoriaPortal } from './modules/Ouvidoria/PublicPortal';
-import { PublicNotaFiscalAuditor } from './pages/PublicNotaFiscalAuditor';
-import { PublicCertificateValidator } from './pages/PublicCertificateValidator';
-import { PublicDeclarationForm } from './pages/PublicDeclarationForm';
-import { PublicFuelValidation } from './pages/PublicFuelValidation';
+
+const CertificatesModule = lazy(() => import('./modules/Certificates').then(m => ({ default: m.CertificatesModule })));
+const LawsModule = lazy(() => import('./modules/Laws').then(m => ({ default: m.LawsModule })));
+const SettingsModule = lazy(() => import('./modules/Settings').then(m => ({ default: m.SettingsModule })));
+const ProtocolModule = lazy(() => import('./modules/Protocol').then(m => ({ default: m.ProtocolModule })));
+const SaaSControlCenter = lazy(() => import('./modules/SaaSControlCenter').then(m => ({ default: m.SaaSControlCenter })));
+const ReportsModule = lazy(() => import('./modules/Reports').then(m => ({ default: m.ReportsModule })));
+const PatrimonioPrintLayout = lazy(() => import('./modules/Reports').then(m => ({ default: m.PatrimonioPrintLayout })));
+const ControlsModule = lazy(() => import('./modules/Controls').then(m => ({ default: m.ControlsModule })));
+const AccountingChangesControl = lazy(() => import('./modules/Controls/components/AccountingChangesControl').then(m => ({ default: m.AccountingChangesControl })));
+const FleetFuelManager = lazy(() => import('./modules/Controls/components/FleetFuelManager').then(m => ({ default: m.FleetFuelManager })));
+const RiskModule = lazy(() => import('./modules/Risk').then(m => ({ default: m.RiskModule })));
+const PNTPModule = lazy(() => import('./modules/PNTP').then(m => ({ default: m.PNTPModule })));
+const DocumentNumbersModule = lazy(() => import('./modules/DocumentNumbers').then(m => ({ default: m.DocumentNumbersModule })));
+const OrdersModule = lazy(() => import('./modules/Orders').then(m => ({ default: m.OrdersModule })));
+const PatrimonioModule = lazy(() => import('./modules/Patrimonio').then(m => ({ default: m.PatrimonioModule })));
+const TemplatesModule = lazy(() => import('./modules/Templates').then(m => ({ default: m.TemplatesModule })));
+const SaudeModule = lazy(() => import('./modules/Saude').then(m => ({ default: m.SaudeModule })));
+const ConsultorioModule = lazy(() => import('./modules/Saude').then(m => ({ default: m.ConsultorioModule })));
+const SaudeHub = lazy(() => import('./modules/Saude').then(m => ({ default: m.SaudeHub })));
+const PublicSaudePortal = lazy(() => import('./modules/Saude/PublicPortal').then(m => ({ default: m.PublicSaudePortal })));
+const PublicFarmaciaPortal = lazy(() => import('./modules/Saude/PublicFarmacia').then(m => ({ default: m.PublicFarmaciaPortal })));
+const ServicosPublicosModule = lazy(() => import('./modules/ServicosPublicos').then(m => ({ default: m.ServicosPublicosModule })));
+const PublicServicosPortal = lazy(() => import('./modules/ServicosPublicos/PublicPortal').then(m => ({ default: m.PublicServicosPortal })));
+const PublicEducacaoPortal = lazy(() => import('./modules/Education/PublicPortal').then(m => ({ default: m.PublicEducacaoPortal })));
+const PublicCrechePortal = lazy(() => import('./modules/Education/PublicCrechePortal').then(m => ({ default: m.PublicCrechePortal })));
+const PublicVotingPortal = lazy(() => import('./modules/Education/PublicVotingPortal').then(m => ({ default: m.PublicVotingPortal })));
+const MeioAmbienteModule = lazy(() => import('./modules/MeioAmbiente').then(m => ({ default: m.MeioAmbienteModule })));
+const PublicMeioAmbientePortal = lazy(() => import('./modules/MeioAmbiente/PublicPortal').then(m => ({ default: m.PublicMeioAmbientePortal })));
+const CamaraModule = lazy(() => import('./modules/Camara').then(m => ({ default: m.CamaraModule })));
+const ContractsModule = lazy(() => import('./modules/Contracts').then(m => ({ default: m.ContractsModule })));
+const EducationModule = lazy(() => import('./modules/Education').then(m => ({ default: m.EducationModule })));
+const EducationCertificatesManager = lazy(() => import('./modules/Education/components/EducationCertificatesManager').then(m => ({ default: m.EducationCertificatesManager })));
+const CalendarModule = lazy(() => import('./modules/Calendar').then(m => ({ default: m.CalendarModule })));
+const NormsModule = lazy(() => import('./modules/Norms').then(m => ({ default: m.NormsModule })));
+const SupportModule = lazy(() => import('./modules/Support').then(m => ({ default: m.SupportModule })));
+const AssistenciaSocialModule = lazy(() => import('./modules/AssistenciaSocial').then(m => ({ default: m.AssistenciaSocialModule })));
+const FinanceModules = lazy(() => import('./modules/AdminFinancas').then(m => ({ default: m.FinanceModules })));
+const AdministracaoModule = lazy(() => import('./modules/Administracao').then(m => ({ default: m.AdministracaoModule })));
+const CommunicationCenter = lazy(() => import('./modules/CommunicationCenter').then(m => ({ default: m.CommunicationCenter })));
+const PublicFormsModule = lazy(() => import('./modules/PublicForms').then(m => ({ default: m.PublicFormsModule })));
+const PublicFormRouteLoader = lazy(() => import('./modules/PublicForms/PublicFormRouteLoader').then(m => ({ default: m.PublicFormRouteLoader })));
+const NoticiasModule = lazy(() => import('./modules/Noticias').then(m => ({ default: m.NoticiasModule })));
+const PublicNewsPortal = lazy(() => import('./modules/Noticias/PublicNewsPortal').then(m => ({ default: m.PublicNewsPortal })));
+const OuvidoriaModule = lazy(() => import('./modules/Ouvidoria').then(m => ({ default: m.OuvidoriaModule })));
+const PublicOuvidoriaPortal = lazy(() => import('./modules/Ouvidoria/PublicPortal').then(m => ({ default: m.PublicOuvidoriaPortal })));
+const PublicNotaFiscalAuditor = lazy(() => import('./pages/PublicNotaFiscalAuditor').then(m => ({ default: m.PublicNotaFiscalAuditor })));
+const PublicCertificateValidator = lazy(() => import('./pages/PublicCertificateValidator').then(m => ({ default: m.PublicCertificateValidator })));
+const PublicDeclarationForm = lazy(() => import('./pages/PublicDeclarationForm').then(m => ({ default: m.PublicDeclarationForm })));
+const PublicFuelValidation = lazy(() => import('./pages/PublicFuelValidation').then(m => ({ default: m.PublicFuelValidation })));
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -70,20 +73,20 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 // Extracted subcomponents
-import { Gestao360Copilot } from './components/AI/Gestao360Copilot';
+const Gestao360Copilot = lazy(() => import('./components/AI/Gestao360Copilot').then(m => ({ default: m.Gestao360Copilot })));
 import { LogoCompass } from './components/LogoCompass';
 import { SidebarItem } from './components/SidebarItem';
-import { Dashboard } from './components/Dashboard';
-import { MayorDashboard } from './components/MayorDashboard';
-import { SalesLandingPage } from './components/SalesLandingPage';
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })));
+const MayorDashboard = lazy(() => import('./components/MayorDashboard').then(m => ({ default: m.MayorDashboard })));
+const SalesLandingPage = lazy(() => import('./components/SalesLandingPage').then(m => ({ default: m.SalesLandingPage })));
 import { LandingPage } from './components/LandingPage';
-import { InstitutionalSite } from './components/InstitutionalSite';
-import { PublicSecretariatPortal } from './components/PublicSecretariatPortal';
-import { SiteInstitucionalModule } from './modules/SiteInstitucional';
-import { EmailInstitucionalModule } from './modules/EmailInstitucional';
-import { PublicWebmailPortal } from './modules/EmailInstitucional/PublicWebmailPortal';
-import { DiarioOficialModule } from './modules/DiarioOficial';
-import { PublicGazettePortal } from './modules/DiarioOficial/PublicGazettePortal';
+const InstitutionalSite = lazy(() => import('./components/InstitutionalSite').then(m => ({ default: m.InstitutionalSite })));
+const PublicSecretariatPortal = lazy(() => import('./components/PublicSecretariatPortal').then(m => ({ default: m.PublicSecretariatPortal })));
+const SiteInstitucionalModule = lazy(() => import('./modules/SiteInstitucional').then(m => ({ default: m.SiteInstitucionalModule })));
+const EmailInstitucionalModule = lazy(() => import('./modules/EmailInstitucional').then(m => ({ default: m.EmailInstitucionalModule })));
+const PublicWebmailPortal = lazy(() => import('./modules/EmailInstitucional/PublicWebmailPortal').then(m => ({ default: m.PublicWebmailPortal })));
+const DiarioOficialModule = lazy(() => import('./modules/DiarioOficial').then(m => ({ default: m.DiarioOficialModule })));
+const PublicGazettePortal = lazy(() => import('./modules/DiarioOficial/PublicGazettePortal').then(m => ({ default: m.PublicGazettePortal })));
 import { MunicipalityPortalHub } from './components/MunicipalityPortalHub';
 import { Login } from './components/Login';
 import { ProposalModal } from './components/ProposalModal';
@@ -159,33 +162,45 @@ export default function App() {
   }, [darkMode]);
 
   React.useEffect(() => {
+    let mounted = true;
+    const safetyTimer = window.setTimeout(() => {
+      if (mounted) {
+        console.warn('[Bootstrap] Timeout de segurança atingido; liberando interface.');
+        setLoadingInstitution(false);
+      }
+    }, 5500);
+
     const bootstrap = async () => {
       let activeInst: Institution | null = null;
       const subdomain = getSubdomain();
       let isSaaS = false;
 
-      if (isCustomMunicipalDomain()) {
-        activeInst = await fetchInstitutionByCustomDomain();
-        if (activeInst) {
-          setCurrentInstitution(activeInst);
-          document.title = `${activeInst.name} · Portal Oficial`;
-        }
-      }
-
-      if (!activeInst && !isSaaS && subdomain) {
-        if (subdomain.toLowerCase() === 'admin') {
-          isSaaS = true;
-          setIsSuperAdminPortal(true);
-          document.title = 'GESTÃO 360 · Central de Controle SaaS';
-        } else {
-          activeInst = await fetchInstitutionBySubdomain(subdomain);
-          if (activeInst) {
+      try {
+        if (isCustomMunicipalDomain()) {
+          activeInst = await fetchInstitutionByCustomDomain();
+          if (activeInst && mounted) {
             setCurrentInstitution(activeInst);
-            document.title = `GESTÃO 360 · ${activeInst.name}`;
-          } else {
-            console.warn(`Subdomínio '${subdomain}' não encontrado no banco de dados.`);
+            document.title = `${activeInst.name} · Portal Oficial`;
           }
         }
+
+        if (!activeInst && !isSaaS && subdomain) {
+          if (subdomain.toLowerCase() === 'admin') {
+            isSaaS = true;
+            if (mounted) setIsSuperAdminPortal(true);
+            document.title = 'GESTÃO 360 · Central de Controle SaaS';
+          } else {
+            activeInst = await fetchInstitutionBySubdomain(subdomain);
+            if (activeInst && mounted) {
+              setCurrentInstitution(activeInst);
+              document.title = `GESTÃO 360 · ${activeInst.name}`;
+            } else {
+              console.warn(`Subdomínio '${subdomain}' não encontrado no banco de dados.`);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[Bootstrap] Erro ao resolver instituição:', err);
       }
 
       const handleAuthSession = async (session: any, resolvedInst: Institution | null, isSaaSAdmin: boolean, event?: string) => {
@@ -290,7 +305,10 @@ export default function App() {
         }
       };
 
-      await checkSession();
+      await Promise.race([
+        checkSession(),
+        new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+      ]);
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         // Executamos no próximo tick para desempilhar a execução e evitar deadlocks internos do cliente Supabase
@@ -318,7 +336,8 @@ export default function App() {
       };
       window.addEventListener('popstate', handlePopState);
 
-      setLoadingInstitution(false);
+      window.clearTimeout(safetyTimer);
+      if (mounted) setLoadingInstitution(false);
 
       return () => {
         subscription.unsubscribe();
@@ -328,11 +347,20 @@ export default function App() {
     };
 
     let cleanupFn: () => void = () => {};
-    bootstrap().then(cleanup => {
-      if (cleanup) cleanupFn = cleanup;
-    });
+    bootstrap()
+      .then(cleanup => {
+        if (cleanup) cleanupFn = cleanup;
+      })
+      .catch(err => {
+        console.error('[Bootstrap] Falha inesperada:', err);
+        if (mounted) setLoadingInstitution(false);
+      });
 
-    return () => cleanupFn();
+    return () => {
+      mounted = false;
+      window.clearTimeout(safetyTimer);
+      cleanupFn();
+    };
   }, []);
   const [isSuperAdminPortal, setIsSuperAdminPortal] = React.useState(false);
   const [activeView, setActiveView] = React.useState<View>('home');
