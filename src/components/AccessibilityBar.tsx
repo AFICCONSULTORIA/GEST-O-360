@@ -73,17 +73,55 @@ export const AccessibilityBar: React.FC<AccessibilityBarProps> = ({
     localStorage.setItem('gestao360_site_contrast', String(highContrast));
     const root = document.documentElement;
     if (highContrast) {
-      root.classList.add('ouvidoria-high-contrast');
-      document.body.classList.add('ouvidoria-high-contrast');
+      root.classList.add('high-contrast', 'ouvidoria-high-contrast');
+      document.body.classList.add('high-contrast', 'ouvidoria-high-contrast');
     } else {
-      root.classList.remove('ouvidoria-high-contrast');
-      document.body.classList.remove('ouvidoria-high-contrast');
+      root.classList.remove('high-contrast', 'ouvidoria-high-contrast');
+      document.body.classList.remove('high-contrast', 'ouvidoria-high-contrast');
     }
     return () => {
-      root.classList.remove('ouvidoria-high-contrast');
-      document.body.classList.remove('ouvidoria-high-contrast');
+      root.classList.remove('high-contrast', 'ouvidoria-high-contrast');
+      document.body.classList.remove('high-contrast', 'ouvidoria-high-contrast');
     };
   }, [highContrast]);
+
+  // Listeners globais de atalhos eMAG (Alt + 1..4)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const jumpTo = (ids: string[]) => {
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (el instanceof HTMLElement) {
+            if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+            el.focus({ preventScroll: true });
+          }
+          break;
+        }
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey) return;
+      if (e.key === '1') {
+        e.preventDefault();
+        jumpTo(['main-content', 'conteudo-principal']);
+      } else if (e.key === '2') {
+        e.preventDefault();
+        jumpTo(['main-nav', 'menu-principal']);
+      } else if (e.key === '3') {
+        e.preventDefault();
+        jumpTo(['main-search', 'legislacao']);
+      } else if (e.key === '4') {
+        e.preventDefault();
+        jumpTo(['main-footer', 'rodape']);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Aplica espaçamento ampliado (dislexia / baixa visão)
   useEffect(() => {
@@ -251,11 +289,10 @@ export const AccessibilityBar: React.FC<AccessibilityBarProps> = ({
                     aria-label={item.title}
                     aria-pressed={active}
                     title={item.title}
-                    className={`px-2 py-1 text-[11px] font-black transition cursor-pointer ${
-                      active
+                    className={`px-2 py-1 text-[11px] font-black transition cursor-pointer ${active
                         ? 'bg-emerald-600 text-white'
                         : 'text-neutral-300 hover:bg-white/10 hover:text-white'
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </button>
@@ -269,11 +306,10 @@ export const AccessibilityBar: React.FC<AccessibilityBarProps> = ({
               onClick={() => setHighContrast(!highContrast)}
               aria-pressed={highContrast}
               title="Alternar modo Alto Contraste (WCAG AAA)"
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                highContrast
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border transition cursor-pointer ${highContrast
                   ? 'bg-yellow-400 text-black border-yellow-300 font-black'
                   : 'bg-white/5 border-white/10 text-neutral-200 hover:bg-white/10'
-              }`}
+                }`}
             >
               <Contrast size={12} />
               <span>Alto Contraste</span>
@@ -285,11 +321,10 @@ export const AccessibilityBar: React.FC<AccessibilityBarProps> = ({
               onClick={() => setReadableSpacing(!readableSpacing)}
               aria-pressed={readableSpacing}
               title="Aumentar espaçamento entre letras e linhas para facilitar a leitura"
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                readableSpacing
+              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border transition cursor-pointer ${readableSpacing
                   ? 'bg-emerald-600 text-white border-emerald-500 font-black'
                   : 'bg-white/5 border-white/10 text-neutral-200 hover:bg-white/10'
-              }`}
+                }`}
             >
               <Type size={12} />
               <span className="hidden sm:inline">Leitura Ampliada</span>
@@ -302,11 +337,10 @@ export const AccessibilityBar: React.FC<AccessibilityBarProps> = ({
                 onClick={handleToggleSpeech}
                 aria-pressed={isSpeaking}
                 title={isSpeaking ? 'Parar leitura em voz alta' : 'Ouvir resumo da página em voz alta'}
-                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                  isSpeaking
+                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border transition cursor-pointer ${isSpeaking
                     ? 'bg-amber-400 text-black border-amber-300 font-black'
                     : 'bg-white/5 border-white/10 text-neutral-200 hover:bg-white/10'
-                }`}
+                  }`}
               >
                 {isSpeaking ? <Square size={11} /> : <Volume2 size={12} />}
                 <span>{isSpeaking ? 'Parar Voz' : 'Ouvir'}</span>

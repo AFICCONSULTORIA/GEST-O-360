@@ -23,42 +23,63 @@
    Preto Absoluto (#000000), Branco (#FFFFFF), Amarelo Ouro (#FFFF00)
    ============================================================== */
 html.ouvidoria-high-contrast,
-.ouvidoria-high-contrast {
+html.high-contrast,
+.ouvidoria-high-contrast,
+.high-contrast {
   background-color: #000000 !important;
   color: #FFFFFF !important;
 }
 
 html.ouvidoria-high-contrast body,
+html.high-contrast body,
 .ouvidoria-high-contrast main,
+.high-contrast main,
 .ouvidoria-high-contrast section,
+.high-contrast section,
 .ouvidoria-high-contrast header,
+.high-contrast header,
 .ouvidoria-high-contrast footer,
-.ouvidoria-high-contrast form {
+.high-contrast footer,
+.ouvidoria-high-contrast form,
+.high-contrast form {
   background-color: #000000 !important;
   color: #FFFFFF !important;
 }
 
 .ouvidoria-high-contrast [class*="bg-white"],
+.high-contrast [class*="bg-white"],
 .ouvidoria-high-contrast [class*="bg-neutral-"],
+.high-contrast [class*="bg-neutral-"],
 .ouvidoria-high-contrast [class*="bg-slate-"],
+.high-contrast [class*="bg-slate-"],
 .ouvidoria-high-contrast [class*="bg-teal-"],
+.high-contrast [class*="bg-teal-"],
 .ouvidoria-high-contrast [class*="bg-emerald-"],
+.high-contrast [class*="bg-emerald-"],
 .ouvidoria-high-contrast [class*="bg-amber-"],
+.high-contrast [class*="bg-amber-"],
 .ouvidoria-high-contrast [class*="bg-sky-"],
+.high-contrast [class*="bg-sky-"],
 .ouvidoria-high-contrast [class*="bg-orange-"],
+.high-contrast [class*="bg-orange-"],
 .ouvidoria-high-contrast [class*="bg-rose-"],
-.ouvidoria-high-contrast [class*="bg-indigo-"] {
+.high-contrast [class*="bg-rose-"],
+.ouvidoria-high-contrast [class*="bg-indigo-"],
+.high-contrast [class*="bg-indigo-"] {
   background-color: #000000 !important;
   border-color: #FFFF00 !important;
 }
 
-.ouvidoria-high-contrast a {
+.ouvidoria-high-contrast a,
+.high-contrast a {
   color: #FFFF00 !important;
   text-decoration: underline !important;
 }
 
 .ouvidoria-high-contrast a:focus-visible,
-.ouvidoria-high-contrast button:focus-visible {
+.high-contrast a:focus-visible,
+.ouvidoria-high-contrast button:focus-visible,
+.high-contrast button:focus-visible {
   outline: 3px solid #FFFF00 !important;
   outline-offset: 2px !important;
 }

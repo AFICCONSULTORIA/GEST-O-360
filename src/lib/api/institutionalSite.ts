@@ -118,6 +118,20 @@ export interface SecretariatProfileConfig {
   awards?: SecretariatAwardItem[];
 }
 
+export const DEFAULT_EXTERNAL_TRANSPARENCY_URL = 'http://45.161.37.1:8079/transparencia/';
+
+export interface PntpCriterionLink {
+  id: string;
+  code: string;
+  dimension: string;
+  title: string;
+  classification: 'Essencial' | 'Obrigatório' | 'Recomendado';
+  sourceType: 'site_institucional' | 'portal_externo';
+  url: string;
+  status: 'pronto' | 'pendente' | 'nao_se_aplica';
+  notes?: string;
+}
+
 export interface InstitutionalSiteConfig {
   enabled: boolean;
   customDomain: string;
@@ -140,6 +154,7 @@ export interface InstitutionalSiteConfig {
   dpoEmail?: string;
   electoralMode?: boolean;
   usefulLinks?: UsefulLinkItem[];
+  pntpLinks?: PntpCriterionLink[];
   secretariatProfiles?: Record<string, Partial<SecretariatProfileConfig>>;
   mourningMode: MourningModeConfig;
   popupCarousel: PopupCarouselConfig;
@@ -202,7 +217,7 @@ export function buildDefaultSiteConfig(institution?: Institution | null): Instit
     email: '',
     serviceHours: 'Segunda a Sexta, das 07h00 às 13h00',
     cndMunicipalUrl: DEFAULT_CND_MUNICIPAL_URL,
-    transparencyUrl: '',
+    transparencyUrl: DEFAULT_EXTERNAL_TRANSPARENCY_URL,
     officialGazetteUrl: '',
     dpoName: '',
     dpoEmail: '',

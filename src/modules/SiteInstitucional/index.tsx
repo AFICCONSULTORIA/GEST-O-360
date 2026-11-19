@@ -42,6 +42,7 @@ import {
   SecretariatsProfileManagerPanel,
   UsefulLinksManagerPanel,
 } from '../../components/SiteUsefulLinksAndSecretariatsManager';
+import { SitePntpLinksManager } from '../../components/SitePntpLinksManager';
 import { DiarioOficialManagerContent } from '../DiarioOficial/components/DiarioOficialManagerContent';
 import { useMunicipalDepartments } from '../../lib/api/departments';
 import { fetchInstitutionNews, NEWS_UPDATED_EVENT } from '../../lib/api/municipalNews';
@@ -61,6 +62,7 @@ type SiteAdminTab =
   | 'laws'
   | 'secretarias'
   | 'links'
+  | 'pntp_links'
   | 'popups'
   | 'identity'
   | 'contact'
@@ -155,6 +157,7 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
   }
 
   const publicSiteUrl = withInstitutionQuery('/site', currentInstitution);
+  const publicPntpPortalUrl = withInstitutionQuery('/portal', currentInstitution);
   const publicGazettePath = withInstitutionQuery('/diario', currentInstitution);
   const originBase =
     typeof window !== 'undefined' ? window.location.origin : 'https://gestao360sistema.com.br';
@@ -311,6 +314,14 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
       badgeTone: 'emerald',
     },
     {
+      id: 'pntp_links',
+      label: 'Links PNTP (Atricon)',
+      hint: 'Matriz de critérios TCE',
+      icon: ShieldCheck,
+      badge: 'PNTP',
+      badgeTone: 'sky',
+    },
+    {
       id: 'popups',
       label: 'Pop-ups & Avisos',
       hint: 'Carrossel até 10',
@@ -427,6 +438,16 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
             >
               <ExternalLink size={15} />
               <span>Abrir Site Público</span>
+            </a>
+
+            <a
+              href={publicPntpPortalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 text-xs font-black transition"
+            >
+              <ExternalLink size={15} />
+              <span>Portal Transparência PNTP</span>
             </a>
 
             <button
@@ -1175,6 +1196,15 @@ export const SiteInstitucionalModule: React.FC<SiteInstitucionalModuleProps> = (
                   )}
                 </div>
               </div>
+            )}
+
+            {activeTab === 'pntp_links' && (
+              <SitePntpLinksManager
+                config={config}
+                onChange={setConfig}
+                institution={currentInstitution}
+                accentHex={accentHex}
+              />
             )}
 
             {activeTab === 'domain' && (
