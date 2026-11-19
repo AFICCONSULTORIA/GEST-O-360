@@ -37,6 +37,7 @@ const PublicFarmaciaPortal = lazy(() => import('./modules/Saude/PublicFarmacia')
 const ServicosPublicosModule = lazy(() => import('./modules/ServicosPublicos').then(m => ({ default: m.ServicosPublicosModule })));
 const PublicServicosPortal = lazy(() => import('./modules/ServicosPublicos/PublicPortal').then(m => ({ default: m.PublicServicosPortal })));
 const PublicEducacaoPortal = lazy(() => import('./modules/Education/PublicPortal').then(m => ({ default: m.PublicEducacaoPortal })));
+const PublicFamilyPortal = lazy(() => import('./modules/Education/PublicFamilyPortal').then(m => ({ default: m.PublicFamilyPortal })));
 const PublicCrechePortal = lazy(() => import('./modules/Education/PublicCrechePortal').then(m => ({ default: m.PublicCrechePortal })));
 const PublicTransportPortal = lazy(() => import('./modules/Education/PublicTransportPortal').then(m => ({ default: m.PublicTransportPortal })));
 const PublicVotingPortal = lazy(() => import('./modules/Education/PublicVotingPortal').then(m => ({ default: m.PublicVotingPortal })));
@@ -751,6 +752,11 @@ export default function App() {
   const isFarmaciaPortal = currentPath === '/farmaciasus';
   const isServicosPublicosPortal = currentPath === '/servicos';
   const isEducacaoPortal = currentPath === '/educacao';
+  const isFamiliaPortal =
+    currentPath === '/familia' ||
+    currentPath === '/pais' ||
+    currentPath === '/educacao/familia' ||
+    currentPath.startsWith('/familia/');
   const isCrechePortal = currentPath === '/cmei' || currentPath.startsWith('/cmei/');
   const isTransportePortal = currentPath === '/transporte' || currentPath === '/transporte-escolar' || currentPath.startsWith('/transporte/');
   const decodedPath = decodeURIComponent(currentPath).toLowerCase();
@@ -1065,6 +1071,15 @@ export default function App() {
           </button>
         </div>
         <PublicServicosPortal darkMode={darkMode} currentInstitution={currentInstitution} />
+      </div>
+    );
+  }
+
+  if (isFamiliaPortal) {
+    if (!isInstitutionModuleActive(currentInstitution, 'education')) return redirectInactivePublicPortal();
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <PublicFamilyPortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }

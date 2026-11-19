@@ -190,9 +190,10 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
 
   // Interações didáticas
   const [showScaleGuide, setShowScaleGuide] = useState(false);
-  const [expandedSubject, setExpandedSubject] = useState<string | null>('Língua Portuguesa');
+  const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
   const [announcementFilter, setAnnouncementFilter] = useState<'todos' | 'urgente' | 'reuniao' | 'turma'>('todos');
   const [acknowledgedIds, setAcknowledgedIds] = useState<string[]>([]);
+  const [mobileTab, setMobileTab] = useState<'resumo' | 'materias' | 'pareceres' | 'recados'>('resumo');
 
   // Sincroniza ID quando vem do Portal do Aluno
   useEffect(() => {
@@ -375,9 +376,9 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
   const weekLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-300 max-w-7xl mx-auto w-full pb-16">
+    <div className="space-y-5 sm:space-y-8 animate-in fade-in duration-300 max-w-7xl mx-auto w-full pb-20 sm:pb-16">
       {/* Top Banner Acolhedor: Vida Escolar & Família */}
-      <div className="bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 rounded-[32px] p-6 sm:p-9 text-white shadow-xl shadow-indigo-500/15 relative overflow-hidden">
+      <div className="bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 text-white shadow-xl shadow-indigo-500/15 relative overflow-hidden">
         <div className="absolute -top-16 -right-16 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 left-10 w-64 h-64 bg-emerald-300/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -398,32 +399,21 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
               </div>
             )}
 
-            <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-white/20 backdrop-blur-md">
-                  <ShieldCheck size={12} />
-                  {mode === 'student' ? 'Ambiente Protegido LGPD • Família & Aluno' : 'Visão da Coordenação • Família'}
-                </span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-emerald-400/25 border border-white/20">
-                  🌱 Ensino Básico • Avaliação Sem Notas Numéricas
-                </span>
-              </div>
-
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight mt-2">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">
                 {mode === 'student' && reportCard
-                  ? `Vida Escolar de ${reportCard.enrollment.student_name}`
-                  : 'Boletim Qualitativo & Portal da Família'}
+                  ? reportCard.enrollment.student_name
+                  : 'Boletim & Portal da Família'}
               </h2>
 
-              <p className="text-emerald-50 text-sm mt-1 max-w-2xl font-medium leading-relaxed">
+              <p className="text-emerald-50/90 text-xs sm:text-sm mt-0.5 max-w-2xl font-medium">
                 {reportCard ? (
                   <>
-                    <strong>{reportCard.enrollment.school_name}</strong> • Turma{' '}
-                    <strong>{reportCard.enrollment.class_name}</strong> ({reportCard.enrollment.shift || 'Matutino'}) • Ano Letivo{' '}
-                    {reportCard.enrollment.academic_year}
+                    <strong>{reportCard.enrollment.school_name}</strong> •{' '}
+                    <strong>{reportCard.enrollment.class_name}</strong> ({reportCard.enrollment.shift || 'Matutino'}) • {reportCard.enrollment.academic_year}
                   </>
                 ) : (
-                  'Acompanhamento pedagógico formativo por desenvolvimento de habilidades, frequência e diálogo direto com a escola.'
+                  'Acompanhamento escolar simplificado para a família.'
                 )}
               </p>
             </div>
@@ -432,7 +422,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
           {/* Ações Rápidas ou Seletor (Seletor visível APENAS no modo Admin da Secretaria) */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
             {mode === 'admin' && studentsList.length > 0 && (
-              <div className="bg-white/15 backdrop-blur-md p-2 rounded-2xl border border-white/20 flex flex-col gap-1 min-w-[230px]">
+              <div className="bg-white/15 backdrop-blur-md p-2 rounded-2xl border border-white/20 flex flex-col gap-1 w-full sm:min-w-[230px]">
                 <span className="text-[10px] font-black uppercase tracking-wider text-white/90 px-2 flex items-center gap-1">
                   <Users size={11} /> Selecionar Matrícula (Secretaria)
                 </span>
@@ -453,7 +443,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             {reportCard && (
               <button
                 onClick={() => setIsBoletimModalOpen(true)}
-                className="px-5 py-3.5 bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
+                className="px-4 sm:px-5 py-3 sm:py-3.5 bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
               >
                 <Printer size={16} />
                 <span>Emitir Boletim Oficial (PDF)</span>
@@ -461,51 +451,97 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             )}
           </div>
         </div>
-      </div>
 
-      {/* Explicação Didática: Por que não há notas de 0 a 10? */}
-      <div className="bg-amber-50/90 dark:bg-amber-950/25 border border-amber-200/80 dark:border-amber-800/50 rounded-3xl p-5 sm:p-6 transition-all">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
-              <HelpCircle size={22} />
+        {/* Faixa Rápida para Celular: Visão Instantânea sem Rolagem */}
+        {reportCard && (
+          <div className="relative z-10 grid grid-cols-3 gap-2 mt-4 pt-3.5 border-t border-white/20 md:hidden">
+            <div className="bg-white/15 backdrop-blur-sm rounded-xl p-2.5 text-center">
+              <div className="text-[9px] font-black uppercase tracking-wider text-white/80">Desempenho</div>
+              <div className="text-xs font-black mt-0.5 truncate">
+                {overallStage.emoji} {overallStage.shortTitle}
+              </div>
             </div>
-            <div>
-              <h3 className="font-black text-sm sm:text-base text-neutral-900 dark:text-white">
-                Como funciona a avaliação sem notas na Educação Básica?
-              </h3>
-              <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-300 mt-0.5 leading-relaxed">
-                Na Educação Infantil e no Ensino Básico (conforme a <strong>LDB e a BNCC</strong>), cada criança aprende no seu tempo. Em vez de notas de 0 a 10, os professores registram <strong>etapas de desenvolvimento</strong> e <strong>pareceres descritivos</strong> que mostram as conquistas e onde apoiar.
-              </p>
+            <div className="bg-white/15 backdrop-blur-sm rounded-xl p-2.5 text-center">
+              <div className="text-[9px] font-black uppercase tracking-wider text-white/80">Frequência</div>
+              <div className="text-sm font-black mt-0.5 tabular-nums">
+                {reportCard.attendanceRate}%
+              </div>
+            </div>
+            <div className="bg-white/15 backdrop-blur-sm rounded-xl p-2.5 text-center">
+              <div className="text-[9px] font-black uppercase tracking-wider text-white/80">Faltas</div>
+              <div className="text-sm font-black mt-0.5 tabular-nums">
+                {reportCard.totalAbsences}
+              </div>
             </div>
           </div>
+        )}
+      </div>
 
+      {/* Navegação Rápida por Abas no Celular (App dos Pais) */}
+      <div className="md:hidden sticky top-2 z-30 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md p-1.5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-lg grid grid-cols-4 gap-1">
+        {(
+          [
+            { id: 'resumo', label: 'Resumo' },
+            { id: 'materias', label: 'Matérias' },
+            { id: 'pareceres', label: 'Pareceres' },
+            { id: 'recados', label: 'Recados', badge: pendingAnnouncementsCount },
+          ] as const
+        ).map((tab) => (
           <button
-            onClick={() => setShowScaleGuide(!showScaleGuide)}
-            className="px-4 py-2.5 bg-white dark:bg-neutral-900 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-300 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 hover:bg-amber-100/50 dark:hover:bg-neutral-800 transition-colors cursor-pointer shrink-0"
+            key={tab.id}
+            type="button"
+            onClick={() => setMobileTab(tab.id)}
+            className={`relative py-2.5 px-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1 ${
+              mobileTab === tab.id
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+            }`}
           >
-            <span>{showScaleGuide ? 'Ocultar Etapas' : 'Entender as 4 Etapas'}</span>
-            {showScaleGuide ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            <span>{tab.label}</span>
+            {'badge' in tab && (tab.badge ?? 0) > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[9px] font-black ${
+                  mobileTab === tab.id ? 'bg-white text-indigo-700' : 'bg-rose-600 text-white'
+                }`}
+              >
+                {tab.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Guia das 4 Etapas (compacto e recolhido por padrão para não poluir a tela) */}
+      <div className={`${mobileTab === 'resumo' ? 'block' : 'hidden md:block'}`}>
+        <div className="flex items-center justify-end">
+          <button
+            type="button"
+            onClick={() => setShowScaleGuide(!showScaleGuide)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-300 text-xs font-bold hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
+          >
+            <HelpCircle size={14} className="text-amber-500" />
+            <span>{showScaleGuide ? 'Ocultar legenda das etapas' : 'Como funcionam as etapas?'}</span>
+            {showScaleGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
 
         {showScaleGuide && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t border-amber-200/60 dark:border-amber-800/40 animate-in fade-in duration-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3 animate-in fade-in duration-200">
             {(['abaixo_do_basico', 'basico', 'adequado', 'avancado'] as ProficiencyLevel[]).map((lvl) => {
               const st = DEVELOPMENT_STAGES[lvl];
               return (
                 <div
                   key={lvl}
-                  className={`bg-white dark:bg-neutral-900 p-4 rounded-2xl border ${st.cardBorder} space-y-2 shadow-xs`}
+                  className={`bg-white dark:bg-neutral-900 p-3.5 rounded-2xl border ${st.cardBorder} space-y-1.5 shadow-xs`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="text-2xl">{st.emoji}</span>
+                    <span className="text-xl">{st.emoji}</span>
                     <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500">
                       Etapa {st.step} de 4
                     </span>
                   </div>
-                  <h4 className="font-black text-sm text-neutral-900 dark:text-white">{st.title}</h4>
-                  <p className="text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">{st.summary}</p>
+                  <h4 className="font-black text-xs text-neutral-900 dark:text-white">{st.title}</h4>
+                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400 leading-relaxed">{st.summary}</p>
                 </div>
               );
             })}
@@ -522,7 +558,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
         reportCard && (
           <>
             {/* 3 Cards de Resumo Didático: Desenvolvimento Global + Frequência Escolar + Atividades Digitais */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className={`${mobileTab === 'resumo' ? 'grid' : 'hidden md:grid'} grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6`}>
               {/* Card 1: Síntese Qualitativa Global */}
               <div className="bg-white dark:bg-neutral-900 p-6 rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
                 <div>
@@ -701,7 +737,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             </div>
 
             {/* Mapa Evolutivo Bimestral por Componente Curricular (100% Sem Notas Numéricas) */}
-            <section className="bg-white dark:bg-neutral-900 rounded-[32px] p-6 sm:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm space-y-6">
+            <section className={`${mobileTab === 'materias' ? 'block' : 'hidden md:block'} bg-white dark:bg-neutral-900 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm space-y-5 sm:space-y-6`}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h3 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-2.5">
@@ -745,92 +781,84 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                           : 'border-neutral-200/70 dark:border-neutral-800 bg-neutral-50/40 dark:bg-neutral-900/60 hover:border-neutral-300 dark:hover:border-neutral-700'
                       }`}
                     >
-                      {/* Linha Principal Clicável */}
+                      {/* Linha Principal Limpa e Compacta */}
                       <button
                         type="button"
                         onClick={() => setExpandedSubject(isExpanded ? null : sub.subject)}
-                        className="w-full p-4 sm:p-5 text-left flex flex-col lg:flex-row lg:items-center justify-between gap-4 cursor-pointer"
+                        className="w-full p-3.5 sm:p-4 text-left flex items-center justify-between gap-3 cursor-pointer"
                       >
-                        {/* Nome da Matéria + Ícone */}
-                        <div className="flex items-center gap-3.5 min-w-[230px]">
-                          <div className={`w-12 h-12 rounded-2xl ${meta.bgIcon} ${meta.textIcon} flex items-center justify-center shrink-0`}>
-                            <SubjectIcon icon={meta.icon} size={22} />
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className={`w-10 h-10 rounded-xl ${meta.bgIcon} ${meta.textIcon} flex items-center justify-center shrink-0`}>
+                            <SubjectIcon icon={meta.icon} size={19} />
                           </div>
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="font-black text-base text-neutral-900 dark:text-white">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="font-black text-sm sm:text-base text-neutral-900 dark:text-white truncate">
                                 {sub.subject}
                               </h4>
                               {hasProgressed && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                                  <TrendingUp size={11} /> Evoluiu!
+                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                                  <TrendingUp size={10} /> Evoluiu
                                 </span>
                               )}
                             </div>
-                            <span className="text-xs text-neutral-500 font-medium">
-                              Faltas registradas: <strong>{sub.totalAbsences}</strong>
+                            <span className="text-[11px] text-neutral-500 font-medium">
+                              Faltas: <strong>{sub.totalAbsences}</strong>
                             </span>
                           </div>
                         </div>
 
-                        {/* Linha do Tempo dos 4 Bimestres */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 flex-1 max-w-2xl">
-                          {[
-                            { label: '1º Bim', val: sub.b1Proficiency },
-                            { label: '2º Bim', val: sub.b2Proficiency },
-                            { label: '3º Bim', val: sub.b3Proficiency },
-                            { label: '4º Bim', val: sub.b4Proficiency }
-                          ].map((bim) => (
-                            <div
-                              key={bim.label}
-                              className="bg-white dark:bg-neutral-900/90 border border-neutral-200/60 dark:border-neutral-800 rounded-xl p-2 flex flex-col items-center justify-center gap-1"
-                            >
-                              <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-                                {bim.label}
-                              </span>
-                              {renderStageChip(bim.val, true)}
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Síntese + Botão Expandir */}
-                        <div className="flex items-center justify-between lg:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-neutral-200/50 dark:border-neutral-800">
-                          <div className="text-left lg:text-right">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
-                              Momento Atual
-                            </span>
-                            <span className="text-xs font-black text-neutral-800 dark:text-neutral-200">
-                              {stageCfg.emoji} {stageCfg.title}
-                            </span>
-                          </div>
-                          <div className="w-8 h-8 rounded-xl bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center text-neutral-500 shrink-0">
-                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {renderStageChip(currentLevel, true)}
+                          <div className="w-7 h-7 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center text-neutral-500">
+                            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                           </div>
                         </div>
                       </button>
 
-                      {/* Painel Expandido: Parecer da Matéria + Como Apoiar em Casa */}
+                      {/* Painel Expandido: 4 Bimestres + Parecer + Dica em Casa */}
                       {isExpanded && (
-                        <div className="px-4 sm:px-5 pb-5 pt-2 border-t border-indigo-100 dark:border-indigo-900/40 grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in duration-200">
-                          <div className="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200/70 dark:border-neutral-800 space-y-1.5">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                              <BookOpen size={13} /> Observação Pedagógica em {sub.subject}
-                            </span>
-                            <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                              {sub.descriptiveOpinion
-                                ? `"${sub.descriptiveOpinion}"`
-                                : stageCfg.summary}
-                            </p>
+                        <div className="px-3.5 sm:px-5 pb-4 pt-2 border-t border-indigo-100 dark:border-indigo-900/40 space-y-3 animate-in fade-in duration-200">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[
+                              { label: '1º Bim', val: sub.b1Proficiency },
+                              { label: '2º Bim', val: sub.b2Proficiency },
+                              { label: '3º Bim', val: sub.b3Proficiency },
+                              { label: '4º Bim', val: sub.b4Proficiency }
+                            ].map((bim) => (
+                              <div
+                                key={bim.label}
+                                className="bg-white dark:bg-neutral-900/90 border border-neutral-200/60 dark:border-neutral-800 rounded-xl p-2 flex flex-col items-center justify-center gap-1"
+                              >
+                                <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
+                                  {bim.label}
+                                </span>
+                                {renderStageChip(bim.val, true)}
+                              </div>
+                            ))}
                           </div>
 
-                          <div className="bg-amber-50/70 dark:bg-amber-950/20 p-4 rounded-2xl border border-amber-200/70 dark:border-amber-800/40 space-y-1.5">
-                            <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
-                              <Lightbulb size={14} /> Como a Família Pode Apoiar em Casa
-                            </span>
-                            <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                              <strong className="text-neutral-900 dark:text-white">{stageCfg.familyTipPrefix}</strong>{' '}
-                              {meta.homeTip}
-                            </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="bg-white dark:bg-neutral-900 p-3.5 rounded-2xl border border-neutral-200/70 dark:border-neutral-800 space-y-1">
+                              <span className="text-[11px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                                <BookOpen size={13} /> Observação do Professor
+                              </span>
+                              <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                                {sub.descriptiveOpinion
+                                  ? `"${sub.descriptiveOpinion}"`
+                                  : stageCfg.summary}
+                              </p>
+                            </div>
+
+                            <div className="bg-amber-50/70 dark:bg-amber-950/20 p-3.5 rounded-2xl border border-amber-200/70 dark:border-amber-800/40 space-y-1">
+                              <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                                <Lightbulb size={13} /> Como apoiar em casa
+                              </span>
+                              <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                                <strong className="text-neutral-900 dark:text-white">{stageCfg.familyTipPrefix}</strong>{' '}
+                                {meta.homeTip}
+                              </p>
+                            </div>
                           </div>
                         </div>
                       )}
@@ -842,7 +870,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
 
             {/* Seção em Destaque: O Olhar do Professor (Pareceres Descritivos Bimestrais) */}
             {reportCard.opinions && reportCard.opinions.length > 0 && (
-              <section className="space-y-4">
+              <section className={`${mobileTab === 'pareceres' ? 'block' : 'hidden md:block'} space-y-4`}>
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                     <FileText size={20} />
@@ -893,7 +921,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
       )}
 
       {/* Mural Família-Escola Interativo */}
-      <section className="space-y-4">
+      <section className={`${mobileTab === 'recados' ? 'block' : 'hidden md:block'} space-y-4`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center relative">
