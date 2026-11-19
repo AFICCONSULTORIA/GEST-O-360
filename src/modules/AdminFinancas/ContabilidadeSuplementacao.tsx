@@ -1544,13 +1544,27 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         fichaDestino: string;
         destinoObj?: ContabilidadeFicha;
         totalSuplementado: number;
-        itens: Array<{
-          fichaOrigem: string;
-          origemObj?: ContabilidadeFicha;
-          valor: number;
-          decreto: string;
-          data: string;
-        }>;
+        itensMap: Map<
+          string,
+          {
+            fichaOrigem: string;
+            origemObj?: ContabilidadeFicha;
+            valor: number;
+            decretos: string[];
+            datas: string[];
+          }
+        >;
+      }
+    >();
+
+    // Soma total retirado por ficha de origem em TODO o relatório (ex: Ficha 116 somada com Ficha 116)
+    const origemConsolidadaMap = new Map<
+      string,
+      {
+        fichaOrigem: string;
+        origemObj?: ContabilidadeFicha;
+        totalRetirado: number;
+        destinosMap: Map<string, number>;
       }
     >();
 
@@ -1560,21 +1574,51 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         fichaDestino: l.ficha,
         destinoObj: fichaByNum.get(l.ficha),
         totalSuplementado: 0,
-        itens: [],
+        itensMap: new Map(),
       };
       group.totalSuplementado = Number((group.totalSuplementado + l.valor).toFixed(2));
-      group.itens.push({
+
+      const existingItem = group.itensMap.get(origId) || {
         fichaOrigem: origId,
         origemObj: fichaByNum.get(origId),
-        valor: l.valor,
-        decreto: l.documento || '—',
-        data: formatLancamentoDateLabel(l),
-      });
+        valor: 0,
+        decretos: [],
+        datas: [],
+      };
+      existingItem.valor = Number((existingItem.valor + l.valor).toFixed(2));
+      if (l.documento && !existingItem.decretos.includes(l.documento)) existingItem.decretos.push(l.documento);
+      const dtLabel = formatLancamentoDateLabel(l);
+      if (dtLabel && !existingItem.datas.includes(dtLabel)) existingItem.datas.push(dtLabel);
+      group.itensMap.set(origId, existingItem);
       groupedMap.set(l.ficha, group);
+
+      const origCons = origemConsolidadaMap.get(origId) || {
+        fichaOrigem: origId,
+        origemObj: fichaByNum.get(origId),
+        totalRetirado: 0,
+        destinosMap: new Map(),
+      };
+      origCons.totalRetirado = Number((origCons.totalRetirado + l.valor).toFixed(2));
+      origCons.destinosMap.set(
+        l.ficha,
+        Number(((origCons.destinosMap.get(l.ficha) || 0) + l.valor).toFixed(2))
+      );
+      origemConsolidadaMap.set(origId, origCons);
     }
 
-    const groups = Array.from(groupedMap.values()).sort((a, b) =>
-      a.fichaDestino.localeCompare(b.fichaDestino, 'pt-BR', { numeric: true })
+    const groups = Array.from(groupedMap.values())
+      .map((g) => ({
+        fichaDestino: g.fichaDestino,
+        destinoObj: g.destinoObj,
+        totalSuplementado: g.totalSuplementado,
+        itens: Array.from(g.itensMap.values()).sort((a, b) =>
+          a.fichaOrigem.localeCompare(b.fichaOrigem, 'pt-BR', { numeric: true })
+        ),
+      }))
+      .sort((a, b) => a.fichaDestino.localeCompare(b.fichaDestino, 'pt-BR', { numeric: true }));
+
+    const origensConsolidadas = Array.from(origemConsolidadaMap.values()).sort((a, b) =>
+      a.fichaOrigem.localeCompare(b.fichaOrigem, 'pt-BR', { numeric: true })
     );
 
     if (groups.length === 0 && totals.negativas.length === 0) {
@@ -1597,8 +1641,8 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
             (it) => `<tr>
               <td style="font-weight:800;text-align:center;color:#be123c">Ficha ${it.fichaOrigem}</td>
               <td><strong>${it.origemObj?.acaoDescricao || it.origemObj?.especificacao || '—'}</strong><div style="font-size:10px;color:#64748b">${it.origemObj?.orgao || ''}${it.origemObj?.categoria ? ` • Natureza: ${it.origemObj.categoria}${it.origemObj.especificacao ? ` (${it.origemObj.especificacao})` : ''}` : ''}${it.origemObj?.fonteRecurso ? ` • Fonte: ${it.origemObj.fonteRecurso}` : ''}</div></td>
-              <td style="text-align:center">${it.decreto}</td>
-              <td style="text-align:center">${it.data}</td>
+              <td style="text-align:center">${it.decretos.join(', ') || '—'}</td>
+              <td style="text-align:center">${it.datas.join(', ') || '—'}</td>
               <td class="num" style="color:#be123c">- ${formatBRL(it.valor)}</td>
             </tr>`
           )
@@ -1631,6 +1675,46 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
         `;
       })
       .join('');
+
+    const origensConsolidadasHtml = origensConsolidadas.length > 0
+      ? `
+        <h2 style="font-size:13px;text-transform:uppercase;margin:16px 0 6px;color:#1e293b;border-left:4px solid #4f46e5;padding-left:8px;">
+          Resumo Consolidado por Ficha de Origem (Total Somado Retirado de Cada Ficha)
+        </h2>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;text-align:center">Ficha Origem</th>
+              <th>Projeto/Atividade / Natureza / Fonte</th>
+              <th>Fichas Suplementadas (Destino)</th>
+              <th style="width:140px;text-align:right">Total Retirado (-)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${origensConsolidadas
+              .map((oc) => {
+                const destList = Array.from(oc.destinosMap.entries())
+                  .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR', { numeric: true }))
+                  .map(([dFicha, dVal]) => `Ficha ${dFicha} (${formatBRL(dVal)})`)
+                  .join(' • ');
+                return `<tr>
+                  <td style="text-align:center;font-weight:800;color:#be123c">Ficha ${oc.fichaOrigem}</td>
+                  <td><strong>${oc.origemObj?.acaoDescricao || oc.origemObj?.especificacao || '—'}</strong><div style="font-size:10px;color:#64748b">${oc.origemObj?.orgao || ''}${oc.origemObj?.categoria ? ` • Natureza: ${oc.origemObj.categoria}` : ''}${oc.origemObj?.fonteRecurso ? ` • Fonte: ${oc.origemObj.fonteRecurso}` : ''}</div></td>
+                  <td style="font-size:10.5px">${destList}</td>
+                  <td class="num" style="color:#be123c">- ${formatBRL(oc.totalRetirado)}</td>
+                </tr>`;
+              })
+              .join('')}
+          </tbody>
+          <tfoot>
+            <tr style="background:#f1f5f9">
+              <td colspan="3" style="text-align:right;font-weight:800">TOTAL GERAL RETIRADO (${origensConsolidadas.length} FICHAS DE ORIGEM):</td>
+              <td class="num" style="color:#be123c">- ${formatBRL(totalGeralRemanejado)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      `
+      : '';
 
     const negativasHtml = totals.negativas.length > 0
       ? `
@@ -1696,6 +1780,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
           <div style="text-align:right;font-size:10px;color:#64748b">Emitido em ${new Date().toLocaleDateString('pt-BR')}</div>
         </div>
         ${groupsHtml}
+        ${origensConsolidadasHtml}
         ${negativasHtml}
         <div class="signatures">
           <div class="sig">Contabilidade / Responsável Técnico</div>
@@ -1710,7 +1795,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
 
   const handlePrintCoberturaDraft = () => {
     if (!cobrirTargetFicha) return;
-    const validRows = cobrirSources
+    const rawValidRows = cobrirSources
       .map((s) => ({
         ...s,
         fObj: fichas.find((f) => f.ficha === s.fichaOrigem.trim()),
@@ -1718,10 +1803,22 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       }))
       .filter((s) => s.fObj && s.valNum > 0);
 
-    if (validRows.length === 0) {
+    if (rawValidRows.length === 0) {
       showToast('Selecione ao menos uma ficha de origem e valor maior que zero para imprimir.', 'warning');
       return;
     }
+
+    // Soma fichas de origem iguais antes de imprimir
+    const summedMap = new Map<string, { fObj: ContabilidadeFicha; valNum: number }>();
+    for (const r of rawValidRows) {
+      const f = r.fObj!;
+      const prev = summedMap.get(f.ficha);
+      summedMap.set(f.ficha, {
+        fObj: f,
+        valNum: Number(((prev?.valNum || 0) + r.valNum).toFixed(2)),
+      });
+    }
+    const validRows = Array.from(summedMap.values());
 
     const win = window.open('', '_blank', 'width=1000,height=720');
     if (!win) {

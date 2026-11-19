@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award
+  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award, Bus
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
@@ -10,6 +10,7 @@ import { FamilyPortalView } from './components/FamilyPortalView';
 import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsManager';
 import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 import { EducationCertificatesManager } from './components/EducationCertificatesManager';
+import { EducationTransportManager } from './components/TransporteEscolar/components/EducationTransportManager';
 
 interface EducationModuleProps {
   currentInstitution?: { id: string; name?: string; subdomain?: string } | null;
@@ -20,12 +21,13 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
   currentInstitution,
   currentUser
 }) => {
-  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'eleicao' | 'familia' | 'avisos'>('staff');
+  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'transporte' | 'eleicao' | 'familia' | 'avisos'>('staff');
 
   const navigationTabs = [
     { id: 'staff', label: 'Professores & Equipe', icon: Users },
     { id: 'matriculas', label: 'Secretaria & Matrículas', icon: FileText },
     { id: 'creche', label: 'Fila CMEI', icon: Baby },
+    { id: 'transporte', label: 'Transporte Escolar', icon: Bus },
     { id: 'eleicao', label: 'Eleição Escolar & Diretores', icon: Vote },
     { id: 'familia', label: 'Portal da Família', icon: HeartHandshake },
     { id: 'avisos', label: 'Mural de Avisos', icon: Bell },
@@ -103,6 +105,21 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
             transition={{ duration: 0.2 }}
           >
             <EducationCrecheAdmin />
+          </motion.div>
+        )}
+
+        {educationView === 'transporte' && (
+          <motion.div
+            key="transporte"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EducationTransportManager
+              institutionId={currentInstitution?.id || 'inst_1'}
+              currentUserName={currentUser?.name}
+            />
           </motion.div>
         )}
 

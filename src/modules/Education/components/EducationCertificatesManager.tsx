@@ -3,9 +3,10 @@ import {
   FileBadge, Plus, Upload, Download, Search, CheckCircle2, 
   AlertTriangle, Eye, Copy, RefreshCw, Sparkles, FileText, 
   Calendar, Clock, User, ShieldCheck, ChevronRight, ChevronLeft, 
-  FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer, X, QrCode
+  FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer, X, QrCode, Gift
 } from 'lucide-react';
 import { DeclarationQrManager } from './DeclarationQrManager';
+import { EventRafflePanel } from './EventRafflePanel';
 import { 
   CertificateTemplate, 
   IssuedCertificate, 
@@ -60,7 +61,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   currentInstitution,
   currentUser
 }) => {
-  const [activeTab, setActiveTab] = useState<'wizard' | 'declarations' | 'bank'>('wizard');
+  const [activeTab, setActiveTab] = useState<'wizard' | 'declarations' | 'raffle' | 'bank'>('wizard');
 
   // Estado do Wizard (Passos 1 a 4)
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3 | 4>(1);
@@ -581,6 +582,17 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
           >
             <QrCode className="w-4 h-4 text-blue-500 shrink-0" />
             <span>Declarações via QR Code</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('raffle')}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+              activeTab === 'raffle'
+                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+            }`}
+          >
+            <Gift className="w-4 h-4 text-violet-500 shrink-0" />
+            <span>Sorteio em Eventos</span>
           </button>
           <button
             onClick={() => setActiveTab('bank')}
@@ -1432,6 +1444,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
             showToast(`${collectedRecipients.length} participantes carregados no emissor em lote!`, 'success');
           }}
         />
+      )}
+
+      {activeTab === 'raffle' && (
+        <EventRafflePanel currentInstitution={currentInstitution} />
       )}
 
       {activeTab === 'bank' && (
