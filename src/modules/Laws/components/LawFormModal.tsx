@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import { MunicipalLaw, LawType, LawStatus, LawCategory, LawOriginPower, Institution } from '../../../types';
 import { showToast } from '../../../components/ui/Toast';
-import { AdminDocumentUploadGuard, validateSearchablePdf } from '../../../components/AdminDocumentUploadGuard';
 import { extractLawTextFromPdf, extractLawFromPastedText } from '../services/pdfTextExtractor';
 import { extractLawFromPdf, LawOcrResult } from '../services/lawOcrService';
 import { 
@@ -103,9 +102,6 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
   const [externalLink, setExternalLink] = useState(lawToEdit?.external_link || '');
   const [tagsInput, setTagsInput] = useState(lawToEdit?.tags?.join(', ') || '');
   const [publishOnSite, setPublishOnSite] = useState<boolean>(lawToEdit?.publish_on_site ?? true);
-  const [pendingGuardFile, setPendingGuardFile] = useState<File | null>(null);
-  const [guardOpen, setGuardOpen] = useState(false);
-  const [guardOcrError, setGuardOcrError] = useState<string | null>(null);
   const [siteFeatured, setSiteFeatured] = useState<boolean>(Boolean(lawToEdit?.site_featured));
   const [file, setFile] = useState<File | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -693,17 +689,12 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
                     ref={fileInputRef} 
                     accept=".pdf,.doc,.docx"
                     className="hidden" 
-                    onChange={async e => {
+                    onChange={e => {
                       if (e.target.files && e.target.files[0]) {
                         const selected = e.target.files[0];
-                        if (selected.name.toLowerCase().endsWith('.pdf')) {
-                          const check = await validateSearchablePdf(selected);
-                          setPendingGuardFile(selected);
-                          setGuardOcrError(check.valid ? null : (check.errorMessage || 'PDF sem camada OCR.'));
-                          setGuardOpen(true);
-                          e.target.value = '';
-                        } else {
-                          setFile(selected);
+                        setFile(selected);
+                        if (selected.name.toLowerCase().endsWith('.pdf') && !fullText.trim()) {
+                          handleRunOcrOnFile(selected);
                         }
                       }
                     }}
@@ -1090,27 +1081,6 @@ export const LawFormModal: React.FC<LawFormModalProps> = ({
           </div>
         </form>
       </motion.div>
-      <AdminDocumentUploadGuard
-        file={pendingGuardFile}
-        isOpen={guardOpen}
-        ocrError={guardOcrError}
-        onCancel={() => {
-          setGuardOpen(false);
-          setPendingGuardFile(null);
-          setGuardOcrError(null);
-        }}
-        onConfirmPublish={() => {
-          if (pendingGuardFile) {
-            setFile(pendingGuardFile);
-            if (!fullText.trim()) {
-              handleRunOcrOnFile(pendingGuardFile);
-            }
-          }
-          setGuardOpen(false);
-          setPendingGuardFile(null);
-          setGuardOcrError(null);
-        }}
-      />
     </motion.div>,
     document.body
   );

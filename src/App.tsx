@@ -59,14 +59,6 @@ import { PublicNotaFiscalAuditor } from './pages/PublicNotaFiscalAuditor';
 import { PublicCertificateValidator } from './pages/PublicCertificateValidator';
 import { PublicDeclarationForm } from './pages/PublicDeclarationForm';
 import { PublicFuelValidation } from './pages/PublicFuelValidation';
-import { InstitutionalPortalHome } from './pages/public/InstitutionalPortalHome';
-import { TransparencyPortalPage } from './pages/public/TransparencyPortalPage';
-import { EsicPortalPage } from './pages/public/EsicPortalPage';
-import { FaqPortalPage } from './pages/public/FaqPortalPage';
-import { StructureOrgChartPage } from './pages/public/StructureOrgChartPage';
-import { ServiceCharterPage } from './pages/public/ServiceCharterPage';
-import { LegislationPortalPage } from './pages/public/LegislationPortalPage';
-import { LegalPage } from './pages/public/LegalPages';
 
 // Lucide icons used directly in App.tsx
 import { 
@@ -823,27 +815,6 @@ export default function App() {
     cleanPath === '/proposta-prefeitura' ||
     cleanPath.startsWith('/proposta/') ||
     cleanPath.startsWith('/proposta-comercial/');
-  const isPortalHomeRoute = cleanPath === '/portal';
-  const isTransparencyRoute = cleanPath === '/transparencia' || cleanPath.startsWith('/transparencia/');
-  const isEsicRoute = cleanPath === '/esic' || cleanPath.startsWith('/esic/');
-  const isFaqRoute = cleanPath === '/perguntas-frequentes' || cleanPath === '/faq';
-  const isStructureRoute = cleanPath === '/estrutura' || cleanPath === '/organograma';
-  const isServiceCharterRoute = cleanPath === '/carta-de-servicos';
-  const isLegislationRoute = cleanPath === '/legislacao';
-  const isPrivacyRoute = cleanPath === '/privacidade';
-  const isTermsRoute = cleanPath === '/termos-de-uso';
-  const isDpoRoute = cleanPath === '/encarregado-dpo';
-  const isNewPntpPublicRoute =
-    isPortalHomeRoute ||
-    isTransparencyRoute ||
-    isEsicRoute ||
-    isFaqRoute ||
-    isStructureRoute ||
-    isServiceCharterRoute ||
-    isLegislationRoute ||
-    isPrivacyRoute ||
-    isTermsRoute ||
-    isDpoRoute;
 
   // Logout seguro: limpa confirmação de sessão, desloga e retorna para a tela de login
   const handleLogout = async () => {
@@ -986,7 +957,7 @@ export default function App() {
       );
     }
     const siteCfg = extractSiteConfigFromInstitution(landingInst);
-    const shouldRenderFullSite = (isSitePreviewRoute || Boolean(landingInst)) && siteCfg.enabled !== false;
+    const shouldRenderFullSite = isSitePreviewRoute && siteCfg.enabled !== false;
     if (shouldRenderFullSite) {
       return (
         <InstitutionalSite
@@ -1257,57 +1228,6 @@ export default function App() {
         />
       </div>
     );
-  }
-
-  if (isNewPntpPublicRoute) {
-    if (!resolvedPublicInstitution) {
-      return (
-        <MunicipalityPortalHub
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-          institutions={institutions}
-          onSelectMunicipality={(inst) => {
-            handleSelectInstitution(inst);
-            window.location.href = withInstitutionQuery(cleanPath, inst);
-          }}
-          onNavigateToLandingPage={() => { window.location.href = '/landingpage'; }}
-          onNavigateToDemo={() => {
-            window.location.href = withInstitutionQuery(cleanPath, DEMO_INSTITUTION);
-          }}
-        />
-      );
-    }
-
-    if (isPortalHomeRoute) {
-      return <InstitutionalPortalHome institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isTransparencyRoute) {
-      return <TransparencyPortalPage institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isEsicRoute) {
-      return <EsicPortalPage institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isFaqRoute) {
-      return <FaqPortalPage institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isStructureRoute) {
-      return <StructureOrgChartPage institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isServiceCharterRoute) {
-      return <ServiceCharterPage institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isLegislationRoute) {
-      return <LegislationPortalPage institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isPrivacyRoute) {
-      return <LegalPage kind="privacidade" institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isTermsRoute) {
-      return <LegalPage kind="termos" institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
-    if (isDpoRoute) {
-      return <LegalPage kind="dpo" institution={resolvedPublicInstitution} darkMode={darkMode} setDarkMode={setDarkMode} />;
-    }
   }
 
   if (isCertificateValidatorPortal) {

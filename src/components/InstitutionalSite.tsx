@@ -59,7 +59,6 @@ import {
   resolveSecretariatProfile,
   resolveEffectiveUsefulLinks,
   getGestao360LandingUrl,
-  DEFAULT_EXTERNAL_TRANSPARENCY_URL,
 } from '../lib/api/institutionalSite';
 import { AccessibilityBar } from './AccessibilityBar';
 import { SitePopupCarouselModal } from './SitePopupCarouselModal';
@@ -631,25 +630,28 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
                   Mapa do Site
                 </button>
                 <a
-                  href={withInstitutionQuery('/portal', currentInstitution)}
+                  href={withInstitutionQuery('/', currentInstitution)}
                   className="hover:text-white transition"
                 >
                   Portal do Cidadão
                 </a>
-                <a
-                  href={config.transparencyUrl?.trim() || DEFAULT_EXTERNAL_TRANSPARENCY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-white transition inline-flex items-center gap-1"
-                >
-                  Portal da Transparência <ArrowUpRight size={12} />
-                </a>
-                <a
-                  href={withInstitutionQuery('/esic', currentInstitution)}
-                  className="hover:text-white transition"
-                >
-                  e-SIC
-                </a>
+                {config.transparencyUrl ? (
+                  <a
+                    href={config.transparencyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-white transition inline-flex items-center gap-1"
+                  >
+                    Portal da Transparência <ArrowUpRight size={12} />
+                  </a>
+                ) : (
+                  <a
+                    href="#legislacao"
+                    className="hover:text-white transition inline-flex items-center gap-1"
+                  >
+                    Transparência & Atos <ArrowUpRight size={12} />
+                  </a>
+                )}
                 {showOuvidoria && (
                   <a
                     href={withInstitutionQuery('/ouvidoria', currentInstitution)}
@@ -1822,122 +1824,6 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
 
           </main>
 
-          {/* Seção Institucional de Transparência & Critérios PNTP / Atricon */}
-          <section
-            id="transparencia-pntp"
-            aria-label="Transparência, Acesso à Informação e Controle Social"
-            className="max-w-7xl mx-auto px-4 sm:px-6 pb-14 w-full"
-          >
-            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 sm:p-8 shadow-sm space-y-6">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest site-accent-text">
-                    Transparência & Controle Social (PNTP / Atricon)
-                  </p>
-                  <h2 className="text-2xl sm:text-3xl font-black tracking-tight mt-1">
-                    Acesso Rápido aos Portais Obrigatórios
-                  </h2>
-                  <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-2xl">
-                    Espaços organizados para atendimento aos critérios de transparência pública, Lei de Acesso à Informação (LAI), Carta de Serviços e LGPD.
-                  </p>
-                </div>
-                <a
-                  href={config.transparencyUrl?.trim() || DEFAULT_EXTERNAL_TRANSPARENCY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl text-white text-xs font-black shadow-md transition hover:opacity-95 shrink-0"
-                  style={{ backgroundColor: accentHex }}
-                >
-                  <Landmark size={15} />
-                  <span>Acessar Portal da Transparência</span>
-                  <ArrowUpRight size={14} />
-                </a>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                {[
-                  {
-                    title: 'Portal da Transparência',
-                    desc: 'Receitas, despesas, licitações, contratos, obras e folha nominal.',
-                    href: config.transparencyUrl?.trim() || DEFAULT_EXTERNAL_TRANSPARENCY_URL,
-                    external: true,
-                    badge: 'Externo',
-                  },
-                  {
-                    title: 'e-SIC (Acesso à Informação)',
-                    desc: 'Pedidos LAI sem justificativa, prazo 20+10 dias e recursos.',
-                    href: withInstitutionQuery('/esic', currentInstitution),
-                    external: false,
-                    badge: 'LAI 12.527/11',
-                  },
-                  {
-                    title: 'Ouvidoria Municipal',
-                    desc: 'Sugestões, reclamações e modo explícito de Denúncia Anônima.',
-                    href: withInstitutionQuery('/ouvidoria', currentInstitution),
-                    external: false,
-                    badge: 'Participação',
-                  },
-                  {
-                    title: 'Carta de Serviços',
-                    desc: 'Prazos, documentos, etapas e avaliação cidadã.',
-                    href: withInstitutionQuery('/carta-de-servicos', currentInstitution),
-                    external: false,
-                    badge: 'Lei 13.460/17',
-                  },
-                  {
-                    title: 'Estrutura e Quem é Quem',
-                    desc: 'Organograma, secretarias, competências e contatos.',
-                    href: withInstitutionQuery('/estrutura', currentInstitution),
-                    external: false,
-                    badge: 'Institucional',
-                  },
-                  {
-                    title: 'Legislação Municipal',
-                    desc: 'Lei Orgânica, Códigos, Leis e Decretos (Original/Compilado).',
-                    href: withInstitutionQuery('/legislacao', currentInstitution),
-                    external: false,
-                    badge: 'Atos Oficiais',
-                  },
-                  {
-                    title: 'Perguntas Frequentes (FAQ)',
-                    desc: 'Respostas rápidas sobre transparência, LAI e serviços.',
-                    href: withInstitutionQuery('/perguntas-frequentes', currentInstitution),
-                    external: false,
-                    badge: 'FAQ',
-                  },
-                  {
-                    title: 'Encarregado de Dados (DPO)',
-                    desc: 'Portaria de nomeação, Política de Privacidade e canal LGPD.',
-                    href: withInstitutionQuery('/encarregado-dpo', currentInstitution),
-                    external: false,
-                    badge: 'LGPD',
-                  },
-                ].map((card) => (
-                  <a
-                    key={card.title}
-                    href={card.href}
-                    target={card.external ? '_blank' : undefined}
-                    rel={card.external ? 'noopener noreferrer' : undefined}
-                    className="group p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-800/40 hover:border-neutral-900 dark:hover:border-white transition flex flex-col justify-between gap-2"
-                  >
-                    <div>
-                      <span className="inline-block text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-neutral-200/80 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 mb-2">
-                        {card.badge}
-                      </span>
-                      <h3 className="text-sm font-black text-neutral-900 dark:text-white flex items-center justify-between gap-1">
-                        <span>{card.title}</span>
-                        <ArrowUpRight size={14} className="opacity-60 group-hover:opacity-100 shrink-0" />
-                      </h3>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
-                        {card.desc}
-                      </p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </div>
-          </section>
-
           {/* Rodapé Institucional */}
           <footer id="rodape" role="contentinfo" className="mt-auto bg-neutral-900 text-neutral-300 border-t border-neutral-800">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-xs">
@@ -1963,40 +1849,11 @@ export const InstitutionalSite: React.FC<InstitutionalSiteProps> = ({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-4 text-[11px] font-bold uppercase tracking-wider">
-                <a
-                  href={config.transparencyUrl?.trim() || DEFAULT_EXTERNAL_TRANSPARENCY_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-white"
-                >
-                  Transparência
-                </a>
-                <a href={withInstitutionQuery('/esic', currentInstitution)} className="hover:text-white">
-                  e-SIC
-                </a>
                 {showOuvidoria && (
                   <a href={withInstitutionQuery('/ouvidoria', currentInstitution)} className="hover:text-white">
-                    Ouvidoria
+                    Ouvidoria / e-SIC
                   </a>
                 )}
-                <a href={withInstitutionQuery('/carta-de-servicos', currentInstitution)} className="hover:text-white">
-                  Carta de Serviços
-                </a>
-                <a href={withInstitutionQuery('/estrutura', currentInstitution)} className="hover:text-white">
-                  Estrutura
-                </a>
-                <a href={withInstitutionQuery('/perguntas-frequentes', currentInstitution)} className="hover:text-white">
-                  FAQ
-                </a>
-                <a href={withInstitutionQuery('/privacidade', currentInstitution)} className="hover:text-white">
-                  Privacidade
-                </a>
-                <a href={withInstitutionQuery('/termos-de-uso', currentInstitution)} className="hover:text-white">
-                  Termos de Uso
-                </a>
-                <a href={withInstitutionQuery('/encarregado-dpo', currentInstitution)} className="hover:text-white">
-                  DPO (LGPD)
-                </a>
                 <a href={withInstitutionQuery('/validar-documento', currentInstitution)} className="hover:text-white">
                   Validar Documento
                 </a>
