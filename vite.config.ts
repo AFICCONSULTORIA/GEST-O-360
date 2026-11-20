@@ -82,6 +82,9 @@ export default defineConfig(({mode}) => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        devOptions: {
+          enabled: true
+        },
         includeAssets: [
           'icon.svg',
           'apple-touch-icon.png',

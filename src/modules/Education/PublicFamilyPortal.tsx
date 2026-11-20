@@ -61,7 +61,9 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
     }
   });
   const [showInstallTip, setShowInstallTip] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(() => {
+    return (window.__deferredInstallPrompt as BeforeInstallPromptEvent | undefined) || null;
+  });
   const [isInstalledApp, setIsInstalledApp] = useState(false);
 
   useEffect(() => {
@@ -73,11 +75,22 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
     };
     checkStandalone();
 
+    if (window.__deferredInstallPrompt) {
+      setDeferredPrompt(window.__deferredInstallPrompt as BeforeInstallPromptEvent);
+    }
+
     const handleBeforeInstall = (e: Event) => {
       e.preventDefault();
+      window.__deferredInstallPrompt = e as BeforeInstallPromptEvent;
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
+    const handleGlobalPrompt = () => {
+      if (window.__deferredInstallPrompt) {
+        setDeferredPrompt(window.__deferredInstallPrompt as BeforeInstallPromptEvent);
+      }
+    };
     const handleAppInstalled = () => {
+      window.__deferredInstallPrompt = undefined;
       setDeferredPrompt(null);
       setIsInstalledApp(true);
       setShowInstallTip(false);
@@ -85,19 +98,24 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('pwa-install-available', handleGlobalPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('pwa-install-available', handleGlobalPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
   const handleInstallClick = async () => {
-    if (deferredPrompt) {
+    const promptEvent =
+      deferredPrompt || (window.__deferredInstallPrompt as BeforeInstallPromptEvent | undefined);
+    if (promptEvent) {
       try {
-        await deferredPrompt.prompt();
-        const choice = await deferredPrompt.userChoice;
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
         if (choice.outcome === 'accepted') {
+          window.__deferredInstallPrompt = undefined;
           setDeferredPrompt(null);
           setIsInstalledApp(true);
           showToast('Instalando o aplicativo...', 'success');
