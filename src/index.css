@@ -386,3 +386,27 @@ html.emag-readable-spacing body {
   .text-edu-label-md { font-size: 14px; line-height: 1.2; font-weight: 600; letter-spacing: 0.01em; }
 }
 
+/* Mobile UX & Safe Areas (Android + iPhone Notch / Dynamic Island / Home Bar) */
+.family-app-shell {
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+  touch-action: manipulation;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.safe-pt {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-pb {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+

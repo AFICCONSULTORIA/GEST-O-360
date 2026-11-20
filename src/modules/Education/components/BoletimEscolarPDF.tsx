@@ -113,28 +113,31 @@ export const BoletimEscolarPDF: React.FC<BoletimEscolarPDFProps> = ({
   });
 
   return (
-    <div className="fixed inset-0 z-[200] bg-neutral-900/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto">
+    <div className="fixed inset-0 z-[200] bg-neutral-900/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:inset-auto">
       {/* Modal Container */}
-      <div className="bg-white text-neutral-900 w-full max-w-4xl rounded-[28px] shadow-2xl border border-neutral-200 overflow-hidden flex flex-col max-h-[95vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
+      <div className="bg-white text-neutral-900 w-full max-w-4xl rounded-none sm:rounded-[28px] shadow-2xl border-0 sm:border sm:border-neutral-200 overflow-hidden flex flex-col h-dvh sm:h-auto sm:max-h-[95vh] print:max-h-none print:h-auto print:shadow-none print:border-none print:rounded-none">
         {/* Action Bar (Hidden in print) */}
-        <div className="p-4 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between print:hidden">
-          <div className="flex items-center gap-2 text-sm font-bold text-neutral-800 dark:text-neutral-100">
-            <FileText size={18} className="text-indigo-600 dark:text-indigo-400" />
-            <span>Relatório Oficial de Desenvolvimento Escolar (BNCC / LDB — Sem Notas Numéricas) • {enrollment.academic_year}</span>
+        <div className="safe-pt px-3 sm:px-4 py-3 bg-neutral-100 dark:bg-neutral-800 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between gap-2 print:hidden">
+          <div className="flex items-center gap-2 text-sm font-bold text-neutral-800 dark:text-neutral-100 min-w-0">
+            <FileText size={18} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <span className="sm:hidden truncate">Boletim {enrollment.academic_year}</span>
+            <span className="hidden sm:inline truncate">Relatório Oficial de Desenvolvimento Escolar (BNCC / LDB — Sem Notas Numéricas) • {enrollment.academic_year}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={handlePrint}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer"
+              className="min-h-[40px] px-3 sm:px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 sm:gap-2 cursor-pointer active:scale-95"
             >
               <Printer size={16} />
-              <span>Imprimir / Salvar PDF</span>
+              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">Imprimir / Salvar PDF</span>
             </button>
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 rounded-xl transition-colors cursor-pointer"
+                className="min-w-[40px] min-h-[40px] p-2 flex items-center justify-center text-neutral-500 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-white rounded-xl transition-colors cursor-pointer"
+                aria-label="Fechar"
               >
                 <X size={20} />
               </button>
@@ -143,7 +146,7 @@ export const BoletimEscolarPDF: React.FC<BoletimEscolarPDFProps> = ({
         </div>
 
         {/* Printable Document Body */}
-        <div className="p-8 sm:p-12 overflow-y-auto space-y-6 font-sans text-neutral-900 bg-white print:p-6 print:overflow-visible">
+        <div className="p-4 sm:p-10 overflow-y-auto space-y-6 font-sans text-neutral-900 bg-white print:p-6 print:overflow-visible">
           {/* Header Oficial Timbrado */}
           <div className="border-b-2 border-neutral-900 pb-5 text-center relative flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="w-20 h-20 shrink-0 flex items-center justify-center">
@@ -206,6 +209,9 @@ export const BoletimEscolarPDF: React.FC<BoletimEscolarPDFProps> = ({
           </div>
 
           {/* Tabela Qualitativa de Desenvolvimento Bimestral (Sem Notas Numéricas) */}
+          <p className="sm:hidden print:hidden text-[11px] font-bold text-indigo-600 mb-1.5">
+            &larr; Deslize a tabela para o lado para ver todos os bimestres &rarr;
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse border border-neutral-300 text-xs text-left">
               <thead>

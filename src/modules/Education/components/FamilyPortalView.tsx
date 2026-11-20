@@ -377,14 +377,22 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
   const weekLabels = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
   return (
-    <div className="space-y-5 sm:space-y-8 animate-in fade-in duration-300 max-w-7xl mx-auto w-full pb-20 sm:pb-16">
-      {/* Top Banner Acolhedor: Vida Escolar & Família */}
-      <div className="bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 text-white shadow-xl shadow-indigo-500/15 relative overflow-hidden">
+    <div
+      className={`space-y-4 sm:space-y-8 animate-in fade-in duration-300 max-w-7xl mx-auto w-full ${
+        mode === 'admin' ? 'pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-12' : 'pb-4 md:pb-12'
+      }`}
+    >
+      {/* Top Banner Acolhedor: Vida Escolar & Família (no celular aparece na aba Resumo ou modo Admin) */}
+      <div
+        className={`${
+          mode === 'admin' || mobileTab === 'resumo' ? 'block' : 'hidden md:block'
+        } bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 text-white shadow-xl shadow-indigo-500/15 relative overflow-hidden`}
+      >
         <div className="absolute -top-16 -right-16 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 left-10 w-64 h-64 bg-emerald-300/15 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-          <div className="flex items-start sm:items-center gap-4 sm:gap-5">
+        <div className="relative z-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 sm:gap-6">
+          <div className="flex items-start sm:items-center gap-3.5 sm:gap-5">
             {mode === 'student' && reportCard ? (
               <div className="p-1 rounded-full bg-white/25 backdrop-blur-md shrink-0 shadow-lg">
                 <EducationAvatar
@@ -395,13 +403,13 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                 />
               </div>
             ) : (
-              <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
-                <HeartHandshake size={32} className="text-white" />
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+                <HeartHandshake size={30} className="text-white" />
               </div>
             )}
 
             <div className="min-w-0">
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight">
+              <h2 className="text-lg sm:text-2xl font-black tracking-tight">
                 {mode === 'student' && reportCard
                   ? reportCard.enrollment.student_name
                   : 'Boletim & Portal da Família'}
@@ -444,10 +452,11 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             {reportCard && (
               <button
                 onClick={() => setIsBoletimModalOpen(true)}
-                className="px-4 sm:px-5 py-3 sm:py-3.5 bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
+                className="min-h-[44px] px-4 sm:px-5 py-3 sm:py-3.5 bg-white text-indigo-700 hover:bg-indigo-50 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0 hover:scale-[1.02] active:scale-95"
               >
                 <Printer size={16} />
-                <span>Emitir Boletim Oficial (PDF)</span>
+                <span className="sm:hidden">Boletim Oficial (PDF)</span>
+                <span className="hidden sm:inline">Emitir Boletim Oficial (PDF)</span>
               </button>
             )}
           </div>
@@ -481,7 +490,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
       {/* Navegação Inferior Fixa no Celular (App dos Pais) */}
       <nav
         aria-label="Navegação do Portal dos Pais"
-        className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-t border-neutral-200 dark:border-neutral-800 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-2 pt-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] grid grid-cols-4 gap-1"
+        className="md:hidden fixed bottom-0 inset-x-0 z-50 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-t border-neutral-200 dark:border-neutral-800 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] px-2 pt-1.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] grid grid-cols-4 gap-1"
       >
         {(
           [
@@ -501,12 +510,17 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                 setMobileTab(tab.id);
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className={`relative py-2 px-1 rounded-2xl transition-all flex flex-col items-center justify-center gap-0.5 ${
+              className={`relative min-h-[54px] py-1.5 px-1 rounded-2xl select-none active:scale-95 transition-all flex flex-col items-center justify-center gap-0.5 ${
                 isActive
                   ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50/90 dark:bg-indigo-950/50'
                   : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800/70'
               }`}
             >
+              <span
+                className={`w-6 h-1 rounded-full mb-0.5 transition-all ${
+                  isActive ? 'bg-indigo-600 dark:bg-indigo-400' : 'bg-transparent'
+                }`}
+              />
               <div className="relative">
                 <Icon size={19} strokeWidth={isActive ? 2.4 : 2} />
                 {'badge' in tab && (tab.badge ?? 0) > 0 && (
@@ -572,7 +586,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             {/* 3 Cards de Resumo Didático: Desenvolvimento Global + Frequência Escolar + Atividades Digitais */}
             <div className={`${mobileTab === 'resumo' ? 'grid' : 'hidden md:grid'} grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6`}>
               {/* Card 1: Síntese Qualitativa Global */}
-              <div className="bg-white dark:bg-neutral-900 p-6 rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
+              <div className="bg-white dark:bg-neutral-900 p-4 sm:p-6 rounded-2xl sm:rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-black uppercase tracking-wider text-neutral-400">
@@ -626,14 +640,14 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
               </div>
 
               {/* Card 2: Frequência Escolar Viva */}
-              <div className="bg-white dark:bg-neutral-900 p-6 rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
+              <div className="bg-white dark:bg-neutral-900 p-4 sm:p-6 rounded-2xl sm:rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between gap-2 mb-3">
                     <span className="text-xs font-black uppercase tracking-wider text-neutral-400">
                       Presença na Escola
                     </span>
                     <span
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shrink-0 ${
                         reportCard.attendanceRate >= minLegalAttendance
                           ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
                           : 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 animate-pulse'
@@ -645,7 +659,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex items-baseline gap-2.5">
+                  <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
                     <span className="text-4xl font-black text-neutral-900 dark:text-white">
                       {reportCard.attendanceRate}%
                     </span>
@@ -687,7 +701,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
               </div>
 
               {/* Card 3: Participação nas Atividades do Portal */}
-              <div className="bg-white dark:bg-neutral-900 p-6 rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
+              <div className="bg-white dark:bg-neutral-900 p-4 sm:p-6 rounded-2xl sm:rounded-[28px] border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-5">
                 <div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs font-black uppercase tracking-wider text-neutral-400">
@@ -731,7 +745,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                       return (
                         <div key={day} className="flex flex-col items-center gap-1">
                           <div
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${
+                            className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black ${
                               active
                                 ? 'bg-emerald-500 text-white shadow-xs'
                                 : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400'
@@ -749,84 +763,95 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             </div>
 
             {/* Mapa Evolutivo Bimestral por Componente Curricular (100% Sem Notas Numéricas) */}
-            <section className={`${mobileTab === 'materias' ? 'block' : 'hidden md:block'} bg-white dark:bg-neutral-900 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm space-y-5 sm:space-y-6`}>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <section className={`${mobileTab === 'materias' ? 'block' : 'hidden md:block'} bg-white dark:bg-neutral-900 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 border border-neutral-200/70 dark:border-neutral-800 shadow-sm space-y-4 sm:space-y-6`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
                 <div>
-                  <h3 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-2.5">
-                    <Compass className="text-indigo-600 dark:text-indigo-400" size={24} />
-                    Acompanhamento por Componente Curricular
+                  <h3 className="text-lg sm:text-2xl font-black text-neutral-900 dark:text-white flex items-center gap-2">
+                    <Compass className="text-indigo-600 dark:text-indigo-400 shrink-0" size={22} />
+                    <span className="sm:hidden">Matérias</span>
+                    <span className="hidden sm:inline">Acompanhamento por Componente Curricular</span>
                   </h3>
                   <p className="text-xs sm:text-sm text-neutral-500 mt-0.5">
-                    Clique em qualquer matéria para ver a observação do professor e sugestões práticas para apoiar em casa.
+                    Toque em uma matéria para ver bimestres, parecer e dicas em casa.
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-3.5 py-2 rounded-xl self-start sm:self-auto">
+                <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-neutral-500 bg-neutral-100 dark:bg-neutral-800 px-3.5 py-2 rounded-xl self-start sm:self-auto">
                   <Sparkles size={14} className="text-amber-500" />
                   <span>Toque na matéria para abrir dicas</span>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                {reportCard.subjects.map((sub) => {
-                  const meta = SUBJECT_VISUAL_META[sub.subject] || {
-                    icon: 'BookOpen',
-                    bgIcon: 'bg-indigo-100 dark:bg-indigo-500/20',
-                    textIcon: 'text-indigo-600 dark:text-indigo-400',
-                    homeTip: 'Converse sobre o que foi aprendido na aula de hoje e valorize cada descoberta da criança.'
-                  };
+              {reportCard.subjects.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/70 dark:border-neutral-800 text-center space-y-1">
+                  <p className="text-sm font-black text-neutral-700 dark:text-neutral-200">
+                    Nenhuma matéria lançada ainda
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    Assim que a escola publicar as avaliações do bimestre, elas aparecerão aqui.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 sm:space-y-3">
+                  {reportCard.subjects.map((sub) => {
+                    const meta = SUBJECT_VISUAL_META[sub.subject] || {
+                      icon: 'BookOpen',
+                      bgIcon: 'bg-indigo-100 dark:bg-indigo-500/20',
+                      textIcon: 'text-indigo-600 dark:text-indigo-400',
+                      homeTip: 'Converse sobre o que foi aprendido na aula de hoje e valorize cada descoberta da criança.'
+                    };
 
-                  const currentLevel: ProficiencyLevel = sub.proficiencyLevel || 'adequado';
-                  const stageCfg = DEVELOPMENT_STAGES[currentLevel] || DEVELOPMENT_STAGES.adequado;
-                  const isExpanded = expandedSubject === sub.subject;
+                    const currentLevel: ProficiencyLevel = sub.proficiencyLevel || 'adequado';
+                    const stageCfg = DEVELOPMENT_STAGES[currentLevel] || DEVELOPMENT_STAGES.adequado;
+                    const isExpanded = expandedSubject === sub.subject;
 
-                  const firstStep = sub.b1Proficiency ? DEVELOPMENT_STAGES[sub.b1Proficiency].step : stageCfg.step;
-                  const latestStep = stageCfg.step;
-                  const hasProgressed = latestStep > firstStep;
+                    const firstStep = sub.b1Proficiency ? DEVELOPMENT_STAGES[sub.b1Proficiency].step : stageCfg.step;
+                    const latestStep = stageCfg.step;
+                    const hasProgressed = latestStep > firstStep;
 
-                  return (
-                    <div
-                      key={sub.subject}
-                      className={`rounded-2xl border transition-all overflow-hidden ${
-                        isExpanded
-                          ? 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50/20 dark:bg-indigo-950/10 shadow-sm'
-                          : 'border-neutral-200/70 dark:border-neutral-800 bg-neutral-50/40 dark:bg-neutral-900/60 hover:border-neutral-300 dark:hover:border-neutral-700'
-                      }`}
-                    >
-                      {/* Linha Principal Limpa e Compacta */}
-                      <button
-                        type="button"
-                        onClick={() => setExpandedSubject(isExpanded ? null : sub.subject)}
-                        className="w-full p-3.5 sm:p-4 text-left flex items-center justify-between gap-3 cursor-pointer"
+                    return (
+                      <div
+                        key={sub.subject}
+                        className={`rounded-2xl border transition-all overflow-hidden ${
+                          isExpanded
+                            ? 'border-indigo-300 dark:border-indigo-500/50 bg-indigo-50/20 dark:bg-indigo-950/10 shadow-sm'
+                            : 'border-neutral-200/70 dark:border-neutral-800 bg-neutral-50/40 dark:bg-neutral-900/60 hover:border-neutral-300 dark:hover:border-neutral-700'
+                        }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className={`w-10 h-10 rounded-xl ${meta.bgIcon} ${meta.textIcon} flex items-center justify-center shrink-0`}>
-                            <SubjectIcon icon={meta.icon} size={19} />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <h4 className="font-black text-sm sm:text-base text-neutral-900 dark:text-white truncate">
-                                {sub.subject}
-                              </h4>
-                              {hasProgressed && (
-                                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                                  <TrendingUp size={10} /> Evoluiu
-                                </span>
-                              )}
+                        {/* Linha Principal Limpa e Compacta */}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedSubject(isExpanded ? null : sub.subject)}
+                          className="w-full min-h-[62px] p-3 sm:p-4 text-left flex items-center justify-between gap-2 sm:gap-3 cursor-pointer active:bg-neutral-100/80 dark:active:bg-neutral-800/60 transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
+                            <div className={`w-10 h-10 rounded-xl ${meta.bgIcon} ${meta.textIcon} flex items-center justify-center shrink-0`}>
+                              <SubjectIcon icon={meta.icon} size={19} />
                             </div>
-                            <span className="text-[11px] text-neutral-500 font-medium">
-                              Faltas: <strong>{sub.totalAbsences}</strong>
-                            </span>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="font-black text-[13px] sm:text-base leading-snug line-clamp-2 text-neutral-900 dark:text-white">
+                                  {sub.subject}
+                                </h4>
+                                {hasProgressed && (
+                                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                                    <TrendingUp size={10} /> Evoluiu
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] text-neutral-500 font-medium">
+                                Faltas: <strong>{sub.totalAbsences}</strong>
+                              </span>
+                            </div>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-2 shrink-0">
-                          {renderStageChip(currentLevel, true)}
-                          <div className="w-7 h-7 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center text-neutral-500">
-                            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                            {renderStageChip(currentLevel, true)}
+                            <div className="w-7 h-7 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center text-neutral-500">
+                              {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                            </div>
                           </div>
-                        </div>
-                      </button>
+                        </button>
 
                       {/* Painel Expandido: 4 Bimestres + Parecer + Dica em Casa */}
                       {isExpanded && (
@@ -877,31 +902,32 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                     </div>
                   );
                 })}
-              </div>
+                </div>
+              )}
             </section>
 
             {/* Seção em Destaque: O Olhar do Professor (Pareceres Descritivos Bimestrais) */}
-            {reportCard.opinions && reportCard.opinions.length > 0 && (
-              <section className={`${mobileTab === 'pareceres' ? 'block' : 'hidden md:block'} space-y-4`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-                    <FileText size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-black text-neutral-900 dark:text-white">
-                      O Olhar do Professor (Pareceres Descritivos)
-                    </h3>
-                    <p className="text-xs text-neutral-500">
-                      Registros qualitativos elaborados pelos educadores sobre as conquistas e vivências da criança
-                    </p>
-                  </div>
+            <section className={`${mobileTab === 'pareceres' ? 'block' : 'hidden md:block'} space-y-4`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <FileText size={20} />
                 </div>
+                <div>
+                  <h3 className="text-lg sm:text-xl font-black text-neutral-900 dark:text-white">
+                    O Olhar do Professor (Pareceres Descritivos)
+                  </h3>
+                  <p className="text-xs text-neutral-500">
+                    Registros qualitativos elaborados pelos educadores sobre as conquistas e vivências da criança
+                  </p>
+                </div>
+              </div>
 
+              {reportCard.opinions && reportCard.opinions.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {reportCard.opinions.map((op, idx) => (
                     <div
                       key={`${op.subject}-${op.bimester}-${idx}`}
-                      className="bg-white dark:bg-neutral-900 p-6 rounded-3xl border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-4"
+                      className="bg-white dark:bg-neutral-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border border-neutral-200/70 dark:border-neutral-800 shadow-sm flex flex-col justify-between space-y-4"
                     >
                       <div className="space-y-3">
                         <div className="flex items-center justify-between gap-2">
@@ -913,7 +939,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                           </span>
                         </div>
                         <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed italic">
-                          "{op.opinion}"
+                          &ldquo;{op.opinion}&rdquo;
                         </p>
                       </div>
 
@@ -926,8 +952,17 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                     </div>
                   ))}
                 </div>
-              </section>
-            )}
+              ) : (
+                <div className="bg-white dark:bg-neutral-900 p-6 rounded-2xl sm:rounded-3xl border border-neutral-200/70 dark:border-neutral-800 text-center space-y-1">
+                  <p className="text-sm font-black text-neutral-700 dark:text-neutral-200">
+                    Ainda não há pareceres descritivos publicados neste bimestre.
+                  </p>
+                  <p className="text-xs text-neutral-500">
+                    Quando o(a) professor(a) registrar os comentários qualitativos, eles ficarão disponíveis aqui.
+                  </p>
+                </div>
+              )}
+            </section>
           </>
         )
       )}
@@ -955,7 +990,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
           </div>
 
           {/* Filtros Rápidos */}
-          <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800/80 p-1.5 rounded-2xl overflow-x-auto">
+          <div className="flex items-center gap-1.5 bg-neutral-100 dark:bg-neutral-800/80 p-1.5 rounded-2xl overflow-x-auto no-scrollbar">
             {[
               { id: 'todos', label: 'Todos' },
               { id: 'urgente', label: 'Importantes' },
@@ -965,7 +1000,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
               <button
                 key={tab.id}
                 onClick={() => setAnnouncementFilter(tab.id as any)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                className={`min-h-[36px] px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer active:scale-95 ${
                   announcementFilter === tab.id
                     ? 'bg-white dark:bg-neutral-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
                     : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
@@ -977,6 +1012,16 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
           </div>
         </div>
 
+        {filteredAnnouncements.length === 0 ? (
+          <div className="bg-white dark:bg-neutral-900 p-6 rounded-2xl sm:rounded-3xl border border-neutral-200/70 dark:border-neutral-800 text-center space-y-1">
+            <p className="text-sm font-black text-neutral-700 dark:text-neutral-200">
+              Nenhum comunicado nesta categoria no momento.
+            </p>
+            <p className="text-xs text-neutral-500">
+              Toque em &ldquo;Todos&rdquo; para ver os avisos anteriores da escola.
+            </p>
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredAnnouncements.map((ann) => {
             const badge = getCategoryBadge(ann.category);
@@ -985,7 +1030,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             return (
               <div
                 key={ann.id}
-                className={`bg-white dark:bg-neutral-900 p-6 rounded-3xl border transition-all flex flex-col justify-between space-y-4 ${
+                className={`bg-white dark:bg-neutral-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl border transition-all flex flex-col justify-between space-y-4 ${
                   isAck
                     ? 'border-neutral-200/50 dark:border-neutral-800/60 opacity-85'
                     : 'border-indigo-200/80 dark:border-indigo-800/50 shadow-sm hover:shadow-md'
@@ -1015,7 +1060,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                   </p>
                 </div>
 
-                <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between gap-3 text-[11px]">
+                <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-3 text-[11px]">
                   <div className="text-neutral-500 font-semibold truncate">
                     <span>Por: <strong>{ann.author_name}</strong></span>
                     {ann.target_class && (
@@ -1028,7 +1073,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                   <button
                     type="button"
                     onClick={() => toggleAcknowledge(ann.id)}
-                    className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                    className={`w-full sm:w-auto justify-center min-h-[42px] px-4 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shrink-0 active:scale-[0.98] ${
                       isAck
                         ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30'
                         : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs'
@@ -1042,6 +1087,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
             );
           })}
         </div>
+        )}
       </section>
 
       {/* Modal: Visualizador e Impressão do Boletim Oficial Qualitativo */}
