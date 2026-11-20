@@ -756,7 +756,8 @@ export default function App() {
     currentPath === '/familia' ||
     currentPath === '/pais' ||
     currentPath === '/educacao/familia' ||
-    currentPath.startsWith('/familia/');
+    currentPath.startsWith('/familia/') ||
+    /^(familia|pais)\./i.test(window.location.hostname);
   const isCrechePortal = currentPath === '/cmei' || currentPath.startsWith('/cmei/');
   const isTransportePortal = currentPath === '/transporte' || currentPath === '/transporte-escolar' || currentPath.startsWith('/transporte/');
   const decodedPath = decodeURIComponent(currentPath).toLowerCase();

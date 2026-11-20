@@ -29,6 +29,54 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Atkinson+Hyperlegible+Next:wght@400;600;700&display=swap" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <title>Gestão 360</title>
+    <script>
+      (function () {
+        var path = window.location.pathname || '';
+        var host = window.location.hostname || '';
+        var isFamilia =
+          path === '/familia' ||
+          path === '/pais' ||
+          path === '/educacao/familia' ||
+          path.indexOf('/familia/') === 0 ||
+          /^(familia|pais)\./i.test(host);
+        if (!isFamilia) return;
+
+        function applyFamiliaMeta() {
+          document.title = 'Família e Escola';
+          var setMeta = function (name, content) {
+            var el = document.querySelector('meta[name="' + name + '"]');
+            if (el) el.setAttribute('content', content);
+          };
+          setMeta('application-name', 'Família e Escola');
+          setMeta('apple-mobile-web-app-title', 'Família e Escola');
+          setMeta('theme-color', '#4f46e5');
+
+          var appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+          if (appleIcon) appleIcon.setAttribute('href', '/familia-192x192.png');
+
+          document.querySelectorAll('link[rel="icon"]').forEach(function (el) {
+            el.setAttribute('href', '/familia-icon.svg');
+            el.setAttribute('type', 'image/svg+xml');
+          });
+
+          var manifests = document.querySelectorAll('link[rel="manifest"]');
+          if (manifests.length === 0) {
+            var link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = '/manifest-familia.json';
+            document.head.appendChild(link);
+          } else {
+            manifests.forEach(function (el, idx) {
+              if (idx === 0) el.setAttribute('href', '/manifest-familia.json');
+              else el.remove();
+            });
+          }
+        }
+
+        applyFamiliaMeta();
+        document.addEventListener('DOMContentLoaded', applyFamiliaMeta);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

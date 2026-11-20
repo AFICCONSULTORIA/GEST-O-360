@@ -93,7 +93,11 @@ export default defineConfig(({mode}) => {
           'logo-gestao360.png',
           'pwa-192x192.png',
           'pwa-512x512.png',
-          'pwa-maskable-512x512.png'
+          'pwa-maskable-512x512.png',
+          'familia-icon.svg',
+          'familia-192x192.png',
+          'familia-512x512.png',
+          'manifest-familia.json'
         ],
         workbox: {
           skipWaiting: true,

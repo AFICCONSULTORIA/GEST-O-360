@@ -318,12 +318,14 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
         <header className="bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-b border-neutral-200/80 dark:border-neutral-800 sticky top-0 z-40">
           <div className="max-w-5xl mx-auto px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-600 to-emerald-600 text-white flex items-center justify-center shrink-0">
-                <HeartHandshake size={16} />
-              </div>
+              <img
+                src="/familia-icon.svg"
+                alt="Família e Escola"
+                className="w-8 h-8 rounded-xl shadow-xs shrink-0"
+              />
               <div className="min-w-0">
                 <div className="text-xs font-black text-neutral-900 dark:text-white truncate">
-                  {currentInstitution?.name || 'Portal dos Pais'}
+                  Família e Escola
                 </div>
                 <div className="text-[11px] text-neutral-500 truncate">
                   {selectedStudent.name}
@@ -371,15 +373,17 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-emerald-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 flex flex-col justify-center px-4 py-8">
       <div className="max-w-md w-full mx-auto space-y-6">
         <div className="text-center space-y-2.5">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-indigo-600 to-emerald-600 text-white flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <HeartHandshake size={28} />
-          </div>
+          <img
+            src="/familia-icon.svg"
+            alt="Família e Escola"
+            className="w-16 h-16 mx-auto rounded-2xl shadow-lg shadow-indigo-500/20"
+          />
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-black uppercase tracking-wider">
             <ShieldCheck size={13} />
-            <span>{currentInstitution?.name || 'Educação Municipal'}</span>
+            <span>{currentInstitution?.name || 'Rede Municipal de Ensino'}</span>
           </div>
           <h1 className="text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
-            Portal dos Pais
+            Família e Escola
           </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Informe o CPF e a data de nascimento do aluno para acompanhar o boletim, frequência e recados.
