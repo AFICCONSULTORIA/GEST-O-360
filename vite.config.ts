@@ -97,7 +97,8 @@ export default defineConfig(({mode}) => {
           'familia-icon.svg',
           'familia-192x192.png',
           'familia-512x512.png',
-          'manifest-familia.json'
+          'manifest-familia.json',
+          'manifest-familia-root.json'
         ],
         workbox: {
           skipWaiting: true,

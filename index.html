@@ -33,13 +33,16 @@
       (function () {
         var path = window.location.pathname || '';
         var host = window.location.hostname || '';
+        var isFamiliaSubdomain = /^(familia|pais)\./i.test(host);
         var isFamilia =
+          isFamiliaSubdomain ||
           path === '/familia' ||
           path === '/pais' ||
           path === '/educacao/familia' ||
-          path.indexOf('/familia/') === 0 ||
-          /^(familia|pais)\./i.test(host);
+          path.indexOf('/familia/') === 0;
         if (!isFamilia) return;
+
+        var manifestHref = isFamiliaSubdomain ? '/manifest-familia-root.json' : '/manifest-familia.json';
 
         function applyFamiliaMeta() {
           document.title = 'Família e Escola';
@@ -63,11 +66,11 @@
           if (manifests.length === 0) {
             var link = document.createElement('link');
             link.rel = 'manifest';
-            link.href = '/manifest-familia.json';
+            link.href = manifestHref;
             document.head.appendChild(link);
           } else {
             manifests.forEach(function (el, idx) {
-              if (idx === 0) el.setAttribute('href', '/manifest-familia.json');
+              if (idx === 0) el.setAttribute('href', manifestHref);
               else el.remove();
             });
           }

@@ -972,6 +972,19 @@ export default function App() {
   const resolvedPublicInstitution =
     currentInstitution || (institutions.length === 1 ? institutions[0] : null);
 
+  // Portal dedicado Família e Escola (prioritário antes da home/seletor de municípios)
+  if (isFamiliaPortal) {
+    if (currentInstitution && !isInstitutionModuleActive(currentInstitution, 'education')) {
+      window.location.replace(withInstitutionQuery('/', currentInstitution));
+      return null;
+    }
+    return (
+      <div className={darkMode ? 'dark' : ''}>
+        <PublicFamilyPortal darkMode={darkMode} currentInstitution={resolvedPublicInstitution} />
+      </div>
+    );
+  }
+
   // Página inicial padrão (link sem subdomínio gestao360sistema.com.br):
   // Exibe o Menu Principal Clean de Municípios Clientes com logos visíveis
   if (isLandingPage) {
@@ -1072,15 +1085,6 @@ export default function App() {
           </button>
         </div>
         <PublicServicosPortal darkMode={darkMode} currentInstitution={currentInstitution} />
-      </div>
-    );
-  }
-
-  if (isFamiliaPortal) {
-    if (!isInstitutionModuleActive(currentInstitution, 'education')) return redirectInactivePublicPortal();
-    return (
-      <div className={darkMode ? 'dark' : ''}>
-        <PublicFamilyPortal darkMode={darkMode} currentInstitution={currentInstitution} />
       </div>
     );
   }

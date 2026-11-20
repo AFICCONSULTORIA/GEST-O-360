@@ -2,9 +2,9 @@
   "major": 0,
   "minor": 0,
   "patch": 15,
-  "build": 19,
-  "version": "0.0.15.19",
+  "build": 22,
+  "version": "0.0.15.22",
   "buildDate": "20/11/2026",
-  "buildTime": "11:00",
+  "buildTime": "11:07",
   "notes": "Versionamento contínuo no formato 0.0.0.0 com rollover centesimal"
 }
