@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award, Bus, QrCode
+  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award, Bus, QrCode, BookOpen, ShieldAlert, Database
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
@@ -12,6 +12,9 @@ import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsMana
 import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 import { EducationCertificatesManager } from './components/EducationCertificatesManager';
 import { EducationTransportManager } from './components/TransporteEscolar/components/EducationTransportManager';
+import { EducationClassDiaryManager } from './components/EducationClassDiaryManager';
+import { EducationBuscaAtivaPanel } from './components/EducationBuscaAtivaPanel';
+import { EducationEducacensoExport } from './components/EducationEducacensoExport';
 
 interface EducationModuleProps {
   currentInstitution?: { id: string; name?: string; subdomain?: string } | null;
@@ -22,12 +25,17 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
   currentInstitution,
   currentUser
 }) => {
-  const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'transporte' | 'eleicao' | 'familia' | 'avisos'>('staff');
+  const [educationView, setEducationView] = useState<
+    'staff' | 'matriculas' | 'diario' | 'busca_ativa' | 'educacenso' | 'creche' | 'transporte' | 'eleicao' | 'familia' | 'avisos'
+  >('staff');
   const [isFamilyQrOpen, setIsFamilyQrOpen] = useState(false);
 
   const navigationTabs = [
     { id: 'staff', label: 'Professores & Equipe', icon: Users },
     { id: 'matriculas', label: 'Secretaria & Matrículas', icon: FileText },
+    { id: 'diario', label: 'Diário de Classe', icon: BookOpen },
+    { id: 'busca_ativa', label: 'Busca Ativa LDB', icon: ShieldAlert },
+    { id: 'educacenso', label: 'Educacenso INEP', icon: Database },
     { id: 'creche', label: 'Fila CMEI', icon: Baby },
     { id: 'transporte', label: 'Transporte Escolar', icon: Bus },
     { id: 'eleicao', label: 'Eleição Escolar & Diretores', icon: Vote },
@@ -103,6 +111,51 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
             transition={{ duration: 0.2 }}
           >
             <EducationEnrollmentManager />
+          </motion.div>
+        )}
+
+        {educationView === 'diario' && (
+          <motion.div
+            key="diario"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EducationClassDiaryManager
+              institutionId={currentInstitution?.id || 'inst_1'}
+              teacherName={currentUser?.name}
+            />
+          </motion.div>
+        )}
+
+        {educationView === 'busca_ativa' && (
+          <motion.div
+            key="busca_ativa"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EducationBuscaAtivaPanel
+              institutionId={currentInstitution?.id || 'inst_1'}
+              municipalityName={currentInstitution?.name}
+            />
+          </motion.div>
+        )}
+
+        {educationView === 'educacenso' && (
+          <motion.div
+            key="educacenso"
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.2 }}
+          >
+            <EducationEducacensoExport
+              institutionId={currentInstitution?.id || 'inst_1'}
+              municipalityName={currentInstitution?.name}
+            />
           </motion.div>
         )}
 

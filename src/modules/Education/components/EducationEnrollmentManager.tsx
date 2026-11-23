@@ -18,6 +18,7 @@ import {
 } from '../../../lib/api/education';
 import { BoletimEscolarPDF } from './BoletimEscolarPDF';
 import { DiarioOficialPDF } from './DiarioOficialPDF';
+import { SchoolDeclarationsModal } from './SchoolDeclarationsModal';
 
 export const EducationEnrollmentManager: React.FC = () => {
   const [enrollments, setEnrollments] = useState<EnrollmentRecord[]>([]);
@@ -33,6 +34,10 @@ export const EducationEnrollmentManager: React.FC = () => {
   // Modals for PDF Printing
   const [selectedReportCard, setSelectedReportCard] = useState<StudentReportCardData | null>(null);
   const [selectedAttendanceSheet, setSelectedAttendanceSheet] = useState<ClassAttendanceSheetData | null>(null);
+  const [declarationTarget, setDeclarationTarget] = useState<{
+    enrollment: EnrollmentRecord;
+    reportCard: StudentReportCardData | null;
+  } | null>(null);
   const [isLoadingReport, setIsLoadingReport] = useState(false);
 
   // Modal Promote from Creche
@@ -75,6 +80,21 @@ export const EducationEnrollmentManager: React.FC = () => {
     } catch (err) {
       console.error('Erro ao gerar dados do boletim:', err);
       showToast('Erro ao carregar boletim escolar.');
+    } finally {
+      setIsLoadingReport(false);
+    }
+  };
+
+  const handleOpenDeclaracoes = async (enrollment: EnrollmentRecord) => {
+    setIsLoadingReport(true);
+    try {
+      const data = await getStudentReportCardData(enrollment.student_id, enrollment.academic_year || 2026, {
+        name: enrollment.student_name,
+        className: enrollment.class_name
+      });
+      setDeclarationTarget({ enrollment, reportCard: data });
+    } catch {
+      setDeclarationTarget({ enrollment, reportCard: null });
     } finally {
       setIsLoadingReport(false);
     }
@@ -323,6 +343,13 @@ export const EducationEnrollmentManager: React.FC = () => {
                               <span>Boletim Oficial</span>
                             </button>
                             <button
+                              onClick={() => handleOpenDeclaracoes(student)}
+                              className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <FileSpreadsheet size={14} />
+                              <span>Declarações</span>
+                            </button>
+                            <button
                               onClick={() => handleOpenDiarioTurma(student.class_name)}
                               className="px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
                             >
@@ -487,6 +514,15 @@ export const EducationEnrollmentManager: React.FC = () => {
         <DiarioOficialPDF
           sheetData={selectedAttendanceSheet}
           onClose={() => setSelectedAttendanceSheet(null)}
+        />
+      )}
+
+      {/* Modal: Declarações Escolares em 1 Clique (Matrícula, Bolsa Família, Transferência, Histórico) */}
+      {declarationTarget && (
+        <SchoolDeclarationsModal
+          enrollment={declarationTarget.enrollment}
+          reportCard={declarationTarget.reportCard}
+          onClose={() => setDeclarationTarget(null)}
         />
       )}
 
