@@ -13,7 +13,8 @@ import {
   SchoolElectionStats, 
   VoteTally, 
   VoterSegment,
-  YesNoChoice
+  YesNoChoice,
+  VoterRegistryEntry
 } from '../types/voting';
 import { maskCPF } from '../../../lib/masks';
 import { supabase } from '../../../lib/supabase';
@@ -47,6 +48,7 @@ const STORAGE_KEYS = {
   ELECTIONS: 'gestao360_voting_elections',
   CANDIDATES: 'gestao360_voting_candidates',
   VOTES: 'gestao360_voting_votes',
+  VOTERS: 'gestao360_voting_voters',
   LAST_SYNC: 'gestao360_voting_last_sync'
 };
 
@@ -54,7 +56,8 @@ const DB_TABLES = {
   SCHOOLS: 'edu_voting_schools',
   ELECTIONS: 'edu_voting_elections',
   CANDIDATES: 'edu_voting_candidates',
-  VOTES: 'edu_voting_votes'
+  VOTES: 'edu_voting_votes',
+  VOTERS: 'edu_voting_voters'
 };
 
 // Conversões de BD (snake_case) para Modelo (camelCase)
@@ -711,14 +714,158 @@ export class VotingService {
     return { voted: false };
   }
 
+  // ==========================================
+  // --- BASE DE ELEITORES / PLANILHA (CPF -> NOME) ---
+  // ==========================================
+
+  static getVotersRegistry(): VoterRegistryEntry[] {
+    const raw = VotingStorage.getItem(STORAGE_KEYS.VOTERS);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static async syncVotersRegistryFromSupabase(): Promise<VoterRegistryEntry[]> {
+    try {
+      const { data, error } = await supabase
+        .from(DB_TABLES.VOTERS)
+        .select('*')
+        .order('full_name', { ascending: true })
+        .limit(5000);
+      if (!error && Array.isArray(data)) {
+        const mapped: VoterRegistryEntry[] = data.map((r: any) => ({
+          id: r.id,
+          cpfClean: r.cpf_clean,
+          fullName: r.full_name,
+          roleLabel: r.role_label || 'Funcionário / Eleitor',
+          schoolId: r.school_id || undefined,
+          createdAt: r.created_at
+        }));
+        VotingStorage.setItem(STORAGE_KEYS.VOTERS, JSON.stringify(mapped));
+        return mapped;
+      }
+    } catch {
+      // ignore if table not migrated yet
+    }
+    return this.getVotersRegistry();
+  }
+
+  static async importVotersRegistry(
+    entries: Array<{ cpf: string; fullName: string; roleLabel?: string; schoolId?: string }>
+  ): Promise<{ imported: number; cloudSynced: boolean }> {
+    const current = this.getVotersRegistry();
+    const map = new Map<string, VoterRegistryEntry>();
+    current.forEach((v) => map.set(v.cpfClean, v));
+
+    const upserts: Array<{
+      id: string;
+      cpf_clean: string;
+      full_name: string;
+      role_label: string;
+      school_id: string | null;
+      updated_at: string;
+    }> = [];
+
+    let imported = 0;
+    const nowIso = new Date().toISOString();
+
+    for (const item of entries) {
+      const cpfClean = String(item.cpf || '').replace(/\D/g, '').padStart(11, '0').slice(-11);
+      const fullName = String(item.fullName || '').trim();
+      if (cpfClean.length !== 11 || fullName.length < 3) continue;
+
+      const existing = map.get(cpfClean);
+      const id = existing?.id || `voter-${cpfClean}`;
+      const roleLabel = (item.roleLabel || existing?.roleLabel || 'Funcionário / Eleitor').trim();
+      const entry: VoterRegistryEntry = {
+        id,
+        cpfClean,
+        fullName,
+        roleLabel,
+        schoolId: item.schoolId || existing?.schoolId,
+        createdAt: existing?.createdAt || nowIso
+      };
+      map.set(cpfClean, entry);
+      upserts.push({
+        id,
+        cpf_clean: cpfClean,
+        full_name: fullName,
+        role_label: roleLabel,
+        school_id: entry.schoolId || null,
+        updated_at: nowIso
+      });
+      imported += 1;
+    }
+
+    const merged = Array.from(map.values()).sort((a, b) => a.fullName.localeCompare(b.fullName, 'pt-BR'));
+    VotingStorage.setItem(STORAGE_KEYS.VOTERS, JSON.stringify(merged));
+
+    let cloudSynced = false;
+    if (upserts.length > 0) {
+      try {
+        const { error } = await supabase
+          .from(DB_TABLES.VOTERS)
+          .upsert(upserts, { onConflict: 'cpf_clean' });
+        cloudSynced = !error;
+      } catch {
+        cloudSynced = false;
+      }
+    }
+
+    return { imported, cloudSynced };
+  }
+
+  static async deleteVoterFromRegistry(id: string): Promise<void> {
+    const next = this.getVotersRegistry().filter((v) => v.id !== id);
+    VotingStorage.setItem(STORAGE_KEYS.VOTERS, JSON.stringify(next));
+    try {
+      await supabase.from(DB_TABLES.VOTERS).delete().eq('id', id);
+    } catch {
+      // ignore
+    }
+  }
+
+  static async clearVotersRegistry(): Promise<void> {
+    VotingStorage.setItem(STORAGE_KEYS.VOTERS, JSON.stringify([]));
+    try {
+      await supabase.from(DB_TABLES.VOTERS).delete().neq('id', '___safe___');
+    } catch {
+      // ignore
+    }
+  }
+
   /**
-   * Consulta nome completo do eleitor por CPF na base municipal (Supabase)
-   * ou em API externa conveniada (se VITE_CPF_LOOKUP_URL estiver configurada).
-   * Nota: A Receita Federal não possui API pública gratuita sem convênio Serpro.
+   * Consulta nome completo do eleitor por CPF:
+   * 1) Planilha / Base de Eleitores importada (local + RPC Supabase)
+   * 2) API externa conveniada (VITE_CPF_LOOKUP_URL), se configurada
+   * 3) Demais bases municipais no Supabase (alunos, creche, servidores, votos)
    */
   static async lookupVoterNameByCpf(cpf: string): Promise<{ name: string; source: string } | null> {
     const cleanCpf = cpf.replace(/\D/g, '');
     if (cleanCpf.length !== 11) return null;
+
+    // 1A. Cache local da planilha importada
+    const localMatch = this.getVotersRegistry().find((v) => v.cpfClean === cleanCpf);
+    if (localMatch?.fullName) {
+      return { name: localMatch.fullName, source: localMatch.roleLabel || 'Lista da Escola' };
+    }
+
+    // 1B. RPC segura na nuvem (para celulares/tablets em campo)
+    try {
+      const { data, error } = await supabase.rpc('lookup_voting_voter_by_cpf', { p_cpf: cleanCpf });
+      if (!error && Array.isArray(data) && data.length > 0 && data[0]?.full_name) {
+        return {
+          name: String(data[0].full_name).trim(),
+          source: String(data[0].role_label || 'Lista Oficial da Escola')
+        };
+      }
+    } catch {
+      // ignore
+    }
 
     // 1. Opcional: API externa conveniada (ex: Edge Function / Serpro)
     const customEndpoint = (import.meta as any).env?.VITE_CPF_LOOKUP_URL;

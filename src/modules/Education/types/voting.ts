@@ -107,3 +107,12 @@ export interface SchoolElectionStats {
   coordinatorTallies?: VoteTally[];
   segmentDistribution: Record<VoterSegment, number>;
 }
+
+export interface VoterRegistryEntry {
+  id: string;
+  cpfClean: string;
+  fullName: string;
+  roleLabel?: string;
+  schoolId?: string;
+  createdAt?: string;
+}

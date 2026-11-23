@@ -32,11 +32,13 @@ import {
   Database,
   RefreshCw,
   Download,
-  UploadCloud
+  UploadCloud,
+  FileSpreadsheet
 } from 'lucide-react';
 import { VotingService } from '../services/votingService';
 import { SchoolUnit, Candidate, CandidateRole, CANDIDATE_ROLE_LABELS, Election, VoteRecord, SchoolElectionStats, VoterSegment, VOTER_SEGMENT_LABELS } from '../types/voting';
 import { optimizeAvatarImage } from './EducationAvatar';
+import { VotingVotersRegistryTab } from './VotingVotersRegistryTab';
 import { showToast } from '../../../components/ui/Toast';
 
 export const EducationVotingAdmin: React.FC = () => {
@@ -50,8 +52,8 @@ export const EducationVotingAdmin: React.FC = () => {
   const [stats, setStats] = useState<SchoolElectionStats | null>(null);
 
   // Sub-abas do painel
-  // 'apuracao' | 'candidatos' | 'escolas' | 'auditoria' | 'config'
-  const [activeTab, setActiveTab] = useState<'apuracao' | 'candidatos' | 'escolas' | 'auditoria' | 'config'>('apuracao');
+  // 'apuracao' | 'candidatos' | 'escolas' | 'eleitores' | 'auditoria' | 'config'
+  const [activeTab, setActiveTab] = useState<'apuracao' | 'candidatos' | 'escolas' | 'eleitores' | 'auditoria' | 'config'>('apuracao');
 
   // Filtro na auditoria
   const [searchAudit, setSearchAudit] = useState('');
@@ -734,6 +736,7 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
               { id: 'apuracao', label: 'Apuração dos Votos', icon: BarChart3 },
               { id: 'candidatos', label: 'Candidatos & Chapas', icon: Users },
               { id: 'escolas', label: 'Escolas & Urnas', icon: School },
+              { id: 'eleitores', label: 'Planilha de Eleitores', icon: FileSpreadsheet },
               { id: 'auditoria', label: 'Auditoria (CPFs)', icon: ShieldCheck },
               { id: 'config', label: 'Configuração da Urna', icon: Lock },
             ].map(tab => (
@@ -1405,6 +1408,11 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
           </div>
         </div>
       )}
+
+      {/* ========================================================== */}
+      {/* ABA: PLANILHA DE FUNCIONÁRIOS & ELEITORES (AUTO-CPF)       */}
+      {/* ========================================================== */}
+      {activeTab === 'eleitores' && <VotingVotersRegistryTab />}
 
       {/* ========================================================== */}
       {/* ABA 3: AUDITORIA DE VOTOS (CPFs E RECIBOS) */}
