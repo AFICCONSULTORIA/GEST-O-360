@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award, Bus
+  GraduationCap, Baby, Users, FileText, HeartHandshake, Bell, Vote, Award, Bus, QrCode
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationEnrollmentManager } from './components/EducationEnrollmentManager';
 import { FamilyPortalView } from './components/FamilyPortalView';
+import { FamilyAppQrModal } from './components/FamilyAppQrModal';
 import { SchoolAnnouncementsManager } from './components/SchoolAnnouncementsManager';
 import { EducationVotingAdmin } from './components/EducationVotingAdmin';
 import { EducationCertificatesManager } from './components/EducationCertificatesManager';
@@ -22,6 +23,7 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
   currentUser
 }) => {
   const [educationView, setEducationView] = useState<'staff' | 'matriculas' | 'creche' | 'transporte' | 'eleicao' | 'familia' | 'avisos'>('staff');
+  const [isFamilyQrOpen, setIsFamilyQrOpen] = useState(false);
 
   const navigationTabs = [
     { id: 'staff', label: 'Professores & Equipe', icon: Users },
@@ -49,6 +51,14 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
               <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-1">
                 Gestão Integrada de Educadores, Escolas, Rede de Ensino e Controle Social.
               </p>
+              <button
+                type="button"
+                onClick={() => setIsFamilyQrOpen(true)}
+                className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/50 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+              >
+                <QrCode size={14} />
+                <span>QR Code App dos Pais (/familia)</span>
+              </button>
             </div>
           </div>
 
@@ -143,7 +153,9 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.2 }}
           >
-            <FamilyPortalView />
+            <FamilyPortalView
+              institutionId={currentInstitution?.id || 'inst_1'}
+            />
           </motion.div>
         )}
 
@@ -159,6 +171,12 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <FamilyAppQrModal
+        isOpen={isFamilyQrOpen}
+        onClose={() => setIsFamilyQrOpen(false)}
+        institutionName={currentInstitution?.name || 'Rede Municipal de Ensino'}
+      />
     </div>
   );
 };

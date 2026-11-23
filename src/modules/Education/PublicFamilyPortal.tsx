@@ -14,7 +14,7 @@ import {
   X
 } from 'lucide-react';
 import { Institution } from '../../types';
-import { supabase, supabaseAnon } from '../../lib/supabase';
+import { authenticateFamilyStudentByCpfBirth } from '../../lib/api/education';
 import { formatCPF, validateCPF } from '../../lib/masks';
 import { FamilyPortalView, FamilyPortalStudentContext } from './components/FamilyPortalView';
 import { showToast } from '../../components/ui/Toast';
@@ -267,74 +267,26 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
     setLoadingLogin(true);
     try {
       const targetBirth = normalizeDateIso(birthDateInput);
-      let matchedStudent: FamilyPortalStudentContext | null = null;
+      const authResult = await authenticateFamilyStudentByCpfBirth(
+        currentInstitution?.id || 'inst_1',
+        cpfDigits,
+        targetBirth
+      );
 
-      // 1. Busca nas tabelas de alunos no Supabase (education_students e edu_students)
-      const tablesToCheck = ['education_students', 'edu_students'];
-      for (const table of tablesToCheck) {
-        if (matchedStudent) break;
-        try {
-          let { data, error } = await supabase.from(table).select('*').limit(500);
-          if (error) {
-            const retry = await supabaseAnon.from(table).select('*').limit(500);
-            data = retry.data;
-            error = retry.error;
-          }
-          if (!error && Array.isArray(data)) {
-            const found = data.find((row: any) => {
-              const rowCpf = onlyDigits(row.cpf || row.student_cpf || row.document);
-              if (!rowCpf || rowCpf !== cpfDigits) return false;
-              const rowBirth = normalizeDateIso(row.birth_date || row.data_nascimento);
-              return !rowBirth || rowBirth === targetBirth;
-            });
-            if (found) {
-              matchedStudent = {
-                id: String(found.id),
-                name: String(found.name || found.student_name || 'Aluno'),
-                className: found.class_name || found.className || undefined,
-                avatar: found.avatar_url || found.avatar || undefined,
-              };
-            }
-          }
-        } catch {
-          // tenta próxima tabela
-        }
-      }
-
-      // 2. Fallback no cadastro local (gestao360_students)
-      if (!matchedStudent) {
-        try {
-          const raw = localStorage.getItem('gestao360_students');
-          if (raw) {
-            const localList = JSON.parse(raw);
-            if (Array.isArray(localList)) {
-              const found = localList.find((s: any) => {
-                const rowCpf = onlyDigits(s.cpf || s.student_cpf || s.document);
-                if (!rowCpf || rowCpf !== cpfDigits) return false;
-                const rowBirth = normalizeDateIso(s.birth_date || s.birthDate || s.data_nascimento);
-                return !rowBirth || rowBirth === targetBirth;
-              });
-              if (found) {
-                matchedStudent = {
-                  id: String(found.id),
-                  name: String(found.name || 'Aluno'),
-                  className: found.className || found.class_name || undefined,
-                  avatar: found.avatar || undefined,
-                };
-              }
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }
-
-      if (!matchedStudent) {
+      if (!authResult.found || !authResult.student) {
         setLoginError(
-          'Aluno não encontrado. Confira o CPF e a data de nascimento ou procure a secretaria da escola.'
+          authResult.error ||
+            'Aluno não encontrado. Confira o CPF e a data de nascimento ou procure a secretaria da escola.'
         );
         return;
       }
+
+      const matchedStudent: FamilyPortalStudentContext = {
+        id: authResult.student.id,
+        name: authResult.student.name,
+        className: authResult.student.className,
+        avatar: authResult.student.avatar
+      };
 
       openStudentSession(matchedStudent);
       showToast(`Bem-vindo(a)! Acompanhando ${matchedStudent.name}.`, 'success');
@@ -407,6 +359,7 @@ export const PublicFamilyPortal: React.FC<PublicFamilyPortalProps> = ({
             mode="student"
             initialStudentId={selectedStudent.id}
             studentProfile={selectedStudent}
+            institutionId={currentInstitution?.id || 'inst_1'}
           />
         </main>
         {renderInstallModal()}

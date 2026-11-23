@@ -1,14 +1,15 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "0.0.15.39",
+  "version": "0.0.15.64",
   "type": "module",
   "scripts": {
     "dev": "node scripts/bump-version.js && vite",
     "bump": "node scripts/bump-version.js",
     "build": "node scripts/bump-version.js && tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
@@ -46,6 +47,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^5.1.1"
   }
 }

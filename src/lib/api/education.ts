@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase, supabaseAnon } from '../supabase';
 
 export interface StudentData {
   id: string;
@@ -2306,7 +2306,8 @@ export interface ClassAttendanceSheetData {
 export async function getEnrollments(filters?: { 
   class_name?: string; 
   status?: string; 
-  academic_year?: number 
+  academic_year?: number;
+  institutionId?: string;
 }): Promise<EnrollmentRecord[]> {
   try {
     let query = supabase
@@ -2315,6 +2316,9 @@ export async function getEnrollments(filters?: {
       .order('class_name', { ascending: true })
       .order('student_name', { ascending: true });
 
+    if (filters?.institutionId) {
+      query = query.eq('institution_id', filters.institutionId);
+    }
     if (filters?.class_name && filters.class_name !== 'Todas') {
       query = query.eq('class_name', filters.class_name);
     }
@@ -2846,11 +2850,10 @@ export async function getStudentReportCardData(
 
   const overallAvg = Number((subjectsReport.reduce((acc, s) => acc + s.finalAverage, 0) / subjectsReport.length).toFixed(1));
   const totalSchoolDays = 200; // Padrão letivo legal LDB (mínimo 200 dias letivos)
-  const effectiveAbsences = totalAbsencesCount > 0 ? totalAbsencesCount : 4;
-  const attendancePct = Number((((totalSchoolDays - effectiveAbsences) / totalSchoolDays) * 100).toFixed(1));
-
-  const isInfantil = /infantil|creche|cmei|maternal|berçário|pré|pre/i.test(enrollment.class_name || '');
-  const minLegalAttendance = isInfantil ? 60 : 75;
+  const effectiveAbsences = totalAbsencesCount > 0 ? totalAbsencesCount : 0;
+  const ldbSummary = calculateLdbAttendanceSummary(totalSchoolDays, effectiveAbsences, enrollment.class_name);
+  const attendancePct = ldbSummary.attendanceRate;
+  const minLegalAttendance = ldbSummary.minLegalAttendance;
 
   let qualitativeFinalStatus = 'Percurso Consolidado';
   if (attendancePct < minLegalAttendance) {
@@ -3012,13 +3015,18 @@ export async function saveStudentGrades(
  */
 export async function getFamilyAnnouncements(
   studentId?: string, 
-  className?: string
+  className?: string,
+  institutionId?: string
 ): Promise<AnnouncementRecord[]> {
   try {
     let query = supabase
       .from('education_announcements')
       .select('*')
       .order('publish_date', { ascending: false });
+
+    if (institutionId) {
+      query = query.eq('institution_id', institutionId);
+    }
 
     const { data, error } = await query;
     if (!error && data && data.length > 0) {
@@ -3538,6 +3546,184 @@ export async function getStudentProficiencyReportCard(
     opinions: baseCard.opinions || []
   };
 }
+
+// ============================================================================
+// FUNÇÕES LGPD, MULTI-TENANT E REGRAS CRÍTICAS LDB (PORTAL DA FAMÍLIA)
+// ============================================================================
+
+export interface LdbAttendanceSummary {
+  totalSchoolDays: number;
+  absences: number;
+  attendanceRate: number;
+  isInfantil: boolean;
+  minLegalAttendance: 60 | 75;
+  isCompliant: boolean;
+}
+
+/**
+ * Calcula a taxa de frequência escolar conforme LDB (Art. 24 e Art. 31):
+ * - Educação Infantil (Creche/Pré-escola): mínimo 60%
+ * - Ensino Fundamental e Médio: mínimo 75%
+ */
+export function calculateLdbAttendanceSummary(
+  totalSchoolDays: number,
+  absencesCount: number,
+  className?: string | null
+): LdbAttendanceSummary {
+  const safeDays = Math.max(1, Math.floor(totalSchoolDays || 200));
+  const safeAbsences = Math.max(0, Math.min(safeDays, Math.floor(absencesCount || 0)));
+  const attendanceRate = Number((((safeDays - safeAbsences) / safeDays) * 100).toFixed(1));
+  const isInfantil = /infantil|creche|cmei|maternal|ber[cç][aá]rio|pr[eé]/i.test(String(className || ''));
+  const minLegalAttendance: 60 | 75 = isInfantil ? 60 : 75;
+  return {
+    totalSchoolDays: safeDays,
+    absences: safeAbsences,
+    attendanceRate,
+    isInfantil,
+    minLegalAttendance,
+    isCompliant: attendanceRate >= minLegalAttendance
+  };
+}
+
+export interface FamilyAuthResult {
+  found: boolean;
+  student?: {
+    id: string;
+    name: string;
+    className?: string;
+    avatar?: string;
+    institutionId?: string;
+  };
+  error?: string;
+}
+
+/**
+ * Autentica o aluno no Portal da Família via RPC SECURITY DEFINER no servidor,
+ * evitando leitura anônima irrestrita das tabelas de alunos (LGPD Art. 14).
+ */
+export async function authenticateFamilyStudentByCpfBirth(
+  institutionId: string,
+  cpf: string,
+  birthDateIso: string
+): Promise<FamilyAuthResult> {
+  const cleanCpf = String(cpf || '').replace(/\D/g, '');
+  if (cleanCpf.length !== 11 || !birthDateIso) {
+    return {
+      found: false,
+      error: 'Informe um CPF válido do aluno (11 dígitos) e a data de nascimento.'
+    };
+  }
+
+  const inst = institutionId || 'inst_1';
+  let { data, error } = await supabaseAnon.rpc('get_family_student_by_cpf_birth', {
+    p_institution_id: inst,
+    p_cpf: cleanCpf,
+    p_birth_date: birthDateIso
+  });
+
+  if (error) {
+    const retry = await supabase.rpc('get_family_student_by_cpf_birth', {
+      p_institution_id: inst,
+      p_cpf: cleanCpf,
+      p_birth_date: birthDateIso
+    });
+    data = retry.data;
+    error = retry.error;
+  }
+
+  if (error) {
+    console.warn('Erro ao autenticar aluno via RPC get_family_student_by_cpf_birth:', error);
+    return {
+      found: false,
+      error: 'Não foi possível validar os dados no servidor no momento. Tente novamente em instantes.'
+    };
+  }
+
+  if (data && data.found && data.student) {
+    return {
+      found: true,
+      student: {
+        id: String(data.student.id),
+        name: String(data.student.name || 'Aluno'),
+        className: data.student.className || undefined,
+        avatar: data.student.avatar || undefined,
+        institutionId: data.student.institutionId || inst
+      }
+    };
+  }
+
+  return {
+    found: false,
+    error: data?.error || 'Aluno não encontrado. Confira o CPF e a data de nascimento ou procure a secretaria da escola.'
+  };
+}
+
+/**
+ * Busca confirmações "Ciente" de comunicados persistidas no Supabase.
+ */
+export async function getFamilyAnnouncementAcks(
+  studentId: string,
+  institutionId: string = 'inst_1'
+): Promise<string[]> {
+  if (!studentId || !isValidUUID(studentId)) return [];
+  try {
+    let { data, error } = await supabaseAnon.rpc('get_family_announcement_acks', {
+      p_institution_id: institutionId || 'inst_1',
+      p_student_id: studentId
+    });
+    if (error) {
+      const retry = await supabase.rpc('get_family_announcement_acks', {
+        p_institution_id: institutionId || 'inst_1',
+        p_student_id: studentId
+      });
+      data = retry.data;
+      error = retry.error;
+    }
+    if (!error && Array.isArray(data)) {
+      return data.map(String);
+    }
+  } catch (err) {
+    console.warn('Erro ao carregar confirmações de comunicados no Supabase:', err);
+  }
+  return [];
+}
+
+/**
+ * Persiste ou remove confirmação "Ciente" de um comunicado no Supabase.
+ */
+export async function acknowledgeFamilyAnnouncement(
+  announcementId: string,
+  studentId: string,
+  acknowledged: boolean = true,
+  institutionId: string = 'inst_1'
+): Promise<boolean> {
+  if (!announcementId || !studentId || !isValidUUID(announcementId) || !isValidUUID(studentId)) {
+    return false;
+  }
+  try {
+    let { data, error } = await supabaseAnon.rpc('acknowledge_family_announcement', {
+      p_institution_id: institutionId || 'inst_1',
+      p_announcement_id: announcementId,
+      p_student_id: studentId,
+      p_acknowledged: acknowledged
+    });
+    if (error) {
+      const retry = await supabase.rpc('acknowledge_family_announcement', {
+        p_institution_id: institutionId || 'inst_1',
+        p_announcement_id: announcementId,
+        p_student_id: studentId,
+        p_acknowledged: acknowledged
+      });
+      data = retry.data;
+      error = retry.error;
+    }
+    return !error && Boolean(data?.success ?? true);
+  } catch (err) {
+    console.warn('Erro ao persistir confirmação Ciente no Supabase:', err);
+    return false;
+  }
+}
+
 
 
 

@@ -153,6 +153,24 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return;
+            if (id.includes('exceljs') || id.includes('xlsx')) return 'vendor-excel';
+            if (id.includes('pdfjs-dist')) return 'vendor-pdfjs';
+            if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('pdf-lib')) return 'vendor-pdf-gen';
+            if (id.includes('recharts')) return 'vendor-charts';
+            if (id.includes('@rive-app')) return 'vendor-rive';
+            if (id.includes('@google/genai')) return 'vendor-genai';
+            if (id.includes('@supabase')) return 'vendor-supabase';
+            if (id.includes('motion') || id.includes('framer-motion')) return 'vendor-motion';
+            if (id.includes('lucide-react')) return 'vendor-icons';
+          }
+        }
+      }
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

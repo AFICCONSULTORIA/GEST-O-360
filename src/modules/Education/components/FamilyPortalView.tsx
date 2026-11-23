@@ -22,7 +22,8 @@ import {
   Zap,
   Compass,
   Check,
-  LayoutDashboard
+  LayoutDashboard,
+  QrCode
 } from 'lucide-react';
 import {
   AnnouncementRecord,
@@ -31,9 +32,12 @@ import {
   getFamilyAnnouncements,
   getStudentReportCardData,
   getEnrollments,
-  EnrollmentRecord
+  EnrollmentRecord,
+  getFamilyAnnouncementAcks,
+  acknowledgeFamilyAnnouncement
 } from '../../../lib/api/education';
 import { BoletimEscolarPDF } from './BoletimEscolarPDF';
+import { FamilyAppQrModal } from './FamilyAppQrModal';
 import { SubjectIcon } from './SubjectIcon';
 import { EducationAvatar } from './EducationAvatar';
 
@@ -59,6 +63,7 @@ interface FamilyPortalViewProps {
   initialStudentId?: string;
   /** 'student' trava estritamente nos dados do aluno logado (LGPD); 'admin' permite seleção pela Secretaria */
   mode?: 'student' | 'admin';
+  institutionId?: string;
   studentProfile?: FamilyPortalStudentContext;
   completedActivitiesStats?: FamilyDigitalProgressStats;
   onOpenTeacherChat?: () => void;
@@ -176,6 +181,7 @@ const SUBJECT_VISUAL_META: Record<string, { icon: string; bgIcon: string; textIc
 export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
   initialStudentId = '00000000-0000-0000-0000-000000000001',
   mode = 'admin',
+  institutionId = 'inst_1',
   studentProfile,
   completedActivitiesStats,
   onOpenTeacherChat
@@ -188,6 +194,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
   const [announcements, setAnnouncements] = useState<AnnouncementRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isBoletimModalOpen, setIsBoletimModalOpen] = useState(false);
+  const [isFamilyQrModalOpen, setIsFamilyQrModalOpen] = useState(false);
 
   // Interações didáticas
   const [showScaleGuide, setShowScaleGuide] = useState(false);
@@ -206,28 +213,50 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
     }
   }, [mode, studentProfile?.id, initialStudentId, selectedStudentId]);
 
-  // Carrega avisos confirmados ("Ciente") do localStorage
+  // Carrega avisos confirmados ("Ciente") do Supabase (com cache local apenas como espelho offline)
   useEffect(() => {
+    let active = true;
     const key = `edu_family_ack_${selectedStudentId}`;
-    try {
-      const saved = localStorage.getItem(key);
-      setAcknowledgedIds(saved ? JSON.parse(saved) : []);
-    } catch {
-      setAcknowledgedIds([]);
+
+    async function loadAcks() {
+      const remoteAcks = await getFamilyAnnouncementAcks(selectedStudentId, institutionId);
+      if (!active) return;
+      if (remoteAcks.length > 0) {
+        setAcknowledgedIds(remoteAcks);
+        try {
+          localStorage.setItem(key, JSON.stringify(remoteAcks));
+        } catch {}
+        return;
+      }
+      try {
+        const saved = localStorage.getItem(key);
+        setAcknowledgedIds(saved ? JSON.parse(saved) : []);
+      } catch {
+        setAcknowledgedIds([]);
+      }
     }
-  }, [selectedStudentId]);
+
+    loadAcks();
+    return () => {
+      active = false;
+    };
+  }, [selectedStudentId, institutionId]);
 
   const toggleAcknowledge = (announcementId: string) => {
     const key = `edu_family_ack_${selectedStudentId}`;
+    const willAck = !acknowledgedIds.includes(announcementId);
+
     setAcknowledgedIds((prev) => {
-      const next = prev.includes(announcementId)
-        ? prev.filter((id) => id !== announcementId)
-        : [...prev, announcementId];
+      const next = willAck
+        ? [...prev, announcementId]
+        : prev.filter((id) => id !== announcementId);
       try {
         localStorage.setItem(key, JSON.stringify(next));
       } catch {}
       return next;
     });
+
+    void acknowledgeFamilyAnnouncement(announcementId, selectedStudentId, willAck, institutionId);
   };
 
   useEffect(() => {
@@ -237,7 +266,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
       setIsLoading(true);
       try {
         if (mode === 'admin') {
-          const enrollments = await getEnrollments();
+          const enrollments = await getEnrollments({ institutionId });
           if (isMounted) setStudentsList(enrollments);
 
           const currentStudent =
@@ -247,7 +276,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
 
           const [cardData, annData] = await Promise.all([
             getStudentReportCardData(studentIdToUse, 2026),
-            getFamilyAnnouncements(studentIdToUse, currentStudent?.class_name)
+            getFamilyAnnouncements(studentIdToUse, currentStudent?.class_name, institutionId)
           ]);
 
           if (isMounted) {
@@ -267,7 +296,8 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
           const cardData = await getStudentReportCardData(studentIdToUse, 2026, hint);
           const annData = await getFamilyAnnouncements(
             studentIdToUse,
-            cardData.enrollment.class_name || studentProfile?.className
+            cardData.enrollment.class_name || studentProfile?.className,
+            institutionId
           );
 
           if (isMounted) {
@@ -447,6 +477,18 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
                   ))}
                 </select>
               </div>
+            )}
+
+            {mode === 'admin' && (
+              <button
+                type="button"
+                onClick={() => setIsFamilyQrModalOpen(true)}
+                className="min-h-[44px] px-4 py-3 bg-white/15 hover:bg-white/25 text-white border border-white/30 font-black text-xs uppercase tracking-wider rounded-2xl backdrop-blur-md transition-all flex items-center justify-center gap-2 cursor-pointer shrink-0"
+                title="Gerar QR Code e cartaz para os pais baixarem o aplicativo"
+              >
+                <QrCode size={16} />
+                <span>QR Code App (Pais)</span>
+              </button>
             )}
 
             {reportCard && (
@@ -1097,6 +1139,13 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
           onClose={() => setIsBoletimModalOpen(false)}
         />
       )}
+
+      {/* Modal: QR Code para os pais baixarem o App Família & Escola */}
+      <FamilyAppQrModal
+        isOpen={isFamilyQrModalOpen}
+        onClose={() => setIsFamilyQrModalOpen(false)}
+        institutionName={reportCard?.enrollment?.school_name || 'Rede Municipal de Ensino'}
+      />
     </div>
   );
 };
