@@ -35,7 +35,7 @@ import {
   UploadCloud
 } from 'lucide-react';
 import { VotingService } from '../services/votingService';
-import { SchoolUnit, Candidate, Election, VoteRecord, SchoolElectionStats, VoterSegment, VOTER_SEGMENT_LABELS } from '../types/voting';
+import { SchoolUnit, Candidate, CandidateRole, CANDIDATE_ROLE_LABELS, Election, VoteRecord, SchoolElectionStats, VoterSegment, VOTER_SEGMENT_LABELS } from '../types/voting';
 import { optimizeAvatarImage } from './EducationAvatar';
 import { showToast } from '../../../components/ui/Toast';
 
@@ -82,6 +82,7 @@ export const EducationVotingAdmin: React.FC = () => {
   const [isCandidateModalOpen, setIsCandidateModalOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<Candidate | null>(null);
   const [candidateFormData, setCandidateFormData] = useState({
+    role: 'diretor' as CandidateRole,
     name: '',
     viceName: '',
     number: '',
@@ -350,6 +351,7 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
       '';
 
     setCandidateFormData({
+      role: 'diretor',
       name: '',
       viceName: '',
       number: '',
@@ -364,6 +366,7 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
   const handleOpenEditCandidateModal = (cand: Candidate) => {
     setEditingCandidate(cand);
     setCandidateFormData({
+      role: cand.role || 'diretor',
       name: cand.name,
       viceName: cand.viceName || '',
       number: cand.number,
@@ -414,6 +417,7 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
         id: editingCandidate ? editingCandidate.id : 'cand-' + Date.now(),
         electionId: activeElection?.id || 'eleicao-2027-2029',
         schoolId: candidateFormData.schoolId,
+        role: candidateFormData.role || 'diretor',
         name: candidateFormData.name.trim(),
         viceName: candidateFormData.viceName?.trim() || undefined,
         number: candidateFormData.number.trim(),
@@ -876,25 +880,39 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
                         />
 
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-black text-sm text-neutral-900 dark:text-white">
                               {cand.candidateName}
                             </span>
-                            <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-[10px] font-black font-mono">
-                              Chapa {cand.candidateNumber}
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                              cand.role === 'coordenador'
+                                ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
+                                : 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
+                            }`}>
+                              {cand.role === 'coordenador' ? 'Coordenador(a)' : 'Diretor(a)'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-[10px] font-black font-mono">
+                              Nº {cand.candidateNumber}
                             </span>
                           </div>
                           {cand.viceName && (
                             <p className="text-[11px] text-neutral-500 dark:text-neutral-400">Vice: {cand.viceName}</p>
+                          )}
+                          {((cand.yesVotes ?? 0) > 0 || (cand.noVotes ?? 0) > 0) && (
+                            <div className="flex items-center gap-2 mt-1 text-[11px] font-black">
+                              <span className="text-emerald-600 dark:text-emerald-400">SIM: {cand.yesVotes ?? 0}</span>
+                              <span className="text-neutral-300">•</span>
+                              <span className="text-rose-600 dark:text-rose-400">NÃO: {cand.noVotes ?? 0}</span>
+                            </div>
                           )}
                         </div>
                       </div>
 
                       <div className="text-right">
                         <span className="text-xl font-black text-neutral-900 dark:text-white font-mono">
-                          {cand.votes} {cand.votes === 1 ? 'voto' : 'votos'}
+                          {cand.votes} {cand.votes === 1 ? 'SIM' : 'SIM'}
                         </span>
-                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{cand.percentage}% dos válidos</p>
+                        <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{cand.percentage}% aprovação</p>
                       </div>
                     </div>
 
@@ -1423,7 +1441,8 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
                   <th className="py-3 px-4">Data e Hora</th>
                   <th className="py-3 px-4">CPF (Mascarado)</th>
                   <th className="py-3 px-4">Nome do Eleitor</th>
-                  <th className="py-3 px-4">Segmento</th>
+                  <th className="py-3 px-4 text-center">Diretor(a)</th>
+                  <th className="py-3 px-4 text-center">Coordenador(a)</th>
                   <th className="py-3 px-4">Código de Autenticação</th>
                   <th className="py-3 px-4 text-center">Status</th>
                 </tr>
@@ -1431,35 +1450,67 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
                 {filteredVotes.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-neutral-400">
+                    <td colSpan={7} className="py-8 text-center text-neutral-400">
                       Nenhum registro de voto encontrado.
                     </td>
                   </tr>
                 ) : (
-                  filteredVotes.map(v => (
-                    <tr key={v.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30">
-                      <td className="py-3 px-4 font-mono font-medium text-neutral-600 dark:text-neutral-300">
-                        {new Date(v.timestamp).toLocaleString('pt-BR')}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-black text-neutral-900 dark:text-white">
-                        {v.voterCpfMasked}
-                      </td>
-                      <td className="py-3 px-4 font-bold text-neutral-800 dark:text-neutral-200">
-                        {v.voterName || 'Anônimo'}
-                      </td>
-                      <td className="py-3 px-4 text-neutral-600 dark:text-neutral-400">
-                        {VOTER_SEGMENT_LABELS[v.voterSegment] || v.voterSegment}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-black text-emerald-600 dark:text-emerald-400">
-                        {v.receiptCode}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                          Computado ✓
+                  filteredVotes.map(v => {
+                    const renderChoiceBadge = (choice?: string) => {
+                      if (!choice) return <span className="text-neutral-400">—</span>;
+                      if (choice === 'sim') {
+                        return (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                            SIM
+                          </span>
+                        );
+                      }
+                      if (choice === 'nao') {
+                        return (
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300">
+                            NÃO
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
+                          BRANCO
                         </span>
-                      </td>
-                    </tr>
-                  ))
+                      );
+                    };
+
+                    const dirChoice =
+                      v.directorVote || (v.candidateId === '__BRANCO__' ? 'branco' : 'sim');
+                    const coordChoice = v.coordinatorVote;
+
+                    return (
+                      <tr key={v.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30">
+                        <td className="py-3 px-4 font-mono font-medium text-neutral-600 dark:text-neutral-300">
+                          {new Date(v.timestamp).toLocaleString('pt-BR')}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-black text-neutral-900 dark:text-white">
+                          {v.voterCpfMasked}
+                        </td>
+                        <td className="py-3 px-4 font-bold text-neutral-800 dark:text-neutral-200">
+                          {v.voterName || 'Anônimo'}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {renderChoiceBadge(dirChoice)}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {renderChoiceBadge(coordChoice)}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-black text-emerald-600 dark:text-emerald-400">
+                          {v.receiptCode}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                            Computado ✓
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -1619,10 +1670,32 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                    Cargo na Eleição Escolar *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['diretor', 'coordenador'] as CandidateRole[]).map((roleOpt) => (
+                      <button
+                        key={roleOpt}
+                        type="button"
+                        onClick={() => setCandidateFormData(prev => ({ ...prev, role: roleOpt }))}
+                        className={`px-3 py-2.5 rounded-xl border text-xs font-black transition-all cursor-pointer ${
+                          candidateFormData.role === roleOpt
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                        }`}
+                      >
+                        {CANDIDATE_ROLE_LABELS[roleOpt]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      Nome do(a) Candidato(a) a Diretor(a) *
+                      Nome do(a) Candidato(a) *
                     </label>
                     <input
                       type="text"

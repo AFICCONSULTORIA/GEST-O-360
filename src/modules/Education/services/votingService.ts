@@ -7,11 +7,13 @@
 import { 
   SchoolUnit, 
   Candidate, 
+  CandidateRole,
   Election, 
   VoteRecord, 
   SchoolElectionStats, 
   VoteTally, 
-  VoterSegment 
+  VoterSegment,
+  YesNoChoice
 } from '../types/voting';
 import { maskCPF } from '../../../lib/masks';
 import { supabase } from '../../../lib/supabase';
@@ -29,6 +31,7 @@ export const DEFAULT_ELECTIONS: Election[] = [
     startDate: new Date().toISOString().split('T')[0],
     endDate: '2026-12-31',
     status: 'open',
+    votingMode: 'sim_nao',
     allowBlanks: true,
     allowNulls: true,
     allowedSegments: ['responsavel', 'aluno', 'professor', 'funcionario', 'comunidade'],
@@ -96,6 +99,7 @@ function mapElectionFromDb(row: any): Election {
     startDate: row.start_date || '',
     endDate: row.end_date || '',
     status: row.status || 'open',
+    votingMode: row.voting_mode || 'sim_nao',
     allowBlanks: row.allow_blanks ?? true,
     allowNulls: row.allow_nulls ?? true,
     allowedSegments: Array.isArray(row.allowed_segments) 
@@ -114,6 +118,7 @@ function mapElectionToDb(election: Election) {
     start_date: election.startDate || '',
     end_date: election.endDate || '',
     status: election.status || 'open',
+    voting_mode: election.votingMode || 'sim_nao',
     allow_blanks: election.allowBlanks,
     allow_nulls: election.allowNulls,
     allowed_segments: election.allowedSegments,
@@ -126,6 +131,7 @@ function mapCandidateFromDb(row: any): Candidate {
     id: row.id,
     electionId: row.election_id,
     schoolId: row.school_id,
+    role: (row.role === 'coordenador' ? 'coordenador' : 'diretor') as CandidateRole,
     number: row.number,
     name: row.name,
     viceName: row.vice_name || undefined,
@@ -142,6 +148,7 @@ function mapCandidateToDb(candidate: Candidate) {
     id: candidate.id,
     election_id: candidate.electionId,
     school_id: candidate.schoolId,
+    role: candidate.role || 'diretor',
     number: candidate.number,
     name: candidate.name,
     vice_name: candidate.viceName || null,
@@ -159,6 +166,9 @@ function mapVoteFromDb(row: any): VoteRecord {
     electionId: row.election_id,
     schoolId: row.school_id,
     candidateId: row.candidate_id,
+    directorVote: row.director_vote || undefined,
+    coordinatorCandidateId: row.coordinator_candidate_id || undefined,
+    coordinatorVote: row.coordinator_vote || undefined,
     voterCpfMasked: row.voter_cpf_masked,
     voterCpfClean: row.voter_cpf_clean,
     voterName: row.voter_name || undefined,
@@ -174,6 +184,9 @@ function mapVoteToDb(vote: VoteRecord) {
     election_id: vote.electionId,
     school_id: vote.schoolId,
     candidate_id: vote.candidateId,
+    director_vote: vote.directorVote || null,
+    coordinator_candidate_id: vote.coordinatorCandidateId || null,
+    coordinator_vote: vote.coordinatorVote || null,
     voter_cpf_masked: vote.voterCpfMasked,
     voter_cpf_clean: vote.voterCpfClean,
     voter_name: vote.voterName || null,
@@ -699,12 +712,71 @@ export class VotingService {
   }
 
   /**
+   * Consulta nome completo do eleitor por CPF na base municipal (Supabase)
+   * ou em API externa conveniada (se VITE_CPF_LOOKUP_URL estiver configurada).
+   * Nota: A Receita Federal não possui API pública gratuita sem convênio Serpro.
+   */
+  static async lookupVoterNameByCpf(cpf: string): Promise<{ name: string; source: string } | null> {
+    const cleanCpf = cpf.replace(/\D/g, '');
+    if (cleanCpf.length !== 11) return null;
+
+    // 1. Opcional: API externa conveniada (ex: Edge Function / Serpro)
+    const customEndpoint = (import.meta as any).env?.VITE_CPF_LOOKUP_URL;
+    if (customEndpoint) {
+      try {
+        const res = await fetch(`${customEndpoint}?cpf=${encodeURIComponent(cleanCpf)}`);
+        if (res.ok) {
+          const json = await res.json();
+          const name = json?.nome || json?.name || json?.fullName;
+          if (name && String(name).trim().length >= 3) {
+            return { name: String(name).trim(), source: 'Receita / Convênio' };
+          }
+        }
+      } catch {
+        // fallback para base municipal
+      }
+    }
+
+    // 2. Busca automática nas bases municipais do Supabase (responsáveis, alunos, servidores)
+    const formattedCpf = `${cleanCpf.slice(0, 3)}.${cleanCpf.slice(3, 6)}.${cleanCpf.slice(6, 9)}-${cleanCpf.slice(9)}`;
+    const lookups: Array<{ table: string; cpfCol: string; nameCol: string; label: string }> = [
+      { table: 'education_creche_queue', cpfCol: 'guardian_cpf', nameCol: 'guardian_name', label: 'Cadastro Escolar' },
+      { table: 'education_students', cpfCol: 'cpf', nameCol: 'name', label: 'Cadastro de Alunos' },
+      { table: 'admin_users', cpfCol: 'cpf', nameCol: 'name', label: 'Cadastro Municipal' },
+      { table: 'edu_voting_votes', cpfCol: 'voter_cpf_clean', nameCol: 'voter_name', label: 'Registro Eleitoral' }
+    ];
+
+    for (const item of lookups) {
+      try {
+        const { data, error } = await supabase
+          .from(item.table)
+          .select(`${item.nameCol}`)
+          .or(`${item.cpfCol}.eq.${cleanCpf},${item.cpfCol}.eq.${formattedCpf}`)
+          .limit(1);
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const foundName = String((data[0] as any)[item.nameCol] || '').trim();
+          if (foundName.length >= 3) {
+            return { name: foundName, source: item.label };
+          }
+        }
+      } catch {
+        // tenta próxima tabela
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Computa voto de forma assíncrona garantindo persistência na nuvem
    */
   static async castVoteAsync(params: {
     electionId: string;
     schoolId: string;
     candidateId: string;
+    directorVote?: YesNoChoice;
+    coordinatorCandidateId?: string;
+    coordinatorVote?: YesNoChoice;
     voterCpf: string;
     voterName?: string;
     voterSegment: VoterSegment;
@@ -734,6 +806,9 @@ export class VotingService {
       electionId: params.electionId,
       schoolId: params.schoolId,
       candidateId: params.candidateId,
+      directorVote: params.directorVote,
+      coordinatorCandidateId: params.coordinatorCandidateId,
+      coordinatorVote: params.coordinatorVote,
       voterCpfMasked: maskCPF(cleanCpf),
       voterCpfClean: cleanCpf,
       voterName: params.voterName ? params.voterName.trim() : undefined,
@@ -747,12 +822,27 @@ export class VotingService {
     votes.push(newVote);
     VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(votes));
 
-    // 2. Gravar no Supabase
+    // 2. Gravar no Supabase (com fallback caso as colunas novas ainda não tenham sido migradas)
     try {
       const dbRow = mapVoteToDb(newVote);
-      const { error } = await supabase.from(DB_TABLES.VOTES).insert(dbRow);
+      let { error } = await supabase.from(DB_TABLES.VOTES).insert(dbRow);
+      if (error && (error.message.includes('column') || error.code === '42703')) {
+        const legacyRow = {
+          id: dbRow.id,
+          election_id: dbRow.election_id,
+          school_id: dbRow.school_id,
+          candidate_id: dbRow.candidate_id,
+          voter_cpf_masked: dbRow.voter_cpf_masked,
+          voter_cpf_clean: dbRow.voter_cpf_clean,
+          voter_name: dbRow.voter_name,
+          voter_segment: dbRow.voter_segment,
+          receipt_code: dbRow.receipt_code,
+          timestamp: dbRow.timestamp
+        };
+        const retry = await supabase.from(DB_TABLES.VOTES).insert(legacyRow);
+        error = retry.error;
+      }
       if (error) {
-        // Se der erro de unicidade (código 23505 no Postgres)
         if (error.code === '23505' || error.message.includes('unique') || error.message.includes('uq_edu_vote_election_cpf')) {
           return {
             success: false,
@@ -849,9 +939,15 @@ export class VotingService {
     let blankVotes = 0;
     let nullVotes = 0;
     const candidateVoteMap: Record<string, number> = {};
+    const yesMap: Record<string, number> = {};
+    const noMap: Record<string, number> = {};
+    const blankMap: Record<string, number> = {};
 
     candidates.forEach(c => {
       candidateVoteMap[c.id] = 0;
+      yesMap[c.id] = 0;
+      noMap[c.id] = 0;
+      blankMap[c.id] = 0;
     });
 
     const segmentDistribution: Record<VoterSegment, number> = {
@@ -867,36 +963,78 @@ export class VotingService {
         segmentDistribution[v.voterSegment]++;
       }
 
-      if (v.candidateId === '__BRANCO__') {
+      // Voto de Diretor(a)
+      if (v.candidateId === '__BRANCO__' || v.directorVote === 'branco') {
         blankVotes++;
+        if (v.candidateId && v.candidateId !== '__BRANCO__') {
+          blankMap[v.candidateId] = (blankMap[v.candidateId] || 0) + 1;
+        }
       } else if (v.candidateId === '__NULO__') {
         nullVotes++;
-      } else {
-        candidateVoteMap[v.candidateId] = (candidateVoteMap[v.candidateId] || 0) + 1;
+      } else if (v.candidateId) {
+        if (v.directorVote === 'nao') {
+          noMap[v.candidateId] = (noMap[v.candidateId] || 0) + 1;
+        } else {
+          yesMap[v.candidateId] = (yesMap[v.candidateId] || 0) + 1;
+          candidateVoteMap[v.candidateId] = (candidateVoteMap[v.candidateId] || 0) + 1;
+        }
+      }
+
+      // Voto de Coordenador(a)
+      if (v.coordinatorCandidateId && v.coordinatorCandidateId !== '__BRANCO__' && v.coordinatorCandidateId !== '__NULO__') {
+        if (v.coordinatorVote === 'nao') {
+          noMap[v.coordinatorCandidateId] = (noMap[v.coordinatorCandidateId] || 0) + 1;
+        } else if (v.coordinatorVote === 'branco') {
+          blankMap[v.coordinatorCandidateId] = (blankMap[v.coordinatorCandidateId] || 0) + 1;
+        } else {
+          yesMap[v.coordinatorCandidateId] = (yesMap[v.coordinatorCandidateId] || 0) + 1;
+          candidateVoteMap[v.coordinatorCandidateId] = (candidateVoteMap[v.coordinatorCandidateId] || 0) + 1;
+        }
       }
     });
 
     const validVotes = totalVotes - blankVotes - nullVotes;
 
-    let tallies: VoteTally[] = candidates.map(c => {
-      const vCount = candidateVoteMap[c.id] || 0;
-      const pct = validVotes > 0 ? (vCount / validVotes) * 100 : 0;
+    const buildTally = (c: Candidate): VoteTally => {
+      const yCount = yesMap[c.id] || 0;
+      const nCount = noMap[c.id] || 0;
+      const bCount = blankMap[c.id] || 0;
+      const totalForCand = yCount + nCount;
+      const pct = totalForCand > 0
+        ? (yCount / totalForCand) * 100
+        : (validVotes > 0 ? ((candidateVoteMap[c.id] || 0) / validVotes) * 100 : 0);
       return {
         candidateId: c.id,
         candidateName: c.name,
         candidateNumber: c.number,
+        role: c.role || 'diretor',
         photoUrl: c.photoUrl,
         viceName: c.viceName,
-        votes: vCount,
+        votes: yCount,
+        yesVotes: yCount,
+        noVotes: nCount,
+        blankVotes: bCount,
         percentage: Math.round(pct * 10) / 10
       };
-    });
+    };
 
-    tallies.sort((a, b) => b.votes - a.votes);
-
-    if (tallies.length > 0 && tallies[0].votes > 0) {
-      tallies[0].isWinner = true;
+    const directorTallies = candidates
+      .filter(c => (c.role || 'diretor') === 'diretor')
+      .map(buildTally)
+      .sort((a, b) => b.votes - a.votes);
+    if (directorTallies.length > 0 && directorTallies[0].votes > 0) {
+      directorTallies[0].isWinner = true;
     }
+
+    const coordinatorTallies = candidates
+      .filter(c => c.role === 'coordenador')
+      .map(buildTally)
+      .sort((a, b) => b.votes - a.votes);
+    if (coordinatorTallies.length > 0 && coordinatorTallies[0].votes > 0) {
+      coordinatorTallies[0].isWinner = true;
+    }
+
+    const tallies: VoteTally[] = [...directorTallies, ...coordinatorTallies];
 
     return {
       schoolId: targetSchool.id,
@@ -906,6 +1044,8 @@ export class VotingService {
       blankVotes,
       nullVotes,
       tallies,
+      directorTallies,
+      coordinatorTallies,
       segmentDistribution
     };
   }

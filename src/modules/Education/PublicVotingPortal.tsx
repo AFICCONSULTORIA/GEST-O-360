@@ -1,29 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Vote, 
-  School, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ShieldCheck, 
-  Printer, 
-  ArrowLeft, 
-  Sparkles, 
-  UserCheck, 
-  FileText, 
-  ChevronRight, 
-  Info,
-  Calendar,
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Vote,
+  School,
+  CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
+  ArrowRight,
+  RotateCcw,
   Lock,
-  Sun,
-  Moon,
-  Search,
-  Check,
-  X
+  Unlock,
+  UserCheck,
+  CreditCard,
+  ThumbsUp,
+  ThumbsDown,
+  Loader2,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { VotingService } from './services/votingService';
-import { SchoolUnit, Candidate, Election, VoteRecord, VoterSegment, VOTER_SEGMENT_LABELS } from './types/voting';
-import { formatCPF, validateCPF, maskCPF } from '../../lib/masks';
+import {
+  SchoolUnit,
+  Candidate,
+  Election,
+  VoteRecord,
+  YesNoChoice
+} from './types/voting';
+import { formatCPF, validateCPF } from '../../lib/masks';
 import { Institution } from '../../types';
 
 interface PublicVotingPortalProps {
@@ -32,40 +34,83 @@ interface PublicVotingPortalProps {
   currentInstitution?: Institution | null;
 }
 
+type BallotStep = 'identify' | 'director' | 'coordinator' | 'fim';
+
+function playStepBeep() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1046.5;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.15);
+  } catch {
+    // ignore audio block
+  }
+}
+
+function playUrnaBeep() {
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const notes = [880, 1174.66, 1318.51, 1760];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.08, ctx.currentTime + i * 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.08 + 0.14);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + i * 0.08);
+      osc.stop(ctx.currentTime + i * 0.08 + 0.15);
+    });
+  } catch {
+    // ignore audio block
+  }
+}
+
 export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
-  darkMode = false,
-  setDarkMode,
   currentInstitution
 }) => {
-  // Dados principais
   const [schools, setSchools] = useState<SchoolUnit[]>([]);
   const [election, setElection] = useState<Election | null>(null);
   const [selectedSchool, setSelectedSchool] = useState<SchoolUnit | null>(null);
+  const [schoolLocked, setSchoolLocked] = useState<boolean>(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
 
-  // Fluxo de passos
-  // 1: Identificação (CPF + Escola) | 2: Cédula de Votação | 3: Comprovante Concluído
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  // Passos da Urna Eletrônica
+  const [step, setStep] = useState<BallotStep>('identify');
 
-  // Formulário do Eleitor
-  const [voterName, setVoterName] = useState('');
+  // Identificação do Eleitor
   const [voterCpf, setVoterCpf] = useState('');
-  const [voterSegment, setVoterSegment] = useState<VoterSegment>('responsavel');
-  const [cpfError, setCpfError] = useState<string | null>(null);
-
-  // Cédula e Escolha
-  // null = nenhum, '__BRANCO__' = branco, '__NULO__' = nulo, ou candidate.id
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-  const [candidateInModal, setCandidateInModal] = useState<Candidate | null>(null); // para ver proposta
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [numericInput, setNumericInput] = useState('');
-
-  // Comprovante
-  const [receipt, setReceipt] = useState<VoteRecord | null>(null);
+  const [voterName, setVoterName] = useState('');
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not_found'>('idle');
+  const [lookupSource, setLookupSource] = useState<string>('');
+  const [formError, setFormError] = useState<string | null>(null);
   const [alreadyVotedReceipt, setAlreadyVotedReceipt] = useState<VoteRecord | null>(null);
 
-  // Mensagens e carregamento
+  // Escolhas do Eleitor (Diretor + Coordenador)
+  const [selectedDirectorId, setSelectedDirectorId] = useState<string | null>(null);
+  const [directorChoice, setDirectorChoice] = useState<YesNoChoice | null>(null);
+  const [selectedCoordinatorId, setSelectedCoordinatorId] = useState<string | null>(null);
+  const [coordinatorChoice, setCoordinatorChoice] = useState<YesNoChoice | null>(null);
+
+  // Comprovante + Auto-Reset estilo Urna
+  const [receipt, setReceipt] = useState<VoteRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [countdown, setCountdown] = useState<number>(4);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const cpfInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const reloadPortalData = () => {
@@ -74,9 +119,9 @@ export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
       setSchools(loadedSchools);
       setElection(activeElection);
 
-      setSelectedSchool(prev => {
+      setSelectedSchool((prev) => {
         if (prev) {
-          const match = loadedSchools.find(s => s.id === prev.id);
+          const match = loadedSchools.find((s) => s.id === prev.id);
           if (match) {
             setCandidates(VotingService.getCandidates(match.id));
             return match;
@@ -90,862 +135,672 @@ export const PublicVotingPortal: React.FC<PublicVotingPortalProps> = ({
       });
     };
 
+    VotingService.syncFromSupabase().finally(reloadPortalData);
     reloadPortalData();
 
     window.addEventListener('voting-data-changed', reloadPortalData);
     window.addEventListener('storage', reloadPortalData);
-
     return () => {
       window.removeEventListener('voting-data-changed', reloadPortalData);
       window.removeEventListener('storage', reloadPortalData);
     };
   }, []);
 
-  const handleSelectSchool = (school: SchoolUnit) => {
-    setSelectedSchool(school);
-    setCandidates(VotingService.getCandidates(school.id));
-    setSelectedCandidateId(null);
-    setNumericInput('');
+  const directorCandidates = useMemo(
+    () => candidates.filter((c) => c.active !== false && (c.role || 'diretor') === 'diretor'),
+    [candidates]
+  );
+
+  const coordinatorCandidates = useMemo(
+    () => candidates.filter((c) => c.active !== false && c.role === 'coordenador'),
+    [candidates]
+  );
+
+  // Auto-seleciona se houver candidato único
+  useEffect(() => {
+    if (directorCandidates.length === 1) {
+      setSelectedDirectorId(directorCandidates[0].id);
+    }
+    if (coordinatorCandidates.length === 1) {
+      setSelectedCoordinatorId(coordinatorCandidates[0].id);
+    }
+  }, [directorCandidates, coordinatorCandidates]);
+
+  // Preparar urna para o próximo eleitor
+  const resetForNextVoter = () => {
+    setStep('identify');
+    setVoterCpf('');
+    setVoterName('');
+    setLookupStatus('idle');
+    setLookupSource('');
+    setFormError(null);
+    setAlreadyVotedReceipt(null);
+    setDirectorChoice(null);
+    setCoordinatorChoice(null);
+    setSelectedDirectorId(directorCandidates.length === 1 ? directorCandidates[0].id : null);
+    setSelectedCoordinatorId(coordinatorCandidates.length === 1 ? coordinatorCandidates[0].id : null);
+    setReceipt(null);
+    setCountdown(4);
+    setTimeout(() => cpfInputRef.current?.focus(), 120);
   };
 
-  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = formatCPF(e.target.value);
+  // Contagem regressiva automática na tela FIM (modo Urna)
+  useEffect(() => {
+    if (step !== 'fim') return;
+    if (countdown <= 0) {
+      resetForNextVoter();
+      return;
+    }
+    const timer = setTimeout(() => setCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [step, countdown]);
+
+  const handleSelectSchool = (schoolId: string) => {
+    const found = schools.find((s) => s.id === schoolId) || null;
+    setSelectedSchool(found);
+    setCandidates(found ? VotingService.getCandidates(found.id) : []);
+    setSelectedDirectorId(null);
+    setSelectedCoordinatorId(null);
+    setDirectorChoice(null);
+    setCoordinatorChoice(null);
+  };
+
+  // Ao digitar 11 dígitos do CPF: valida e tenta puxar o nome completo automaticamente
+  const handleCpfChange = async (rawValue: string) => {
+    const formatted = formatCPF(rawValue);
     setVoterCpf(formatted);
-    setCpfError(null);
+    setFormError(null);
+    setAlreadyVotedReceipt(null);
+
+    const digits = formatted.replace(/\D/g, '');
+    if (digits.length < 11) {
+      setLookupStatus('idle');
+      setLookupSource('');
+      return;
+    }
+
+    if (!validateCPF(formatted)) {
+      setLookupStatus('idle');
+      setFormError('CPF inválido. Confira os 11 números digitados.');
+      return;
+    }
+
+    setLookupStatus('loading');
+    try {
+      const found = await VotingService.lookupVoterNameByCpf(digits);
+      if (found?.name) {
+        setVoterName(found.name);
+        setLookupStatus('found');
+        setLookupSource(found.source);
+      } else {
+        setLookupStatus('not_found');
+        setLookupSource('');
+      }
+    } catch {
+      setLookupStatus('not_found');
+    }
   };
 
-  const handleProceedToBallot = async (e: React.FormEvent) => {
+  const handleStartVoting = async (e: React.FormEvent) => {
     e.preventDefault();
-    const clean = voterCpf.replace(/\D/g, '');
+    setFormError(null);
 
-    if (clean.length !== 11) {
-      setCpfError('Digite os 11 números do seu CPF.');
+    const cleanCpf = voterCpf.replace(/\D/g, '');
+    if (cleanCpf.length !== 11 || !validateCPF(voterCpf)) {
+      setFormError('Digite um CPF válido com 11 números.');
       return;
     }
-
-    if (!validateCPF(voterCpf)) {
-      setCpfError('CPF com formato inválido. Por favor, verifique os números digitados.');
+    if (voterName.trim().length < 5) {
+      setFormError('Informe o nome completo do eleitor.');
       return;
     }
-
     if (!selectedSchool) {
-      setCpfError('Selecione a Unidade Escolar.');
+      setFormError('Selecione a escola onde está votando.');
+      return;
+    }
+    if (directorCandidates.length === 0 && coordinatorCandidates.length === 0) {
+      setFormError('Ainda não há candidatos cadastrados para esta escola.');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Verificar se o CPF já votou nesta eleição (com checagem central na nuvem e local)
-      const check = await VotingService.hasCpfVotedAsync(selectedSchool.id, clean, election?.id);
+      const check = await VotingService.hasCpfVotedAsync(selectedSchool.id, cleanCpf, election?.id);
       if (check.voted && check.vote) {
         setAlreadyVotedReceipt(check.vote);
         return;
       }
 
-      setAlreadyVotedReceipt(null);
-      setCpfError(null);
-      setStep(2);
+      if (directorCandidates.length > 0) {
+        if (directorCandidates.length === 1) setSelectedDirectorId(directorCandidates[0].id);
+        setDirectorChoice(null);
+        setCoordinatorChoice(null);
+        setStep('director');
+      } else {
+        if (coordinatorCandidates.length === 1) setSelectedCoordinatorId(coordinatorCandidates[0].id);
+        setDirectorChoice('branco');
+        setCoordinatorChoice(null);
+        setStep('coordinator');
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Teclado numérico na tela ou digitação
-  const handleNumericPress = (digit: string) => {
-    if (numericInput.length >= 2) return;
-    const next = numericInput + digit;
-    setNumericInput(next);
-    
-    // Auto-selecionar candidato se número bater
-    const match = candidates.find(c => c.number === next);
-    if (match) {
-      setSelectedCandidateId(match.id);
-    } else if (next.length === 2) {
-      // Se digitou 2 números que não existem, vira Nulo
-      setSelectedCandidateId('__NULO__');
+  const handleDirectorVoteClick = (choice: YesNoChoice) => {
+    if (isSubmitting) return;
+    const targetId =
+      choice === 'branco' ? '__BRANCO__' : activeDirector?.id || selectedDirectorId || '__BRANCO__';
+    setSelectedDirectorId(targetId);
+    setDirectorChoice(choice);
+
+    if (soundEnabled) playStepBeep();
+    if (coordinatorCandidates.length === 1) {
+      setSelectedCoordinatorId(coordinatorCandidates[0].id);
     }
+    setStep('coordinator');
   };
 
-  const handleClearNumeric = () => {
-    setNumericInput('');
-    setSelectedCandidateId(null);
+  const handleCoordinatorVoteClick = async (choice: YesNoChoice) => {
+    if (isSubmitting) return;
+    const coordId =
+      choice === 'branco'
+        ? '__BRANCO__'
+        : activeCoordinator?.id || selectedCoordinatorId || '__COORDENADOR_ESCOLA__';
+    setSelectedCoordinatorId(coordId);
+    setCoordinatorChoice(choice);
+    await handleConfirmBallot(
+      directorChoice || 'branco',
+      choice,
+      selectedDirectorId || activeDirector?.id || '__BRANCO__',
+      coordId
+    );
   };
 
-  const handleSelectDirectCandidate = (cand: Candidate) => {
-    setSelectedCandidateId(cand.id);
-    setNumericInput(cand.number);
-    setIsConfirmModalOpen(true);
-  };
-
-  const handleSelectBlank = () => {
-    setSelectedCandidateId('__BRANCO__');
-    setNumericInput('BRANCO');
-    setIsConfirmModalOpen(true);
-  };
-
-  const handleSelectNull = () => {
-    setSelectedCandidateId('__NULO__');
-    setNumericInput('NULO');
-    setIsConfirmModalOpen(true);
-  };
-
-  const handleConfirmVote = async () => {
-    if (!election || !selectedSchool || !selectedCandidateId) return;
+  const handleConfirmBallot = async (
+    finalDirectorChoice: YesNoChoice,
+    finalCoordinatorChoice: YesNoChoice,
+    dirCandId?: string,
+    coordCandId?: string
+  ) => {
+    if (!election || !selectedSchool) return;
 
     setIsSubmitting(true);
     try {
       const result = await VotingService.castVoteAsync({
         electionId: election.id,
         schoolId: selectedSchool.id,
-        candidateId: selectedCandidateId,
+        candidateId:
+          finalDirectorChoice === 'branco' ? '__BRANCO__' : dirCandId || selectedDirectorId || '__BRANCO__',
+        directorVote: finalDirectorChoice,
+        coordinatorCandidateId:
+          finalCoordinatorChoice === 'branco'
+            ? '__BRANCO__'
+            : coordCandId || selectedCoordinatorId || '__COORDENADOR_ESCOLA__',
+        coordinatorVote: finalCoordinatorChoice,
         voterCpf,
-        voterName: voterName || undefined,
-        voterSegment
+        voterName: voterName.trim(),
+        voterSegment: 'responsavel'
       });
 
       if (result.success && result.receipt) {
+        if (soundEnabled) playUrnaBeep();
         setReceipt(result.receipt);
-        setIsConfirmModalOpen(false);
-        setStep(3);
+        setCountdown(4);
+        setStep('fim');
       } else {
-        alert(result.error || 'Erro ao registrar voto.');
+        setFormError(result.error || 'Não foi possível registrar o voto.');
+        setStep('identify');
       }
-    } catch (e: any) {
-      alert('Erro ao registrar voto: ' + e.message);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handlePrintReceipt = () => {
-    window.print();
-  };
-
-  const handleNewVote = () => {
-    setStep(1);
-    setVoterCpf('');
-    setVoterName('');
-    setSelectedCandidateId(null);
-    setNumericInput('');
-    setReceipt(null);
-    setAlreadyVotedReceipt(null);
-  };
-
-  const getCandidateChosen = () => {
-    if (selectedCandidateId === '__BRANCO__') {
-      return { isBlank: true, name: 'VOTO EM BRANCO', number: 'BRANCO', vice: '' };
-    }
-    if (selectedCandidateId === '__NULO__') {
-      return { isNull: true, name: 'VOTO NULO', number: 'NULO', vice: '' };
-    }
-    return candidates.find(c => c.id === selectedCandidateId) || null;
-  };
-
-  const chosen = getCandidateChosen();
+  const activeDirector = directorCandidates.find((c) => c.id === selectedDirectorId) || directorCandidates[0] || null;
+  const activeCoordinator =
+    coordinatorCandidates.find((c) => c.id === selectedCoordinatorId) || coordinatorCandidates[0] || null;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-300">
-      
-      {/* Top Header Oficial */}
-      <header className="sticky top-0 z-40 bg-white/90 dark:bg-neutral-900/90 backdrop-blur-xl border-b border-neutral-200 dark:border-neutral-800 px-4 md:px-8 py-3.5 shadow-sm print:hidden">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
+    <div className="min-h-dvh bg-gradient-to-b from-slate-100 via-white to-emerald-50/40 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col family-app-shell">
+      {/* Cabeçalho Limpo da Urna */}
+      <header className="bg-white/95 dark:bg-neutral-900/95 border-b border-neutral-200 dark:border-neutral-800 px-4 py-3 safe-pt">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
               <Vote size={22} />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-sm md:text-base text-neutral-900 dark:text-white leading-tight">
-                  {currentInstitution?.name || 'Prefeitura Municipal'} • Educação
-                </span>
-                <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
-                  Eleição Oficial
-                </span>
+            <div className="min-w-0">
+              <div className="text-sm sm:text-base font-black text-neutral-900 dark:text-white truncate">
+                Urna Escolar · Diretor e Coordenador
               </div>
-              <p className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-                Votação Direta para Diretores Escolares • Gestão 2027/2029
-              </p>
+              <div className="text-xs text-neutral-500 truncate">
+                {selectedSchool?.name || currentInstitution?.name || 'Rede Municipal de Ensino'}
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {setDarkMode && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setSoundEnabled((s) => !s)}
+              className="p-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
+              title={soundEnabled ? 'Desativar som da urna' : 'Ativar som da urna'}
+            >
+              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            </button>
+
+            {selectedSchool && step === 'identify' && (
               <button
-                onClick={() => setDarkMode(!darkMode)}
-                className="p-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition-all cursor-pointer"
-                title="Alternar tema"
+                type="button"
+                onClick={() => setSchoolLocked((l) => !l)}
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black border cursor-pointer ${
+                  schoolLocked
+                    ? 'bg-amber-50 text-amber-800 border-amber-300 dark:bg-amber-950/40 dark:text-amber-300'
+                    : 'bg-neutral-50 text-neutral-600 border-neutral-200 dark:bg-neutral-800 dark:text-neutral-300'
+                }`}
+                title="Travar escola selecionada para agilizar fila de votação"
               >
-                {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+                {schoolLocked ? <Lock size={13} /> : <Unlock size={13} />}
+                <span className="hidden sm:inline">{schoolLocked ? 'Urna Travada' : 'Travar Escola'}</span>
               </button>
             )}
-
-            <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-neutral-500 text-xs font-bold">
-              <ShieldCheck size={16} className="text-emerald-500" />
-              <span>Voto Único e Sigiloso por CPF</span>
-            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
-      <main className="flex-1 max-w-5xl mx-auto w-full p-4 md:p-8 flex flex-col justify-center">
-        
-        {/* Banner de Aviso de Eleição Ativa */}
-        {election && step !== 3 && (
-          <div className="mb-6 p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 flex items-center justify-between text-xs md:text-sm text-emerald-800 dark:text-emerald-200 print:hidden">
-            <div className="flex items-center gap-3">
-              <Sparkles size={18} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>
-                <strong>{election.title}</strong> está aberta para votação pública. Cada cidadão pode votar uma única vez por CPF.
-              </span>
-            </div>
-            <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-200/60 dark:bg-emerald-500/30 font-black text-xs text-emerald-800 dark:text-emerald-200 uppercase tracking-wider">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-              Urna Aberta
-            </span>
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* PASSO 1: IDENTIFICAÇÃO DO ELEITOR & ESCOLA */}
-        {/* ======================================================== */}
-        {step === 1 && (
-          <motion.div 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -15 }}
-            className="bg-white dark:bg-neutral-900 rounded-[32px] border border-neutral-200 dark:border-neutral-800 shadow-xl p-6 md:p-10 max-w-2xl mx-auto w-full"
-          >
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-3xl bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center mb-4 shadow-sm">
-                <UserCheck size={32} />
-              </div>
-              <h1 className="text-2xl md:text-3xl font-black text-neutral-900 dark:text-white tracking-tight">
-                Identificação do Eleitor
-              </h1>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1 max-w-md mx-auto">
-                Para garantir a lisura e transparência do pleito escolar, informe seu CPF e selecione a escola onde deseja votar.
-              </p>
-            </div>
-
-            {/* Aviso se o CPF já votou */}
-            {alreadyVotedReceipt && (
-              <div className="mb-6 p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" size={20} />
-                  <div>
-                    <h4 className="font-black text-base">Este CPF já registrou voto!</h4>
-                    <p className="text-xs mt-1 text-amber-800 dark:text-amber-300">
-                      O eleitor portador do CPF <strong>{alreadyVotedReceipt.voterCpfMasked}</strong> já exerceu seu direito de voto na unidade escolar em{' '}
-                      <strong>{new Date(alreadyVotedReceipt.timestamp).toLocaleString('pt-BR')}</strong>. O voto é único e intransferível.
-                    </p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setReceipt(alreadyVotedReceipt);
-                          setStep(3);
-                        }}
-                        className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition-all flex items-center gap-2 cursor-pointer shadow-sm"
-                      >
-                        <FileText size={14} /> Ver Comprovante Emitido
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAlreadyVotedReceipt(null)}
-                        className="px-4 py-2 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 rounded-xl text-xs font-bold hover:bg-neutral-100 transition-all border border-neutral-200 dark:border-neutral-700"
-                      >
-                        Informar outro CPF
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleProceedToBallot} className="space-y-6">
-              
-              {/* Seleção da Escola */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 mb-2 flex items-center gap-1.5">
-                  <School size={15} className="text-emerald-500" />
-                  1. Unidade Escolar
-                </label>
-                <div className="grid grid-cols-1 gap-2.5">
-                  {schools.map(school => (
-                    <div
-                      key={school.id}
-                      onClick={() => handleSelectSchool(school)}
-                      className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center justify-between ${
-                        selectedSchool?.id === school.id
-                          ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-500 text-emerald-900 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-500/20'
-                          : 'bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-800 hover:border-emerald-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs ${
-                          selectedSchool?.id === school.id
-                            ? 'bg-emerald-500 text-white shadow-sm'
-                            : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
-                        }`}>
-                          {school.category}
-                        </div>
-                        <div>
-                          <p className="font-bold text-sm text-neutral-900 dark:text-white leading-tight">{school.name}</p>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">{school.address}</p>
-                        </div>
-                      </div>
-                      {selectedSchool?.id === school.id && (
-                        <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                          <Check size={14} />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* CPF do Eleitor */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 mb-2 flex items-center gap-1.5">
-                  <Lock size={15} className="text-emerald-500" />
-                  2. CPF do Eleitor (Obrigatório para checagem anti-duplicidade)
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={voterCpf}
-                  onChange={handleCpfChange}
-                  placeholder="000.000.000-00"
-                  maxLength={14}
-                  className={`w-full px-4 py-3.5 rounded-2xl border text-base font-bold transition-all bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 ${
-                    cpfError 
-                      ? 'border-rose-400 focus:ring-rose-400' 
-                      : 'border-neutral-200 dark:border-neutral-700 focus:border-emerald-500 focus:ring-emerald-500/20'
-                  }`}
-                />
-                {cpfError && (
-                  <p className="text-xs font-bold text-rose-500 mt-1.5 flex items-center gap-1">
-                    <AlertTriangle size={13} /> {cpfError}
-                  </p>
-                )}
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">
-                  Seu CPF é verificado para evitar votos duplicados. A escolha do candidato é 100% secreta.
+      {/* Corpo Principal Centralizado */}
+      <main className="flex-1 flex items-center justify-center px-4 py-6 sm:py-10">
+        <div className="w-full max-w-2xl">
+          {/* ETAPA 1: IDENTIFICAÇÃO DO ELEITOR */}
+          {step === 'identify' && (
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="text-center space-y-1.5">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-xs font-black uppercase tracking-wider">
+                  <ShieldCheck size={14} /> Urna Pronta para o Próximo Eleitor
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  Identifique-se para Votar
+                </h1>
+                <p className="text-sm text-neutral-500">
+                  Digite seu CPF e confirme seu nome completo. Seu voto é rápido, simples e seguro.
                 </p>
               </div>
 
-              {/* Nome do Eleitor (Opcional) */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 mb-2">
-                  3. Nome Completo (Opcional - para constar no comprovante)
-                </label>
-                <input
-                  type="text"
-                  value={voterName}
-                  onChange={(e) => setVoterName(e.target.value)}
-                  placeholder="Ex: Carlos Eduardo de Oliveira"
-                  className="w-full px-4 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white placeholder:text-neutral-400 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                />
+              {alreadyVotedReceipt && (
+                <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-black text-sm">
+                    <AlertTriangle size={18} className="shrink-0" />
+                    <span>Este CPF já registrou voto nesta eleição!</span>
+                  </div>
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    Comprovante: <strong className="font-mono">{alreadyVotedReceipt.receiptCode}</strong> •{' '}
+                    {new Date(alreadyVotedReceipt.timestamp).toLocaleString('pt-BR')}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={resetForNextVoter}
+                    className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-black cursor-pointer"
+                  >
+                    Limpar para o Próximo Eleitor
+                  </button>
+                </div>
+              )}
+
+              {formError && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-sm font-bold flex items-center gap-2">
+                  <AlertTriangle size={18} className="shrink-0" />
+                  <span>{formError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleStartVoting} className="space-y-4">
+                {!schoolLocked && schools.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-black uppercase tracking-wider text-neutral-500 mb-1.5">
+                      Unidade Escolar
+                    </label>
+                    <div className="relative">
+                      <School size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                      <select
+                        value={selectedSchool?.id || ''}
+                        onChange={(e) => handleSelectSchool(e.target.value)}
+                        className="w-full min-h-[52px] pl-11 pr-4 py-3 rounded-2xl border border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-base font-bold text-neutral-900 dark:text-white"
+                      >
+                        {schools.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-neutral-500 mb-1.5">
+                    CPF do Eleitor (somente números) *
+                  </label>
+                  <div className="relative">
+                    <CreditCard size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                    <input
+                      ref={cpfInputRef}
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      autoFocus
+                      required
+                      value={voterCpf}
+                      onChange={(e) => handleCpfChange(e.target.value)}
+                      placeholder="000.000.000-00"
+                      maxLength={14}
+                      className="w-full min-h-[54px] pl-11 pr-11 py-3 rounded-2xl border-2 border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-lg font-black tracking-wider text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                    />
+                    {lookupStatus === 'loading' && (
+                      <Loader2
+                        size={18}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-600 animate-spin"
+                      />
+                    )}
+                  </div>
+                  {lookupStatus === 'found' && (
+                    <p className="text-xs font-bold text-emerald-600 mt-1 flex items-center gap-1">
+                      <CheckCircle2 size={13} /> Nome localizado automaticamente ({lookupSource}).
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black uppercase tracking-wider text-neutral-500 mb-1.5">
+                    Nome Completo do Eleitor *
+                  </label>
+                  <div className="relative">
+                    <UserCheck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+                    <input
+                      type="text"
+                      required
+                      value={voterName}
+                      onChange={(e) => {
+                        setVoterName(e.target.value);
+                        setFormError(null);
+                      }}
+                      placeholder="Digite seu nome completo"
+                      className="w-full min-h-[54px] pl-11 pr-4 py-3 rounded-2xl border-2 border-neutral-300 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-base font-bold text-neutral-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full min-h-[58px] py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base uppercase tracking-wider shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  <span>{isSubmitting ? 'Verificando...' : 'Iniciar Votação'}</span>
+                  <ArrowRight size={20} />
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* ETAPA 2A: VOTO PARA DIRETOR(A) */}
+          {step === 'director' && (
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="text-center space-y-1">
+                <span className="inline-block px-3 py-1 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-black uppercase tracking-wider">
+                  1º Voto de 2 · Cargo de Direção
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  Voto para Diretor(a) Escolar
+                </h2>
+                <p className="text-xs text-neutral-500">
+                  Eleitor(a): <strong>{voterName}</strong>
+                </p>
               </div>
 
-              {/* Segmento do Eleitor */}
-              <div>
-                <label className="block text-xs font-black uppercase tracking-wider text-neutral-600 dark:text-neutral-300 mb-2">
-                  4. Seu Segmento na Comunidade Escolar
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {(Object.keys(VOTER_SEGMENT_LABELS) as VoterSegment[]).map(seg => (
+              {directorCandidates.length > 1 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {directorCandidates.map((cand) => (
                     <button
-                      key={seg}
+                      key={cand.id}
                       type="button"
-                      onClick={() => setVoterSegment(seg)}
-                      className={`p-3 rounded-xl border text-left text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
-                        voterSegment === seg
-                          ? 'bg-emerald-500 text-white border-emerald-500 shadow-sm'
-                          : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-emerald-300'
+                      onClick={() => setSelectedDirectorId(cand.id)}
+                      className={`p-3 rounded-2xl border-2 text-left flex items-center gap-3 cursor-pointer transition-all ${
+                        activeDirector?.id === cand.id
+                          ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40'
+                          : 'border-neutral-200 dark:border-neutral-700'
                       }`}
                     >
-                      <span>{VOTER_SEGMENT_LABELS[seg]}</span>
-                      {voterSegment === seg && <Check size={14} className="shrink-0 ml-1" />}
+                      <img
+                        src={cand.photoUrl}
+                        alt={cand.name}
+                        className="w-12 h-12 rounded-xl object-cover shrink-0 bg-neutral-100"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-black text-sm truncate">{cand.name}</div>
+                        <div className="text-xs text-neutral-500">Nº {cand.number}</div>
+                      </div>
                     </button>
                   ))}
                 </div>
-              </div>
+              )}
 
-              <button
-                type="submit"
-                className="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-base shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 mt-8"
-              >
-                Acessar Cédula de Votação
-                <ChevronRight size={20} />
-              </button>
-            </form>
-          </motion.div>
-        )}
-
-        {/* ======================================================== */}
-        {/* PASSO 2: CÉDULA DE VOTAÇÃO ELETRÔNICA */}
-        {/* ======================================================== */}
-        {step === 2 && selectedSchool && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="space-y-6"
-          >
-            {/* Header da Cédula */}
-            <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200 dark:border-neutral-800 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setStep(1)}
-                  className="p-2 rounded-xl text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-                  title="Voltar para identificação"
-                >
-                  <ArrowLeft size={20} />
-                </button>
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                    Cédula Eleitoral Oficial
-                  </span>
-                  <h2 className="text-xl md:text-2xl font-black text-neutral-900 dark:text-white">
-                    {selectedSchool.name}
-                  </h2>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Eleitor: <strong>{voterName || 'Anônimo'}</strong> • CPF: <strong>{maskCPF(voterCpf)}</strong> ({VOTER_SEGMENT_LABELS[voterSegment]})
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 bg-neutral-100 dark:bg-neutral-800 px-4 py-2 rounded-2xl">
-                <span className="text-xs font-bold text-neutral-500">Número Digitado:</span>
-                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-widest min-w-[50px] text-center">
-                  {numericInput || '__'}
-                </span>
-              </div>
-            </div>
-
-            {/* Grid dos Candidatos */}
-            <div>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-base font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                  <Vote className="text-emerald-500" size={18} />
-                  Candidatos(as) Concorrentes a Diretor(a)
-                </h3>
-                <span className="text-xs text-neutral-500 font-bold">
-                  {candidates.length} {candidates.length === 1 ? 'chapa inscrita' : 'chapas inscritas'}
-                </span>
-              </div>
-
-              {candidates.length === 0 ? (
-                <div className="bg-white dark:bg-neutral-900 rounded-3xl p-12 text-center border border-neutral-200 dark:border-neutral-800">
-                  <p className="text-neutral-500 font-medium">Nenhum candidato cadastrado para esta escola ainda.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {candidates.map(cand => (
-                    <div 
-                      key={cand.id}
-                      className={`bg-white dark:bg-neutral-900 rounded-[28px] p-6 border transition-all duration-300 relative overflow-hidden flex flex-col justify-between ${
-                        selectedCandidateId === cand.id
-                          ? 'border-emerald-500 shadow-xl shadow-emerald-500/10 ring-4 ring-emerald-500/20 scale-[1.01]'
-                          : 'border-neutral-200 dark:border-neutral-800 hover:border-emerald-300 shadow-sm hover:shadow-md'
-                      }`}
-                    >
-                      {/* Top Chapa Badge */}
-                      <div className="flex items-start justify-between gap-4 mb-4">
-                        <div className="flex items-center gap-4">
-                          <div className="relative">
-                            <img 
-                              src={cand.photoUrl} 
-                              alt={cand.name}
-                              className="w-20 h-20 rounded-2xl object-cover ring-2 ring-emerald-500/30 shadow-md bg-neutral-100" 
-                            />
-                            <div className="absolute -bottom-2 -right-2 bg-emerald-600 text-white font-black text-xs px-2 py-0.5 rounded-lg shadow-sm font-mono">
-                              Chapa {cand.number}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600 dark:text-emerald-400">
-                              Candidato(a) a Diretor(a)
-                            </span>
-                            <h4 className="text-lg font-black text-neutral-900 dark:text-white leading-tight mt-0.5">
-                              {cand.name}
-                            </h4>
-                            {cand.viceName && (
-                              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                                Vice: <strong>{cand.viceName}</strong>
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        
-                        <div className="text-right">
-                          <span className="text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400">
-                            {cand.number}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Bio resumida */}
-                      <p className="text-xs text-neutral-600 dark:text-neutral-300 line-clamp-2 mb-4">
-                        {cand.bio}
-                      </p>
-
-                      {/* Botões de Ação */}
-                      <div className="flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-                        <button
-                          type="button"
-                          onClick={() => setCandidateInModal(cand)}
-                          className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 transition-all cursor-pointer flex items-center gap-1.5"
-                        >
-                          <Info size={14} /> Propostas
-                        </button>
-                        
-                        <button
-                          type="button"
-                          onClick={() => handleSelectDirectCandidate(cand)}
-                          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                            selectedCandidateId === cand.id
-                              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-500/30'
-                              : 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
-                          }`}
-                        >
-                          <Vote size={15} />
-                          {selectedCandidateId === cand.id ? 'Selecionado ✓' : 'Votar nesta Chapa'}
-                        </button>
-                      </div>
+              {activeDirector && (
+                <div className="p-5 rounded-3xl bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200 dark:border-neutral-700 flex flex-col items-center text-center gap-3">
+                  <img
+                    src={activeDirector.photoUrl}
+                    alt={activeDirector.name}
+                    className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl object-cover shadow-md border-4 border-white dark:border-neutral-900"
+                  />
+                  <div>
+                    <div className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+                      {activeDirector.name}
                     </div>
-                  ))}
+                    {activeDirector.viceName && (
+                      <div className="text-sm font-semibold text-neutral-500">
+                        Vice: {activeDirector.viceName}
+                      </div>
+                    )}
+                    <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mt-1">
+                      Você aprova este(a) candidato(a) para Diretor(a)?
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
 
-            {/* Urna com Teclado Numérico e Voto em Branco / Nulo */}
-            <div className="bg-white dark:bg-neutral-900 rounded-[28px] p-6 border border-neutral-200 dark:border-neutral-800 shadow-md flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="space-y-1 text-center md:text-left">
-                <h4 className="font-black text-sm text-neutral-900 dark:text-white uppercase tracking-wider">
-                  Outras Opções de Voto
-                </h4>
-                <p className="text-xs text-neutral-500">
-                  Em conformidade com a legislação democrática eleitoral, você pode manifestar voto em branco ou nulo.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+              <div className="grid grid-cols-2 gap-4">
                 <button
                   type="button"
-                  onClick={handleSelectBlank}
-                  className={`flex-1 md:flex-none px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer border ${
-                    selectedCandidateId === '__BRANCO__'
-                      ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-900 dark:text-white border-neutral-400 shadow-sm'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-200'
-                  }`}
+                  disabled={isSubmitting}
+                  onClick={() => handleDirectorVoteClick('sim')}
+                  className="min-h-[92px] py-5 px-4 rounded-3xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-2xl sm:text-3xl shadow-xl shadow-emerald-600/25 flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all disabled:opacity-50"
                 >
-                  Voto em Branco
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleSelectNull}
-                  className={`flex-1 md:flex-none px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all cursor-pointer border ${
-                    selectedCandidateId === '__NULO__'
-                      ? 'bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-300 shadow-sm'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-rose-600 dark:text-rose-400 border-neutral-200 dark:border-neutral-700 hover:bg-rose-50'
-                  }`}
-                >
-                  Voto Nulo
-                </button>
-
-                {selectedCandidateId && (
-                  <button
-                    type="button"
-                    onClick={() => setIsConfirmModalOpen(true)}
-                    className="w-full md:w-auto px-8 py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 animate-bounce"
-                  >
-                    Confirmar Voto
-                    <CheckCircle2 size={18} />
-                  </button>
-                )}
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* ======================================================== */}
-        {/* PASSO 3: COMPROVANTE OFICIAL DE COMPARECIMENTO */}
-        {/* ======================================================== */}
-        {step === 3 && receipt && selectedSchool && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="max-w-2xl mx-auto w-full space-y-6"
-          >
-            {/* Banner de Celebração */}
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-[32px] p-8 text-white text-center shadow-xl shadow-emerald-500/20 relative overflow-hidden print:hidden">
-              <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center mx-auto mb-4">
-                <CheckCircle2 size={36} className="text-white" />
-              </div>
-              <h2 className="text-2xl md:text-3xl font-black tracking-tight">
-                Voto Registrado com Sucesso! 🗳️
-              </h2>
-              <p className="text-emerald-100 text-sm mt-1 max-w-md mx-auto">
-                Obrigado por fortalecer a gestão democrática da nossa educação municipal. Seu voto foi computado sigilosamente.
-              </p>
-            </div>
-
-            {/* Cédula / Comprovante Oficial Imprimível */}
-            <div 
-              id="comprovante-eleitoral"
-              className="bg-white text-neutral-900 rounded-[32px] p-8 md:p-10 border-2 border-neutral-200 shadow-xl relative overflow-hidden print:m-0 print:border-none print:shadow-none"
-            >
-              {/* Brasão / Cabeçalho do Comprovante */}
-              <div className="text-center pb-6 border-b-2 border-neutral-100">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600">
-                  Secretaria Municipal de Educação
-                </span>
-                <h3 className="text-xl font-black text-neutral-900 uppercase tracking-tight mt-0.5">
-                  Comprovante de Comparecimento Eleitoral
-                </h3>
-                <p className="text-xs text-neutral-500 font-medium">
-                  Eleição de Diretores Escolares • Gestão 2027/2029
-                </p>
-              </div>
-
-              {/* Dados do Eleitor */}
-              <div className="py-6 space-y-3.5 text-sm">
-                <div className="flex justify-between items-center py-1 border-b border-neutral-100">
-                  <span className="text-neutral-500 font-bold">Unidade Escolar:</span>
-                  <span className="font-black text-neutral-900 text-right">{selectedSchool.name}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-neutral-100">
-                  <span className="text-neutral-500 font-bold">Eleitor:</span>
-                  <span className="font-bold text-neutral-900">{receipt.voterName || 'Eleitor Cadastrado'}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-neutral-100">
-                  <span className="text-neutral-500 font-bold">CPF do Eleitor:</span>
-                  <span className="font-mono font-black text-neutral-900">{receipt.voterCpfMasked}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-neutral-100">
-                  <span className="text-neutral-500 font-bold">Segmento:</span>
-                  <span className="font-bold text-neutral-900">{VOTER_SEGMENT_LABELS[receipt.voterSegment]}</span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-neutral-100">
-                  <span className="text-neutral-500 font-bold">Data e Hora do Voto:</span>
-                  <span className="font-mono font-bold text-neutral-900">
-                    {new Date(receipt.timestamp).toLocaleString('pt-BR')}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center py-1 border-b border-neutral-100 bg-emerald-50/50 p-2 rounded-xl">
-                  <span className="text-emerald-800 font-bold">Código de Autenticação:</span>
-                  <span className="font-mono font-black text-emerald-700 tracking-wider text-base">{receipt.receiptCode}</span>
-                </div>
-              </div>
-
-              {/* Aviso de Sigilo do Voto */}
-              <div className="bg-neutral-50 p-4 rounded-2xl border border-neutral-200 text-xs text-neutral-500 text-center space-y-1">
-                <p className="font-bold text-neutral-700">🔒 Sigilo Eleitoral Assegurado</p>
-                <p>
-                  Por determinação legal, este comprovante certifica apenas a participação do eleitor no pleito. A opção de voto é anônima e inviolável.
-                </p>
-              </div>
-
-              {/* Rodapé do comprovante */}
-              <div className="mt-6 pt-4 text-center text-[10px] text-neutral-400 border-t border-neutral-100">
-                Emitido eletronicamente via Sistema Gestão 360 Educação • Validação pública na Secretaria de Educação
-              </div>
-            </div>
-
-            {/* Ações pós-voto */}
-            <div className="flex flex-col sm:flex-row gap-3 print:hidden">
-              <button
-                type="button"
-                onClick={handlePrintReceipt}
-                className="flex-1 py-4 px-6 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black text-sm uppercase tracking-wider hover:bg-neutral-800 dark:hover:bg-neutral-100 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
-              >
-                <Printer size={18} />
-                Imprimir Comprovante
-              </button>
-
-              <button
-                type="button"
-                onClick={handleNewVote}
-                className="py-4 px-6 rounded-2xl bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold text-sm transition-all cursor-pointer text-center"
-              >
-                Concluir / Novo Voto
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-      </main>
-
-      {/* ======================================================== */}
-      {/* MODAL DE CONFIRMAÇÃO DO VOTO (ESTILO URNA ELETRÔNICA) */}
-      {/* ======================================================== */}
-      <AnimatePresence>
-        {isConfirmModalOpen && chosen && selectedSchool && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-[36px] max-w-md w-full p-6 md:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl relative"
-            >
-              <div className="text-center mb-6">
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-neutral-400">
-                  Confirmação de Voto
-                </span>
-                <h3 className="text-xl font-black text-neutral-900 dark:text-white mt-1">
-                  Revise sua Escolha
-                </h3>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Escola: <strong>{selectedSchool.name}</strong>
-                </p>
-              </div>
-
-              {/* Card de revisão do candidato */}
-              <div className="p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 mb-6">
-                {'photoUrl' in chosen && chosen.photoUrl ? (
-                  <div className="flex items-center gap-4">
-                    <img src={chosen.photoUrl} alt={chosen.name} className="w-16 h-16 rounded-2xl object-cover ring-2 ring-emerald-500/30 bg-white" />
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 font-mono">
-                        Chapa {chosen.number}
-                      </span>
-                      <h4 className="text-base font-black text-neutral-900 dark:text-white leading-tight">
-                        {chosen.name}
-                      </h4>
-                      {chosen.viceName && (
-                        <p className="text-xs text-neutral-500 mt-0.5">Vice: {chosen.viceName}</p>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-4">
-                    <span className="text-2xl font-black font-mono text-neutral-900 dark:text-white">
-                      {chosen.name}
-                    </span>
-                    <p className="text-xs text-neutral-500 mt-1">Opção oficial registrada em ata eleitoral</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-3 bg-amber-50 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-200 text-xs mb-6 text-center">
-                <p className="font-bold">Atenção: Voto único e irrevogável!</p>
-                <p className="text-[11px] mt-0.5">Após clicar em CONFIRMA, seu voto será gravado e um comprovante será gerado.</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsConfirmModalOpen(false)}
-                  className="py-3.5 px-4 rounded-xl bg-orange-100 hover:bg-orange-200 dark:bg-orange-950/30 dark:hover:bg-orange-950/50 text-orange-700 dark:text-orange-300 font-black text-xs uppercase tracking-wider transition-all cursor-pointer text-center"
-                >
-                  CORRIGE
+                  <ThumbsUp size={30} />
+                  <span>SIM</span>
                 </button>
 
                 <button
                   type="button"
                   disabled={isSubmitting}
-                  onClick={handleConfirmVote}
-                  className="py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer text-center shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2"
+                  onClick={() => handleDirectorVoteClick('nao')}
+                  className="min-h-[92px] py-5 px-4 rounded-3xl bg-rose-600 hover:bg-rose-700 text-white font-black text-2xl sm:text-3xl shadow-xl shadow-rose-600/25 flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Gravando...' : 'CONFIRMA'}
+                  <ThumbsDown size={30} />
+                  <span>NÃO</span>
                 </button>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* ======================================================== */}
-      {/* MODAL DE PROPOSTAS DO CANDIDATO */}
-      {/* ======================================================== */}
-      <AnimatePresence>
-        {candidateInModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-[32px] max-w-lg w-full p-6 md:p-8 border border-neutral-200 dark:border-neutral-800 shadow-2xl relative max-h-[90vh] overflow-y-auto"
-            >
-              <button
-                onClick={() => setCandidateInModal(null)}
-                className="absolute top-5 right-5 p-2 rounded-xl text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-              >
-                <X size={20} />
-              </button>
-
-              <div className="flex items-center gap-4 mb-6">
-                <img 
-                  src={candidateInModal.photoUrl} 
-                  alt={candidateInModal.name} 
-                  className="w-16 h-16 rounded-2xl object-cover ring-2 ring-emerald-500/30 bg-neutral-100" 
-                />
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 font-mono">
-                    Chapa {candidateInModal.number}
-                  </span>
-                  <h3 className="text-xl font-black text-neutral-900 dark:text-white leading-tight">
-                    {candidateInModal.name}
-                  </h3>
-                  {candidateInModal.viceName && (
-                    <p className="text-xs text-neutral-500 mt-0.5">Vice: {candidateInModal.viceName}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-neutral-500 mb-1">
-                    Biografia & Trajetória
-                  </h4>
-                  <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
-                    {candidateInModal.bio}
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 mb-2">
-                    Principais Propostas do Plano de Gestão
-                  </h4>
-                  <ul className="space-y-2">
-                    {candidateInModal.proposals.map((prop, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-xs text-neutral-700 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-800/60 p-3 rounded-xl border border-neutral-100 dark:border-neutral-800">
-                        <CheckCircle2 size={16} className="text-emerald-500 shrink-0 mt-0.5" />
-                        <span>{prop}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-
-              <div className="mt-8 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex justify-end">
+              <div className="flex items-center justify-between pt-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    handleSelectDirectCandidate(candidateInModal);
-                    setCandidateInModal(null);
-                  }}
-                  className="w-full py-3.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md"
+                  onClick={() => setStep('identify')}
+                  className="text-xs font-bold text-neutral-500 hover:text-neutral-800 cursor-pointer"
                 >
-                  Selecionar esta Chapa para Votar
+                  ← Voltar
+                </button>
+                {election?.allowBlanks !== false && (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => handleDirectorVoteClick('branco')}
+                    className="px-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-black text-neutral-600 dark:text-neutral-300 cursor-pointer"
+                  >
+                    Votar em Branco
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ETAPA 2B: VOTO PARA COORDENADOR(A) */}
+          {step === 'coordinator' && (
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 p-6 sm:p-8 shadow-xl space-y-6">
+              <div className="text-center space-y-1">
+                <span className="inline-block px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 text-xs font-black uppercase tracking-wider">
+                  2º Voto de 2 · Coordenação Pedagógica
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
+                  Voto para Coordenador(a)
+                </h2>
+                <p className="text-xs text-neutral-500">
+                  Eleitor(a): <strong>{voterName}</strong>
+                </p>
+              </div>
+
+              {coordinatorCandidates.length > 1 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {coordinatorCandidates.map((cand) => (
+                    <button
+                      key={cand.id}
+                      type="button"
+                      onClick={() => setSelectedCoordinatorId(cand.id)}
+                      className={`p-3 rounded-2xl border-2 text-left flex items-center gap-3 cursor-pointer transition-all ${
+                        activeCoordinator?.id === cand.id
+                          ? 'border-purple-600 bg-purple-50/70 dark:bg-purple-950/40'
+                          : 'border-neutral-200 dark:border-neutral-700'
+                      }`}
+                    >
+                      <img
+                        src={cand.photoUrl}
+                        alt={cand.name}
+                        className="w-12 h-12 rounded-xl object-cover shrink-0 bg-neutral-100"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-black text-sm truncate">{cand.name}</div>
+                        <div className="text-xs text-neutral-500">Nº {cand.number}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {activeCoordinator ? (
+                <div className="p-5 rounded-3xl bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200 dark:border-neutral-700 flex flex-col items-center text-center gap-3">
+                  <img
+                    src={activeCoordinator.photoUrl}
+                    alt={activeCoordinator.name}
+                    className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl object-cover shadow-md border-4 border-white dark:border-neutral-900"
+                  />
+                  <div>
+                    <div className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+                      {activeCoordinator.name}
+                    </div>
+                    <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
+                      Você aprova este(a) candidato(a) para Coordenador(a)?
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-6 rounded-3xl bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200 dark:border-neutral-700 text-center space-y-1.5">
+                  <div className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
+                    Coordenação Pedagógica
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    {selectedSchool?.name || 'Unidade Escolar'}
+                  </div>
+                  <div className="text-xs font-bold text-purple-600 dark:text-purple-400 pt-1">
+                    Você aprova a Coordenação Pedagógica desta escola?
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleCoordinatorVoteClick('sim')}
+                  className="min-h-[92px] py-5 px-4 rounded-3xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-2xl sm:text-3xl shadow-xl shadow-emerald-600/25 flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all disabled:opacity-50"
+                >
+                  <ThumbsUp size={30} />
+                  <span>SIM</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => handleCoordinatorVoteClick('nao')}
+                  className="min-h-[92px] py-5 px-4 rounded-3xl bg-rose-600 hover:bg-rose-700 text-white font-black text-2xl sm:text-3xl shadow-xl shadow-rose-600/25 flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 transition-all disabled:opacity-50"
+                >
+                  <ThumbsDown size={30} />
+                  <span>NÃO</span>
                 </button>
               </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
-      {/* Footer */}
-      <footer className="mt-auto py-6 text-center text-xs text-neutral-400 border-t border-neutral-200/50 dark:border-neutral-800/50 print:hidden">
-        Gestão 360 Educação • Módulo Oficial de Eleições de Diretores Escolares
-      </footer>
+              <div className="flex items-center justify-between pt-1">
+                <button
+                  type="button"
+                  onClick={() => setStep(directorCandidates.length > 0 ? 'director' : 'identify')}
+                  className="text-xs font-bold text-neutral-500 hover:text-neutral-800 cursor-pointer"
+                >
+                  ← Voltar para Diretor(a)
+                </button>
+                {election?.allowBlanks !== false && (
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => handleCoordinatorVoteClick('branco')}
+                    className="px-4 py-2 rounded-xl border border-neutral-300 dark:border-neutral-700 text-xs font-black text-neutral-600 dark:text-neutral-300 cursor-pointer"
+                  >
+                    Votar em Branco
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ETAPA 4: FIM — AUTO-RESET PARA O PRÓXIMO ELEITOR */}
+          {step === 'fim' && (
+            <div className="bg-white dark:bg-neutral-900 rounded-3xl border-2 border-emerald-500 p-8 sm:p-12 shadow-2xl text-center space-y-5">
+              <div className="w-20 h-20 mx-auto rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+                <CheckCircle2 size={48} />
+              </div>
+
+              <div>
+                <div className="text-5xl font-black tracking-widest text-emerald-600">FIM</div>
+                <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white mt-2">
+                  Voto Confirmado com Sucesso!
+                </h2>
+                {receipt && (
+                  <p className="text-xs text-neutral-500 mt-1">
+                    Protocolo: <strong className="font-mono text-neutral-700 dark:text-neutral-300">{receipt.receiptCode}</strong>
+                  </p>
+                )}
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-sm font-bold">
+                Preparando urna para o próximo eleitor em <span className="text-lg font-black">{countdown}s</span>...
+              </div>
+
+              <button
+                type="button"
+                onClick={resetForNextVoter}
+                className="w-full min-h-[54px] py-3.5 px-6 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 font-black text-sm uppercase tracking-wider cursor-pointer active:scale-[0.98]"
+              >
+                Liberar para Próximo Eleitor Agora
+              </button>
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 };
