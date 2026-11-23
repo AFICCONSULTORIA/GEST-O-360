@@ -156,8 +156,7 @@ export const VotingVotersRegistryTab: React.FC = () => {
       const res = await VotingService.importVotersRegistry(parsedEntries);
       setVoters(VotingService.getVotersRegistry());
       showToast(
-        `${res.imported} registro(s) importado(s)! ${
-          res.cloudSynced ? 'Sincronizado na nuvem.' : 'Salvo localmente (rode a SQL da urna para nuvem).'
+        `${res.imported} registro(s) importado(s)! ${res.cloudSynced ? 'Sincronizado na nuvem.' : 'Salvo localmente (rode a SQL da urna para nuvem).'
         }`,
         'success'
       );
