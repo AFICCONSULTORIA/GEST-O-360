@@ -56,7 +56,8 @@ import {
   BellRing,
   CheckCheck,
   RotateCcw,
-  History
+  History,
+  ExternalLink
 } from 'lucide-react';
 import {
   FleetVehicle,
@@ -1913,6 +1914,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
     }
   };
 
+  // Monta e abre o link direto do Portal Validador de Abastecimento (geral ou por autorização)
+  const buildFuelValidatorUrl = (orderNumber?: string) => {
+    const url = new URL('/validar-abastecimento', window.location.origin);
+    const currentParams = new URLSearchParams(window.location.search);
+    const institutionParam = currentParams.get('institution');
+    if (institutionParam) {
+      url.searchParams.set('institution', institutionParam);
+    }
+    if (orderNumber) {
+      url.searchParams.set('order', orderNumber);
+    }
+    return url.toString();
+  };
+
+  const handleOpenFuelValidator = (orderNumber?: string) => {
+    window.open(buildFuelValidatorUrl(orderNumber), '_blank', 'noopener,noreferrer');
+  };
+
   // Abre a Janela Central da Ordem (Inspeção, Homologação em 1 Clique e Ações)
   const handleOpenOrderHub = (order: FuelSupplyOrder) => {
     setSelectedOrderForAction(order);
@@ -3593,6 +3612,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
           <button
             type="button"
+            onClick={() => handleOpenFuelValidator()}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 rounded-xl transition-all cursor-pointer border border-blue-200 dark:border-blue-800"
+            title="Abrir o Portal Validador de Abastecimento em nova aba"
+          >
+            <ExternalLink size={14} />
+            <span>Validador</span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setIsToolsModalOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl transition-all cursor-pointer border border-neutral-200 dark:border-neutral-700"
             title="Abrir janela com Preços Licitados, Fichas Orçamentárias, Canhotos Antigos e Exportação TCE"
@@ -3979,6 +4008,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                             )}
 
                             <button
+                              type="button"
+                              onClick={() => handleOpenFuelValidator(order.order_number)}
+                              title={`Abrir Validador de Abastecimento (${order.order_number})`}
+                              className="p-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 dark:hover:bg-blue-900/60 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <ExternalLink size={14} />
+                            </button>
+
+                            <button
                               onClick={() => imprimirCanhotoDuasVias(order as any, v)}
                               title="Imprimir Canhoto em 2 Vias (A4)"
                               className="p-2 text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-xl transition-colors cursor-pointer"
@@ -4068,6 +4106,15 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     </div>
 
                     <div className="flex items-center gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenFuelValidator(order.order_number)}
+                        title={`Abrir Validador de Abastecimento (${order.order_number})`}
+                        className="p-2 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 rounded-xl transition-colors cursor-pointer shrink-0"
+                      >
+                        <ExternalLink size={14} />
+                      </button>
+
                       <button
                         onClick={() => imprimirCanhotoDuasVias(order as any, v)}
                         className="flex-1 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 rounded-xl hover:bg-neutral-200 transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
@@ -6283,12 +6330,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                       : 'Lançamento de Canhoto & Baixa de Abastecimento'}
                   </h3>
                 </div>
-                <button
-                  onClick={() => setIsExecutionModalOpen(false)}
-                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenFuelValidator(selectedOrderForAction.order_number)}
+                    title={`Abrir link direto do Validador (${selectedOrderForAction.order_number})`}
+                    className="px-2.5 py-1.5 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <ExternalLink size={13} />
+                    <span>Abrir Validador</span>
+                  </button>
+                  <button
+                    onClick={() => setIsExecutionModalOpen(false)}
+                    className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               <form onSubmit={handleSaveExecution} className="mt-4 space-y-4">
@@ -7147,6 +7205,16 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
                     <button
                       type="button"
+                      onClick={() => handleOpenFuelValidator(ord.order_number)}
+                      className="px-3 py-2 text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 rounded-xl cursor-pointer flex items-center gap-1.5"
+                      title={`Abrir link direto do Validador para a ordem ${ord.order_number}`}
+                    >
+                      <ExternalLink size={13} />
+                      <span>Abrir Validador</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => imprimirCanhotoDuasVias(ord as any, v)}
                       className="px-3 py-2 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 rounded-xl cursor-pointer flex items-center gap-1.5"
                     >
@@ -7312,6 +7380,25 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
                     <h4 className="text-xs font-black text-neutral-900 dark:text-white">Exportar TCE (Excel)</h4>
                     <p className="text-[11px] text-neutral-500 mt-0.5">
                       Baixar planilha auditada para prestação de contas
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsToolsModalOpen(false);
+                    handleOpenFuelValidator();
+                  }}
+                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-blue-400 dark:hover:border-blue-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
+                >
+                  <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
+                    <ExternalLink size={18} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Validador de Abastecimento</h4>
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      Abrir portal público do posto/motorista em nova aba
                     </p>
                   </div>
                 </button>
