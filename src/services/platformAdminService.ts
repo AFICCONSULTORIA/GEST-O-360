@@ -313,11 +313,11 @@ export async function performRealDiagnosticCheck(): Promise<{
     result.databaseConnected = false;
   }
 
-  // 2. Teste da API Gemini (Ping simples)
+  // 2. Teste da API Backend (Ping simples em /api/health sem expor chave no navegador)
   const g0 = performance.now();
   try {
-    const geminiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
-    if (geminiKey) {
+    const res = await fetch('/api/health');
+    if (res.ok) {
       result.geminiApiOnline = true;
       result.geminiLatencyMs = Math.round(performance.now() - g0);
     }

@@ -5,7 +5,7 @@ import {
   AlertTriangle, Calendar, User, Gauge, Fuel, Check, RefreshCw,
   Search, ShieldCheck, Car, HelpCircle, ArrowRight
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { readSpreadsheetRows } from '../../../utils/spreadsheet';
 import {
   FleetVehicle, FuelType, FleetDriver, FleetFuelStation, FleetBudgetClassification
 } from '../../../lib/api/fleetFuel';
@@ -229,16 +229,14 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   const handleSpreadsheetFile = async (file: File) => {
     setUploadFileName(file.name);
     try {
-      const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
+      const parsedBook = await readSpreadsheetRows(file);
+      const firstSheetName = parsedBook.sheetNames[0];
       if (!firstSheetName) {
         showToast('A planilha enviada está vazia ou corrompida.', 'error');
         return;
       }
 
-      const worksheet = workbook.Sheets[firstSheetName];
-      const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
+      const rawRows = parsedBook.objectsBySheet[firstSheetName] || [];
 
       if (!rawRows || rawRows.length === 0) {
         showToast('Nenhuma linha de abastecimento encontrada na planilha.', 'warning');

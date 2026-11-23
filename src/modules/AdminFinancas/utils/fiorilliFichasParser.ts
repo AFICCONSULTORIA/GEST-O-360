@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore - Vite resolves ?url imports to local static asset path
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import * as XLSX from 'xlsx';
+import { readSpreadsheetRows } from '../../../utils/spreadsheet';
 
 if (typeof window !== 'undefined') {
   try {
@@ -734,10 +734,9 @@ export async function parseFiorilliFichasPdf(file: File): Promise<ParsedFichasDo
  * Lê uma planilha Excel (.xlsx/.xls/.csv) com colunas de Fichas Orçamentárias.
  */
 export async function parseFichasSpreadsheet(file: File): Promise<ParsedFichasDocument> {
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'array' });
-  const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: '' });
+  const parsed = await readSpreadsheetRows(file);
+  const firstSheetName = parsed.sheetNames[0];
+  const rows = firstSheetName ? (parsed.objectsBySheet[firstSheetName] || []) : [];
 
   const fichas: ParsedFichaOrcamentaria[] = [];
   for (const row of rows) {

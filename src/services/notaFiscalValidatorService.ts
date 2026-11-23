@@ -8,6 +8,7 @@
  */
 
 import { dispatchAgentOfficeEvent } from '../lib/agentOfficeTelemetry';
+import { getApiAuthHeaders } from '../lib/supabase';
 
 export interface NotaFiscalProblem {
   problema: string;     // Explicação simples
@@ -474,9 +475,10 @@ export async function parseAndValidateFiscalPdf(
   _apiKeyOverride?: string
 ): Promise<NotaFiscalAnalysisResult> {
   try {
+    const authHeaders = await getApiAuthHeaders();
     const response = await fetch('/api/validate-nota', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({ pdfBase64 })
     });
 

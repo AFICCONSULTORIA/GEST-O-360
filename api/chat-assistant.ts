@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import { GESTAO_360_SYSTEM_INSTRUCTION } from './_prompts/gestao360Prompt';
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from './_utils/security';
 
 export const config = {
   runtime: 'edge', // Execução ultra-rápida na Vercel com streaming nativo
@@ -22,29 +23,54 @@ interface RequestBody {
 }
 
 export default async function handler(req: Request) {
+  const allowedOrigin = resolveAllowedOrigin(req.headers.get('origin'));
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': allowedOrigin,
+    Vary: 'Origin',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+
   // CORS para Edge
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
+      headers: corsHeaders,
     });
   }
 
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Método não permitido' }), {
       status: 405,
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        ...corsHeaders
       },
     });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+  const auth = await verifySupabaseAuthHeader(req.headers.get('authorization'));
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status || 401,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      },
+    });
+  }
+
+  if (!checkRateLimit(`chat-assistant:${auth.userId}`, 30, 60_000)) {
+    return new Response(JSON.stringify({ error: 'Limite de requisições excedido. Aguarde um minuto.' }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        ...corsHeaders
+      },
+    });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return new Response(
       JSON.stringify({ error: 'Configuração ausente: GEMINI_API_KEY não definida no servidor.' }),
@@ -52,7 +78,8 @@ export default async function handler(req: Request) {
         status: 500, 
         headers: { 
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': allowedOrigin,
+          Vary: 'Origin'
         } 
       }
     );
@@ -67,7 +94,19 @@ export default async function handler(req: Request) {
         status: 400,
         headers: { 
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': allowedOrigin,
+          Vary: 'Origin'
+        },
+      });
+    }
+
+    if (isPayloadTooLarge(message, 8_000) || (Array.isArray(history) && history.length > 20)) {
+      return new Response(JSON.stringify({ error: 'Mensagem ou histórico excede o limite permitido.' }), {
+        status: 413,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': allowedOrigin,
+          Vary: 'Origin'
         },
       });
     }
@@ -176,7 +215,8 @@ DADOS DO USUÁRIO EM ATENDIMENTO:
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': allowedOrigin,
+        Vary: 'Origin',
       },
     });
   } catch (error: any) {
@@ -190,7 +230,8 @@ DADOS DO USUÁRIO EM ATENDIMENTO:
         status: 500, 
         headers: { 
           'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
+          'Access-Control-Allow-Origin': allowedOrigin,
+          Vary: 'Origin'
         } 
       }
     );

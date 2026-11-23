@@ -12,7 +12,7 @@ import {
   ArrowRightLeft,
   Filter
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { downloadWorkbookXlsx } from '../../../utils/spreadsheet';
 import {
   FuelSupplyOrder,
   FleetVehicle,
@@ -291,62 +291,56 @@ export const FuelCostReportsPanel: React.FC<FuelCostReportsPanelProps> = ({
   }, [filteredItems, monthlyRows]);
 
   const handleExportExcel = () => {
-    const wb = XLSX.utils.book_new();
+    const monthlySheetRows = monthlyRows.map((m) => ({
+      'Mês/Ano': m.label,
+      'Qtd. Ordens': m.ordersCount,
+      'Litros': Number(m.liters.toFixed(2)),
+      'Custo Total (R$)': Number(m.totalValue.toFixed(2)),
+      'Preço Médio/L (R$)': Number(m.avgPrice.toFixed(3)),
+      'Variação vs Mês Anterior (R$)': Number(m.diffValue.toFixed(2)),
+      'Variação (%)': m.diffPct !== null ? `${m.diffPct.toFixed(1)}%` : '—',
+    }));
 
-    const wsMonthly = XLSX.utils.json_to_sheet(
-      monthlyRows.map((m) => ({
-        'Mês/Ano': m.label,
-        'Qtd. Ordens': m.ordersCount,
-        'Litros': Number(m.liters.toFixed(2)),
-        'Custo Total (R$)': Number(m.totalValue.toFixed(2)),
-        'Preço Médio/L (R$)': Number(m.avgPrice.toFixed(3)),
-        'Variação vs Mês Anterior (R$)': Number(m.diffValue.toFixed(2)),
-        'Variação (%)': m.diffPct !== null ? `${m.diffPct.toFixed(1)}%` : '—',
-      }))
-    );
-    XLSX.utils.book_append_sheet(wb, wsMonthly, 'Comparativo Mês a Mês');
+    const deptSheetRows = departmentRows.map((d) => ({
+      'Secretaria': d.department,
+      'Qtd. Ordens': d.ordersCount,
+      'Litros': Number(d.liters.toFixed(2)),
+      'Gasto Total (R$)': Number(d.totalValue.toFixed(2)),
+      'Participação (%)': `${d.sharePct.toFixed(1)}%`,
+      ...(effectiveMonthA ? { [`${formatMonthLabel(effectiveMonthA)} (R$)`]: Number(d.valA.toFixed(2)) } : {}),
+      ...(effectiveMonthB ? { [`${formatMonthLabel(effectiveMonthB)} (R$)`]: Number(d.valB.toFixed(2)) } : {}),
+    }));
 
-    const wsDepts = XLSX.utils.json_to_sheet(
-      departmentRows.map((d) => ({
-        'Secretaria': d.department,
-        'Qtd. Ordens': d.ordersCount,
-        'Litros': Number(d.liters.toFixed(2)),
-        'Gasto Total (R$)': Number(d.totalValue.toFixed(2)),
-        'Participação (%)': `${d.sharePct.toFixed(1)}%`,
-        ...(effectiveMonthA ? { [`${formatMonthLabel(effectiveMonthA)} (R$)`]: Number(d.valA.toFixed(2)) } : {}),
-        ...(effectiveMonthB ? { [`${formatMonthLabel(effectiveMonthB)} (R$)`]: Number(d.valB.toFixed(2)) } : {}),
-      }))
-    );
-    XLSX.utils.book_append_sheet(wb, wsDepts, 'Gastos por Secretaria');
+    const matrixSheetRows = departmentRows.map((d) => {
+      const row: Record<string, string | number> = { Secretaria: d.department };
+      for (const m of monthlyRows) {
+        row[m.label] = Number((d.monthValues[m.monthKey] || 0).toFixed(2));
+      }
+      row['Total Geral (R$)'] = Number(d.totalValue.toFixed(2));
+      return row;
+    });
 
-    const wsMatrix = XLSX.utils.json_to_sheet(
-      departmentRows.map((d) => {
-        const row: Record<string, string | number> = { Secretaria: d.department };
-        for (const m of monthlyRows) {
-          row[m.label] = Number((d.monthValues[m.monthKey] || 0).toFixed(2));
-        }
-        row['Total Geral (R$)'] = Number(d.totalValue.toFixed(2));
-        return row;
-      })
-    );
-    XLSX.utils.book_append_sheet(wb, wsMatrix, 'Matriz Secretaria x Mês');
-
-    const wsOrders = XLSX.utils.json_to_sheet(
-      filteredItems.map((i) => ({
-        Data: i.dateBr,
-        Mês: formatMonthLabel(i.monthKey),
-        Secretaria: i.department,
-        Placa: i.plate,
-        Combustível: formatFuelLabel(i.fuelType as FuelType),
-        Litros: Number(i.liters.toFixed(2)),
-        'Valor (R$)': Number(i.value.toFixed(2)),
-        Status: i.order.status,
-      }))
-    );
-    XLSX.utils.book_append_sheet(wb, wsOrders, 'Detalhamento');
+    const ordersSheetRows = filteredItems.map((i) => ({
+      Data: i.dateBr,
+      Mês: formatMonthLabel(i.monthKey),
+      Secretaria: i.department,
+      Placa: i.plate,
+      Combustível: formatFuelLabel(i.fuelType as FuelType),
+      Litros: Number(i.liters.toFixed(2)),
+      'Valor (R$)': Number(i.value.toFixed(2)),
+      Status: i.order.status,
+    }));
 
     const suffix = selectedDepartment !== 'all' ? `_${selectedDepartment.replace(/\s+/g, '_')}` : '';
-    XLSX.writeFile(wb, `Relatorio_Combustivel_${selectedYear}${suffix}.xlsx`);
+    void downloadWorkbookXlsx(
+      [
+        { name: 'Comparativo Mês a Mês', rows: monthlySheetRows },
+        { name: 'Gastos por Secretaria', rows: deptSheetRows },
+        { name: 'Matriz Secretaria x Mês', rows: matrixSheetRows },
+        { name: 'Detalhamento', rows: ordersSheetRows },
+      ],
+      `Relatorio_Combustivel_${selectedYear}${suffix}.xlsx`
+    );
   };
 
   const handlePrintPdf = (onlyDepartment?: string) => {

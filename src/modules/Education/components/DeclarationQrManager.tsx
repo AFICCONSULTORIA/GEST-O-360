@@ -29,7 +29,7 @@ import {
   AlertTriangle,
   Pencil
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { downloadWorkbookXlsx } from '../../../utils/spreadsheet';
 import {
   CertificatePresetTheme,
   CertificateTemplate,
@@ -341,10 +341,10 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
       Status_Emissao: s.emission_status === 'emitido' ? 'Emitido' : 'Pendente',
       Data_Registro: new Date(s.created_at).toLocaleString('pt-BR')
     }));
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Participantes');
-    XLSX.writeFile(wb, `Coleta_${inspectCampaign.slug}.xlsx`);
+    void downloadWorkbookXlsx(
+      [{ name: 'Participantes', rows }],
+      `Coleta_${inspectCampaign.slug}.xlsx`
+    );
     showToast('Planilha exportada com sucesso!', 'success');
   };
 

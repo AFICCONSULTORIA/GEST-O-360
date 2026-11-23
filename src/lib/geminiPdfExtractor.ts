@@ -1,5 +1,5 @@
 
-import { GoogleGenAI } from '@google/genai';
+import { getApiAuthHeaders } from './supabase';
 
 export interface ExtractionPreset {
   id: string;
@@ -109,11 +109,10 @@ export async function extractDataFromPdfWithGemini(
   const preset = EXTRACTION_PRESETS.find(p => p.id === presetId) || EXTRACTION_PRESETS[0];
 
   try {
+    const authHeaders = await getApiAuthHeaders();
     const response = await fetch('/api/extract-pdf', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: authHeaders,
       body: JSON.stringify({
         mode: 'table_extractor',
         base64Data,
@@ -247,71 +246,11 @@ REGRAS OBRIGATÓRIAS:
 }
 `;
 
-function getClientGeminiApiKey(): string {
-  const envMeta = (import.meta as any).env || {};
-  return (
-    // @ts-ignore
-    import.meta.env?.VITE_GEMINI_API_KEY ||
-    // @ts-ignore
-    (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY : '') ||
-    envMeta.VITE_GEMINI_API_KEY ||
-    envMeta.GEMINI_API_KEY ||
-    ''
+async function runClientGeminiPdfExtraction(_base64Data: string, _prompt: string): Promise<any> {
+  // Segurança: chaves da API Gemini nunca são expostas no bundle do navegador.
+  throw new Error(
+    'A extração de PDF via IA opera exclusivamente pelo servidor seguro (/api/extract-pdf).'
   );
-}
-
-async function runClientGeminiPdfExtraction(base64Data: string, prompt: string): Promise<any> {
-  const apiKey = getClientGeminiApiKey();
-  if (!apiKey) {
-    throw new Error(
-      'Endpoint /api/extract-pdf indisponível no ambiente local (404) e VITE_GEMINI_API_KEY não está configurada no .env.'
-    );
-  }
-
-  const genAI = new GoogleGenAI({ apiKey });
-  const models = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash'];
-  let lastError: any = null;
-
-  for (const modelName of models) {
-    try {
-      const response = await genAI.models.generateContent({
-        model: modelName,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType: 'application/pdf',
-                  data: base64Data
-                }
-              },
-              { text: prompt }
-            ]
-          }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          temperature: 0.1
-        }
-      });
-
-      if (response.text) {
-        let cleanJson = response.text.trim();
-        if (cleanJson.startsWith('```json')) {
-          cleanJson = cleanJson.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
-        } else if (cleanJson.startsWith('```')) {
-          cleanJson = cleanJson.replace(/^```\s*/i, '').replace(/\s*```$/i, '');
-        }
-        return JSON.parse(cleanJson);
-      }
-    } catch (err) {
-      lastError = err;
-      console.warn(`Fallback direto Gemini (${modelName}) falhou:`, err);
-    }
-  }
-
-  throw lastError || new Error('Nenhum modelo Gemini retornou resposta válida.');
 }
 
 export async function extractSalaryTablesFromPdf(
@@ -322,9 +261,10 @@ export async function extractSalaryTablesFromPdf(
   let parsed: any = null;
 
   try {
+    const authHeaders = await getApiAuthHeaders();
     const response = await fetch('/api/extract-pdf', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         mode: 'salary_table_extractor',
         base64Data,

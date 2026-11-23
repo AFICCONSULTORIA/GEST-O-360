@@ -3,6 +3,8 @@
  * (aceita tanto texto simples quanto HTML básico de formatação vindo do editor com timbre).
  */
 
+import { escapeHtmlText, sanitizeRichHtml } from '../../../utils/sanitizeHtml';
+
 const ALLOWED_TAGS = new Set([
   'b',
   'strong',
@@ -59,16 +61,18 @@ export const sanitizeGazetteHtml = (rawHtml: string): string => {
     return plainTextToRichHtml(rawHtml);
   }
 
+  const purified = sanitizeRichHtml(rawHtml);
+
   if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
-    return escapeHtml(rawHtml);
+    return purified;
   }
 
   const parser = new DOMParser();
-  const doc = parser.parseFromString(rawHtml, 'text/html');
+  const doc = parser.parseFromString(purified, 'text/html');
 
   const sanitizeNode = (node: Node): string => {
     if (node.nodeType === Node.TEXT_NODE) {
-      return escapeHtml(node.textContent || '');
+      return escapeHtmlText(node.textContent || '');
     }
     if (node.nodeType !== Node.ELEMENT_NODE) {
       return '';

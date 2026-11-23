@@ -9,6 +9,7 @@
  */
 
 import { parseFiscalNumber, roundCurrency } from './fiscalValidatorEngine';
+import { getApiAuthHeaders } from '../lib/supabase';
 
 export interface ExtractedFiscalPdf {
   docType: 'NFE_55' | 'NFSE_NACIONAL';
@@ -315,11 +316,10 @@ export async function readFiscalPdf(
   try {
     const base64Pdf = await fileToBase64(file);
 
+    const authHeaders = await getApiAuthHeaders();
     const response = await fetch('/api/extract-pdf', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
+      headers: authHeaders,
       body: JSON.stringify({
         mode: 'fiscal_reader',
         base64Data: base64Pdf

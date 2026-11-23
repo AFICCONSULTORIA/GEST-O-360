@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { downloadWorkbookXlsx, readSpreadsheetRows } from '../../../utils/spreadsheet';
 import { 
   Upload, 
   FileSpreadsheet, 
@@ -62,19 +62,16 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
       ['Roberto Alves Santos', '333.222.111-00', '78912345600', 'C', 'Serviços de Limpeza Urbana']
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    // Ajustar largura das colunas
-    ws['!cols'] = [
-      { wch: 32 },
-      { wch: 18 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 32 }
-    ];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Modelo Motoristas');
-    XLSX.writeFile(wb, 'Modelo_Importacao_Motoristas_Gestao360.xlsx');
+    void downloadWorkbookXlsx(
+      [
+        {
+          name: 'Modelo Motoristas',
+          rows: wsData,
+          colWidths: [32, 18, 16, 12, 32],
+        },
+      ],
+      'Modelo_Importacao_Motoristas_Gestao360.xlsx'
+    );
   };
 
   // Normalizar chave para mapeamento agnóstico de colunas
@@ -91,12 +88,9 @@ export const DriverBatchImporter: React.FC<DriverBatchImporterProps> = ({
     setFileName(file.name);
 
     try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-
-      const rawJson = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
+      const parsed = await readSpreadsheetRows(file);
+      const firstSheetName = parsed.sheetNames[0];
+      const rawJson = firstSheetName ? (parsed.objectsBySheet[firstSheetName] || []) : [];
 
       if (!rawJson || rawJson.length === 0) {
         alert('A planilha fornecida está vazia ou não possui linhas de dados.');

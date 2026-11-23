@@ -21,7 +21,7 @@ import {
   Calendar,
   Cloud
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { downloadWorkbookXlsx, SheetExportSpec } from '../../utils/spreadsheet';
 import { supabase, supabaseAnon } from '../../lib/supabase';
 import {
   getFleetBudgetClassifications,
@@ -898,26 +898,18 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       'Saldo Atual da Ficha': '',
     });
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws['!cols'] = [
-      { wch: 10 },
-      { wch: 30 },
-      { wch: 34 },
-      { wch: 20 },
-      { wch: 10 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 16 },
-      { wch: 36 },
-      { wch: 36 },
-      { wch: 18 },
+    const sheets: SheetExportSpec[] = [
+      {
+        name: 'Resumo_Por_Ficha',
+        rows,
+        colWidths: [10, 30, 34, 20, 10, 16, 16, 16, 36, 36, 18],
+      },
     ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Resumo_Por_Ficha');
 
     if (origemDestinoPairs.length > 0) {
-      const wsPairs = XLSX.utils.json_to_sheet(
-        origemDestinoPairs.map((p) => ({
+      sheets.push({
+        name: 'Mapa_Origem_Destino',
+        rows: origemDestinoPairs.map((p) => ({
           'Ficha Suplementada (Destino)': p.fichaDestino,
           'Descrição Destino': p.destinoDesc,
           'Ficha de Origem (Retirada)': p.fichaOrigem,
@@ -925,12 +917,14 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
           'Valor Retirado (R$)': p.valorTotal,
           Decretos: p.decretos.join(', '),
           Datas: p.datas.join(', '),
-        }))
-      );
-      XLSX.utils.book_append_sheet(wb, wsPairs, 'Mapa_Origem_Destino');
+        })),
+      });
     }
 
-    XLSX.writeFile(wb, `Relatorio_Suplementacao_${exercicio}_${dataInicioFilter || 'inicio'}_${dataFimFilter || 'fim'}.xlsx`);
+    void downloadWorkbookXlsx(
+      sheets,
+      `Relatorio_Suplementacao_${exercicio}_${dataInicioFilter || 'inicio'}_${dataFimFilter || 'fim'}.xlsx`
+    );
     showToast('Relatório do período exportado em Excel!', 'success');
   };
 
@@ -2169,10 +2163,10 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       };
     });
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `Fichas_${exercicio}`);
-    XLSX.writeFile(wb, `Contabilidade_Suplementacao_Fichas_${exercicio}.xlsx`);
+    void downloadWorkbookXlsx(
+      [{ name: `Fichas_${exercicio}`, rows }],
+      `Contabilidade_Suplementacao_Fichas_${exercicio}.xlsx`
+    );
     showToast('Planilha exportada com sucesso!', 'success');
   };
 

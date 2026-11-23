@@ -34,10 +34,38 @@ export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+function generateSecureTempPassword(length: number = 16): string {
+  const charset = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*';
+  const values = new Uint32Array(length);
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    crypto.getRandomValues(values);
+  } else {
+    for (let i = 0; i < length; i++) values[i] = Math.floor(Math.random() * charset.length);
+  }
+  return Array.from(values, (v) => charset[v % charset.length]).join('');
+}
+
+export async function getApiAuthHeaders(extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...extra
+  };
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    // Segue sem token caso não haja sessão ativa
+  }
+  return headers;
+}
+
 export const signUpNewUser = async (email: string, password?: string) => {
   const secondary = createClient(supabaseUrl, supabaseAnonKey, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
   });
-  const defaultInitialPassword = import.meta.env.VITE_DEFAULT_TEMP_PASSWORD || 'gestao123@';
-  return secondary.auth.signUp({ email, password: password || defaultInitialPassword });
+  const initialPassword = password || generateSecureTempPassword(16);
+  return secondary.auth.signUp({ email, password: initialPassword });
 };

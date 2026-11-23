@@ -37,7 +37,7 @@ import { Institution, AdminUser } from '../../../types';
 import { showToast } from '../../../components/ui/Toast';
 import { supabase } from '../../../lib/supabase';
 import { formatCPF } from '../../../lib/masks';
-import * as XLSX from 'xlsx';
+import { downloadWorkbookXlsx } from '../../../utils/spreadsheet';
 
 interface EducationCertificatesManagerProps {
   currentInstitution?: Institution | null;
@@ -314,10 +314,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
       ['Ana Clara Santos', '456.789.123-22', 'ana.santos@escola.gov.br', 'Monitor']
     ];
 
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Participantes');
-    XLSX.writeFile(wb, 'Modelo_Participantes_Certificados.xlsx');
+    void downloadWorkbookXlsx(
+      [{ name: 'Participantes', rows: wsData }],
+      'Modelo_Participantes_Certificados.xlsx'
+    );
   };
 
   // Processamento do Lote de Certificados (Passo 4)

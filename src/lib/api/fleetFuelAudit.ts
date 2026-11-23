@@ -9,7 +9,7 @@
 
 import { supabase, supabaseAnon } from '../supabase';
 import { compressImageFile, uploadOptimizedImageToStorage } from '../imageUpload';
-import * as XLSX from 'xlsx';
+import { downloadWorkbookXlsx } from '../../utils/spreadsheet';
 import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, getNextOrderNumber7Digits, formatOrderNumber7Digits, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
@@ -1315,54 +1315,29 @@ export async function validateAndCompleteFuelOrder(
 
     if (updateErr || !updateRes || updateRes.length === 0) {
       if (updateErr) {
-        console.warn('[FleetFuelAudit] Aviso ao atualizar com supabase padrão, tentando com supabaseAnon:', updateErr);
+        console.warn('[FleetFuelAudit] Aviso ao atualizar via REST autenticado, usando RPC segura da bomba:', updateErr);
       }
-      const retryAnon = await supabaseAnon
-        .from('fuel_supply_orders')
-        .update(updatePayload)
-        .eq('id', updatedOrder.id)
-        .select();
-      updateErr = retryAnon.error;
-      updateRes = retryAnon.data;
-    }
+      const { data: rpcData, error: rpcErr } = await supabaseAnon.rpc('public_complete_fuel_order', {
+        p_order_id: updatedOrder.id,
+        p_order_number: updatedOrder.order_number,
+        p_payload: updatePayload
+      });
 
-    if (!updateErr && (!updateRes || updateRes.length === 0)) {
-      const byNum = await supabaseAnon
-        .from('fuel_supply_orders')
-        .update(updatePayload)
-        .eq('order_number', updatedOrder.order_number)
-        .select();
-      updateErr = byNum.error;
-      updateRes = byNum.data;
-    }
-
-    if (!updateErr && updateRes && updateRes.length > 0) {
-      persistedRemotely = true;
-    } else if (updateErr) {
-      lastDbError = updateErr;
-      // Fallback mínimo garantido caso alguma coluna secundária falhe na validação do banco
-      const minimalPayload: Record<string, any> = {
-        driver_name: updatedOrder.driver_name,
-        liters_supplied: updatedOrder.liters_supplied,
-        current_odometer: updatedOrder.current_odometer,
-        pump_photo_url: updatedOrder.pump_photo_url || null,
-        odometer_photo_url: updatedOrder.odometer_photo_url || null,
-        receipt_photo_url: updatedOrder.receipt_photo_url || null,
-        receipt_attachment_url: updatedOrder.receipt_attachment_url || null,
-        status: 'abastecido',
-        supplied_at: updatedOrder.supplied_at
-      };
-      const minRes = await supabaseAnon
-        .from('fuel_supply_orders')
-        .update(minimalPayload)
-        .or(`id.eq.${updatedOrder.id},order_number.eq.${updatedOrder.order_number}`)
-        .select();
-      if (!minRes.error && minRes.data && minRes.data.length > 0) {
+      if (!rpcErr && rpcData?.success && rpcData?.order) {
         persistedRemotely = true;
-        lastDbError = null;
-      } else if (minRes.error) {
-        lastDbError = minRes.error;
+        updateRes = [rpcData.order];
+        updateErr = null;
+      } else if (rpcErr) {
+        lastDbError = rpcErr;
+      } else if (rpcData?.error) {
+        lastDbError = new Error(rpcData.error);
       }
+    }
+
+    if (!persistedRemotely && !updateErr && updateRes && updateRes.length > 0) {
+      persistedRemotely = true;
+    } else if (!persistedRemotely && !lastDbError && updateErr) {
+      lastDbError = updateErr;
     }
   } catch (err) {
     lastDbError = err;
@@ -1547,84 +1522,63 @@ export async function getFuelAuthorizationByNumber(identifier: string): Promise<
 
   let networkFailed = false;
 
-  // 1. CONSULTA DIRETA NO SUPABASE (Fonte Única da Verdade, com fallback para supabaseAnon)
+  // 1. CONSULTA VIA RPC SEGURA DA BOMBA (ou cliente autenticado quando logado)
   try {
-    const orderMatch = clean7 && clean7 !== clean
-      ? `order_number.ilike.${clean},order_number.ilike.${clean7},order_number.ilike.%${clean}%`
-      : `order_number.ilike.${clean},order_number.ilike.%${clean}%`;
+    const { data: rpcOrder, error: rpcErr } = await supabaseAnon.rpc('public_get_fuel_order_by_number', {
+      p_identifier: clean
+    });
 
-    const runOrderQuery = (client: any) => {
-      let q = client.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
-      if (isUUID) {
-        q = q.or(`id.eq.${clean},order_number.ilike.${clean}`);
-      } else {
-        q = q.or(orderMatch);
-      }
-      return q.order('created_at', { ascending: false }).limit(1).maybeSingle();
-    };
-
-    let { data, error } = await runOrderQuery(supabase);
-    if (error) {
-      const retryAnon = await runOrderQuery(supabaseAnon);
-      data = retryAnon.data;
-      error = retryAnon.error;
-    }
-
-    if (!error) {
-      if (data) {
-        if (data.anomaly_reason === 'CANCELADO_EXCLUIDO' || data.status === 'cancelado') {
+    if (!rpcErr) {
+      if (rpcOrder) {
+        if (rpcOrder.anomaly_reason === 'CANCELADO_EXCLUIDO' || rpcOrder.status === 'cancelado') {
           removeLocalOrderByIdentifier(clean);
           return null;
         }
-        return data as TwoWayFuelOrder;
-      } else {
-        // Se a busca com join retornou vazio, tenta busca direta simples sem join
-        const runSimpleQuery = (client: any) => {
-          let sq = client.from('fuel_supply_orders').select('*');
-          if (isUUID) {
-            sq = sq.eq('id', clean);
-          } else {
-            sq = sq.or(orderMatch);
-          }
-          return sq.order('created_at', { ascending: false }).limit(1).maybeSingle();
-        };
+        return rpcOrder as TwoWayFuelOrder;
+      }
+    }
 
-        let { data: rawOrder, error: simpleErr } = await runSimpleQuery(supabase);
-        if (simpleErr) {
-          const retrySimple = await runSimpleQuery(supabaseAnon);
-          rawOrder = retrySimple.data;
-          simpleErr = retrySimple.error;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const hasAuthSession = Boolean(sessionData?.session);
+
+    if (hasAuthSession) {
+      const orderMatch = clean7 && clean7 !== clean
+        ? `order_number.ilike.${clean},order_number.ilike.${clean7},order_number.ilike.%${clean}%`
+        : `order_number.ilike.${clean},order_number.ilike.%${clean}%`;
+
+      const runOrderQuery = (client: any) => {
+        let q = client.from('fuel_supply_orders').select('*, vehicle:fleet_vehicles(*)');
+        if (isUUID) {
+          q = q.or(`id.eq.${clean},order_number.ilike.${clean}`);
+        } else {
+          q = q.or(orderMatch);
         }
+        return q.order('created_at', { ascending: false }).limit(1).maybeSingle();
+      };
 
-        if (!simpleErr) {
-          if (rawOrder) {
-            if (rawOrder.anomaly_reason === 'CANCELADO_EXCLUIDO' || rawOrder.status === 'cancelado') {
-              removeLocalOrderByIdentifier(clean);
-              return null;
-            }
-            const orderObj = rawOrder as TwoWayFuelOrder;
-            if (orderObj.vehicle_id) {
-              try {
-                let { data: vData } = await supabase.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
-                if (!vData) {
-                  const anonV = await supabaseAnon.from('fleet_vehicles').select('*').eq('id', orderObj.vehicle_id).maybeSingle();
-                  vData = anonV.data;
-                }
-                if (vData) orderObj.vehicle = vData as FleetVehicle;
-              } catch { }
-            }
-            return orderObj;
-          } else {
-            // O BANCO DE DADOS NÃO POSSUI ESTA ORDEM (FOI EXCLUÍDA!)
-            // Remove imediatamente do cache do aparelho para não exibir dados obsoletos
+      const { data, error } = await runOrderQuery(supabase);
+
+      if (!error) {
+        if (data) {
+          if (data.anomaly_reason === 'CANCELADO_EXCLUIDO' || data.status === 'cancelado') {
             removeLocalOrderByIdentifier(clean);
             return null;
           }
+          return data as TwoWayFuelOrder;
+        } else {
+          removeLocalOrderByIdentifier(clean);
+          return null;
         }
+      } else {
+        console.warn('[FleetFuelAudit] Erro na consulta do Supabase:', error);
+        networkFailed = true;
       }
-    } else {
-      console.warn('[FleetFuelAudit] Erro na consulta do Supabase:', error);
+    } else if (rpcErr) {
+      console.warn('[FleetFuelAudit] Erro na RPC pública de abastecimento:', rpcErr);
       networkFailed = true;
+    } else {
+      removeLocalOrderByIdentifier(clean);
+      return null;
     }
   } catch (err) {
     console.warn('[FleetFuelAudit] Falha de conexão ao consultar Supabase:', err);
@@ -2265,8 +2219,6 @@ export async function registerLegacyFuelOrdersBatch(
  * Gera e realiza o download do arquivo modelo de planilha Excel (.xlsx) para importação de canhotos antigos
  */
 export function generateLegacyVouchersExcelTemplate(): void {
-  const wb = XLSX.utils.book_new();
-
   const sampleData = [
     {
       'Num_Autorizacao': '0412',
@@ -2296,24 +2248,16 @@ export function generateLegacyVouchersExcelTemplate(): void {
     }
   ];
 
-  const ws = XLSX.utils.json_to_sheet(sampleData);
-
-  ws['!cols'] = [
-    { wch: 18 }, // Num_Autorizacao
-    { wch: 14 }, // Placa
-    { wch: 18 }, // Combustivel
-    { wch: 20 }, // Data_Abastecimento
-    { wch: 14 }, // Km_Odometro
-    { wch: 12 }, // Litros
-    { wch: 15 }, // Preco_Unitario
-    { wch: 24 }, // Motorista
-    { wch: 26 }, // Posto
-    { wch: 16 }, // Num_Canhoto
-    { wch: 30 }  // Observacoes
-  ];
-
-  XLSX.utils.book_append_sheet(wb, ws, 'Canhotos_Antigos');
-  XLSX.writeFile(wb, 'modelo_importacao_canhotos_antigos.xlsx');
+  void downloadWorkbookXlsx(
+    [
+      {
+        name: 'Canhotos_Antigos',
+        rows: sampleData,
+        colWidths: [18, 14, 18, 20, 14, 12, 15, 24, 26, 16, 30],
+      },
+    ],
+    'modelo_importacao_canhotos_antigos.xlsx'
+  );
 }
 
 /**

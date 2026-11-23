@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as LucideIcons from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { supabase, getApiAuthHeaders } from '../../lib/supabase';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, PieChart, Pie, Cell } from 'recharts';
 import { 
   CheckItem, Protocol, PatrimonioItem, DocumentRecord, OrderItem,
@@ -24,9 +24,10 @@ const RiskModule = () => {
     if (!scenario) return;
     setLoading(true);
     try {
+      const authHeaders = await getApiAuthHeaders();
       const response = await fetch('/api/analyze-risk', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ context: scenario })
       });
       const data = await response.json();

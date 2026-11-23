@@ -10,6 +10,7 @@ import {
   Eye, EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { getApiAuthHeaders } from '../../lib/supabase';
 import { 
   ChatMessage, 
   streamMessageFromAgent, 
@@ -605,9 +606,10 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
 
       // 1. Tenta rota Serverless Edge SSE (/api/chat-assistant)
       try {
+        const authHeaders = await getApiAuthHeaders();
         const response = await fetch('/api/chat-assistant', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify({
             message: userText,
             history: messages.map((m) => ({ 

@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security";
 
 export interface NotaFiscalProblem {
   problema: string;
@@ -209,8 +210,23 @@ function validateFiscalData(data: {
 }
 
 export default async function handler(req: any, res: any) {
+  const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const clientIp = String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'anon').split(',')[0].trim();
+  if (!checkRateLimit(`validate-nota:${clientIp}`, 20, 60_000)) {
+    return res.status(429).json({ error: 'Limite de validações excedido. Aguarde um minuto.' });
   }
 
   try {
@@ -221,6 +237,9 @@ export default async function handler(req: any, res: any) {
     }
 
     if (xml) {
+      if (typeof xml !== 'string' || isPayloadTooLarge(xml, 512_000)) {
+        return res.status(413).json({ error: 'Arquivo XML excede o limite permitido de 512 KB.' });
+      }
       const isNFSe = xml.includes('CompNFSe') || xml.includes('infNFSe') || xml.includes('nNFSe');
       const getTag = (tag: string, src = xml): string => {
         const m = src.match(new RegExp(`<(?:[a-zA-Z0-9]+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z0-9]+:)?${tag}>`, 'i'));
@@ -270,7 +289,16 @@ export default async function handler(req: any, res: any) {
       }
     }
 
-    // Leitura via Gemini para PDF
+    // Leitura via Gemini para PDF (exige autenticação JWT e limite de tamanho para proteção de cota)
+    const auth = await verifySupabaseAuthHeader(req.headers?.authorization);
+    if (!auth.ok) {
+      return res.status(auth.status || 401).json({ error: auth.error });
+    }
+
+    if (typeof pdfBase64 !== 'string' || isPayloadTooLarge(pdfBase64, 8_000_000)) {
+      return res.status(413).json({ error: 'PDF excede o limite máximo permitido para leitura via IA (8 MB em Base64).' });
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(200).json(validateFiscalData({

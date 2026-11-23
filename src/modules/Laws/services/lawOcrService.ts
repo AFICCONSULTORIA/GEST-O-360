@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { getApiAuthHeaders } from '../../../lib/supabase';
 import { LawType, LawCategory, LawStatus, LawOriginPower } from '../../../types';
 import { cleanAndNormalizeLawText, extractRealLawDateAndYear } from '../utils/lawFormatter';
 import { INITIAL_REAL_LAWS } from '../data/realInitialLaws';
@@ -402,15 +403,8 @@ Retorne ESTRITAMENTE um JSON válido com a estrutura abaixo:
   "texto_integral": "Transcrição 100% fiel e completa do documento do início ao fim, sem cabeçalhos/rodapés de página repetidos, separando parágrafos, artigos e linhas de tabela por \\n."
 }`;
 
-  const envMeta = (import.meta as any).env || {};
-  const apiKey =
-    // @ts-ignore - substituído estaticamente pelo define do Vite
-    import.meta.env.VITE_GEMINI_API_KEY ||
-    // @ts-ignore - substituído estaticamente pelo define do Vite
-    process.env.GEMINI_API_KEY ||
-    envMeta.VITE_GEMINI_API_KEY ||
-    envMeta.GEMINI_API_KEY ||
-    '';
+  // Segurança: nunca ler GEMINI_API_KEY no cliente; OCR via IA passa exclusivamente pelo servidor (/api/extract-pdf)
+  const apiKey = '';
 
   let lastError: any = null;
 
@@ -490,10 +484,11 @@ Retorne ESTRITAMENTE um JSON válido com a estrutura abaixo:
   try {
     options?.onProgress?.('Processando transcrição no servidor de OCR...');
     const canSendPdfToServer = base64Data && file.size <= 2_600_000;
+    const authHeaders = await getApiAuthHeaders();
     const response = await withTimeout(
       fetch('/api/extract-pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({
           mode: 'law_ocr',
           base64Data: canSendPdfToServer ? base64Data : undefined,

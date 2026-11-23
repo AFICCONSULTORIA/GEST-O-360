@@ -214,8 +214,10 @@ export default function App() {
             return;
           }
 
-          const superAdminEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'aficconsultoria@gmail.com').toLowerCase().trim();
-          const isJwtSuperAdmin = session.user?.app_metadata?.role === 'super_admin' || session.user.email.toLowerCase().trim() === superAdminEmail;
+          const configuredSuperAdminEmail = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || '').toLowerCase().trim();
+          const isJwtSuperAdmin =
+            session.user?.app_metadata?.role === 'super_admin' ||
+            (Boolean(configuredSuperAdminEmail) && session.user.email.toLowerCase().trim() === configuredSuperAdminEmail);
 
           if (isJwtSuperAdmin) {
             setCurrentUser({

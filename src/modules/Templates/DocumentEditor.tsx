@@ -5,6 +5,7 @@ import { WebDocument, TimbreData, WatermarkConfig, MarginPreset } from './types'
 import { AdminUser, Institution } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { TimbreModal } from './TimbreModal';
+import { escapeHtmlText, sanitizeRichHtml } from '../../utils/sanitizeHtml';
 import { 
   createDefaultTimbreData, generateHeaderHtml, generateFooterHtml, 
   MARGIN_PRESETS, getWatermarkStyles, getWatermarkText 
@@ -64,7 +65,7 @@ const UncontrolledEditable = ({
 }: any) => {
   React.useEffect(() => {
     if (innerRef.current && !innerRef.current.innerHTML) {
-      innerRef.current.innerHTML = initialHtml;
+      innerRef.current.innerHTML = sanitizeRichHtml(initialHtml || '');
     }
   }, []);
 
@@ -189,8 +190,8 @@ export const DocumentEditor = ({
     if (newWatermark) setWatermarkConfig(newWatermark);
     setIsTimbreActive(newTimbre.style !== 'nenhum');
 
-    const newHeaderHtml = generateHeaderHtml(newTimbre);
-    const newFooterHtml = generateFooterHtml(newTimbre);
+    const newHeaderHtml = sanitizeRichHtml(generateHeaderHtml(newTimbre));
+    const newFooterHtml = sanitizeRichHtml(generateFooterHtml(newTimbre));
 
     if (headerRef.current) headerRef.current.innerHTML = newHeaderHtml;
     if (footerRef.current) footerRef.current.innerHTML = newFooterHtml;
@@ -213,8 +214,8 @@ export const DocumentEditor = ({
       showToast('Timbre desativado (folha limpa)', 'info');
     } else {
       setIsTimbreActive(true);
-      const newHeaderHtml = generateHeaderHtml(timbreConfig);
-      const newFooterHtml = generateFooterHtml(timbreConfig);
+      const newHeaderHtml = sanitizeRichHtml(generateHeaderHtml(timbreConfig));
+      const newFooterHtml = sanitizeRichHtml(generateFooterHtml(timbreConfig));
       if (headerRef.current) headerRef.current.innerHTML = newHeaderHtml;
       if (footerRef.current) footerRef.current.innerHTML = newFooterHtml;
       setHeader(newHeaderHtml);
@@ -404,24 +405,24 @@ export const DocumentEditor = ({
     const docNum = '00' + Math.floor(Math.random() * 900 + 100);
 
     const vars: Record<string, string> = {
-      'NOME_USUARIO': currentUser?.name || '[Nome do Usuário]',
-      'CARGO_USUARIO': currentUser?.role || '[Cargo do Usuário]',
-      'NOME_MUNICIPIO': timbreConfig.municipio || currentInstitution?.name || '[Nome do Município]',
-      'ESTADO': timbreConfig.estado || 'MATO GROSSO',
-      'NOME_SECRETARIA': timbreConfig.secretaria || 'Secretaria Municipal',
-      'NOME_SECRETARIA_SIGLA': timbreConfig.secretaria?.split(' ').map(w => w[0]).join('').toUpperCase() || 'PM',
+      'NOME_USUARIO': escapeHtmlText(currentUser?.name || '[Nome do Usuário]'),
+      'CARGO_USUARIO': escapeHtmlText(currentUser?.role || '[Cargo do Usuário]'),
+      'NOME_MUNICIPIO': escapeHtmlText(timbreConfig.municipio || currentInstitution?.name || '[Nome do Município]'),
+      'ESTADO': escapeHtmlText(timbreConfig.estado || 'MATO GROSSO'),
+      'NOME_SECRETARIA': escapeHtmlText(timbreConfig.secretaria || 'Secretaria Municipal'),
+      'NOME_SECRETARIA_SIGLA': escapeHtmlText(timbreConfig.secretaria?.split(' ').map(w => w[0]).join('').toUpperCase() || 'PM'),
       'DATA_CURTA': dateCurta,
       'DATA_EXTENSO': dateExtenso,
       'ANO': new Date().getFullYear().toString(),
       'MES': new Date().toLocaleDateString('pt-BR', { month: 'long' }),
       'NUMERO_DOCUMENTO': docNum,
       'PROTOCOLO': 'PROT-' + new Date().getFullYear() + '-' + Math.floor(Math.random() * 89999 + 10000),
-      'CNPJ': timbreConfig.cnpj || '00.000.000/0001-00',
-      'ASSINATURA': `<div style="text-align: center; margin-top: 45px;"><div style="width: 250px; border-top: 1px solid black; margin: 0 auto 6px auto;"></div><p style="margin:0; font-weight:bold;">${currentUser?.name || '[Nome]'}</p><p style="margin:0; font-size: 10pt;">${currentUser?.role || '[Cargo]'}</p></div>`
+      'CNPJ': escapeHtmlText(timbreConfig.cnpj || '00.000.000/0001-00'),
+      'ASSINATURA': `<div style="text-align: center; margin-top: 45px;"><div style="width: 250px; border-top: 1px solid black; margin: 0 auto 6px auto;"></div><p style="margin:0; font-weight:bold;">${escapeHtmlText(currentUser?.name || '[Nome]')}</p><p style="margin:0; font-size: 10pt;">${escapeHtmlText(currentUser?.role || '[Cargo]')}</p></div>`
     };
 
     const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = currentHtml;
+    tempDiv.innerHTML = sanitizeRichHtml(currentHtml);
     
     const varSpans = tempDiv.querySelectorAll('span[data-smart-var="true"]');
     varSpans.forEach(span => {
@@ -429,7 +430,7 @@ export const DocumentEditor = ({
       const varName = text.replace(/[{}]/g, '').trim();
       if (vars[varName] !== undefined) {
         const replacement = document.createElement('span');
-        replacement.innerHTML = vars[varName];
+        replacement.innerHTML = sanitizeRichHtml(vars[varName]);
         span.replaceWith(...Array.from(replacement.childNodes));
       }
     });
@@ -440,9 +441,10 @@ export const DocumentEditor = ({
       newHtml = newHtml.replace(regex, value);
     }
     
+    const safeNewHtml = sanitizeRichHtml(newHtml);
     if (bodyRef.current) {
-      bodyRef.current.innerHTML = newHtml;
-      setContent(newHtml);
+      bodyRef.current.innerHTML = safeNewHtml;
+      setContent(safeNewHtml);
       markDirty();
       showToast('Todas as variáveis foram preenchidas com sucesso!', 'success');
     }
@@ -556,9 +558,9 @@ export const DocumentEditor = ({
   };
 
   const handleExportDocx = () => {
-    const headerHtml = headerRef.current?.innerHTML || '';
-    const bodyHtml = bodyRef.current?.innerHTML || '';
-    const footerHtml = footerRef.current?.innerHTML || '';
+    const headerHtml = sanitizeRichHtml(headerRef.current?.innerHTML || '');
+    const bodyHtml = sanitizeRichHtml(bodyRef.current?.innerHTML || '');
+    const footerHtml = sanitizeRichHtml(footerRef.current?.innerHTML || '');
 
     const docHtml = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" 
@@ -566,7 +568,7 @@ export const DocumentEditor = ({
             xmlns="http://www.w3.org/TR/REC-html40">
       <head>
         <meta charset="utf-8">
-        <title>${title}</title>
+        <title>${escapeHtmlText(title)}</title>
         <!--[if gte mso 9]>
         <xml>
           <w:WordDocument>

@@ -2,10 +2,22 @@ import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret',
+  'Access-Control-Allow-Origin': 'https://gestao360sistema.com.br',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-webhook-secret, svix-id, svix-timestamp, svix-signature',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+  if (aBytes.length !== bBytes.length) return false;
+  let diff = 0;
+  for (let i = 0; i < aBytes.length; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
 
 function extractEmailAddress(raw: string): string {
   const match = raw.match(/<([^>]+)>/);
@@ -90,6 +102,16 @@ serve(async (req: Request) => {
     const rawBodyText = await req.text();
 
     const resendWebhookSecret = Deno.env.get('RESEND_WEBHOOK_SECRET');
+    const configuredSecret = Deno.env.get('EMAIL_INBOUND_SECRET');
+
+    // Fail-closed: exige ao menos um mecanismo de verificação configurado
+    if (!resendWebhookSecret && !configuredSecret) {
+      return new Response(JSON.stringify({ ok: false, error: 'Webhook secrets not configured' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (resendWebhookSecret) {
       const validSig = await verifyResendSignature(rawBodyText, req.headers, resendWebhookSecret);
       if (!validSig) {
@@ -100,10 +122,9 @@ serve(async (req: Request) => {
       }
     }
 
-    const configuredSecret = Deno.env.get('EMAIL_INBOUND_SECRET');
     if (configuredSecret) {
-      const provided = req.headers.get('x-webhook-secret') || new URL(req.url).searchParams.get('secret');
-      if (provided !== configuredSecret) {
+      const provided = req.headers.get('x-webhook-secret') || '';
+      if (!provided || !timingSafeEqualStrings(provided, configuredSecret)) {
         return new Response(JSON.stringify({ ok: false, error: 'Unauthorized webhook secret' }), {
           status: 401,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -134,9 +155,16 @@ serve(async (req: Request) => {
 
     // Se veio de webhook Resend sem corpo completo, busca conteúdo completo na Receiving API do Resend
     if (!textBody && !htmlBody && payload?.email_id) {
+      const safeEmailId = String(payload.email_id).trim();
+      if (!/^[a-zA-Z0-9_-]{8,128}$/.test(safeEmailId)) {
+        return new Response(JSON.stringify({ ok: false, error: 'Invalid email_id format' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
       const resendApiKey = Deno.env.get('RESEND_API_KEY');
       if (resendApiKey) {
-        const detailResp = await fetch(`https://api.resend.com/emails/receiving/${payload.email_id}`, {
+        const detailResp = await fetch(`https://api.resend.com/emails/receiving/${safeEmailId}`, {
           headers: { Authorization: `Bearer ${resendApiKey}` },
         });
         if (detailResp.ok) {

@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { AssistantActionPayload, UserContextData } from "../components/AIAssistant/types";
+import { getApiAuthHeaders } from "../lib/supabase";
 
 export type { AssistantActionPayload, UserContextData };
 
@@ -626,7 +627,8 @@ export async function streamMessageFromAgent({
   currentPath?: string;
   onChunk: (accumulatedText: string) => void;
 }): Promise<AgentResponse> {
-  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
+  // Segurança: chaves da API Gemini não são expostas no navegador; o chat usa /api/chat-assistant no servidor.
+  const apiKey = '';
   
   const dynamicContext = `
 DADOS DO USUÁRIO EM ATENDIMENTO:
@@ -716,9 +718,10 @@ DADOS DO USUÁRIO EM ATENDIMENTO:
       content: msg.text
     }));
 
+    const authHeaders = await getApiAuthHeaders();
     const res = await fetch('/api/chat-assistant', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         message,
         history: formattedHistory,

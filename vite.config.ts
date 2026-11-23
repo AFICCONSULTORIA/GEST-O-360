@@ -145,10 +145,6 @@ export default defineConfig(({mode}) => {
         }
       })
     ],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_GEMINI_API_KEY || ''),
-      'import.meta.env.VITE_GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || ''),
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -159,7 +155,7 @@ export default defineConfig(({mode}) => {
         output: {
           manualChunks(id) {
             if (!id.includes('node_modules')) return;
-            if (id.includes('exceljs') || id.includes('xlsx')) return 'vendor-excel';
+            if (id.includes('exceljs')) return 'vendor-excel';
             if (id.includes('pdfjs-dist')) return 'vendor-pdfjs';
             if (id.includes('jspdf') || id.includes('html2canvas') || id.includes('pdf-lib')) return 'vendor-pdf-gen';
             if (id.includes('recharts')) return 'vendor-charts';

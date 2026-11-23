@@ -1,4 +1,4 @@
-import * as XLSX from 'xlsx';
+import { readSpreadsheetRows } from './spreadsheet';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { ParsedRecipient, CertificateRecipientRole } from '../modules/Education/types/certificates';
@@ -44,16 +44,14 @@ export async function parseRecipientsSpreadsheet(file: File): Promise<ParseResul
   const recipients: ParsedRecipient[] = [];
 
   try {
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data, { type: 'array' });
-    const firstSheetName = workbook.SheetNames[0];
+    const parsed = await readSpreadsheetRows(file);
+    const firstSheetName = parsed.sheetNames[0];
 
     if (!firstSheetName) {
       return { recipients: [], totalRows: 0, errors: ['A planilha está vazia ou não contém abas válidas.'] };
     }
 
-    const worksheet = workbook.Sheets[firstSheetName];
-    const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet, { defval: '' });
+    const rawRows = parsed.objectsBySheet[firstSheetName] || [];
 
     if (!rawRows || rawRows.length === 0) {
       return { recipients: [], totalRows: 0, errors: ['Nenhum registro encontrado na planilha.'] };

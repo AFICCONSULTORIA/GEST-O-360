@@ -1,12 +1,15 @@
 import { GoogleGenAI } from "@google/genai";
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security";
 
 export const config = {
   maxDuration: 60,
 };
 
 export default async function handler(req: any, res: any) {
-  // Configuração de CORS para segurança de endpoints de API
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // Configuração de CORS restrita aos domínios oficiais
+  const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -18,16 +21,36 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
+  const auth = await verifySupabaseAuthHeader(req.headers?.authorization);
+  if (!auth.ok) {
+    return res.status(auth.status || 401).json({ error: auth.error });
+  }
+
+  if (!checkRateLimit(`extract-pdf:${auth.userId}`, 15, 60_000)) {
+    return res.status(429).json({ error: 'Limite de extrações excedido. Aguarde um minuto.' });
+  }
+
   try {
-    const { mode, base64Data, mimeType, pageImages, customColumns, userInstructions, systemInstruction } = req.body || {};
+    const { mode, base64Data, mimeType, pageImages, customColumns, userInstructions: rawUserInstructions } = req.body || {};
+    // Segurança: ignora systemInstruction arbitrária vinda do cliente e limita userInstructions
+    const systemInstruction = undefined;
+    const userInstructions =
+      typeof rawUserInstructions === 'string' ? rawUserInstructions.slice(0, 600) : undefined;
 
     if (!base64Data && (!Array.isArray(pageImages) || pageImages.length === 0)) {
       return res.status(400).json({ error: 'Parâmetro base64Data ou pageImages é obrigatório.' });
     }
 
+    if (base64Data && (typeof base64Data !== 'string' || isPayloadTooLarge(base64Data, 12_000_000))) {
+      return res.status(413).json({ error: 'PDF Base64 excede o limite máximo permitido (12 MB).' });
+    }
+
+    if (Array.isArray(pageImages) && (pageImages.length > 20 || isPayloadTooLarge(pageImages, 12_000_000))) {
+      return res.status(413).json({ error: 'Imagens de páginas excedem o limite (máximo 20 páginas ou 12 MB).' });
+    }
+
     const apiKey =
       process.env.GEMINI_API_KEY ||
-      process.env.VITE_GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY;
 
     if (!apiKey) {
