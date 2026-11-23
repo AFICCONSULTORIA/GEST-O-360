@@ -94,6 +94,7 @@ export default defineConfig(({mode}) => {
           'pwa-192x192.png',
           'pwa-512x512.png',
           'pwa-maskable-512x512.png',
+          'familia-icon.png',
           'familia-icon.svg',
           'familia-192x192.png',
           'familia-512x512.png',

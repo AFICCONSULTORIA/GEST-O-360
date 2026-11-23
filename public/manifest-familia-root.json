@@ -1,14 +1,14 @@
 {
   "id": "/",
-  "name": "Família e Escola",
-  "short_name": "Família e Escola",
+  "name": "Família & Escola",
+  "short_name": "Família & Escola",
   "description": "Acompanhe boletim, frequência, pareceres e recados escolares.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#f8fafc",
-  "theme_color": "#4f46e5",
+  "background_color": "#0a0907",
+  "theme_color": "#0a0907",
   "lang": "pt-BR",
   "dir": "ltr",
   "categories": ["education"],
@@ -30,12 +30,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
-    },
-    {
-      "src": "/familia-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
     }
   ]
 }

@@ -416,7 +416,11 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
       <div
         className={`${
           mode === 'admin' || mobileTab === 'resumo' ? 'block' : 'hidden md:block'
-        } bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 rounded-2xl sm:rounded-[32px] p-4 sm:p-8 text-white shadow-xl shadow-indigo-500/15 relative overflow-hidden`}
+        } ${
+          mode === 'student'
+            ? 'bg-gradient-to-br from-neutral-950 via-neutral-900 to-amber-950 border border-amber-500/30 shadow-amber-500/10'
+            : 'bg-gradient-to-r from-indigo-600 via-teal-600 to-emerald-600 shadow-indigo-500/15'
+        } rounded-2xl sm:rounded-[32px] p-4 sm:p-8 text-white shadow-xl relative overflow-hidden`}
       >
         <div className="absolute -top-16 -right-16 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 left-10 w-64 h-64 bg-emerald-300/15 rounded-full blur-3xl pointer-events-none" />
