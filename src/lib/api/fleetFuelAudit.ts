@@ -980,13 +980,24 @@ export async function validateAndCompleteFuelOrder(
 
   if (!order) {
     try {
-      let { data, error } = await supabase
-        .from('fuel_supply_orders')
-        .select('*, vehicle:fleet_vehicles(*)')
-        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
-        .maybeSingle();
+      const { data: rpcOrder, error: rpcErr } = await supabaseAnon.rpc('public_get_fuel_order_by_number', {
+        p_identifier: orderId
+      });
 
-      if (error || !data) {
+      let data: any = !rpcErr && rpcOrder ? rpcOrder : null;
+
+      if (!data) {
+        const authRes = await supabase
+          .from('fuel_supply_orders')
+          .select('*, vehicle:fleet_vehicles(*)')
+          .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+          .maybeSingle();
+        if (!authRes.error && authRes.data) {
+          data = authRes.data;
+        }
+      }
+
+      if (!data) {
         const anonRes = await supabaseAnon
           .from('fuel_supply_orders')
           .select('*, vehicle:fleet_vehicles(*)')
