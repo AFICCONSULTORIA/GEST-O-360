@@ -168,20 +168,41 @@ export default async function handler(req: any, res: any) {
       const category = String(req.query?.category || '').trim();
       const search = String(req.query?.search || '').trim();
 
-      // 1. Consulta cota do Drive (About API)
-      let quota: { limitBytes: number; usageBytes: number } | null = null;
+      // 1. Consulta cota e conta conectada do Drive (About API)
+      let quota: {
+        limitBytes: number;
+        usageBytes: number;
+        usageInDriveBytes: number;
+        usageInDriveTrashBytes: number;
+      } | null = null;
+      let driveAccount: { email: string; displayName: string } | null = null;
       try {
-        const aboutResp = await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota', {
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
+        const aboutResp = await fetch(
+          'https://www.googleapis.com/drive/v3/about?fields=storageQuota,user(displayName,emailAddress)',
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
         if (aboutResp.ok) {
           const aboutJson = (await aboutResp.json()) as {
-            storageQuota?: { limit?: string; usage?: string };
+            storageQuota?: {
+              limit?: string;
+              usage?: string;
+              usageInDrive?: string;
+              usageInDriveTrash?: string;
+            };
+            user?: { displayName?: string; emailAddress?: string };
           };
           if (aboutJson.storageQuota) {
             quota = {
               limitBytes: Number(aboutJson.storageQuota.limit || 0),
               usageBytes: Number(aboutJson.storageQuota.usage || 0),
+              usageInDriveBytes: Number(aboutJson.storageQuota.usageInDrive || 0),
+              usageInDriveTrashBytes: Number(aboutJson.storageQuota.usageInDriveTrash || 0),
+            };
+          }
+          if (aboutJson.user?.emailAddress || aboutJson.user?.displayName) {
+            driveAccount = {
+              email: aboutJson.user.emailAddress || '',
+              displayName: aboutJson.user.displayName || '',
             };
           }
         }
@@ -189,7 +210,7 @@ export default async function handler(req: any, res: any) {
         // Segue sem cota se falhar
       }
 
-      // 2. Download proxy direto se solicitado ?downloadId=...
+      // 2. Download ou Preview inline via proxy autenticado (?downloadId=...)
       const downloadId = String(req.query?.downloadId || '').trim();
       if (downloadId) {
         if (!/^[a-zA-Z0-9_-]{10,120}$/.test(downloadId)) {
@@ -220,8 +241,9 @@ export default async function handler(req: any, res: any) {
 
         const arrayBuf = await fileResp.arrayBuffer();
         const safeName = (rows[0].file_name || 'arquivo').replace(/[^\w.\-() ]+/g, '_');
+        const isInline = String(req.query?.inline || '') === '1';
         res.setHeader('Content-Type', rows[0].mime_type || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+        res.setHeader('Content-Disposition', `${isInline ? 'inline' : 'attachment'}; filename="${safeName}"`);
         return res.status(200).send(Buffer.from(arrayBuf));
       }
 
@@ -236,7 +258,7 @@ export default async function handler(req: any, res: any) {
         listUrl.searchParams.set('file_name', `ilike.*${search}*`);
       }
       listUrl.searchParams.set('order', 'created_at.desc');
-      listUrl.searchParams.set('limit', '200');
+      listUrl.searchParams.set('limit', '500');
 
       const listResp = await fetch(listUrl.toString(), {
         headers: {
@@ -244,11 +266,27 @@ export default async function handler(req: any, res: any) {
           Authorization: userAuthHeader,
         },
       });
-      const files = await listResp.json().catch(() => []);
+      const listPayload = await listResp.json().catch(() => []);
+      let dbTableMissing = false;
+      let dbError: string | null = null;
+      if (!listResp.ok) {
+        const errCode = String(listPayload?.code || '');
+        const errMsg = String(listPayload?.message || '');
+        if (errCode === '42P01' || errCode === 'PGRST205' || errMsg.includes('institutional_drive_files')) {
+          dbTableMissing = true;
+          dbError = 'A tabela institutional_drive_files ainda não foi criada no Supabase. Execute a migração SQL correspondente.';
+        } else {
+          dbError = errMsg || `Erro ao consultar índice de arquivos (${listResp.status}).`;
+        }
+      }
+
       return res.status(200).json({
         configured: true,
         quota,
-        files: Array.isArray(files) ? files : [],
+        driveAccount,
+        dbTableMissing,
+        dbError,
+        files: Array.isArray(listPayload) ? listPayload : [],
       });
     }
 
@@ -269,8 +307,8 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: 'Nome do arquivo e conteúdo em Base64 são obrigatórios.' });
       }
 
-      if (isPayloadTooLarge(base64Data, 12_000_000)) {
-        return res.status(413).json({ error: 'Arquivo excede o limite máximo de upload direto (aprox. 9 MB por envio).' });
+      if (isPayloadTooLarge(base64Data, 4_400_000)) {
+        return res.status(413).json({ error: 'Arquivo excede o limite máximo de envio direto (3 MB por arquivo).' });
       }
 
       const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
