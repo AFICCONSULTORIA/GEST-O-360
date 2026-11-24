@@ -267,10 +267,12 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
     }
   };
 
-  // Adição Manual de Participante
+  // Adição Manual de Participante / Palestrante
+  const [manualRole, setManualRole] = useState<'participante' | 'palestrante' | 'monitor'>('participante');
+
   const handleAddManualParticipant = () => {
     if (!manualName.trim()) {
-      showToast('Informe o nome do participante.', 'error');
+      showToast('Informe o nome do participante ou palestrante.', 'error');
       return;
     }
 
@@ -280,14 +282,17 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
         name: manualName.trim(),
         document: manualDoc.trim() || 'Documento não informado',
         email: manualEmail.trim() || undefined,
-        role: 'participante'
+        role: manualRole
       }
     ]);
 
     setManualName('');
     setManualDoc('');
     setManualEmail('');
-    showToast('Participante adicionado à lista!', 'success');
+    showToast(
+      manualRole === 'palestrante' ? 'Palestrante adicionado à lista!' : 'Participante adicionado à lista!',
+      'success'
+    );
   };
 
   // Formatação automática de CPF ao digitar no cadastro manual
@@ -906,9 +911,24 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                             <td className="p-3 font-mono text-neutral-600 dark:text-neutral-300">{r.document}</td>
                             <td className="p-3 text-neutral-500">{r.email || '-'}</td>
                             <td className="p-3">
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 uppercase">
-                                {r.role}
-                              </span>
+                              <select
+                                value={r.role}
+                                onChange={(e) => {
+                                  const nextRole = e.target.value as 'participante' | 'palestrante' | 'monitor';
+                                  setRecipients(prev =>
+                                    prev.map((item, i) => (i === idx ? { ...item, role: nextRole } : item))
+                                  );
+                                }}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border cursor-pointer ${
+                                  r.role === 'palestrante'
+                                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                                }`}
+                              >
+                                <option value="participante">Participante</option>
+                                <option value="palestrante">Palestrante</option>
+                                <option value="monitor">Monitor(a)</option>
+                              </select>
                             </td>
                             <td className="p-3 text-right">
                               <button
@@ -941,7 +961,9 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 ) : (
                   <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-neutral-900 dark:text-white">Cadastro Manual de Participante:</span>
+                      <span className="text-xs font-bold text-neutral-900 dark:text-white">
+                        Cadastro Manual (Participante ou Palestrante):
+                      </span>
                       <button
                         type="button"
                         onClick={() => setShowManualAdd(false)}
@@ -950,7 +972,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                         Fechar
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                       <input
                         type="text"
                         placeholder="Nome Completo *"
@@ -973,6 +995,15 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                         onChange={(e) => setManualEmail(e.target.value)}
                         className="p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-xs text-neutral-900 dark:text-white"
                       />
+                      <select
+                        value={manualRole}
+                        onChange={(e) => setManualRole(e.target.value as 'participante' | 'palestrante' | 'monitor')}
+                        className="p-2.5 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-xs font-bold text-neutral-900 dark:text-white"
+                      >
+                        <option value="participante">Participante / Cursista</option>
+                        <option value="palestrante">Palestrante / Ministrante</option>
+                        <option value="monitor">Monitor(a) / Apoio</option>
+                      </select>
                     </div>
                     <button
                       type="button"

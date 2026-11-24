@@ -119,6 +119,8 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
   // Modal de Coletas & Avaliações
   const [inspectCampaign, setInspectCampaign] = useState<DeclarationCampaign | null>(null);
   const [submissions, setSubmissions] = useState<DeclarationSubmission[]>([]);
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  const [selectedRoleMap, setSelectedRoleMap] = useState<Record<string, 'participante' | 'palestrante'>>({});
   const [loadingSubmissions, setLoadingSubmissions] = useState(false);
   const [emittingPending, setEmittingPending] = useState(false);
   const [emitProgress, setEmitProgress] = useState<string>('');
@@ -179,6 +181,7 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
     try {
       const rows = await fetchDeclarationSubmissions(campaign.id);
       setSubmissions(rows);
+      setSelectedSubmissionIds(rows.map((r) => r.id));
     } finally {
       setLoadingSubmissions(false);
     }
@@ -189,7 +192,14 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
     if (!inspectCampaign) return;
     const timer = setInterval(async () => {
       const rows = await fetchDeclarationSubmissions(inspectCampaign.id);
-      setSubmissions(rows);
+      setSubmissions((prev) => {
+        const prevIds = new Set(prev.map((p) => p.id));
+        const newIds = rows.filter((r) => !prevIds.has(r.id)).map((r) => r.id);
+        if (newIds.length > 0) {
+          setSelectedSubmissionIds((sel) => Array.from(new Set([...sel, ...newIds])));
+        }
+        return rows;
+      });
     }, 10000);
     return () => clearInterval(timer);
   }, [inspectCampaign]);
@@ -393,11 +403,21 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
 
   const handleSendToWizard = () => {
     if (!inspectCampaign || submissions.length === 0 || !onSendToCertificateWizard) return;
-    const recipients: ParsedRecipient[] = submissions.map((s) => ({
+    const chosen =
+      selectedSubmissionIds.length > 0
+        ? submissions.filter((s) => selectedSubmissionIds.includes(s.id))
+        : submissions;
+
+    if (chosen.length === 0) {
+      showToast('Selecione pelo menos uma pessoa para emitir o certificado.', 'warning');
+      return;
+    }
+
+    const recipients: ParsedRecipient[] = chosen.map((s) => ({
       name: s.participant_name,
       document: s.participant_cpf,
       email: s.participant_email,
-      role: 'participante'
+      role: selectedRoleMap[s.id] || 'participante'
     }));
     setInspectCampaign(null);
     onSendToCertificateWizard(inspectCampaign, recipients);
@@ -996,11 +1016,14 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                   {onSendToCertificateWizard && (
                     <button
                       type="button"
+                      disabled={selectedSubmissionIds.length === 0}
                       onClick={handleSendToWizard}
-                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs font-black inline-flex items-center gap-2 cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-neutral-950 text-xs font-black inline-flex items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       <Award className="w-4 h-4" />
-                      Emitir Certificados em Lote
+                      {selectedSubmissionIds.length === submissions.length
+                        ? `Emitir Certificados (Todos · ${submissions.length})`
+                        : `Emitir Certificados (${selectedSubmissionIds.length} selecionado(s))`}
                     </button>
                   )}
 
@@ -1033,16 +1056,92 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {submissions.map((sub) => (
+                  {/* Barra de seleção rápida para Certificados */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-800/50 text-xs">
+                    <label className="inline-flex items-center gap-2 font-black text-amber-900 dark:text-amber-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={
+                          submissions.length > 0 && selectedSubmissionIds.length === submissions.length
+                        }
+                        onChange={(e) =>
+                          setSelectedSubmissionIds(
+                            e.target.checked ? submissions.map((s) => s.id) : []
+                          )
+                        }
+                        className="w-4 h-4 rounded accent-amber-600"
+                      />
+                      <span>
+                        Selecionar pessoas para Certificado ({selectedSubmissionIds.length}/{submissions.length})
+                      </span>
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubmissionIds(submissions.map((s) => s.id))}
+                        className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer"
+                      >
+                        Todos
+                      </button>
+                      <span className="text-neutral-300">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubmissionIds([])}
+                        className="text-[11px] font-bold text-neutral-500 hover:underline cursor-pointer"
+                      >
+                        Limpar
+                      </button>
+                    </div>
+                  </div>
+
+                  {submissions.map((sub) => {
+                    const isSelected = selectedSubmissionIds.includes(sub.id);
+                    const currentRole = selectedRoleMap[sub.id] || 'participante';
+                    return (
                     <div
                       key={sub.id}
-                      className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                      className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
+                        isSelected
+                          ? 'border-amber-400 dark:border-amber-600 bg-amber-50/30 dark:bg-amber-950/10'
+                          : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60'
+                      }`}
                     >
-                      <div className="min-w-0 space-y-1">
+                      <div className="min-w-0 space-y-1 flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={(e) => {
+                            setSelectedSubmissionIds((prev) =>
+                              e.target.checked
+                                ? [...prev, sub.id]
+                                : prev.filter((id) => id !== sub.id)
+                            );
+                          }}
+                          className="w-4 h-4 mt-1 rounded accent-amber-600 shrink-0 cursor-pointer"
+                          title="Selecionar para emitir certificado"
+                        />
+                        <div className="min-w-0 space-y-1 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-sm font-black text-neutral-900 dark:text-white">
                             {sub.participant_name}
                           </span>
+                          <select
+                            value={currentRole}
+                            onChange={(e) =>
+                              setSelectedRoleMap((prev) => ({
+                                ...prev,
+                                [sub.id]: e.target.value as 'participante' | 'palestrante'
+                              }))
+                            }
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase border cursor-pointer ${
+                              currentRole === 'palestrante'
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                            }`}
+                          >
+                            <option value="participante">Participante</option>
+                            <option value="palestrante">Palestrante</option>
+                          </select>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
                               sub.morning_checkin_at
@@ -1100,6 +1199,7 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                             "{sub.feedback}"
                           </p>
                         )}
+                        </div>
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
@@ -1119,7 +1219,8 @@ export const DeclarationQrManager: React.FC<DeclarationQrManagerProps> = ({
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
