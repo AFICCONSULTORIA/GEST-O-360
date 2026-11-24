@@ -86,6 +86,7 @@ const InstitutionalSite = lazy(() => import('./components/InstitutionalSite').th
 const PublicSecretariatPortal = lazy(() => import('./components/PublicSecretariatPortal').then(m => ({ default: m.PublicSecretariatPortal })));
 const SiteInstitucionalModule = lazy(() => import('./modules/SiteInstitucional').then(m => ({ default: m.SiteInstitucionalModule })));
 const EmailInstitucionalModule = lazy(() => import('./modules/EmailInstitucional').then(m => ({ default: m.EmailInstitucionalModule })));
+const DriveFilesModule = lazy(() => import('./modules/DriveFiles').then(m => ({ default: m.DriveFilesModule })));
 const PublicWebmailPortal = lazy(() => import('./modules/EmailInstitucional/PublicWebmailPortal').then(m => ({ default: m.PublicWebmailPortal })));
 const DiarioOficialModule = lazy(() => import('./modules/DiarioOficial').then(m => ({ default: m.DiarioOficialModule })));
 const PublicGazettePortal = lazy(() => import('./modules/DiarioOficial/PublicGazettePortal').then(m => ({ default: m.PublicGazettePortal })));
@@ -2101,11 +2102,17 @@ export default function App() {
                         currentInstitution={currentInstitution}
                       />
                     )}
+                    {activeView === 'drive_files' && (
+                      <DriveFilesModule
+                        currentUser={currentUser}
+                        currentInstitution={currentInstitution}
+                      />
+                    )}
                     {activeView === 'ouvidoria' && <OuvidoriaModule currentInstitution={currentInstitution} currentUser={currentUser} />}
                     {activeView === 'notafiscal' && <PublicNotaFiscalAuditor />}
 
                     {/* Trava Anti-Tela-Branca: Redirecionamento seguro para tela inicial */}
-                    {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'diario_oficial', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'institutional_site', 'institutional_email', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
+                    {!['home', 'mayor', 'controls', 'accounting_changes', 'fleet_fuel', 'calendar', 'norms', 'risk', 'pntp', 'protocol', 'contracts', 'education', 'orders', 'doc_numbers', 'reports', 'certificates', 'course_certificates', 'laws', 'diario_oficial', 'obras', 'admin_financas', 'administracao', 'financas', 'saude', 'consultorio_medico', 'servicos_publicos', 'meio_ambiente', 'tributos', 'agricultura', 'assistencia_social', 'esporte', 'planejamento', 'camara', 'settings', 'support', 'templates', 'communication', 'forms', 'noticias', 'institutional_site', 'institutional_email', 'drive_files', 'ouvidoria', 'notafiscal', 'patrimonio'].includes(activeView) && (
                       <div className="bg-white dark:bg-neutral-900 p-8 sm:p-12 rounded-3xl border border-neutral-200 dark:border-neutral-800 text-center max-w-lg mx-auto my-12 shadow-sm space-y-4">
                         <div className="w-16 h-16 bg-amber-500/10 text-amber-500 rounded-2xl flex items-center justify-center mx-auto">
                           <AlertTriangle size={32} />

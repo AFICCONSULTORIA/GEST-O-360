@@ -6,6 +6,7 @@ import {
   Globe, 
   FileCheck, 
   FileText, 
+  HardDrive,
   ShoppingCart, 
   Target, 
   PieChart as PieChartIcon, 
@@ -124,6 +125,7 @@ export const NAVBAR_CATEGORIES = [
       { id: 'reports', label: 'Relatórios', icon: PieChartIcon },
       { id: 'patrimonio', label: 'Patrimônio', icon: Package },
       { id: 'templates', label: 'Modelos', icon: FileBadge },
+      { id: 'drive_files', label: 'Banco de Arquivos (Drive)', icon: HardDrive },
     ]
   },
   {
@@ -202,6 +204,7 @@ export const AVAILABLE_PERMISSIONS: { id: View; label: string }[] = [
   { id: 'camara', label: 'Câmara Municipal' },
   { id: 'institutional_site', label: 'Site Institucional Oficial (.gov.br)' },
   { id: 'institutional_email', label: 'E-mail Institucional & Webmail (.gov.br)' },
+  { id: 'drive_files', label: 'Banco de Arquivos (Google Drive)' },
   { id: 'noticias', label: 'Notícias & Divulgação Municipal' },
   { id: 'forms', label: 'Formulários & Consultas Populares' },
   { id: 'communication', label: 'Comunicação WhatsApp' },

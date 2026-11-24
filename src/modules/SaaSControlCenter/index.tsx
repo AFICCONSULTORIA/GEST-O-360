@@ -133,6 +133,7 @@ const ALL_SYSTEM_MODULES: ModulePermissionItem[] = [
   { id: 'forms', label: 'Formulários & Consultas Populares', category: 'citizenship' },
   { id: 'communication', label: 'Comunicação Oficial WhatsApp', category: 'citizenship' },
   { id: 'templates', label: 'Minutas & Modelos de Ofício', category: 'citizenship' },
+  { id: 'drive_files', label: 'Banco de Arquivos (Google Drive)', category: 'citizenship' },
   { id: 'settings', label: 'Configurações Institucionais', category: 'citizenship' }
 ];
 
