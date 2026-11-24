@@ -698,9 +698,8 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
           </div>
         </div>
 
-        {/* Barra de Seleção de Escola e Abas Internas */}
-        <div className="mt-8 pt-6 border-t border-neutral-100 dark:border-neutral-800 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
-          
+        {/* Barra de Seleção de Escola e Abas Internas (Sem barra de rolagem horizontal) */}
+        <div className="mt-6 pt-5 border-t border-neutral-100 dark:border-neutral-800 space-y-4">
           {/* Seletor de Escola */}
           <div className="flex items-center gap-2.5 flex-wrap">
             <span className="text-xs font-black uppercase tracking-wider text-neutral-500 flex items-center gap-1.5 shrink-0">
@@ -726,31 +725,32 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
               className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/30 transition-all cursor-pointer flex items-center gap-1 text-xs font-bold"
             >
               <Plus size={15} />
-              <span className="hidden sm:inline">Nova Escola</span>
+              <span>Nova Escola</span>
             </button>
           </div>
 
-          {/* Abas */}
-          <div className="flex bg-neutral-100 dark:bg-neutral-800/60 p-1.5 rounded-2xl gap-1 overflow-x-auto max-w-full">
+          {/* Grade limpa de Abas (todas visíveis de uma vez, sem scroll) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {[
-              { id: 'apuracao', label: 'Apuração dos Votos', icon: BarChart3 },
-              { id: 'candidatos', label: 'Candidatos & Chapas', icon: Users },
-              { id: 'escolas', label: 'Escolas & Urnas', icon: School },
-              { id: 'eleitores', label: 'Planilha de Eleitores', icon: FileSpreadsheet },
+              { id: 'apuracao', label: 'Apuração', icon: BarChart3 },
+              { id: 'candidatos', label: 'Candidatos', icon: Users },
+              { id: 'escolas', label: 'Escolas', icon: School },
+              { id: 'eleitores', label: 'Planilha Eleitores', icon: FileSpreadsheet },
               { id: 'auditoria', label: 'Auditoria (CPFs)', icon: ShieldCheck },
-              { id: 'config', label: 'Configuração da Urna', icon: Lock },
+              { id: 'config', label: 'Configuração', icon: Lock },
             ].map(tab => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer whitespace-nowrap ${
+                className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl text-xs font-black transition-all cursor-pointer border ${
                   activeTab === tab.id
-                    ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                    : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+                    ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                    : 'bg-neutral-50 dark:bg-neutral-800/70 text-neutral-600 dark:text-neutral-300 border-neutral-200/70 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >
-                <tab.icon size={15} />
-                {tab.label}
+                <tab.icon size={15} className="shrink-0" />
+                <span className="truncate">{tab.label}</span>
               </button>
             ))}
           </div>
@@ -986,7 +986,7 @@ DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE public.edu_voting_vote
             </div>
 
             {/* Barra de Filtro de Escola para os Candidatos */}
-            <div className="bg-white dark:bg-neutral-900 rounded-2xl p-3 border border-neutral-100 dark:border-neutral-800 shadow-sm flex items-center gap-2 overflow-x-auto max-w-full">
+            <div className="bg-white dark:bg-neutral-900 rounded-2xl p-3 border border-neutral-100 dark:border-neutral-800 shadow-sm flex flex-wrap items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-neutral-400 pl-2 shrink-0 flex items-center gap-1.5">
                 <School size={14} className="text-emerald-500" /> Filtrar Escola:
               </span>

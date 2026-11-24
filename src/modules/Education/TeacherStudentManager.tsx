@@ -404,7 +404,7 @@ export const TeacherStudentManager = () => {
       </div>
 
       {/* Class Selector */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
+      <div className="flex flex-wrap items-center gap-2 pb-1">
         <button 
           onClick={() => setSelectedClassId('all')}
           className={`shrink-0 px-6 py-3 rounded-2xl font-bold transition-all border ${selectedClassId === 'all' ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 hover:border-indigo-300'}`}

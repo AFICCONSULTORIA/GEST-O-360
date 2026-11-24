@@ -155,7 +155,7 @@ export const PublicCrechePortal = ({ darkMode, currentInstitution }: PublicCrech
           <div className="lg:col-span-2 space-y-8">
             
             {/* Tabs */}
-            <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl p-2 rounded-3xl flex flex-wrap sm:flex-nowrap gap-2 shadow-sm border border-neutral-100 dark:border-neutral-800 overflow-x-auto">
+            <div className="bg-white/80 dark:bg-neutral-900/80 backdrop-blur-xl p-2 rounded-3xl flex flex-wrap gap-2 shadow-sm border border-neutral-100 dark:border-neutral-800">
               {[
                 { id: 'vagas', label: 'Vagas Ofertadas', icon: Baby },
                 { id: 'criterios', label: 'Critérios', icon: Scale },
