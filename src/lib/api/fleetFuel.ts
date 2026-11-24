@@ -920,8 +920,8 @@ const BASE_ORDER_SEQ_7DIGITS = 22463; // Ponto de partida fixado pelo município
 
 /**
  * Obtém o próximo número de ordem livre na sequência oficial padrão de 7 dígitos.
- * Consulta exclusivamente as ordens ativas (sem incrementar contadores locais a cada leitura),
- * retomando automaticamente a numeração quando uma ordem é excluída e preenchendo eventuais lacunas.
+ * Calcula sempre a partir do maior número já emitido no Supabase + cache local
+ * (evitando voltar para lacunas antigas ou travar no número base).
  */
 export async function getNextOrderNumber7Digits(): Promise<string> {
   // Limpa contador legado em localStorage que causava saltos na numeração ao abrir/cancelar modais
@@ -932,37 +932,45 @@ export async function getNextOrderNumber7Digits(): Promise<string> {
   } catch {}
 
   const usedNumbers = new Set<number>();
-  let remoteResponded = false;
+  let maxNumber = BASE_ORDER_SEQ_7DIGITS;
 
-  // 1. Consulta as ordens ativas no Supabase (Fonte Única da Verdade)
+  const registerOrderNumber = (rawOrderNumber?: string | null, anomalyReason?: string | null) => {
+    if (anomalyReason === 'CANCELADO_EXCLUIDO') return;
+    if (!rawOrderNumber) return;
+    const clean = String(rawOrderNumber).trim();
+    if (/^\d+$/.test(clean)) {
+      const num = parseInt(clean, 10);
+      if (!isNaN(num) && num < 9_000_000) {
+        usedNumbers.add(num);
+        if (num > maxNumber) {
+          maxNumber = num;
+        }
+      }
+    }
+  };
+
+  // 1. Consulta as ordens no Supabase (Fonte Única da Verdade)
   try {
-    let { data, error } = await supabase
-      .from('fuel_supply_orders')
-      .select('order_number, anomaly_reason')
-      .limit(2000);
-
-    if (error && isRlsError(error)) {
-      const retry = await supabaseAnon
+    const runSeqQuery = (client: any) =>
+      client
         .from('fuel_supply_orders')
         .select('order_number, anomaly_reason')
-        .limit(2000);
-      data = retry.data;
-      error = retry.error;
+        .order('created_at', { ascending: false })
+        .limit(5000);
+
+    let { data, error } = await runSeqQuery(supabase);
+
+    if (error || !data || data.length === 0) {
+      const retry = await runSeqQuery(supabaseAnon);
+      if (!retry.error && retry.data && retry.data.length > 0) {
+        data = retry.data;
+        error = null;
+      }
     }
 
-    if (!error && data) {
-      remoteResponded = true;
+    if (!error && Array.isArray(data)) {
       for (const row of data) {
-        if (row.anomaly_reason === 'CANCELADO_EXCLUIDO') continue;
-        if (row.order_number) {
-          const clean = String(row.order_number).trim();
-          if (/^\d+$/.test(clean)) {
-            const num = parseInt(clean, 10);
-            if (!isNaN(num)) {
-              usedNumbers.add(num);
-            }
-          }
-        }
+        registerOrderNumber(row.order_number, row.anomaly_reason);
       }
     } else if (error) {
       console.warn('[FleetFuel] Aviso ao consultar sequência de ordens de 7 dígitos no Supabase:', error);
@@ -971,27 +979,15 @@ export async function getNextOrderNumber7Digits(): Promise<string> {
     console.warn('[FleetFuel] Aviso ao consultar sequência de ordens de 7 dígitos no Supabase:', err);
   }
 
-  // 2. Fallback offline: usa o cache local ativo somente se o Supabase não respondeu
-  if (!remoteResponded) {
-    try {
-      const localOrders = getLocalRealOrders();
-      for (const ord of localOrders) {
-        if (ord.anomaly_reason === 'CANCELADO_EXCLUIDO') continue;
-        if (ord.order_number) {
-          const clean = ord.order_number.trim();
-          if (/^\d+$/.test(clean)) {
-            const num = parseInt(clean, 10);
-            if (!isNaN(num)) {
-              usedNumbers.add(num);
-            }
-          }
-        }
-      }
-    } catch {}
-  }
+  // 2. Complementa com o cache local (garante sequência crescente imediata após emissões locais)
+  try {
+    const localOrders = getLocalRealOrders();
+    for (const ord of localOrders) {
+      registerOrderNumber(ord.order_number, ord.anomaly_reason);
+    }
+  } catch {}
 
-  // Encontra o primeiro número livre na sequência contínua a partir de 0022464
-  let candidate = BASE_ORDER_SEQ_7DIGITS + 1;
+  let candidate = maxNumber + 1;
   while (usedNumbers.has(candidate)) {
     candidate++;
   }
