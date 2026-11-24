@@ -330,6 +330,23 @@ BEGIN
 END;
 $$;
 
+-- Garantir colunas usadas pela RPC da bomba em fuel_supply_orders
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'fuel_supply_orders') THEN
+    ALTER TABLE public.fuel_supply_orders
+      ADD COLUMN IF NOT EXISTS pump_photo_url TEXT,
+      ADD COLUMN IF NOT EXISTS odometer_photo_url TEXT,
+      ADD COLUMN IF NOT EXISTS receipt_photo_url TEXT,
+      ADD COLUMN IF NOT EXISTS receipt_attachment_url TEXT,
+      ADD COLUMN IF NOT EXISTS total_authorized_value NUMERIC(10,2),
+      ADD COLUMN IF NOT EXISTS anomaly_level TEXT,
+      ADD COLUMN IF NOT EXISTS anomaly_reason TEXT,
+      ADD COLUMN IF NOT EXISTS supplied_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+  END IF;
+END $$;
+
 -- RPC pública segura para baixa de abastecimento na bomba via QR Code
 CREATE OR REPLACE FUNCTION public.public_complete_fuel_order(
   p_order_id UUID,

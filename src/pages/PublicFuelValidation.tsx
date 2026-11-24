@@ -98,6 +98,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitStep, setSubmitStep] = useState<string>('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{ order: TwoWayFuelOrder; audit: ConsumptionAuditCalculation } | null>(null);
 
   // Ordens recentes emitidas no dispositivo
@@ -438,6 +439,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     }
 
     setSubmitting(true);
+    setSubmitError(null);
     try {
       let uploadedPumpUrl = order.pump_photo_url;
       if (effectivePumpFile) {
@@ -477,6 +479,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
     } catch (err: unknown) {
       console.error('Erro ao registrar abastecimento:', err);
       const message = err instanceof Error ? err.message : 'Falha ao transmitir as fotos e dados.';
+      setSubmitError(message);
       showToast(message, 'error');
     } finally {
       setSubmitting(false);
@@ -1191,7 +1194,13 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
                   </div>
 
                   {/* BOTÃO PRINCIPAL DE ENVIO */}
-                  <div className="pt-3">
+                  <div className="pt-3 space-y-2.5">
+                    {submitError && (
+                      <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs font-bold text-rose-700 dark:text-rose-300 flex items-start gap-2">
+                        <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                        <span>{submitError}</span>
+                      </div>
+                    )}
                     <button
                       type="submit"
                       disabled={!canSubmit}

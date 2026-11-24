@@ -1328,7 +1328,63 @@ export async function validateAndCompleteFuelOrder(
         updateRes = [rpcData.order];
         updateErr = null;
       } else if (rpcErr) {
-        lastDbError = rpcErr;
+        const rpcMsg = String(rpcErr.message || rpcErr.details || '').toLowerCase();
+        const isMissingRpc =
+          rpcErr.code === 'PGRST202' ||
+          rpcErr.code === '42883' ||
+          rpcMsg.includes('could not find the function') ||
+          rpcMsg.includes('does not exist');
+
+        if (isMissingRpc) {
+          // Compatibilidade caso o frontend seja publicado antes da migração SQL da RPC
+          let { data: anonData, error: anonErr } = await supabaseAnon
+            .from('fuel_supply_orders')
+            .update(updatePayload)
+            .eq('id', updatedOrder.id)
+            .select();
+
+          if (!anonErr && (!anonData || anonData.length === 0)) {
+            const byNum = await supabaseAnon
+              .from('fuel_supply_orders')
+              .update(updatePayload)
+              .eq('order_number', updatedOrder.order_number)
+              .select();
+            anonErr = byNum.error;
+            anonData = byNum.data;
+          }
+
+          if (!anonErr && anonData && anonData.length > 0) {
+            persistedRemotely = true;
+            updateRes = anonData;
+            updateErr = null;
+          } else {
+            const minimalPayload: Record<string, any> = {
+              driver_name: updatedOrder.driver_name,
+              liters_supplied: updatedOrder.liters_supplied,
+              current_odometer: updatedOrder.current_odometer,
+              pump_photo_url: updatedOrder.pump_photo_url || null,
+              odometer_photo_url: updatedOrder.odometer_photo_url || null,
+              receipt_photo_url: updatedOrder.receipt_photo_url || null,
+              receipt_attachment_url: updatedOrder.receipt_attachment_url || null,
+              status: 'abastecido',
+              supplied_at: updatedOrder.supplied_at
+            };
+            const minRes = await supabaseAnon
+              .from('fuel_supply_orders')
+              .update(minimalPayload)
+              .or(`id.eq.${updatedOrder.id},order_number.eq.${updatedOrder.order_number}`)
+              .select();
+            if (!minRes.error && minRes.data && minRes.data.length > 0) {
+              persistedRemotely = true;
+              updateRes = minRes.data;
+              updateErr = null;
+            } else {
+              lastDbError = minRes.error || anonErr || rpcErr;
+            }
+          }
+        } else {
+          lastDbError = rpcErr;
+        }
       } else if (rpcData?.error) {
         lastDbError = new Error(rpcData.error);
       }
