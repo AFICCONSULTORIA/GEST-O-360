@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security";
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
 
 export interface NotaFiscalProblem {
   problema: string;

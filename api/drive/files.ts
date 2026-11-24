@@ -1,4 +1,4 @@
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from '../_utils/security';
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from '../_utils/security.js';
 
 export const config = {
   maxDuration: 60,

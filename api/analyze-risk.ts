@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security";
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
 
 export default async function handler(req: any, res: any) {
   const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);

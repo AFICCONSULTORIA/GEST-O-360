@@ -1,6 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
-import { GESTAO_360_SYSTEM_INSTRUCTION } from './_prompts/gestao360Prompt';
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from './_utils/security';
+import { GESTAO_360_SYSTEM_INSTRUCTION } from './_prompts/gestao360Prompt.js';
+import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from './_utils/security.js';
 
 export const config = {
   runtime: 'edge', // Execução ultra-rápida na Vercel com streaming nativo
