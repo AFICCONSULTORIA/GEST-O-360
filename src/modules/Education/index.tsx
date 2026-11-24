@@ -20,7 +20,9 @@ import {
   PanelLeftOpen,
   Menu,
   X,
-  ArrowLeft
+  ArrowLeft,
+  Landmark,
+  Briefcase
 } from 'lucide-react';
 import { EducationCrecheAdmin } from './components/EducationCrecheAdmin';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
@@ -33,6 +35,8 @@ import { EducationTransportManager } from './components/TransporteEscolar/compon
 import { EducationClassDiaryManager } from './components/EducationClassDiaryManager';
 import { EducationBuscaAtivaPanel } from './components/EducationBuscaAtivaPanel';
 import { EducationEducacensoExport } from './components/EducationEducacensoExport';
+import { EducationCouncilsManager } from './components/EducationCouncilsManager';
+import { EducationEmployeesManager } from './components/EducationEmployeesManager';
 
 interface EducationModuleProps {
   currentInstitution?: { id: string; name?: string; subdomain?: string } | null;
@@ -44,6 +48,8 @@ type EducationViewId =
   | 'matriculas'
   | 'diario'
   | 'staff'
+  | 'funcionarios'
+  | 'conselhos'
   | 'busca_ativa'
   | 'educacenso'
   | 'creche'
@@ -102,6 +108,24 @@ const EDU_ITEMS: EduMenuItem[] = [
     group: 'gestao',
     accentBg: 'bg-sky-50 dark:bg-sky-500/15',
     accentText: 'text-sky-600 dark:text-sky-400'
+  },
+  {
+    id: 'funcionarios',
+    label: 'Funcionários & Contratos',
+    shortDesc: 'Quadro geral: cargo, modalidade de contratação, CPF, telefone e e-mail',
+    icon: Briefcase,
+    group: 'gestao',
+    accentBg: 'bg-cyan-50 dark:bg-cyan-500/15',
+    accentText: 'text-cyan-600 dark:text-cyan-400'
+  },
+  {
+    id: 'conselhos',
+    label: 'Conselhos da Educação',
+    shortDesc: 'CME, FUNDEB e CAE: decretos, mandatos, conselheiros e atas',
+    icon: Landmark,
+    group: 'legal',
+    accentBg: 'bg-indigo-50 dark:bg-indigo-500/15',
+    accentText: 'text-indigo-600 dark:text-indigo-400'
   },
   {
     id: 'busca_ativa',
@@ -498,6 +522,34 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
                   transition={{ duration: 0.18 }}
                 >
                   <EducationStaffAdmin />
+                </motion.div>
+              )}
+
+              {educationView === 'funcionarios' && (
+                <motion.div
+                  key="funcionarios"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <EducationEmployeesManager
+                    institutionId={currentInstitution?.id || 'inst_1'}
+                  />
+                </motion.div>
+              )}
+
+              {educationView === 'conselhos' && (
+                <motion.div
+                  key="conselhos"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <EducationCouncilsManager
+                    institutionId={currentInstitution?.id || 'inst_1'}
+                  />
                 </motion.div>
               )}
 
