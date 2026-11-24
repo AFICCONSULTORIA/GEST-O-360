@@ -137,7 +137,7 @@ import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
 import { showToast } from '../../../components/ui/Toast';
 import { playFuelAlertChime, sendDesktopNotification } from '../../../utils/soundAlert';
-import { AdminUser } from '../../../types';
+import { AdminUser, Institution } from '../../../types';
 import { supabase } from '../../../lib/supabase';
 
 export interface FleetNotification {
@@ -333,9 +333,10 @@ function getOrderTimestamp(order: FuelSupplyOrder): number {
 
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
+  currentInstitution?: Institution | null;
 }
 
-export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser }) => {
+export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser, currentInstitution }) => {
   // Estado das Abas
   const [activeTab, setActiveTab] = useState<'orders' | 'reports' | 'execution' | 'audit' | 'vehicles' | 'drivers' | 'stations' | 'logs'>('orders');
 
@@ -369,7 +370,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   // Notificações Minimalistas da Frota (focadas exclusivamente em abastecimentos no posto com fotos da bomba/odômetro)
   const [notifications, setNotifications] = useState<FleetNotification[]>(() => {
     try {
-      const instId = currentUser?.institution_id || 'inst_1';
+      const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       const raw = localStorage.getItem(`gestao360_fleet_station_notifs_v2_${instId}`);
       if (raw) return JSON.parse(raw);
     } catch {}
@@ -789,7 +790,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
 
     setNotifications(prev => {
       const updated = [notif, ...prev.filter(n => n.id !== notifId && n.orderNumber !== notif.orderNumber)].slice(0, 12);
-      const instId = currentUser?.institution_id || 'inst_1';
+      const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       try {
         localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
       } catch {}
@@ -803,7 +804,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const markAllNotificationsAsRead = () => {
     setNotifications(prev => {
       const updated = prev.map(n => ({ ...n, read: true }));
-      const instId = currentUser?.institution_id || 'inst_1';
+      const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       try {
         localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
       } catch {}
@@ -822,7 +823,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const handleNotificationClick = (notif: FleetNotification) => {
     setNotifications(prev => {
       const updated = prev.map(n => n.id === notif.id ? { ...n, read: true } : n);
-      const instId = currentUser?.institution_id || 'inst_1';
+      const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       try {
         localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
       } catch {}
@@ -867,7 +868,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const loadData = async (isSilent: boolean = false) => {
     if (!isSilent) setLoading(true);
     try {
-      const instId = currentUser?.institution_id || 'inst_1';
+      const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
 
       const [vehList, ordList, drvList, staList, bclassList, bPrices, remoteLogs] = await Promise.all([
         getFleetVehicles(undefined, instId),
@@ -926,7 +927,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
   const handleSyncPatrimonio = async () => {
     setSyncingPatrimonio(true);
     try {
-      const instId = currentUser?.institution_id || 'inst_1';
+      const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       showToast('Sincronizando veículos reais com o cadastro patrimonial...', 'info');
       const synced = await syncVehiclesFromPatrimonio(instId);
       setVehicles(synced);
@@ -9256,7 +9257,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
           setBudgetClassifications(updatedList);
           loadData();
         }}
-        institutionId={currentUser?.institution_id}
+        institutionId={currentInstitution?.id || currentUser?.institution_id}
       />
 
       {/* LANÇAMENTO E IMPORTAÇÃO DE CANHOTOS ANTIGOS (TALÃO DE PAPEL) */}
@@ -9271,7 +9272,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser 
         onSuccess={() => {
           loadData();
         }}
-        institutionId={currentUser?.institution_id}
+        institutionId={currentInstitution?.id || currentUser?.institution_id}
       />
 
       {/* MODAL SIMPLES: LANÇAR ABASTECIMENTO DE ADIANTAMENTO (VIAGENS) */}

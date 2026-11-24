@@ -3296,22 +3296,39 @@ export async function getFleetBudgetClassifications(institutionId?: string): Pro
     const buildQuery = (client: any) => {
       let query = client.from('fleet_budget_classifications').select('*');
       if (institutionId) {
-        query = query.or(`institution_id.eq.${institutionId},institution_id.eq.default,institution_id.is.null`);
+        const filters = new Set([
+          `institution_id.eq.${institutionId}`,
+          'institution_id.eq.inst_1',
+          'institution_id.eq.default',
+          'institution_id.is.null'
+        ]);
+        query = query.or(Array.from(filters).join(','));
       }
       return query;
     };
 
     let { data, error } = await buildQuery(supabase);
-    if (error) {
+    if (error || !data || data.length === 0) {
       const retryAnon = await buildQuery(supabaseAnon);
-      if (!retryAnon.error && retryAnon.data) {
+      if (!retryAnon.error && retryAnon.data && retryAnon.data.length > 0) {
         data = retryAnon.data;
         error = null;
       }
     }
 
     if (!error && data && data.length > 0) {
-      const sorted = (data as FleetBudgetClassification[]).sort(
+      const targetInst = institutionId || 'inst_1';
+      // Deduplica por (ficha + fonte) priorizando registros específicos da instituição ativa
+      const dedupedMap = new Map<string, FleetBudgetClassification>();
+      for (const item of data as FleetBudgetClassification[]) {
+        const sheetKey = `${String(item.invoice_sheet || '').trim()}::${String(item.funding_source || '').trim()}`;
+        const existing = dedupedMap.get(sheetKey);
+        if (!existing || item.institution_id === targetInst) {
+          dedupedMap.set(sheetKey, item);
+        }
+      }
+
+      const sorted = Array.from(dedupedMap.values()).sort(
         (a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0)
       );
       saveLocalBudgetClassifications(sorted);

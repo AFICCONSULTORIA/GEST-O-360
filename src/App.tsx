@@ -2042,7 +2042,7 @@ export default function App() {
                       <AccountingChangesControl searchQuery={searchQuery} currentUser={currentUser} />
                     )}
                     {activeView === 'fleet_fuel' && (
-                      <FleetFuelManager currentUser={currentUser} />
+                      <FleetFuelManager currentUser={currentUser} currentInstitution={currentInstitution} />
                     )}
                     {activeView === 'risk' && <RiskModule />}
                     {activeView === 'pntp' && <PNTPModule selectedYear={selectedYear} />}
