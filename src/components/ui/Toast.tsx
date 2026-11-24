@@ -34,13 +34,14 @@ export const ToastContainer = () => {
         const withoutDuplicate = prev.filter(t => t.message !== toast.message);
         return [...withoutDuplicate.slice(-1), toast];
       });
-      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toast.id)), 3200);
+      const durationMs = toast.type === 'error' ? 5500 : 3200;
+      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toast.id)), durationMs);
     });
     return unsub;
   }, []);
 
   return (
-    <div className="fixed bottom-4 right-4 z-[99999] flex flex-col gap-1.5 pointer-events-none max-w-sm">
+    <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-[99999] flex flex-col gap-1.5 pointer-events-none sm:max-w-sm">
       <AnimatePresence>
         {toasts.map(t => (
           <motion.div 
@@ -59,7 +60,7 @@ export const ToastContainer = () => {
              {t.type === 'success' && <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />}
              {t.type === 'info' && <Info size={16} className="text-blue-400 shrink-0" />}
              {t.type === 'warning' && <AlertTriangle size={16} className="text-amber-400 shrink-0" />}
-             <span className="text-xs font-semibold leading-snug flex-1 line-clamp-2">{t.message}</span>
+             <span className="text-xs font-semibold leading-snug flex-1 line-clamp-4">{t.message}</span>
              <button onClick={() => setToasts(prev => prev.filter(x => x.id !== t.id))} className="p-0.5 text-neutral-400 hover:text-white rounded-full transition-colors cursor-pointer"><X size={13} /></button>
           </motion.div>
         ))}

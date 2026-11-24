@@ -1321,11 +1321,14 @@ export default function App() {
 
   if (isFuelValidationPortal) {
     return (
-      <PublicFuelValidation
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
-        currentInstitution={currentInstitution}
-      />
+      <>
+        <PublicFuelValidation
+          darkMode={darkMode}
+          setDarkMode={setDarkMode}
+          currentInstitution={currentInstitution}
+        />
+        <ToastContainer />
+      </>
     );
   }
 
