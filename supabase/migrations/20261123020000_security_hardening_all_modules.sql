@@ -502,13 +502,41 @@ BEGIN
       END LOOP;
 
       -- Política estrita por tenant autenticado
-      EXECUTE format(
-        'CREATE POLICY %I ON public.%I FOR ALL TO authenticated ' ||
-        'USING (public.is_super_admin() OR institution_id = public.get_current_user_institution_id()) ' ||
-        'WITH CHECK (public.is_super_admin() OR institution_id = public.get_current_user_institution_id())',
-        t || '_tenant_strict',
-        t
-      );
+      IF t = 'fleet_budget_classifications' THEN
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I FOR SELECT TO authenticated ' ||
+          'USING (public.is_super_admin() OR institution_id = public.get_current_user_institution_id() OR institution_id IN (''inst_1'', ''default'') OR institution_id IS NULL)',
+          t || '_tenant_select',
+          t
+        );
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I FOR INSERT TO authenticated ' ||
+          'WITH CHECK (public.is_super_admin() OR institution_id = public.get_current_user_institution_id())',
+          t || '_tenant_insert',
+          t
+        );
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I FOR UPDATE TO authenticated ' ||
+          'USING (public.is_super_admin() OR institution_id = public.get_current_user_institution_id()) ' ||
+          'WITH CHECK (public.is_super_admin() OR institution_id = public.get_current_user_institution_id())',
+          t || '_tenant_update',
+          t
+        );
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I FOR DELETE TO authenticated ' ||
+          'USING (public.is_super_admin() OR institution_id = public.get_current_user_institution_id())',
+          t || '_tenant_delete',
+          t
+        );
+      ELSE
+        EXECUTE format(
+          'CREATE POLICY %I ON public.%I FOR ALL TO authenticated ' ||
+          'USING (public.is_super_admin() OR institution_id = public.get_current_user_institution_id()) ' ||
+          'WITH CHECK (public.is_super_admin() OR institution_id = public.get_current_user_institution_id())',
+          t || '_tenant_strict',
+          t
+        );
+      END IF;
     END IF;
   END LOOP;
 END $$;

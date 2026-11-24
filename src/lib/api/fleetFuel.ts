@@ -3328,6 +3328,24 @@ export async function getFleetBudgetClassifications(institutionId?: string): Pro
         }
       }
 
+      // Garante que as fichas padrão que ainda não foram gravadas no banco continuem visíveis para todos os usuários
+      const existingSheets = new Set(
+        Array.from(dedupedMap.values()).map((item) => String(item.invoice_sheet || '').trim())
+      );
+      for (const defItem of DEFAULT_BUDGET_CLASSIFICATIONS) {
+        const defSheet = String(defItem.invoice_sheet || '').trim();
+        if (!existingSheets.has(defSheet)) {
+          const defKey = `${defSheet}::${String(defItem.funding_source || '').trim()}`;
+          dedupedMap.set(defKey, {
+            id: toBudgetUUID(defItem.invoice_sheet),
+            institution_id: targetInst,
+            ...defItem,
+            is_active: true,
+            created_at: new Date().toISOString()
+          });
+        }
+      }
+
       const sorted = Array.from(dedupedMap.values()).sort(
         (a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0)
       );
