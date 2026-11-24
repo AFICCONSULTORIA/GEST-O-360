@@ -131,7 +131,8 @@ import {
   getFleetFuelAuditLogs,
   getFleetFuelAuditLogsFromSupabase,
   recordFleetFuelAuditLog,
-  updateFuelOrderDate
+  updateFuelOrderDate,
+  updateFuelOrderFuelType
 } from '../../../lib/api/fleetFuelAudit';
 import { formatCPF, formatThousands, parseThousands } from '../../../lib/masks';
 import { exportToExcel } from '../../../lib/excelExport';
@@ -347,10 +348,13 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
   const [auditLogSearchTerm, setAuditLogSearchTerm] = useState('');
   const [auditLogTypeFilter, setAuditLogTypeFilter] = useState<string>('all');
 
-  // Edição rápida da Data do Abastecimento direto na Janela da Ordem
+  // Edição rápida da Data do Abastecimento e Combustível direto na Janela da Ordem
   const [isEditingOrderDate, setIsEditingOrderDate] = useState(false);
   const [orderDateEditInput, setOrderDateEditInput] = useState('');
   const [savingOrderDate, setSavingOrderDate] = useState(false);
+  const [isEditingOrderFuel, setIsEditingOrderFuel] = useState(false);
+  const [orderFuelEditInput, setOrderFuelEditInput] = useState<FuelType>('diesel_s10');
+  const [savingOrderFuel, setSavingOrderFuel] = useState(false);
 
   // Dados
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
@@ -496,6 +500,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
   const [executionForm, setExecutionForm] = useState({
     custom_order_number: '',
     supplied_at: '',
+    fuel_type: 'diesel_s10' as FuelType,
     liters_supplied: 0,
     current_odometer: 0,
     unit_price: 6.19,
@@ -1940,6 +1945,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
     setShowFraudClearBox(false);
     setFraudClearObservation('');
     setIsEditingOrderDate(false);
+    setIsEditingOrderFuel(false);
+    setOrderFuelEditInput((order.fuel_type || 'diesel_s10') as FuelType);
     const rawOrderDate = (order as any).fueling_date || order.supplied_at || order.created_at;
     setOrderDateEditInput(extractOrderDateYYYYMMDD(rawOrderDate));
     setAuditForm({
@@ -1975,6 +1982,39 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       showToast(err.message || 'Erro ao alterar data do abastecimento.', 'error');
     } finally {
       setSavingOrderDate(false);
+    }
+  };
+
+  // Salvar edição rápida do Tipo de Combustível direto na Janela da Ordem
+  const handleQuickSaveOrderFuel = async () => {
+    if (!selectedOrderForAction || !orderFuelEditInput) return;
+    setSavingOrderFuel(true);
+    try {
+      const targetPrice =
+        biddedPrices[orderFuelEditInput]?.price ||
+        CONTRACTUAL_BIDDED_PRICES[orderFuelEditInput]?.price ||
+        Number(selectedOrderForAction.bidded_unit_price || selectedOrderForAction.unit_price || 6.19);
+
+      const updated = await updateFuelOrderFuelType(
+        selectedOrderForAction.id,
+        orderFuelEditInput,
+        targetPrice,
+        currentUser?.name || 'Gestor da Frota',
+        currentUser?.role || 'Responsável pela Frota',
+        currentInstitution?.id || currentUser?.institution_id || 'inst_1'
+      );
+      setSelectedOrderForAction(updated as any);
+      setOrders(prev => prev.map(o => (o.id === updated.id || o.order_number === updated.order_number ? (updated as any) : o)));
+      setIsEditingOrderFuel(false);
+      showToast(
+        `Combustível da Ordem ${updated.order_number} alterado para ${formatFuelLabel(orderFuelEditInput)}!`,
+        'success'
+      );
+      loadData(true);
+    } catch (err: any) {
+      showToast(err.message || 'Erro ao alterar tipo de combustível.', 'error');
+    } finally {
+      setSavingOrderFuel(false);
     }
   };
 
@@ -2238,15 +2278,23 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
 
     const v = order.vehicle || vehicles.find(item => item.id === order.vehicle_id);
     const rawOrderDate = (order as any).fueling_date || order.supplied_at || order.created_at;
+    const resolvedFuel = (order.fuel_type || v?.fuel_type || 'diesel_s10') as FuelType;
+    const resolvedPrice =
+      order.bidded_unit_price ||
+      order.unit_price ||
+      biddedPrices[resolvedFuel]?.price ||
+      CONTRACTUAL_BIDDED_PRICES[resolvedFuel]?.price ||
+      6.19;
     setSelectedOrderForAction(order);
     setExecutionForm({
       custom_order_number: order.order_number || '',
       supplied_at: extractOrderDateYYYYMMDD(rawOrderDate) || new Date().toISOString().slice(0, 10),
+      fuel_type: resolvedFuel,
       liters_supplied: order.liters_supplied || order.liters_authorized,
       current_odometer: order.current_odometer && order.current_odometer > order.previous_odometer 
         ? order.current_odometer 
         : order.previous_odometer + 150,
-      unit_price: order.unit_price || 6.19,
+      unit_price: resolvedPrice,
       invoice_number: order.invoice_number || '',
       invoice_key: order.invoice_key || '',
       receipt_attachment_url: order.receipt_attachment_url || (order as any).receipt_photo_url || '',
@@ -2535,6 +2583,8 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       const res = await validateAndCompleteFuelOrder(selectedOrderForAction.id, {
         current_odometer: currentKm,
         liters_supplied: Number(executionForm.liters_supplied) || selectedOrderForAction.liters_authorized,
+        fuel_type: executionForm.fuel_type,
+        unit_price: executionForm.unit_price,
         supplied_at: executionForm.supplied_at || undefined,
         receipt_photo_url: executionForm.receipt_attachment_url || undefined,
         odometer_photo_url: executionForm.odometer_photo_url || undefined,
@@ -6427,6 +6477,37 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
                   </select>
                 </div>
 
+                {/* Tipo de Combustível (Editável após emissão da requisição) */}
+                <div className="p-3 bg-neutral-50 dark:bg-neutral-800/60 rounded-xl border border-neutral-200 dark:border-neutral-700">
+                  <label className="text-xs font-bold text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5 mb-1">
+                    <Fuel size={14} className="text-amber-500" />
+                    Tipo de Combustível *
+                  </label>
+                  <select
+                    value={executionForm.fuel_type}
+                    onChange={e => {
+                      const nextFuel = e.target.value as FuelType;
+                      const nextPrice =
+                        biddedPrices[nextFuel]?.price ||
+                        CONTRACTUAL_BIDDED_PRICES[nextFuel]?.price ||
+                        executionForm.unit_price ||
+                        6.19;
+                      setExecutionForm({
+                        ...executionForm,
+                        fuel_type: nextFuel,
+                        unit_price: nextPrice
+                      });
+                    }}
+                    className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="diesel_s10">Diesel S-10</option>
+                    <option value="diesel_s500">Diesel Comum (S-500)</option>
+                    <option value="gasolina">Gasolina Comum</option>
+                    <option value="etanol">Etanol / Álcool</option>
+                    <option value="arla32">ARLA 32</option>
+                  </select>
+                </div>
+
                 {/* Litros e Odômetro */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
@@ -6450,10 +6531,18 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
                       Preço Unitário Homologado
                     </span>
                     <span className="text-sm font-black text-emerald-600 block mt-0.5">
-                      R$ {Number(selectedOrderForAction.bidded_unit_price || executionForm.unit_price || 6.19).toFixed(3)}/L
+                      R$ {Number(
+                        executionForm.fuel_type !== selectedOrderForAction.fuel_type
+                          ? executionForm.unit_price
+                          : (selectedOrderForAction.bidded_unit_price || executionForm.unit_price || 6.19)
+                      ).toFixed(3)}/L
                     </span>
                     <span className="text-[10px] text-neutral-500 font-semibold block">
-                      Total Previsto: R$ {((executionForm.liters_supplied || selectedOrderForAction.liters_authorized) * Number(selectedOrderForAction.bidded_unit_price || executionForm.unit_price || 6.19)).toFixed(2)}
+                      Total Previsto: R$ {((executionForm.liters_supplied || selectedOrderForAction.liters_authorized) * Number(
+                        executionForm.fuel_type !== selectedOrderForAction.fuel_type
+                          ? executionForm.unit_price
+                          : (selectedOrderForAction.bidded_unit_price || executionForm.unit_price || 6.19)
+                      )).toFixed(2)}
                     </span>
                   </div>
 
@@ -6867,6 +6956,59 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
                             <span className="text-neutral-400 text-xs">
                               • {ord.station_name || 'Posto Credenciado'}
                             </span>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Edição rápida do Tipo de Combustível na Janela da Ordem */}
+                      <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                        {isEditingOrderFuel ? (
+                          <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-950/50 border border-blue-300 dark:border-blue-700 px-2.5 py-1 rounded-xl">
+                            <Fuel size={13} className="text-blue-600 shrink-0" />
+                            <select
+                              value={orderFuelEditInput}
+                              onChange={e => setOrderFuelEditInput(e.target.value as FuelType)}
+                              className="bg-white dark:bg-neutral-900 border border-blue-300 dark:border-blue-700 rounded-lg px-2 py-0.5 text-xs font-bold text-neutral-900 dark:text-white focus:outline-none cursor-pointer"
+                            >
+                              <option value="diesel_s10">Diesel S-10</option>
+                              <option value="diesel_s500">Diesel Comum (S-500)</option>
+                              <option value="gasolina">Gasolina Comum</option>
+                              <option value="etanol">Etanol / Álcool</option>
+                              <option value="arla32">ARLA 32</option>
+                            </select>
+                            <button
+                              type="button"
+                              disabled={savingOrderFuel}
+                              onClick={handleQuickSaveOrderFuel}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black cursor-pointer disabled:opacity-50"
+                            >
+                              {savingOrderFuel ? 'Salvando...' : 'Salvar Combustível'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsEditingOrderFuel(false)}
+                              className="px-2 py-1 text-neutral-500 hover:text-neutral-800 dark:hover:text-white text-[11px] font-bold cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-xl">
+                              <Fuel size={12} className="text-blue-500" />
+                              Combustível: <strong>{formatFuelLabel(ord.fuel_type)}</strong>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOrderFuelEditInput((ord.fuel_type || 'diesel_s10') as FuelType);
+                                setIsEditingOrderFuel(true);
+                              }}
+                              className="px-2.5 py-1 rounded-xl text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Alterar o tipo de combustível desta autorização com recálculo de preço"
+                            >
+                              <Edit2 size={11} /> Editar Combustível
+                            </button>
                           </>
                         )}
                       </div>

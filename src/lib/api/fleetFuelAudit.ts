@@ -245,6 +245,7 @@ export interface IssueOrderPayload {
 export interface OrderCompletionPayload {
   current_odometer: number;
   liters_supplied?: number;
+  fuel_type?: FuelType;
   unit_price?: number;
   total_value?: number;
   receipt_photo_url?: string;
@@ -271,6 +272,7 @@ export interface OrderCompletionPayload {
 export type FleetFuelAuditActionType =
   | 'EDICAO_ABASTECIMENTO'
   | 'ALTERACAO_DATA'
+  | 'ALTERACAO_COMBUSTIVEL'
   | 'ALTERACAO_DOTACAO'
   | 'EMISSAO_ORDEM'
   | 'HOMOLOGACAO_TCE'
@@ -1085,9 +1087,14 @@ export async function validateAndCompleteFuelOrder(
     vehicle.plate = completionData.vehicle_plate.trim().toUpperCase();
   }
 
+  const updatedFuelType: FuelType = completionData.fuel_type || order.fuel_type;
+  const fuelTypeChanged = Boolean(completionData.fuel_type && completionData.fuel_type !== order.fuel_type);
+
   const clampedKmPerL = Math.min(Math.max(Number(audit.calculated_km_per_liter || 0), -9999.99), 9999.99);
   const clampedDev = Math.min(Math.max(Number(audit.deviation_percent || 0), -999.99), 999.99);
-  const rawUnitPrice = Number(order.bidded_unit_price || completionData.unit_price || 6.19);
+  const rawUnitPrice = fuelTypeChanged
+    ? Number(completionData.unit_price || order.bidded_unit_price || 6.19)
+    : Number(order.bidded_unit_price || completionData.unit_price || 6.19);
   const safeUnitPrice = !isNaN(rawUnitPrice) && rawUnitPrice > 0 ? rawUnitPrice : 6.19;
   const computedTotal = Number((suppliedLiters * safeUnitPrice).toFixed(2));
   const finalTotalValue = !isNaN(computedTotal) && computedTotal > 0
@@ -1164,6 +1171,14 @@ export async function validateAndCompleteFuelOrder(
       newValue: `${completionData.current_odometer} km`
     });
   }
+  if (fuelTypeChanged) {
+    fieldChanges.push({
+      field: 'fuel_type',
+      label: 'Tipo de Combustível',
+      oldValue: order.fuel_type || '-',
+      newValue: updatedFuelType
+    });
+  }
   if (updatedDriverName !== order.driver_name) {
     fieldChanges.push({
       field: 'driver_name',
@@ -1219,6 +1234,7 @@ export async function validateAndCompleteFuelOrder(
   const updatedOrder: TwoWayFuelOrder = {
     ...order,
     order_number: finalOrderNumber,
+    fuel_type: updatedFuelType,
     vehicle,
     driver_name: updatedDriverName,
     liters_supplied: suppliedLiters,
@@ -1232,6 +1248,7 @@ export async function validateAndCompleteFuelOrder(
     total_authorized_value: finalTotalValue,
     total_value: finalTotalValue,
     unit_price: safeUnitPrice,
+    bidded_unit_price: fuelTypeChanged ? safeUnitPrice : order.bidded_unit_price,
     invoice_coupon_number: completionData.invoice_coupon_number?.trim() || order.invoice_coupon_number,
     anomaly_level: audit.anomaly_level,
     anomaly_reason: audit.anomaly_reason,
@@ -1278,6 +1295,7 @@ export async function validateAndCompleteFuelOrder(
   // 7. Persistir a atualização da ordem no Supabase (resiliente contra RLS, overflow numérico e queda de sessão)
   const updatePayload: Record<string, any> = {
     order_number: updatedOrder.order_number,
+    fuel_type: updatedOrder.fuel_type,
     driver_name: updatedOrder.driver_name,
     liters_supplied: updatedOrder.liters_supplied,
     current_odometer: updatedOrder.current_odometer,
@@ -2534,6 +2552,120 @@ export async function updateFuelOrderDate(
         }
       ],
       notes: `Data do abastecimento alterada manualmente de ${oldDateBR} para ${newDateBR}.`
+    });
+  }
+
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gestao360_fuel_order_updated', {
+        detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
+      }));
+    }
+  } catch {}
+
+  return updatedOrder;
+}
+
+/**
+ * Permite alterar o tipo de combustível de uma autorização/ordem já emitida
+ * (antes ou depois da baixa na bomba), recalculando o valor e registrando no Log de Auditoria.
+ */
+export async function updateFuelOrderFuelType(
+  orderId: string,
+  newFuelType: FuelType,
+  newUnitPrice: number,
+  actorName: string = 'Gestor da Frota',
+  actorRole: string = 'Responsável pela Frota',
+  institutionId: string = 'inst_1'
+): Promise<TwoWayFuelOrder> {
+  const orders = getLocalOrders();
+  const orderIdx = orders.findIndex(o => o.id === orderId || o.order_number === orderId);
+  let baseOrder: TwoWayFuelOrder | null = orderIdx !== -1 ? orders[orderIdx] : null;
+
+  if (!baseOrder) {
+    try {
+      const { data } = await supabase
+        .from('fuel_supply_orders')
+        .select('*, vehicle:fleet_vehicles(*)')
+        .or(`id.eq.${orderId},order_number.eq.${orderId}`)
+        .maybeSingle();
+      if (data) baseOrder = data as TwoWayFuelOrder;
+    } catch {}
+  }
+
+  if (!baseOrder) {
+    throw new Error('Ordem de abastecimento não localizada.');
+  }
+
+  const oldFuelType = baseOrder.fuel_type;
+  const safePrice = !isNaN(Number(newUnitPrice)) && Number(newUnitPrice) > 0
+    ? Number(newUnitPrice)
+    : Number(baseOrder.bidded_unit_price || baseOrder.unit_price || 6.19);
+  const effectiveLiters = Number(baseOrder.liters_supplied || baseOrder.liters_authorized || 0);
+  const newTotalValue = Number((effectiveLiters * safePrice).toFixed(2));
+
+  const updatedOrder: TwoWayFuelOrder = {
+    ...baseOrder,
+    fuel_type: newFuelType,
+    unit_price: safePrice,
+    bidded_unit_price: safePrice,
+    total_authorized_value: newTotalValue,
+    total_value: newTotalValue
+  };
+
+  if (orderIdx !== -1) {
+    orders[orderIdx] = updatedOrder;
+  } else {
+    orders.unshift(updatedOrder);
+  }
+  saveLocalOrders(orders);
+
+  const dbPatch: Record<string, any> = {
+    fuel_type: newFuelType,
+    unit_price: safePrice,
+    bidded_unit_price: safePrice,
+    total_authorized_value: newTotalValue,
+    total_value: newTotalValue
+  };
+
+  try {
+    let { error } = await supabase
+      .from('fuel_supply_orders')
+      .update(dbPatch)
+      .eq('id', updatedOrder.id);
+
+    if (error) {
+      await supabaseAnon
+        .from('fuel_supply_orders')
+        .update(dbPatch)
+        .or(`id.eq.${updatedOrder.id},order_number.eq.${updatedOrder.order_number}`);
+    }
+  } catch (err) {
+    console.warn('[FleetFuelAudit] Aviso ao atualizar combustível no Supabase:', err);
+  }
+
+  if (oldFuelType !== newFuelType) {
+    const rawDate = (updatedOrder as any).fueling_date || updatedOrder.supplied_at || updatedOrder.created_at;
+    await recordFleetFuelAuditLog({
+      institution_id: institutionId || updatedOrder.institution_id || 'inst_1',
+      order_id: updatedOrder.id,
+      order_number: updatedOrder.order_number,
+      vehicle_plate: updatedOrder.vehicle?.plate,
+      vehicle_model: updatedOrder.vehicle?.model,
+      action_type: 'ALTERACAO_COMBUSTIVEL',
+      action_label: 'Alteração do Tipo de Combustível da Autorização',
+      actor_name: actorName,
+      actor_role: actorRole,
+      fueling_date: formatDateBRFromRaw(rawDate),
+      changes: [
+        {
+          field: 'fuel_type',
+          label: 'Tipo de Combustível',
+          oldValue: oldFuelType || '-',
+          newValue: newFuelType
+        }
+      ],
+      notes: `Combustível alterado de ${oldFuelType} para ${newFuelType} (preço unitário R$ ${safePrice.toFixed(3)}/L).`
     });
   }
 
