@@ -785,7 +785,7 @@ export async function getFuelSupplyOrders(filters?: {
       if (filters?.onlyAnomalies) {
         q = q.eq('is_anomaly', true);
       }
-      return q.order('created_at', { ascending: false });
+      return q.order('created_at', { ascending: false }).range(0, 4999);
     };
 
     let { data, error } = await buildQuery(supabase);

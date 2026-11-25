@@ -1516,12 +1516,12 @@ export async function validateAndCompleteFuelOrder(
 /**
  * Sincroniza ordens do cache local para o Supabase (garante que ordens emitidas fiquem visíveis no celular via QR Code)
  */
-export async function syncLocalOrdersToSupabase(): Promise<void> {
+export async function syncLocalOrdersToSupabase(defaultInstitutionId?: string): Promise<void> {
   const localOrders = getLocalOrders();
   if (localOrders.length === 0) return;
 
   try {
-    const { data: remoteOrders } = await supabase.from('fuel_supply_orders').select('id, order_number');
+    const { data: remoteOrders } = await supabase.from('fuel_supply_orders').select('id, order_number').range(0, 4999);
     const remoteOrderNumbers = new Set((remoteOrders || []).map(r => r.order_number?.toLowerCase()));
 
     for (const ord of localOrders) {
@@ -1529,9 +1529,13 @@ export async function syncLocalOrdersToSupabase(): Promise<void> {
         continue;
       }
       if (ord.order_number && !remoteOrderNumbers.has(ord.order_number.toLowerCase())) {
+        const resolvedInstId =
+          ord.institution_id && ord.institution_id !== 'inst_1' && ord.institution_id !== 'default'
+            ? ord.institution_id
+            : (defaultInstitutionId || ord.institution_id || 'inst_1');
         const orderRecord: Record<string, any> = {
           id: ord.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(ord.id) ? ord.id : generateUUID(),
-          institution_id: ord.institution_id || 'inst_1',
+          institution_id: resolvedInstId,
           order_number: ord.order_number,
           vehicle_id: ord.vehicle_id,
           driver_name: ord.driver_name,

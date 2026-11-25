@@ -1326,7 +1326,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
   useEffect(() => {
     loadData();
     // Garante que todas as ordens locais emitidas estejam sincronizadas com o Supabase para o QR Code no celular
-    syncLocalOrdersToSupabase();
+    syncLocalOrdersToSupabase(currentInstitution?.id || currentUser?.institution_id);
 
     // 1. Escuta eventos locais na mesma aba / navegador
     const handleLocalUpdate = (e: Event) => {
