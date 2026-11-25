@@ -2161,7 +2161,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
         pump_photo_url: pumpUrl,
         notes: advanceFuelForm.notes,
         authorized_by_name: currentUser?.name || 'Responsável pela Frota',
-        institution_id: currentUser?.institution_id
+        institution_id: currentInstitution?.id || currentUser?.institution_id || 'inst_1'
       });
 
       const avgMsg = created.calculated_km_per_liter
@@ -2443,6 +2443,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
     const isGalao = newOrderForm.target_type === 'galao';
     try {
       const created = await issueFuelAuthorization({
+        institution_id: currentInstitution?.id || currentUser?.institution_id || 'inst_1',
         target_type: newOrderForm.target_type,
         galao_label: isGalao ? newOrderForm.galao_label.trim() : undefined,
         fuel_type: newOrderForm.fuel_type,
