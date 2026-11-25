@@ -1954,36 +1954,41 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
   };
 
   // 1. Persistir no Supabase
-  try {
-    await supabase.from('fuel_supply_orders').insert([{
-      id: newOrder.id,
-      institution_id: newOrder.institution_id,
-      order_number: newOrder.order_number,
-      vehicle_id: newOrder.vehicle_id,
-      driver_name: newOrder.driver_name,
-      driver_document: newOrder.driver_document,
-      station_name: newOrder.station_name,
-      fuel_type: newOrder.fuel_type,
-      liters_authorized: newOrder.liters_authorized,
-      liters_supplied: newOrder.liters_supplied,
-      unit_price: newOrder.bidded_unit_price,
-      total_value: newOrder.total_authorized_value,
-      previous_odometer: newOrder.previous_odometer,
-      current_odometer: newOrder.current_odometer,
-      receipt_photo_url: newOrder.receipt_photo_url,
-      receipt_attachment_url: newOrder.receipt_attachment_url,
-      status: 'abastecido',
-      created_at: newOrder.created_at,
-      supplied_at: newOrder.supplied_at
-    }]);
+  const { error: insertErr } = await supabase.from('fuel_supply_orders').insert([{
+    id: newOrder.id,
+    institution_id: newOrder.institution_id,
+    order_number: newOrder.order_number,
+    vehicle_id: newOrder.vehicle_id,
+    driver_name: newOrder.driver_name,
+    driver_document: newOrder.driver_document,
+    station_name: newOrder.station_name,
+    fuel_type: newOrder.fuel_type,
+    liters_authorized: newOrder.liters_authorized,
+    liters_supplied: newOrder.liters_supplied,
+    unit_price: newOrder.bidded_unit_price,
+    total_value: newOrder.total_authorized_value,
+    previous_odometer: newOrder.previous_odometer,
+    current_odometer: newOrder.current_odometer,
+    receipt_photo_url: newOrder.receipt_photo_url,
+    receipt_attachment_url: newOrder.receipt_attachment_url,
+    status: 'abastecido',
+    created_at: newOrder.created_at,
+    supplied_at: newOrder.supplied_at
+  }]);
 
-    if (shouldUpdateVehicleOdo) {
+  if (insertErr) {
+    console.error('[FleetFuelAudit] Erro ao persistir canhoto no Supabase:', insertErr);
+    throw new Error(`Falha ao gravar lançamento no Supabase: ${insertErr.message}`);
+  }
+
+  if (shouldUpdateVehicleOdo) {
+    try {
       await supabase.from('fleet_vehicles').update({
         current_odometer: odoReading
       }).eq('id', vehicle.id);
+    } catch (errDb) {
+      console.warn('[FleetFuelAudit] Aviso ao atualizar odômetro do veículo no Supabase:', errDb);
     }
-  } catch (errDb) {
-    console.warn('[FleetFuelAudit] Aviso ao persistir canhoto antigo no Supabase:', errDb);
   }
 
   // 2. Atualizar veículos locais se a KM evoluiu
