@@ -1,11 +1,33 @@
 import { GoogleGenAI } from "@google/genai";
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
+import { checkRateLimitAsync, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
 
 export const config = {
   maxDuration: 60,
 };
 
-export default async function handler(req: any, res: any) {
+interface ExtractPdfRequestBody {
+  mode?: string;
+  base64Data?: unknown;
+  mimeType?: string;
+  pageImages?: Array<{ mimeType?: string; data: string }>;
+  customColumns?: string[];
+  userInstructions?: unknown;
+}
+
+interface NodeRequest {
+  method?: string;
+  headers?: Record<string, string | undefined>;
+  body?: ExtractPdfRequestBody;
+}
+
+interface NodeResponse {
+  setHeader: (name: string, value: string) => NodeResponse;
+  status: (code: number) => NodeResponse;
+  json: (payload: unknown) => NodeResponse;
+  end: () => NodeResponse;
+}
+
+export default async function handler(req: NodeRequest, res: NodeResponse) {
   // Configuração de CORS restrita aos domínios oficiais
   const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
@@ -26,7 +48,7 @@ export default async function handler(req: any, res: any) {
     return res.status(auth.status || 401).json({ error: auth.error });
   }
 
-  if (!checkRateLimit(`extract-pdf:${auth.userId}`, 15, 60_000)) {
+  if (!(await checkRateLimitAsync(`extract-pdf:${auth.userId}`, 15, 60_000))) {
     return res.status(429).json({ error: 'Limite de extrações excedido. Aguarde um minuto.' });
   }
 
@@ -55,12 +77,13 @@ export default async function handler(req: any, res: any) {
 
     if (!apiKey) {
       return res.status(500).json({ 
-        error: 'Chave GEMINI_API_KEY / VITE_GEMINI_API_KEY não configurada no servidor.' 
+        error: 'Chave GEMINI_API_KEY não configurada no servidor.' 
       });
     }
 
     // Limpa possível cabeçalho data:application/pdf;base64,
-    const cleanBase64 = base64Data && base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
+    const base64Str = typeof base64Data === 'string' ? base64Data : '';
+    const cleanBase64 = base64Str.includes(',') ? base64Str.split(',')[1] : base64Str;
 
     let prompt = '';
 
@@ -298,10 +321,10 @@ REGRAS OBRIGATÓRIAS:
     const parsed = JSON.parse(cleanJson);
     return res.status(200).json(parsed);
 
-  } catch (error: any) {
-    console.error("Erro na Serverless Function extract-pdf:", error);
-    return res.status(500).json({ 
-      error: error.message || 'Falha ao processar extração do PDF via servidor.' 
+  } catch (internalErr: unknown) {
+    console.error('[extract-pdf] Erro interno:', internalErr instanceof Error ? internalErr.name : 'UnknownError');
+    return res.status(500).json({
+      error: 'Falha ao processar extração do PDF via servidor.'
     });
   }
 }

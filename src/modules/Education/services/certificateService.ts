@@ -7,7 +7,7 @@ import {
   ParsedRecipient
 } from '../types/certificates';
 import { generateValidationHash, getValidationUrl } from '../../../utils/certificateBatchProcessor';
-import { formatCPF } from '../../../lib/masks';
+import { formatCPF } from '../../../lib/masks'; import { bestEffort, reportError } from '../../../lib/logger';
 
 const STORAGE_TEMPLATES_KEY = 'gestao360_edu_certificate_templates';
 const STORAGE_CERTIFICATES_KEY = 'gestao360_edu_issued_certificates';
@@ -106,7 +106,7 @@ export async function createBatchCertificates({
 
       const savedCerts = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify([...issuedList, ...savedCerts]));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return {
       success: true,
@@ -164,7 +164,7 @@ export async function syncLocalCertificatesToSupabase(): Promise<void> {
  */
 export async function fetchIssuedCertificates(institutionId?: string | null): Promise<IssuedCertificate[]> {
   // Dispara sincronização em segundo plano de eventuais certificados locais pendentes
-  syncLocalCertificatesToSupabase().catch(() => { });
+  syncLocalCertificatesToSupabase().catch((caughtErr: unknown) => reportError('certificateService:promise', caughtErr));
 
   try {
     let query = supabase
@@ -232,7 +232,7 @@ export async function registerCertificateDownload(certificateId: string): Promis
           : c
       );
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(updated));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return nextCount;
   } catch {
@@ -323,10 +323,10 @@ export async function fetchCertificateByHash(queryStr: string): Promise<IssuedCe
 
     if (found) {
       // Se encontrou no LocalStorage, sincroniza em segundo plano com o Supabase
-      syncLocalCertificatesToSupabase().catch(() => { });
+      syncLocalCertificatesToSupabase().catch((caughtErr: unknown) => reportError('certificateService:promise', caughtErr));
       return found as IssuedCertificate;
     }
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return null;
 }
@@ -351,7 +351,7 @@ export async function deleteIssuedCertificate(certificateId: string): Promise<{ 
       const local = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
       const filtered = local.filter((c: IssuedCertificate) => c.id !== certificateId);
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(filtered));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true };
   } catch (err: any) {
@@ -383,7 +383,7 @@ export async function deleteBatchIssuedCertificates(certificateIds: string[]): P
       const idSet = new Set(certificateIds);
       const filtered = local.filter((c: IssuedCertificate) => !idSet.has(c.id));
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify(filtered));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true };
   } catch (err: any) {
@@ -508,7 +508,7 @@ export async function createDeclarationCampaign(
     try {
       const local: DeclarationCampaign[] = JSON.parse(localStorage.getItem(STORAGE_CAMPAIGNS_KEY) || '[]');
       localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify([saved, ...local]));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true, campaign: saved };
   } catch (err: any) {
@@ -655,7 +655,7 @@ export async function toggleDeclarationCampaignStatus(
       const local: DeclarationCampaign[] = JSON.parse(localStorage.getItem(STORAGE_CAMPAIGNS_KEY) || '[]');
       const updated = local.map(c => (c.id === campaignId ? { ...c, is_active: isActive } : c));
       localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(updated));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true };
   } catch (err: any) {
@@ -680,7 +680,7 @@ export async function deleteDeclarationCampaign(campaignId: string): Promise<{ s
     try {
       const local: DeclarationCampaign[] = JSON.parse(localStorage.getItem(STORAGE_CAMPAIGNS_KEY) || '[]');
       localStorage.setItem(STORAGE_CAMPAIGNS_KEY, JSON.stringify(local.filter(c => c.id !== campaignId)));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true };
   } catch (err: any) {
@@ -790,7 +790,7 @@ export async function issueParticipationDeclaration({
     try {
       const savedCerts = JSON.parse(localStorage.getItem(STORAGE_CERTIFICATES_KEY) || '[]');
       localStorage.setItem(STORAGE_CERTIFICATES_KEY, JSON.stringify([newDeclaration, ...savedCerts]));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true, declaration: newDeclaration, template, alreadyIssued: false };
   } catch (err: any) {
@@ -990,7 +990,7 @@ export async function submitDeclarationParticipation({
     try {
       const local: DeclarationSubmission[] = JSON.parse(localStorage.getItem(STORAGE_SUBMISSIONS_KEY) || '[]');
       localStorage.setItem(STORAGE_SUBMISSIONS_KEY, JSON.stringify([saved, ...local]));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true, submission: saved, alreadyRegistered: false };
   } catch (err: any) {
@@ -1055,7 +1055,7 @@ export async function markSubmissionAsIssued(
         : s
     );
     localStorage.setItem(STORAGE_SUBMISSIONS_KEY, JSON.stringify(updated));
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 // ============================================================================
@@ -1081,7 +1081,7 @@ export async function lookupSubmissionByCpf(
       .maybeSingle();
 
     if (!error && data) return data as DeclarationSubmission;
-  } catch { }
+  } catch (caughtErr) { reportError('certificateService:rede', caughtErr); }
 
   try {
     const local: DeclarationSubmission[] = JSON.parse(localStorage.getItem(STORAGE_SUBMISSIONS_KEY) || '[]');
@@ -1192,7 +1192,7 @@ export async function submitMorningCheckin({
     try {
       const local: DeclarationSubmission[] = JSON.parse(localStorage.getItem(STORAGE_SUBMISSIONS_KEY) || '[]');
       localStorage.setItem(STORAGE_SUBMISSIONS_KEY, JSON.stringify([saved, ...local]));
-    } catch { }
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return { success: true, submission: saved, alreadyCheckedIn: false };
   } catch (err: any) {

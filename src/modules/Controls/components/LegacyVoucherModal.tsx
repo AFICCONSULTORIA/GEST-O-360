@@ -104,6 +104,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
   const [uploadFileName, setUploadFileName] = useState<string>('');
   const [importingBatch, setImportingBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState<string>('');
+  const [batchRejectedMessages, setBatchRejectedMessages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Sincroniza motoristas ordenados alfabeticamente
@@ -305,6 +306,9 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         } else if (!matchedVeh) {
           isValid = false;
           validationError = `Placa "${plateRaw}" não localizada na frota`;
+        } else if (!dateIso) {
+          isValid = false;
+          validationError = `Data inválida ("${String(rawDate ?? '').trim() || 'vazia'}")`;
         } else if (liters <= 0) {
           isValid = false;
           validationError = 'Litros inválidos ou zero';
@@ -328,6 +332,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
         };
       });
 
+      setBatchRejectedMessages([]);
       setParsedRows(parsed);
       const validCount = parsed.filter(p => p.isValid).length;
       showToast(`${parsed.length} linhas lidas (${validCount} válidas para importação).`, 'success');
@@ -368,13 +373,20 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
       const res = await registerLegacyFuelOrdersBatch(payloads);
 
       if (res.errors.length > 0) {
-        showToast(`Importados ${res.successCount} canhotos com ${res.errors.length} avisos.`, 'warning');
+        setBatchRejectedMessages(res.errors);
+        showToast(
+          `Importados ${res.successCount} canhotos; ${res.errors.length} linha(s) rejeitada(s). Confira a lista abaixo.`,
+          'warning',
+        );
+        if (res.successCount > 0) {
+          onSuccess();
+        }
       } else {
+        setBatchRejectedMessages([]);
         showToast(`${res.successCount} canhotos antigos importados com sucesso!`, 'success');
+        onSuccess();
+        onClose();
       }
-
-      onSuccess();
-      onClose();
     } catch (err: unknown) {
       console.error('Erro na importação em lote:', err);
       const msg = err instanceof Error ? err.message : 'Falha na importação em lote.';
@@ -1003,7 +1015,7 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                               {row.plate}
                             </td>
                             <td className="p-2 text-neutral-600 dark:text-neutral-300">
-                              {new Date(row.dateStr).toLocaleDateString('pt-BR')}
+                              {row.dateStr ? new Date(row.dateStr).toLocaleDateString('pt-BR') : 'Data inválida'}
                             </td>
                             <td className="p-2 font-mono text-neutral-600 dark:text-neutral-300">
                               {formatThousands(row.odometer)} km
@@ -1035,6 +1047,20 @@ export const LegacyVoucherModal: React.FC<LegacyVoucherModalProps> = ({
                     <p className="text-[10px] text-neutral-400 text-center">
                       Exibindo as primeiras 50 de {parsedRows.length} linhas encontradas.
                     </p>
+                  )}
+
+                  {batchRejectedMessages.length > 0 && (
+                    <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 space-y-1.5">
+                      <p className="text-xs font-bold text-rose-700 dark:text-rose-300 flex items-center gap-1.5">
+                        <AlertTriangle size={14} />
+                        Linhas rejeitadas na importação ({batchRejectedMessages.length}):
+                      </p>
+                      <ul className="text-[11px] text-rose-600 dark:text-rose-300 space-y-0.5 max-h-28 overflow-y-auto list-disc pl-4">
+                        {batchRejectedMessages.map((msg, idx) => (
+                          <li key={idx}>{msg}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               )}

@@ -256,68 +256,59 @@ export const SettingsModule = ({
   };
 
   const handleResetPassword = async (user: AdminUser) => {
-    if (!confirm(`Tem certeza que deseja restaurar a senha padrão (gestao123@) para o usuário ${user.name}?`)) {
+    if (!confirm(`Gerar uma nova senha temporária aleatória para ${user.name}? O usuário deverá alterá-la no próximo login.`)) {
       return;
     }
 
     const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 
-    // 1. Se for usuário de demonstração ou ID não-UUID
     if (!isUUID(user.id) || isDemoEnvironment()) {
-      setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
-      showToast(`Senha de ${user.name} restaurada para o padrão (gestao123@) com sucesso!`, 'success');
+      showToast('Redefinição administrativa disponível apenas para contas autenticadas em produção.', 'info');
       return;
     }
 
     try {
-      // 2. Tenta invocar a função RPC do Postgres
-      const { error } = await supabase.rpc('reset_user_password', { target_user_id: user.id });
-      
-      if (!error) {
-        setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
-        showToast('Senha restaurada para o padrão (gestao123@) com sucesso!', 'success');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        showToast('Sessão expirada. Faça login novamente para redefinir senhas.', 'error');
         return;
       }
 
-      console.error("Erro ao resetar senha via RPC:", error);
-      const isMissingFunction = 
-        error.message?.includes('Could not find the function') || 
-        error.message?.includes('schema cache') ||
-        error.message?.includes('does not exist');
+      const resp = await fetch('/api/admin-reset-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ targetUserId: user.id }),
+      });
 
-      const isAmbiguous = 
-        error.message?.includes('best candidate') ||
-        error.message?.includes('Could not choose');
+      const payload = (await resp.json().catch(() => ({}))) as {
+        ok?: boolean;
+        temporaryPassword?: string;
+        error?: string;
+      };
 
-      if (isAmbiguous) {
-        showToast('Sobrecarga de função detectada. Execute o script database/setup_reset_password_rpc.sql no Supabase para remover a duplicata.', 'warning');
+      if (!resp.ok || !payload.ok || !payload.temporaryPassword) {
+        showToast(payload.error || 'Não foi possível redefinir a senha do usuário.', 'error');
         return;
       }
 
-      if (isMissingFunction) {
-        // 3. Fallback: Se a função RPC não existir no Supabase, tenta enviar e-mail de recuperação e marca troca de senha
-        try {
-          await supabase.from('admin_users').update({ last_login: 'Nunca' }).eq('id', user.id);
-          setUsers(users.map(u => u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u));
+      setUsers(users.map(u => (u.id === user.id ? { ...u, lastLogin: 'Nunca' } : u)));
 
-          const { error: emailError } = await supabase.auth.resetPasswordForEmail(user.email, {
-            redirectTo: window.location.origin + '/servidores'
-          });
-
-          if (!emailError) {
-            showToast(`E-mail com link de redefinição de senha enviado para ${user.email}!`, 'info');
-          } else {
-            showToast('Execute o script "database/setup_reset_password_rpc.sql" no SQL Editor do Supabase para ativar o reset direto.', 'warning');
-          }
-        } catch (fallbackErr) {
-          showToast('Função reset_user_password não criada no Supabase. Execute o script em database/setup_reset_password_rpc.sql', 'warning');
-        }
-      } else {
-        showToast('Erro ao resetar senha: ' + error.message, 'error');
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload.temporaryPassword).catch(() => undefined);
       }
-    } catch (err: any) {
-      console.error("Erro inesperado ao resetar senha:", err);
-      showToast('Erro inesperado ao resetar senha.', 'error');
+
+      window.prompt(
+        `Senha temporária única gerada para ${user.name} (já copiada para a área de transferência). Entregue por canal seguro; a troca será exigida no próximo login:`,
+        payload.temporaryPassword,
+      );
+      showToast('Senha temporária gerada com sucesso! Troca obrigatória ativada no próximo login.', 'success');
+    } catch (err: unknown) {
+      console.error('Erro inesperado ao redefinir senha:', err);
+      showToast('Erro de comunicação ao solicitar redefinição de senha.', 'error');
     }
   };
 

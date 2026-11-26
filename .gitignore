@@ -5,8 +5,10 @@ node_modules/
 
 # Build & Produção
 dist/
+dev-dist/
 build/
 coverage/
+scratch/
 
 # Variáveis de Ambiente & Credenciais
 .env

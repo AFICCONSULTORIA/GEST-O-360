@@ -1,3 +1,4 @@
+import { bestEffort } from '../lib/logger';
 /**
  * Utilitário de Alerta Sonoro e Notificações Desktop para Operações de Frotas
  * Utiliza a Web Audio API nativa para reproduzir um sinal sonoro agradável e profissional
@@ -60,6 +61,6 @@ export function sendDesktopNotification(title: string, body: string) {
         }
       });
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
 }
 

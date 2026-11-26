@@ -5,27 +5,13 @@
  */
 
 import { supabase, supabaseAnon } from '../supabase';
+import { formatExactLiters, sanitizeDateToISO } from './fleetFuelRulesCore'; import { bestEffort, reportError } from '../logger';
+
+export { formatExactLiters, sanitizeDateToISO };
 
 export type FuelType = 'gasolina' | 'etanol' | 'diesel_s10' | 'diesel_s500' | 'arla32';
 export type MetricType = 'km' | 'horimetro';
 export type FuelOrderStatus = 'autorizado_pendente' | 'autorizado' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'liquidado';
-
-/**
- * Formata litragem sem arredondamento destrutivo para preservação contábil exata.
- * Mantém no mínimo `minDecimals` casas decimais e preserva até 6 casas reais se existirem.
- */
-export function formatExactLiters(value: number | string | null | undefined, minDecimals: number = 2): string {
-  const num = Number(value ?? 0);
-  if (isNaN(num)) return '0' + (minDecimals > 0 ? '.' + '0'.repeat(minDecimals) : '');
-  const clean = Number(num.toFixed(6));
-  const parts = clean.toString().split('.');
-  const intPart = parts[0];
-  const decPart = parts[1] || '';
-  if (decPart.length >= minDecimals) {
-    return `${intPart}.${decPart}`;
-  }
-  return `${intPart}.${decPart.padEnd(minDecimals, '0')}`;
-}
 
 export interface FleetBudgetClassification {
   id: string;
@@ -229,63 +215,63 @@ if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY_STATIONS_PURGE, 'true');
       localStorage.setItem('gestao360_stations_cleared', 'true');
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 function getLocalRealVehicles(): FleetVehicle[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_VEHICLES);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
 function saveLocalRealVehicles(vehicles: FleetVehicle[]) {
   try {
     localStorage.setItem(STORAGE_KEY_VEHICLES, JSON.stringify(vehicles));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 function getLocalDrivers(): FleetDriver[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DRIVERS);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
 function saveLocalDrivers(drivers: FleetDriver[]) {
   try {
     localStorage.setItem(STORAGE_KEY_DRIVERS, JSON.stringify(drivers));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 function getLocalStations(): FleetFuelStation[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_STATIONS);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
 function saveLocalStations(stations: FleetFuelStation[]) {
   try {
     localStorage.setItem(STORAGE_KEY_STATIONS, JSON.stringify(stations));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 function getLocalRealOrders(): FuelSupplyOrder[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ORDERS);
     if (raw) return JSON.parse(raw);
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
 function saveLocalRealOrders(orders: FuelSupplyOrder[]) {
   try {
     localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 /**
@@ -478,7 +464,7 @@ export async function getFleetVehicles(department?: string, institutionId: strin
   try {
     let query = supabase.from('fleet_vehicles').select('*');
     if (institutionId && institutionId !== 'all') {
-      query = query.or(`institution_id.eq.${institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+      query = query.eq('institution_id', institutionId);
     }
     if (department && department !== 'all') {
       query = query.eq('department', department);
@@ -487,7 +473,7 @@ export async function getFleetVehicles(department?: string, institutionId: strin
     if (error && isRlsError(error)) {
       let anonQuery = supabaseAnon.from('fleet_vehicles').select('*');
       if (institutionId && institutionId !== 'all') {
-        anonQuery = anonQuery.or(`institution_id.eq.${institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+        anonQuery = anonQuery.eq('institution_id', institutionId);
       }
       if (department && department !== 'all') {
         anonQuery = anonQuery.eq('department', department);
@@ -591,7 +577,7 @@ export async function createFleetVehicle(vehicleData: Omit<FleetVehicle, 'id' | 
       }
       saveLocalRealVehicles(list);
       if (typeof window !== 'undefined') {
-        try { localStorage.removeItem(STORAGE_KEY_CLEARED); } catch {}
+        try { localStorage.removeItem(STORAGE_KEY_CLEARED); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       return data as FleetVehicle;
     } else if (error) {
@@ -610,7 +596,7 @@ export async function createFleetVehicle(vehicleData: Omit<FleetVehicle, 'id' | 
   list.unshift(newVehicle);
   saveLocalRealVehicles(list);
   if (typeof window !== 'undefined') {
-    try { localStorage.removeItem(STORAGE_KEY_CLEARED); } catch {}
+    try { localStorage.removeItem(STORAGE_KEY_CLEARED); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
   return newVehicle;
 }
@@ -751,7 +737,7 @@ export async function clearAllFleetVehicles(institutionId: string = 'inst_1'): P
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(STORAGE_KEY_CLEARED, 'true');
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   return {
@@ -777,7 +763,7 @@ export async function getFuelSupplyOrders(filters?: {
         vehicle:fleet_vehicles(*)
       `);
       if (filters?.institutionId) {
-        q = q.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default,institution_id.is.null`);
+        q = q.eq('institution_id', filters.institutionId);
       }
       if (filters?.status && filters.status !== 'all') {
         q = q.eq('status', filters.status);
@@ -929,7 +915,7 @@ export async function getNextOrderNumber7Digits(): Promise<string> {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('fleet_fuel_max_seq_7digits');
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   const usedNumbers = new Set<number>();
   let maxNumber = BASE_ORDER_SEQ_7DIGITS;
@@ -985,7 +971,7 @@ export async function getNextOrderNumber7Digits(): Promise<string> {
     for (const ord of localOrders) {
       registerOrderNumber(ord.order_number, ord.anomaly_reason);
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
 
   let candidate = maxNumber + 1;
   while (usedNumbers.has(candidate)) {
@@ -1011,7 +997,7 @@ export async function getNextFuelOrderSequence(prefix: string = 'AUT', year: num
         maxSeq = parsed;
       }
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // 2. Extrai o maior número já existente em ordens locais
   const localOrders = getLocalRealOrders();
@@ -1053,7 +1039,7 @@ export async function getNextFuelOrderSequence(prefix: string = 'AUT', year: num
   // Atualiza imediatamente o contador persistente
   try {
     localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ(prefix, year), String(nextSeq));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return nextSeq;
 }
@@ -1337,7 +1323,7 @@ export async function uploadReceiptAttachment(
     } catch {
       try {
         await supabaseAnon.from('fuel_supply_orders').update(dbUpdate).eq('id', orderId);
-      } catch {}
+      } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
     }
 
     const orders = getLocalRealOrders();
@@ -1469,7 +1455,7 @@ export async function clearFuelOrderFraudRisk(
       if (data) {
         order = data as FuelSupplyOrder;
       }
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
   }
 
   if (!order) {
@@ -1551,7 +1537,7 @@ export async function applyFuelOrderFraudRisk(
       if (data) {
         order = data as FuelSupplyOrder;
       }
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
   }
 
   if (!order) {
@@ -1677,7 +1663,7 @@ export async function cancelFuelOrderHomologation(
         const bc = new BroadcastChannel('gestao360_fleet_channel');
         bc.postMessage({ type: 'ORDER_HOMOLOGATION_CANCELED', order: updatedOrder });
         bc.close();
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
   }
 
@@ -1703,7 +1689,7 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
         p_order_id_or_number: orderNumberFallback
       });
     }
-  } catch (e) {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 
   // 2. Tenta exclusão física direta via API REST (com fallback anon)
   try {
@@ -1752,7 +1738,7 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
     if (typeof window !== 'undefined') {
       localStorage.removeItem('fleet_fuel_max_seq_7digits');
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // 5. Broadcast de evento para atualizar outras telas e modais
   try {
@@ -1761,7 +1747,7 @@ export async function deleteFuelSupplyOrder(orderIdOrNumber: string, orderNumber
         detail: { orderId: orderIdOrNumber, orderNumber: orderNumberFallback }
       }));
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return true;
 }
@@ -1777,7 +1763,7 @@ export async function clearAllFuelOrders(institutionId?: string, resetSequence: 
     if (!rpcError) {
       console.log('[FleetFuel] Todas as ordens limpas no Supabase via RPC com sucesso');
     }
-  } catch (e) {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 
   // 2. Tenta DELETE direto
   try {
@@ -1798,7 +1784,7 @@ export async function clearAllFuelOrders(institutionId?: string, resetSequence: 
       is_anomaly: true,
       audit_justification: 'Histórico de ordens de teste limpo pelo gestor.'
     }).neq('id', '00000000-0000-0000-0000-000000000000');
-  } catch (e) {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 
   saveLocalRealOrders([]);
 
@@ -1810,7 +1796,7 @@ export async function clearAllFuelOrders(institutionId?: string, resetSequence: 
       localStorage.removeItem(STORAGE_KEY_FUEL_MAX_SEQ('ABAST', currentYear));
       localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ('AUT', currentYear), '0');
       localStorage.setItem(STORAGE_KEY_FUEL_MAX_SEQ('ABAST', currentYear), '0');
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
   return true;
 }
@@ -1837,67 +1823,13 @@ export function generateValidUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     try {
       return crypto.randomUUID();
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     const r = (Math.random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
-}
-
-/**
- * Sanitiza qualquer formato de data (DD/MM/YYYY, YYYY-MM-DD, serial Excel ou timestamp)
- * para o formato estrito ISO 'YYYY-MM-DD' aceito pelo tipo DATE do PostgreSQL/Supabase.
- */
-export function sanitizeDateToISO(dateVal?: string | number | null): string | null {
-  if (!dateVal) return null;
-  const str = String(dateVal).trim();
-  if (!str) return null;
-
-  // 1. Já está no formato ISO 'YYYY-MM-DD'
-  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
-    return str;
-  }
-
-  // 2. Formato brasileiro 'DD/MM/YYYY' ou 'DD-MM-YYYY'
-  const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (brMatch) {
-    const day = brMatch[1].padStart(2, '0');
-    const month = brMatch[2].padStart(2, '0');
-    const year = brMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-
-  // 3. Formato 'YYYY/MM/DD'
-  const revMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-  if (revMatch) {
-    const year = revMatch[1];
-    const month = revMatch[2].padStart(2, '0');
-    const day = revMatch[3].padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  }
-
-  // 4. Serial numérico do Excel (ex: 31278)
-  const num = Number(str);
-  if (!isNaN(num) && num > 1000 && num < 60000) {
-    try {
-      const date = new Date(Math.round((num - 25569) * 86400 * 1000));
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-      }
-    } catch {}
-  }
-
-  // 5. Tentativa genérica com Date.parse
-  try {
-    const d = new Date(str);
-    if (!isNaN(d.getTime())) {
-      return d.toISOString().split('T')[0];
-    }
-  } catch {}
-
-  return null;
 }
 
 /**
@@ -1990,7 +1922,7 @@ export async function ensureDriverExistsInSupabase(driver: {
       list.unshift(created);
       saveLocalDrivers(list);
       if (typeof window !== 'undefined') {
-        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       return created;
     }
@@ -2009,7 +1941,7 @@ function getDeletedStationBlacklist(): Set<string> {
   try {
     const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_STATIONS_BLACKLIST) : null;
     if (raw) return new Set(JSON.parse(raw));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return new Set();
 }
 
@@ -2024,7 +1956,7 @@ function addStationToBlacklist(id?: string, name?: string, cnpj?: string) {
       set.add(cnpj.replace(/\D/g, ''));
     }
     localStorage.setItem(STORAGE_KEY_STATIONS_BLACKLIST, JSON.stringify(Array.from(set)));
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 }
 
 function removeStationFromBlacklist(id?: string, name?: string, cnpj?: string) {
@@ -2038,7 +1970,7 @@ function removeStationFromBlacklist(id?: string, name?: string, cnpj?: string) {
       set.delete(cnpj.replace(/\D/g, ''));
     }
     localStorage.setItem(STORAGE_KEY_STATIONS_BLACKLIST, JSON.stringify(Array.from(set)));
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 }
 
 function isStationBlacklisted(s?: Partial<FleetFuelStation> | null): boolean {
@@ -2076,7 +2008,7 @@ function getDeletedDriverBlacklist(): Set<string> {
         })
       );
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return new Set();
 }
 
@@ -2091,7 +2023,7 @@ function addDriverToBlacklist(id?: string, cpf?: string, name?: string) {
     }
     if (name && name.trim()) set.add(name.toLowerCase().trim());
     localStorage.setItem(STORAGE_KEY_DRIVERS_BLACKLIST, JSON.stringify(Array.from(set)));
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 }
 
 function removeDriverFromBlacklist(id?: string, cpf?: string, name?: string) {
@@ -2107,7 +2039,7 @@ function removeDriverFromBlacklist(id?: string, cpf?: string, name?: string) {
       set.delete(name.toLowerCase().trim());
     }
     localStorage.setItem(STORAGE_KEY_DRIVERS_BLACKLIST, JSON.stringify(Array.from(set)));
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 }
 
 function isDriverBlacklisted(d?: Partial<FleetDriver> | null): boolean {
@@ -2151,7 +2083,7 @@ export async function getFleetDrivers(filters?: {
   try {
     let query = supabase.from('fleet_drivers').select('*');
     if (filters?.institutionId && filters.institutionId !== 'all') {
-      query = query.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+      query = query.eq('institution_id', filters.institutionId);
     }
     if (filters?.department && filters.department !== 'all') {
       query = query.eq('department', filters.department);
@@ -2160,7 +2092,7 @@ export async function getFleetDrivers(filters?: {
     if (error && isRlsError(error)) {
       let anonQuery = supabaseAnon.from('fleet_drivers').select('*');
       if (filters?.institutionId && filters.institutionId !== 'all') {
-        anonQuery = anonQuery.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+        anonQuery = anonQuery.eq('institution_id', filters.institutionId);
       }
       if (filters?.department && filters.department !== 'all') {
         anonQuery = anonQuery.eq('department', filters.department);
@@ -2255,7 +2187,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
         driverId = existingByName.id;
       }
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 
   const birthDate = sanitizeDateToISO(payload.birth_date);
   const cnhNumber = payload.cnh_number && payload.cnh_number.trim() !== '' ? payload.cnh_number.trim() : null;
@@ -2305,7 +2237,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
       }
       saveLocalDrivers(list);
       if (typeof window !== 'undefined') {
-        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       return data as FleetDriver;
     } else if (error) {
@@ -2325,7 +2257,7 @@ export async function createFleetDriver(payload: NewDriverPayload): Promise<Flee
   list.unshift(newDriver);
   saveLocalDrivers(list);
   if (typeof window !== 'undefined') {
-    try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+    try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
   return newDriver;
 }
@@ -2414,7 +2346,7 @@ export async function deleteFleetDriver(id: string, cpf?: string): Promise<boole
     try {
       await supabase.from('fleet_drivers').delete().eq('cpf', rawCpf);
       await supabaseAnon.from('fleet_drivers').delete().eq('cpf', rawCpf);
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
   }
 
   // 4. Marcar Tombstone no Supabase por ID caso DELETE seja restrito por FK
@@ -2493,7 +2425,7 @@ export async function clearAllFleetDrivers(_institutionId?: string): Promise<{ s
     try {
       localStorage.setItem(STORAGE_KEY_DRIVERS_CLEARED, 'true');
       localStorage.removeItem(STORAGE_KEY_DRIVERS);
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   return {
@@ -2519,13 +2451,13 @@ export async function getFleetFuelStations(filters?: {
   try {
     let query = supabase.from('fleet_fuel_stations').select('*');
     if (filters?.institutionId && filters.institutionId !== 'all') {
-      query = query.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+      query = query.eq('institution_id', filters.institutionId);
     }
     let { data, error } = await query.order('name', { ascending: true });
     if (error && isRlsError(error)) {
       let anonQuery = supabaseAnon.from('fleet_fuel_stations').select('*');
       if (filters?.institutionId && filters.institutionId !== 'all') {
-        anonQuery = anonQuery.or(`institution_id.eq.${filters.institutionId},institution_id.eq.inst_1,institution_id.eq.default`);
+        anonQuery = anonQuery.eq('institution_id', filters.institutionId);
       }
       const anonRes = await anonQuery.order('name', { ascending: true });
       data = anonRes.data;
@@ -2590,7 +2522,7 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
     if (existing?.id) {
       stationId = existing.id;
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 
   const supabaseRecord = {
     id: stationId,
@@ -2621,7 +2553,7 @@ export async function createFleetFuelStation(payload: NewStationPayload): Promis
       }
       saveLocalStations(list);
       if (typeof window !== 'undefined') {
-        try { localStorage.removeItem('gestao360_stations_cleared'); } catch {}
+        try { localStorage.removeItem('gestao360_stations_cleared'); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       return data as FleetFuelStation;
     } else if (error) {
@@ -2716,7 +2648,7 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
     try {
       await supabase.from('fleet_fuel_stations').delete().eq('name', cleanName);
       await supabaseAnon.from('fleet_fuel_stations').delete().eq('name', cleanName);
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
   }
 
   // 4. Marca Tombstone caso o DELETE não seja permitido por integridade referencial
@@ -2733,7 +2665,7 @@ export async function deleteFleetFuelStation(id: string, name?: string, cnpj?: s
     try {
       await supabase.from('fleet_fuel_stations').update(tombstonePayload).eq('name', cleanName);
       await supabaseAnon.from('fleet_fuel_stations').update(tombstonePayload).eq('name', cleanName);
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
   }
 
   // 5. Atualizar cache local
@@ -2785,7 +2717,7 @@ export async function clearAllFleetFuelStations(_institutionId?: string): Promis
     try {
       localStorage.setItem('gestao360_stations_cleared', 'true');
       localStorage.removeItem(STORAGE_KEY_STATIONS);
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   return {
@@ -2993,7 +2925,7 @@ export function getLocalBudgetClassifications(): FleetBudgetClassification[] {
         return migrated.sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0));
       }
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [...DEFAULT_BUDGET_CLASSIFICATIONS]
     .sort((a, b) => (parseInt(a.invoice_sheet, 10) || 0) - (parseInt(b.invoice_sheet, 10) || 0))
     .map((item) => ({
@@ -3011,7 +2943,7 @@ function saveLocalBudgetClassifications(list: FleetBudgetClassification[]) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('fleet-budget-classifications-updated'));
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 
@@ -3037,7 +2969,7 @@ export async function getFuelOrderBudgetsFromSupabase(institutionId: string = 'i
     try {
       const raw = localStorage.getItem(getOrderBudgetsStorageKey(targetInst));
       if (raw) cached = JSON.parse(raw);
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   try {
@@ -3063,11 +2995,11 @@ export async function getFuelOrderBudgetsFromSupabase(institutionId: string = 'i
         if (parsed?.fuel_order_budgets && typeof parsed.fuel_order_budgets === 'object') {
           const merged = { ...cached, ...parsed.fuel_order_budgets };
           if (typeof window !== 'undefined') {
-            try { localStorage.setItem(getOrderBudgetsStorageKey(targetInst), JSON.stringify(merged)); } catch {}
+            try { localStorage.setItem(getOrderBudgetsStorageKey(targetInst), JSON.stringify(merged)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
           }
           return merged;
         }
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
   } catch (err) {
     console.warn('[FleetFuel] Aviso ao carregar fichas de ordens do Supabase:', err);
@@ -3096,7 +3028,7 @@ export async function saveFuelOrderBudgetToSupabase(
       if (orderId) map[orderId] = budgetId;
       if (orderNumber) map[orderNumber] = budgetId;
       localStorage.setItem(getOrderBudgetsStorageKey(targetInst), JSON.stringify(map));
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   // 2. Persistir no Supabase remoto (institutions.notes)
@@ -3148,7 +3080,7 @@ export async function saveFuelOrderBudgetToSupabase(
       const res = await supabase.from('fuel_supply_orders').update(updatePayload).eq('order_number', orderNumber);
       if (res.error) await supabaseAnon.from('fuel_supply_orders').update(updatePayload).eq('order_number', orderNumber);
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 }
 
 export async function createFleetBudgetClassification(
@@ -3292,13 +3224,7 @@ export async function getFleetBudgetClassifications(institutionId?: string): Pro
     const buildQuery = (client: any) => {
       let query = client.from('fleet_budget_classifications').select('*');
       if (institutionId) {
-        const filters = new Set([
-          `institution_id.eq.${institutionId}`,
-          'institution_id.eq.inst_1',
-          'institution_id.eq.default',
-          'institution_id.is.null'
-        ]);
-        query = query.or(Array.from(filters).join(','));
+        query = query.eq('institution_id', institutionId);
       }
       return query;
     };
@@ -3376,7 +3302,7 @@ export async function createDriversBatch(
         if (clean) existingCpfMap.set(clean, r.id);
       }
     });
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuel:rede', caughtErr); }
 
   const newDrivers: FleetDriver[] = driversList.map((payload) => {
     const rawCpf = (payload.cpf || '').trim();
@@ -3432,7 +3358,7 @@ export async function createDriversBatch(
     }
     if (!error && data && data.length > 0) {
       if (typeof window !== 'undefined') {
-        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch {}
+        try { localStorage.removeItem(STORAGE_KEY_DRIVERS_CLEARED); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       (data as FleetDriver[]).forEach(d => removeDriverFromBlacklist(d.id, d.cpf, d.full_name));
       const list = getLocalDrivers().filter(d => !isDriverTombstoned(d));

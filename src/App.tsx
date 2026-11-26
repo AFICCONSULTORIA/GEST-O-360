@@ -111,7 +111,7 @@ import {
   MOCK_DOCUMENTS, MOCK_ORDERS, MOCK_CONTROLS, COMPLIANCE_DATA, DEPT_DISTRIBUTION,
   COLORS, getComplianceDataForYear, NAVBAR_CATEGORIES, AVAILABLE_PERMISSIONS,
   MOCK_INSTITUTIONS, MOCK_USERS, MOCK_COMPANIES, MOCK_TEMPLATES
-} from './lib/mockData';
+} from './lib/mockData'; import { bestEffort } from './lib/logger';
 
 const PlaceholderModule = ({ title }: { title: string }) => (
   <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500 pb-20">
@@ -515,7 +515,7 @@ export default function App() {
         // Doc Records
         const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
         if (isDemo && demoDoc && (!docs || docs.length === 0)) {
-          try { setDocRecords(JSON.parse(demoDoc)); } catch (e) { }
+          try { setDocRecords(JSON.parse(demoDoc)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else if (docs) {
           setDocRecords(docs.map(d => ({ ...d, dateCreated: d.date_created } as DocumentRecord)));
         } else {
@@ -525,7 +525,7 @@ export default function App() {
         // Orders
         const demoOrd = localStorage.getItem('gestao360_demo_orders');
         if (isDemo && demoOrd && (!ords || ords.length === 0)) {
-          try { setOrders(JSON.parse(demoOrd)); } catch (e) { }
+          try { setOrders(JSON.parse(demoOrd)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else if (ords) {
           setOrders(ords.map(o => ({ ...o, dateRequested: o.date_requested, quotationNumber: o.quotation_number, winningSupplier: o.winning_supplier } as OrderItem)));
         } else {
@@ -535,7 +535,7 @@ export default function App() {
         // Controls
         const demoCtrl = localStorage.getItem('gestao360_demo_controls');
         if (isDemo && demoCtrl && (!ctrls || ctrls.length === 0)) {
-          try { setControls(JSON.parse(demoCtrl)); } catch (e) { }
+          try { setControls(JSON.parse(demoCtrl)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else if (ctrls) {
           setControls(ctrls as CheckItem[]);
         } else {
@@ -548,7 +548,7 @@ export default function App() {
         // Patrimonio
         const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
         if (isDemo && demoPat && (!pats || pats.length === 0)) {
-          try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) { }
+          try { setPatrimonioItems(JSON.parse(demoPat)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else if (pats) {
           setPatrimonioItems(pats.map(p => mapDbRowToPatrimonioItem(p)));
         } else {
@@ -558,13 +558,13 @@ export default function App() {
         console.error('Erro ao buscar dados do Supabase:', err);
         if (isDemoEnvironment(currentInstitution)) {
           const demoPat = localStorage.getItem('gestao360_demo_patrimonio');
-          if (demoPat) { try { setPatrimonioItems(JSON.parse(demoPat)); } catch (e) { } }
+          if (demoPat) { try { setPatrimonioItems(JSON.parse(demoPat)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
           const demoOrd = localStorage.getItem('gestao360_demo_orders');
-          if (demoOrd) { try { setOrders(JSON.parse(demoOrd)); } catch (e) { } }
+          if (demoOrd) { try { setOrders(JSON.parse(demoOrd)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
           const demoCtrl = localStorage.getItem('gestao360_demo_controls');
-          if (demoCtrl) { try { setControls(JSON.parse(demoCtrl)); } catch (e) { } }
+          if (demoCtrl) { try { setControls(JSON.parse(demoCtrl)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
           const demoDoc = localStorage.getItem('gestao360_demo_doc_records');
-          if (demoDoc) { try { setDocRecords(JSON.parse(demoDoc)); } catch (e) { } }
+          if (demoDoc) { try { setDocRecords(JSON.parse(demoDoc)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
         }
       }
     };
@@ -577,7 +577,7 @@ export default function App() {
       const loadLocalPatrimonio = () => {
         const stored = localStorage.getItem('gestao360_demo_patrimonio');
         if (stored) {
-          try { setPatrimonioItems(JSON.parse(stored)); } catch (err) { }
+          try { setPatrimonioItems(JSON.parse(stored)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else {
           setPatrimonioItems([]);
         }
@@ -586,7 +586,7 @@ export default function App() {
       const loadLocalOrders = () => {
         const stored = localStorage.getItem('gestao360_demo_orders');
         if (stored) {
-          try { setOrders(JSON.parse(stored)); } catch (err) { }
+          try { setOrders(JSON.parse(stored)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else {
           setOrders([]);
         }
@@ -595,7 +595,7 @@ export default function App() {
       const loadLocalControls = () => {
         const stored = localStorage.getItem('gestao360_demo_controls');
         if (stored) {
-          try { setControls(JSON.parse(stored)); } catch (err) { }
+          try { setControls(JSON.parse(stored)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else {
           setControls([]);
         }
@@ -604,7 +604,7 @@ export default function App() {
       const loadLocalDocRecords = () => {
         const stored = localStorage.getItem('gestao360_demo_doc_records');
         if (stored) {
-          try { setDocRecords(JSON.parse(stored)); } catch (err) { }
+          try { setDocRecords(JSON.parse(stored)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else {
           setDocRecords([]);
         }

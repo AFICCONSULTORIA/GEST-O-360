@@ -10,7 +10,7 @@ import { CompanyCertificates, CertificateTypeKey, CertificateRecord } from '../.
 import { hasPermission } from '../../lib/permissions';
 import { showToast } from '../../components/ui/Toast';
 import { WhatsNewBanner } from '../../components/ui/WhatsNewBanner';
-import { DemoFillButton } from '../../components/DemoFillButton';
+import { DemoFillButton } from '../../components/DemoFillButton'; import { bestEffort } from '../../lib/logger';
 
 export const DEFAULT_STATE_LINKS: Record<string, string> = {
   AC: 'https://sefaznet.ac.gov.br/sefazonline/servlet/wcertidaonegativa',
@@ -1107,7 +1107,7 @@ export const CertificatesModule = ({ currentUser, institution }: { currentUser?:
           if (demoStorage) {
             try {
               setCompanies(JSON.parse(demoStorage));
-            } catch (e) {}
+            } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
           }
         }
         loadCompanies();

@@ -4,6 +4,7 @@ import { Wrench, Lightbulb, TreePine, Trash2, Truck, Plus, CircleOff, Search, Ch
 import { showToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { bestEffort } from '../../lib/logger';
 
 export type CategoriaDemanda = 'Iluminação' | 'Poda de Árvore' | 'Tapa buraco' | 'Remoção de Entulho' | 'Coleta de Lixo';
 
@@ -89,7 +90,7 @@ export function ServicosPublicosModule({ currentInstitution }: { currentInstitut
       if (!mod || mod === 'servicos_publicos' || mod === 'all') {
         const demoStorage = localStorage.getItem('gestao360_demo_demandas') || localStorage.getItem('gestao360_demo_servicos_publicos');
         if (demoStorage) {
-          try { setDemands(JSON.parse(demoStorage)); } catch (e) {}
+          try { setDemands(JSON.parse(demoStorage)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
         fetchDemands();
       }

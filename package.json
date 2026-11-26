@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "gestao-360",
   "private": true,
-  "version": "0.0.17.40",
+  "version": "0.0.17.85",
   "type": "module",
   "scripts": {
     "dev": "node scripts/bump-version.js && vite",
@@ -9,7 +9,10 @@
     "build": "node scripts/bump-version.js && tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:baseline": "node -e \"process.env.UPDATE_BASELINE='1';require('node:child_process').execSync('npx vitest run src/__tests__',{stdio:'inherit'})\"",
+    "test:security": "vitest run src/__tests__/security",
+    "test:rls-live": "vitest run src/__tests__/security/rls-integration.test.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

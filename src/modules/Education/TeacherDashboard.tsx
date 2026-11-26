@@ -68,7 +68,7 @@ import { TeacherTrainingCenter } from './TeacherTrainingCenter';
 import { EducationStaffAdmin } from './components/EducationStaffAdmin';
 import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
 import { TeacherProficiencyEntry } from './components/TeacherProficiencyEntry';
-import { getTeacherDashboardMetrics, TeacherDashboardMetrics } from '../../lib/api/education';
+import { getTeacherDashboardMetrics, TeacherDashboardMetrics } from '../../lib/api/education'; import { bestEffort } from '../../lib/logger';
 
 
 export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
@@ -371,7 +371,7 @@ export const TeacherDashboard = ({ onBack }: { onBack: () => void }) => {
   const [tasks, setTasks] = useState<{ id: string; title: string; due: string; completed: boolean }[]>(() => {
     const saved = localStorage.getItem('gestao360_teacher_tasks');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { }
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return [
       { id: '1', title: 'Corrigir Projeto de Ciências', due: 'Vence hoje • 12 entregas', completed: false },

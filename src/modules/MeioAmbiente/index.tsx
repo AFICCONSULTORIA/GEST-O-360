@@ -5,6 +5,7 @@ import { EnvironmentalReport, AdminUser } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { supabase } from '../../lib/supabase';
 import { DemoFillButton } from '../../components/DemoFillButton';
+import { bestEffort } from '../../lib/logger';
 
 const MOCK_REPORTS: EnvironmentalReport[] = [
   {
@@ -87,7 +88,7 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
         try {
           setReports(JSON.parse(demoStorage));
           return;
-        } catch (e) {}
+        } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       console.error('Erro ao buscar denúncias:', error);
       showToast('Erro ao carregar denúncias', 'error');
@@ -103,7 +104,7 @@ export const MeioAmbienteModule = ({ currentInstitution, currentUser }: { curren
       if (!mod || mod === 'meio_ambiente' || mod === 'all') {
         const demoStorage = localStorage.getItem('gestao360_demo_meio_ambiente');
         if (demoStorage) {
-          try { setReports(JSON.parse(demoStorage)); } catch (e) {}
+          try { setReports(JSON.parse(demoStorage)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
         fetchReports();
       }

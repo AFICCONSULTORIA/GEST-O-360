@@ -6,7 +6,7 @@ import { Contract, Institution, AdminUser } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import { DemoFillButton } from '../../components/DemoFillButton';
 import { isDemoEnvironment } from '../../lib/demoManager';
-import { hasPermission } from '../../lib/permissions';
+import { hasPermission } from '../../lib/permissions'; import { bestEffort } from '../../lib/logger';
 
 const {
   Plus, Search, Edit2, Trash2, Eye, FileText, TrendingUp, ShieldAlert,
@@ -159,7 +159,7 @@ const ContractsModule = ({
         try {
           setContracts(JSON.parse(localScoped));
           return;
-        } catch {}
+        } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
 
       if (isDemo) {

@@ -1,0 +1,9 @@
+{
+  "src/App.tsx": 8,
+  "src/lib/api/fleetFuel.ts": 3,
+  "src/modules/Camara/components/PainelTelaoModal.tsx": 2,
+  "src/modules/Camara/components/PlenarioSessao.tsx": 1,
+  "src/modules/CommunicationCenter/index.tsx": 1,
+  "src/modules/MeioAmbiente/PublicPortal.tsx": 1,
+  "src/modules/SaaSControlCenter/SaaSControlCenterImport.tsx": 1
+}

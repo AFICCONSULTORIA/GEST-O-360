@@ -39,7 +39,7 @@ import {
 import { BoletimEscolarPDF } from './BoletimEscolarPDF';
 import { FamilyAppQrModal } from './FamilyAppQrModal';
 import { SubjectIcon } from './SubjectIcon';
-import { EducationAvatar } from './EducationAvatar';
+import { EducationAvatar } from './EducationAvatar'; import { bestEffort } from '../../../lib/logger';
 
 export interface FamilyPortalStudentContext {
   id: string;
@@ -225,7 +225,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
         setAcknowledgedIds(remoteAcks);
         try {
           localStorage.setItem(key, JSON.stringify(remoteAcks));
-        } catch {}
+        } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         return;
       }
       try {
@@ -252,7 +252,7 @@ export const FamilyPortalView: React.FC<FamilyPortalViewProps> = ({
         : prev.filter((id) => id !== announcementId);
       try {
         localStorage.setItem(key, JSON.stringify(next));
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       return next;
     });
 

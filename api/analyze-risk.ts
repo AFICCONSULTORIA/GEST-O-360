@@ -1,7 +1,20 @@
 import { GoogleGenAI } from "@google/genai";
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
+import { checkRateLimitAsync, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
 
-export default async function handler(req: any, res: any) {
+interface NodeRequest {
+  method?: string;
+  headers?: Record<string, string | undefined>;
+  body?: { context?: unknown };
+}
+
+interface NodeResponse {
+  setHeader: (name: string, value: string) => NodeResponse;
+  status: (code: number) => NodeResponse;
+  json: (payload: unknown) => NodeResponse;
+  end: () => NodeResponse;
+}
+
+export default async function handler(req: NodeRequest, res: NodeResponse) {
   const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Vary', 'Origin');
@@ -21,7 +34,7 @@ export default async function handler(req: any, res: any) {
     return res.status(auth.status || 401).json({ error: auth.error });
   }
 
-  if (!checkRateLimit(`analyze-risk:${auth.userId}`, 20, 60_000)) {
+  if (!(await checkRateLimitAsync(`analyze-risk:${auth.userId}`, 20, 60_000))) {
     return res.status(429).json({ error: 'Limite de requisições excedido. Aguarde um minuto.' });
   }
 
@@ -64,8 +77,8 @@ export default async function handler(req: any, res: any) {
     });
     
     return res.status(200).json({ analysis: result.text });
-  } catch (error) {
-    console.error("Gemini Error:", error);
+  } catch (internalErr: unknown) {
+    console.error('[analyze-risk] Erro interno:', internalErr instanceof Error ? internalErr.name : 'UnknownError');
     return res.status(500).json({ error: "Failed to analyze risk" });
   }
 }

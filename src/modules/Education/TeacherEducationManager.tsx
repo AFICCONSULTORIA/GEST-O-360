@@ -53,7 +53,7 @@ import {
   SUBJECT_PRESETS,
   EDU_READY_TEMPLATES,
   ReadyTemplate,
-} from './data/eduImageBank';
+} from './data/eduImageBank'; import { bestEffort, reportError } from '../../lib/logger';
 
 export type StudioInitialMode =
   | 'list'
@@ -504,7 +504,7 @@ export const TeacherEducationManager: React.FC<TeacherEducationManagerProps> = (
             setAvailableClasses(parsed.map((c: any) => c.name).filter(Boolean));
           }
         }
-      } catch {}
+      } catch (caughtErr) { reportError('TeacherEducationManager:rede', caughtErr); }
     };
     syncSchoolLists();
     window.addEventListener('subjects-updated', syncSchoolLists);
@@ -793,7 +793,7 @@ export const TeacherEducationManager: React.FC<TeacherEducationManagerProps> = (
         const map = raw ? JSON.parse(raw) : {};
         map[created.id] = params.targetClasses;
         localStorage.setItem('gestao360_course_classes', JSON.stringify(map));
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
 
     return created;
@@ -1302,7 +1302,7 @@ export const TeacherEducationManager: React.FC<TeacherEducationManagerProps> = (
         const map = raw ? JSON.parse(raw) : {};
         map[selectedCourse.id] = editCourseMeta.target_classes;
         localStorage.setItem('gestao360_course_classes', JSON.stringify(map));
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
       setIsEditingCourseMeta(false);
       await loadCourses();

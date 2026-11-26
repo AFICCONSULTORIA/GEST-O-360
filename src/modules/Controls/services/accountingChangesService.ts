@@ -16,6 +16,7 @@ import {
   DocumentoComprobatorioSRC,
   PartidaContabil
 } from '../types/accountingChanges';
+import { bestEffort, reportError } from '../../../lib/logger';
 
 const STORAGE_KEY = 'gestao360_accounting_changes';
 const DB_TABLE_LEGACY = 'control_accounting_changes';
@@ -239,7 +240,7 @@ export const accountingChangesService = {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(mapped));
         return mapped;
       }
-    } catch (_) {}
+    } catch (caughtErr) { reportError('accountingChangesService:rede', caughtErr); }
 
     // 2. Fallback na tabela padrão do Supabase
     try {
@@ -266,7 +267,7 @@ export const accountingChangesService = {
           return parsed;
         }
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     localStorage.setItem(STORAGE_KEY, JSON.stringify([]));
     return [];
@@ -595,7 +596,7 @@ export const accountingChangesService = {
           data_hora_exata: nowIso,
           assinatura_eletronica_hash: assinaturaHash
         }]);
-    } catch (_) {}
+    } catch (caughtErr) { reportError('accountingChangesService:rede', caughtErr); }
 
     return this.updateChange(item.id, updates);
   },

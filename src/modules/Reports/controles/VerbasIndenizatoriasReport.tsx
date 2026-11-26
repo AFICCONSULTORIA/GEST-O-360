@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShieldCheck, Printer, Filter, X, Search, CheckCircle2, AlertTriangle, FileText, Download } from 'lucide-react';
 import { REAL_VERBAS_INDENIZATORIAS_DATA } from '../../Controls/data/realVerbasIndenizatorias';
+import { bestEffort } from '../../../lib/logger';
 
 interface VerbasReportModalProps {
   onClose: () => void;
@@ -26,7 +27,7 @@ export const VerbasIndenizatoriasReportModal: React.FC<VerbasReportModalProps> =
       const storageKey = `gestao360_verbas_${selectedMonth}_${selectedYear}`;
       const saved = localStorage.getItem(storageKey);
       if (saved) return JSON.parse(saved);
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     return REAL_VERBAS_INDENIZATORIAS_DATA.map((item, idx) => ({
       id: `verba_${idx + 1}`,
       cargo: item.cargo,

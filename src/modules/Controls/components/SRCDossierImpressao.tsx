@@ -1,4 +1,5 @@
 import { AccountingChange } from '../types/accountingChanges';
+import { bestEffort } from '../../../lib/logger';
 
 interface DossierPrintOptions {
   municipioNome?: string;
@@ -30,7 +31,7 @@ export function generateSRCDossierHtml(
           second: '2-digit'
         });
       }
-    } catch {}
+    } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
     return isoStr;
   };
 

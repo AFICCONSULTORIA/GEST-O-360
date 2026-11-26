@@ -1,4 +1,5 @@
 import { RegistroAlteracaoContabil, ACOES_CONTADORA_CONFIG } from '../types/livroContadora';
+import { bestEffort } from '../../../lib/logger';
 
 interface FichaResguardoOptions {
   municipioNome?: string;
@@ -34,7 +35,7 @@ export function gerarFichaResguardoHtml(
           second: '2-digit'
         });
       }
-    } catch {}
+    } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
     return isoStr;
   };
 

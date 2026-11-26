@@ -1,0 +1,10 @@
+[
+  "acknowledge_family_announcement",
+  "get_family_announcement_acks",
+  "get_family_student_by_cpf_birth",
+  "get_family_student_portal_data",
+  "lookup_voting_voter_by_cpf",
+  "parent_lookup_school_transport",
+  "public_complete_fuel_order",
+  "public_get_fuel_order_by_number"
+]

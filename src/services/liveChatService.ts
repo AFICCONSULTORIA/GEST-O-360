@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { bestEffort } from '../lib/logger';
 
 export interface LiveChatMessage {
   id: string;
@@ -65,7 +66,7 @@ const getLocalTickets = (): LiveChatTicket[] => {
       const raw = localStorage.getItem(LOCAL_STORAGE_TICKETS_KEY);
       if (raw) return JSON.parse(raw);
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [...inMemoryTickets];
 };
 
@@ -75,7 +76,7 @@ const saveLocalTickets = (tickets: LiveChatTicket[]) => {
     if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
       localStorage.setItem(LOCAL_STORAGE_TICKETS_KEY, JSON.stringify(tickets));
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 };
 
 const getLocalMessages = (ticketId?: string): LiveChatMessage[] => {
@@ -85,7 +86,7 @@ const getLocalMessages = (ticketId?: string): LiveChatMessage[] => {
       const raw = localStorage.getItem(LOCAL_STORAGE_MESSAGES_KEY);
       if (raw) msgs = JSON.parse(raw);
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   if (msgs.length === 0) {
     msgs = inMemoryMessages;
   }
@@ -107,7 +108,7 @@ const appendLocalMessage = (msg: LiveChatMessage) => {
         localStorage.setItem(LOCAL_STORAGE_MESSAGES_KEY, JSON.stringify(msgs));
       }
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 };
 
 /**
@@ -324,7 +325,7 @@ export async function deleteLiveTicket(ticketId: string): Promise<boolean> {
         localStorage.setItem(LOCAL_STORAGE_MESSAGES_KEY, JSON.stringify(filtered));
       }
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // 3. Exclui do banco de dados Supabase
   try {

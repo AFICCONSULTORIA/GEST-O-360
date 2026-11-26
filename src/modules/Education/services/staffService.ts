@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '../../../lib/supabase';
+import { bestEffort } from '../../../lib/logger';
 
 export type StaffRole = 'teacher' | 'coordinator';
 export type StaffStatus = 'active' | 'leave' | 'inactive';
@@ -120,7 +121,7 @@ export const staffService = {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
         }
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     // 2. Limpeza no Supabase
     try {
@@ -174,7 +175,7 @@ export const staffService = {
           return clean; // Retorna a lista real, mesmo que vazia!
         }
       }
-    } catch (e) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     // 3. Caso inicial sem dados cadastrados
     localStorage.setItem(STORAGE_KEY, JSON.stringify([]));

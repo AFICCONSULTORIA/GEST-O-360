@@ -47,7 +47,7 @@ import { StudentSettings } from './components/StudentSettings';
 import { StudentStore } from './components/StudentStore';
 import { StreakAnimationOverlay } from './components/StreakAnimationOverlay';
 import { EducationAvatar } from './components/EducationAvatar';
-import { FamilyPortalView } from './components/FamilyPortalView';
+import { FamilyPortalView } from './components/FamilyPortalView'; import { bestEffort } from '../../lib/logger';
 
 // --- TYPES ---
 export interface QuizQuestion {
@@ -371,7 +371,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
               studentClass = currentStudent.studentClass;
             }
           }
-        } catch (e) {}
+        } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
 
       // Filtra apenas as trilhas destinadas à turma do aluno (ou abertas para todas)
@@ -396,7 +396,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
         if (storedAct) {
           try {
             localActivity = { ...localActivity, ...JSON.parse(storedAct) };
-          } catch (e) {}
+          } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
       }
 
@@ -556,7 +556,7 @@ export const StudentPortal = ({ onBack, previewCourseId }: { onBack: () => void,
           return s;
         });
         localStorage.setItem('gestao360_students', JSON.stringify(updated));
-      } catch (e) {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
 
     const newWeekly = calculateWeeklyActivity(localActivity.dates);

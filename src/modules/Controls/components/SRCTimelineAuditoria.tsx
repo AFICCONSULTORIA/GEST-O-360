@@ -4,6 +4,7 @@ import {
   User, Copy, Check, Lock, ChevronDown, ChevronUp, FileCode
 } from 'lucide-react';
 import { TrilhaAuditoriaTramitacao, AccountingChange } from '../types/accountingChanges';
+import { bestEffort } from '../../../lib/logger';
 
 interface SRCTimelineAuditoriaProps {
   change: AccountingChange;
@@ -27,7 +28,7 @@ export const SRCTimelineAuditoria: React.FC<SRCTimelineAuditoriaProps> = ({ chan
           second: '2-digit'
         });
       }
-    } catch {}
+    } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
     return isoStr;
   };
 

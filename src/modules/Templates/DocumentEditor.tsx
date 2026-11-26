@@ -9,7 +9,7 @@ import { escapeHtmlText, sanitizeRichHtml } from '../../utils/sanitizeHtml';
 import { 
   createDefaultTimbreData, generateHeaderHtml, generateFooterHtml, 
   MARGIN_PRESETS, getWatermarkStyles, getWatermarkText 
-} from './timbrePresets';
+} from './timbrePresets'; import { bestEffort } from '../../lib/logger';
 
 const { 
   Plus, Search: SearchIcon, Edit2, Trash2, FileText, Download, Clock, FileBadge, X, ChevronLeft,
@@ -110,7 +110,7 @@ export const DocumentEditor = ({
     if (doc?.timbreConfig) return doc.timbreConfig;
     const saved = localStorage.getItem('@gestao360:timbre_config');
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return createDefaultTimbreData(currentInstitution);
   }, [doc, currentInstitution]);
@@ -687,7 +687,7 @@ export const DocumentEditor = ({
       mark.style.backgroundColor = '#FBBF24';
       mark.style.color = '#000';
       mark.dataset.findHighlight = 'true';
-      try { range.surroundContents(mark); } catch {}
+      try { range.surroundContents(mark); } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
     });
   };
 

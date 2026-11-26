@@ -4,20 +4,30 @@ import {
   checkRateLimit,
   isPayloadTooLarge,
 } from '../../../../api/_utils/security';
-import { sanitizeRichHtml, escapeHtmlText } from '../../../utils/sanitizeHtml';
+import { sanitizeRichHtml, sanitizeSvgHtml, escapeHtmlText } from '../../../utils/sanitizeHtml';
+import { generateHeaderHtml, generateFooterHtml, createDefaultTimbreData } from '../../../modules/Templates/timbrePresets';
 import { sanitizeGazetteHtml } from '../../../modules/DiarioOficial/utils/sanitizeGazetteHtml';
 
 describe('Blindagem de Cibersegurança (CORS, Rate Limit, Payload e Anti-XSS)', () => {
   describe('resolveAllowedOrigin', () => {
-    it('aceita domínios oficiais e localhost', () => {
+    it('aceita domínios oficiais, previews explícitos do projeto e localhost', () => {
       expect(resolveAllowedOrigin('https://gestao360sistema.com.br')).toBe('https://gestao360sistema.com.br');
       expect(resolveAllowedOrigin('https://torixoreu.gestao360sistema.com.br')).toBe('https://torixoreu.gestao360sistema.com.br');
-      expect(resolveAllowedOrigin('https://preview-123.vercel.app')).toBe('https://preview-123.vercel.app');
       expect(resolveAllowedOrigin('http://localhost:5173')).toBe('http://localhost:5173');
+
+      const prevVercelUrl = process.env.VERCEL_URL;
+      process.env.VERCEL_URL = 'preview-123.vercel.app';
+      try {
+        expect(resolveAllowedOrigin('https://preview-123.vercel.app')).toBe('https://preview-123.vercel.app');
+      } finally {
+        if (prevVercelUrl === undefined) delete process.env.VERCEL_URL;
+        else process.env.VERCEL_URL = prevVercelUrl;
+      }
     });
 
-    it('rejeita origens externas ou domínios spoofing e cai no domínio oficial', () => {
+    it('rejeita origens externas, *.vercel.app arbitrários ou domínios spoofing e cai no domínio oficial', () => {
       expect(resolveAllowedOrigin('https://evil.com')).toBe('https://gestao360sistema.com.br');
+      expect(resolveAllowedOrigin('https://atacante.vercel.app')).toBe('https://gestao360sistema.com.br');
       expect(resolveAllowedOrigin('https://gestao360sistema.com.br.evil.com')).toBe('https://gestao360sistema.com.br');
       expect(resolveAllowedOrigin('not-a-valid-url')).toBe('https://gestao360sistema.com.br');
     });
@@ -68,6 +78,42 @@ describe('Blindagem de Cibersegurança (CORS, Rate Limit, Payload e Anti-XSS)', 
       expect(escapeHtmlText('<img src=x onerror=alert(1)>')).toBe(
         '&lt;img src=x onerror=alert(1)&gt;'
       );
+    });
+
+    it('sanitizeSvgHtml preserva QR Code SVG e remove scripts, foreignObject e event handlers', () => {
+      const svg =
+        '<svg viewBox="0 0 21 21" width="210" height="210">' +
+        '<rect width="21" height="21" fill="#fff"/>' +
+        '<path d="M0 0h7v7H0z" fill="#000" onclick="alert(1)"/>' +
+        '<script>alert(2)</script>' +
+        '<foreignObject><div>xss</div></foreignObject>' +
+        '</svg>';
+      const clean = sanitizeSvgHtml(svg);
+      expect(clean).toContain('<svg');
+      expect(clean).toContain('<path');
+      expect(clean).not.toContain('<script');
+      expect(clean).not.toContain('foreignObject');
+      expect(clean).not.toContain('onclick');
+    });
+
+    it('generateHeaderHtml e generateFooterHtml escapam campos de usuário contra XSS', () => {
+      const base = createDefaultTimbreData(null);
+      const hostile = {
+        ...base,
+        prefeitura: '<img src=x onerror=alert(1)>Prefeitura',
+        secretaria: '<script>alert(2)</script>Educação',
+        endereco: 'Rua A <svg onload=alert(3)>',
+        logoUrl: 'javascript:alert(4)',
+        accentColor: 'red; background:url(javascript:alert(5))',
+      };
+      const header = sanitizeRichHtml(generateHeaderHtml(hostile));
+      const footer = sanitizeRichHtml(generateFooterHtml(hostile));
+      expect(header).not.toContain('<script');
+      expect(header).not.toContain('onerror=');
+      expect(header).not.toContain('javascript:');
+      expect(header).toContain('&lt;img');
+      expect(footer).not.toContain('onload=');
+      expect(footer).toContain('&lt;svg');
     });
   });
 });

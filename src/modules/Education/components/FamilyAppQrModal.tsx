@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, QrCode, Printer, Download, Copy, Check, ExternalLink, Smartphone } from 'lucide-react';
 import { generateQrSvgSync, generateQrDataUrl } from '../../../utils/qrCodeGenerator';
+import { escapeHtmlText, sanitizeSvgHtml } from '../../../utils/sanitizeHtml';
 
 interface FamilyAppQrModalProps {
   isOpen: boolean;
@@ -55,9 +56,9 @@ export const FamilyAppQrModal: React.FC<FamilyAppQrModalProps> = ({
     const printWindow = window.open('', '_blank', 'width=820,height=980');
     if (!printWindow) return;
 
-    const svgLarge = generateQrSvgSync(portalUrl, 260);
-    const safeInstitution = institutionName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const safeUrl = portalUrl.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const svgLarge = sanitizeSvgHtml(generateQrSvgSync(portalUrl, 260));
+    const safeInstitution = escapeHtmlText(institutionName);
+    const safeUrl = escapeHtmlText(portalUrl);
 
     printWindow.document.write(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -181,7 +182,7 @@ export const FamilyAppQrModal: React.FC<FamilyAppQrModalProps> = ({
         <div className="flex flex-col items-center justify-center p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-dashed border-indigo-300 dark:border-indigo-800">
           <div
             className="p-3 bg-white rounded-2xl shadow-sm"
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
+            dangerouslySetInnerHTML={{ __html: sanitizeSvgHtml(qrSvg) }}
           />
           <div className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
             <Smartphone size={13} />

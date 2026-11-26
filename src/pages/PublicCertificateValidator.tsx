@@ -6,6 +6,7 @@ import {
 import { fetchCertificateByHash, syncLocalCertificatesToSupabase } from '../modules/Education/services/certificateService';
 import { IssuedCertificate } from '../modules/Education/types/certificates';
 import { Institution } from '../types';
+import { reportError } from '../lib/logger';
 
 interface PublicCertificateValidatorProps {
   darkMode?: boolean;
@@ -27,7 +28,7 @@ export const PublicCertificateValidator: React.FC<PublicCertificateValidatorProp
   // Sincroniza cache local e lê código da URL (?codigo=... ou /validar-documento/CERT-...)
   useEffect(() => {
     // Sincroniza eventuais certificados emitidos em cache local
-    syncLocalCertificatesToSupabase().catch(() => {});
+    syncLocalCertificatesToSupabase().catch((caughtErr: unknown) => reportError('PublicCertificateValidator:promise', caughtErr));
 
     // Extrai parâmetros tanto da busca (?codigo=) quanto do hash (#...?)
     let searchStr = window.location.search;

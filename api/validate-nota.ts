@@ -1,5 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
+import { checkRateLimitAsync, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from "./_utils/security.js";
+
+interface NodeRequest {
+  method?: string;
+  headers?: Record<string, string | undefined>;
+  body?: Record<string, unknown>;
+  socket?: { remoteAddress?: string };
+}
+
+interface NodeResponse {
+  setHeader: (name: string, value: string) => NodeResponse;
+  status: (code: number) => NodeResponse;
+  json: (payload: unknown) => NodeResponse;
+  end: () => NodeResponse;
+}
 
 export interface NotaFiscalProblem {
   problema: string;
@@ -22,7 +36,7 @@ export interface NotaFiscalAnalysisResult {
   problemas: NotaFiscalProblem[];
 }
 
-function parseNumber(val: any): number {
+function parseNumber(val: unknown): number {
   if (val === null || val === undefined) return 0;
   if (typeof val === 'number') return isNaN(val) ? 0 : val;
   const str = String(val).trim();
@@ -45,7 +59,9 @@ function formatDateBR(dateStr?: string): string {
   try {
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) return d.toLocaleDateString('pt-BR');
-  } catch {}
+  } catch {
+    // best-effort: data fora do padrão ISO cai no parser por regex abaixo
+  }
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (match) return `${match[3]}/${match[2]}/${match[1]}`;
   return dateStr;
@@ -209,7 +225,7 @@ function validateFiscalData(data: {
   };
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: NodeRequest, res: NodeResponse) {
   const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Vary', 'Origin');
@@ -225,11 +241,13 @@ export default async function handler(req: any, res: any) {
   }
 
   const clientIp = String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || 'anon').split(',')[0].trim();
-  if (!checkRateLimit(`validate-nota:${clientIp}`, 20, 60_000)) {
+  if (!(await checkRateLimitAsync(`validate-nota:${clientIp}`, 20, 60_000))) {
     return res.status(429).json({ error: 'Limite de validações excedido. Aguarde um minuto.' });
   }
 
   try {
+    // Validação determinística de XML segue pública apenas por não incorrer em custo de IA;
+    // leitura de PDF via Gemini exige JWT válido logo abaixo.
     const { xml, pdfBase64 } = req.body || {};
 
     if (!xml && !pdfBase64) {
@@ -379,8 +397,8 @@ export default async function handler(req: any, res: any) {
       issRetido: Boolean(parsed.issRetido)
     }));
 
-  } catch (error: any) {
-    console.error("Erro no validador fiscal:", error);
-    return res.status(500).json({ error: error.message || "Falha na validação da nota fiscal" });
+  } catch (internalErr: unknown) {
+    console.error('[validate-nota] Erro interno:', internalErr instanceof Error ? internalErr.name : 'UnknownError');
+    return res.status(500).json({ error: 'Falha interna na validação da nota fiscal.' });
   }
 }

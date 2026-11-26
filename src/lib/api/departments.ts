@@ -4,6 +4,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase, supabaseAnon } from '../supabase';
+import { bestEffort } from '../logger';
 
 export interface MunicipalDepartment {
   id: string;
@@ -38,7 +39,7 @@ function saveLocalDepartments(institutionId: string, list: MunicipalDepartment[]
   try {
     if (typeof window === 'undefined') return;
     localStorage.setItem(storageKey(institutionId), JSON.stringify(list));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 export function dispatchDepartmentsUpdated(institutionId?: string) {
@@ -48,7 +49,7 @@ export function dispatchDepartmentsUpdated(institutionId?: string) {
         detail: { institutionId: resolveInstitutionId(institutionId) }
       }));
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 function isRlsOrAuthError(error: any): boolean {

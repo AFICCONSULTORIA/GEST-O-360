@@ -23,7 +23,7 @@ import {
 import { formatFuelLabel } from '../modules/Controls/components/FuelAuthorizationVoucherPDF';
 import { formatThousands, parseThousands } from '../lib/masks';
 import { Institution } from '../types';
-import { showToast } from '../components/ui/Toast';
+import { showToast } from '../components/ui/Toast'; import { bestEffort, reportError } from '../lib/logger';
 
 interface PublicFuelValidationProps {
   darkMode?: boolean;
@@ -114,7 +114,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
           o.status !== 'cancelado'
         ).slice(0, 3);
       }
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     return [];
   }, []);
 
@@ -227,7 +227,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
               }
               restored = true;
             }
-          } catch {}
+          } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
 
         if (!restored) {
@@ -315,7 +315,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.setAttribute('playsinline', 'true');
-          videoRef.current.play().catch(() => {});
+          videoRef.current.play().catch((caughtErr: unknown) => reportError('PublicFuelValidation:promise', caughtErr));
         }
       }, 100);
     } catch (err: unknown) {
@@ -471,7 +471,7 @@ export const PublicFuelValidation: React.FC<PublicFuelValidationProps> = ({
       setIsEditing(false);
       try {
         sessionStorage.removeItem(`${DRAFT_PREFIX}${order.order_number}`);
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
       setOrder(result.order);
       setSuccessResult(result);

@@ -31,7 +31,7 @@ import { assistantActionBus } from './actionBus';
 import { ContextualShortcut, ChatAssistantProps } from './types';
 import { dispatchAgentOfficeEvent } from '../../lib/agentOfficeTelemetry';
 import { FormattedText } from './FormattedText';
-import { showToast } from '../ui/Toast';
+import { showToast } from '../ui/Toast'; import { bestEffort, reportError } from '../../lib/logger';
 
 const VIEW_LABEL_MAP: Record<string, string> = {
   home: 'Painel Geral',
@@ -459,7 +459,7 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
       status: 'working',
       bubbleText: `Despachando: ${action.label || action.type}`,
       technicalDetail: { action }
-    }).catch(() => {});
+    }).catch((caughtErr: unknown) => reportError('ChatAssistantModal:promise', caughtErr));
 
     if (action.type === 'REQUEST_HUMAN_ATTENDANT') {
       handleRequestHuman(action.params?.reason || 'Solicitado via ação');
@@ -669,7 +669,7 @@ export const ChatAssistantModal: React.FC<ChatAssistantProps> = ({
                 } else if (parsed.type === 'done') {
                   streamSucceeded = true;
                 }
-              } catch {}
+              } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
             }
           }
 

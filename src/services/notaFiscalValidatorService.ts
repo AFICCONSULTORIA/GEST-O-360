@@ -9,6 +9,7 @@
 
 import { dispatchAgentOfficeEvent } from '../lib/agentOfficeTelemetry';
 import { getApiAuthHeaders } from '../lib/supabase';
+import { reportError } from '../lib/logger';
 
 export interface NotaFiscalProblem {
   problema: string;     // Explicação simples
@@ -328,7 +329,7 @@ export function validateFiscalData(data: {
       emitente: emitenteFormatado,
       problemas: problemas.map(p => p.problema)
     }
-  }).catch(() => {});
+  }).catch((caughtErr: unknown) => reportError('notaFiscalValidatorService:promise', caughtErr));
 
   return {
     aprovada,

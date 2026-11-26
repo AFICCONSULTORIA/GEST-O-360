@@ -18,7 +18,7 @@ import {
   EDU_DEFAULT_IMAGES,
   EduImageAsset,
   SUBJECT_PRESETS,
-} from '../data/eduImageBank';
+} from '../data/eduImageBank'; import { bestEffort, reportError } from '../../../lib/logger';
 
 export interface CustomEduImage {
   id: string;
@@ -243,18 +243,18 @@ export async function deleteCustomEduImage(
         JSON.stringify(prev.filter((i) => i.id !== image.id && i.url !== image.url))
       );
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   if (!image.id.startsWith('local-')) {
     try {
       await supabase.from('edu_media_library').delete().eq('id', image.id);
-    } catch {}
+    } catch (caughtErr) { reportError('EducationImagePicker:rede', caughtErr); }
   }
 
   if (image.storagePath) {
     try {
       await supabase.storage.from('certidoes').remove([image.storagePath]);
-    } catch {}
+    } catch (caughtErr) { reportError('EducationImagePicker:rede', caughtErr); }
   }
 }
 

@@ -1,0 +1,11 @@
+[
+  "admin_register_teacher (supabase/migrations/20261008030000_saeb_proficiency_and_teacher_management.sql)",
+  "complete_education_lesson (supabase/migrations/20261008000000_student_progress_gamification.sql)",
+  "get_teacher_dashboard_metrics (supabase/migrations/20261008010000_teacher_portal_tables.sql)",
+  "rpc_clear_all_fuel_orders (supabase/migrations/20261104020000_fleet_fuel_anon_validation_policy.sql)",
+  "rpc_clear_all_fuel_orders (supabase/migrations/20261104030000_fleet_fuel_delete_policy.sql)",
+  "rpc_delete_fuel_order (supabase/migrations/20261104020000_fleet_fuel_anon_validation_policy.sql)",
+  "rpc_delete_fuel_order (supabase/migrations/20261104030000_fleet_fuel_delete_policy.sql)",
+  "save_proficiencies_batch (supabase/migrations/20261008030000_saeb_proficiency_and_teacher_management.sql)",
+  "submit_education_quiz (supabase/migrations/20261008000000_student_progress_gamification.sql)"
+]

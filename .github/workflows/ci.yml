@@ -1,0 +1,64 @@
+name: CI — Segurança, Tipagem e Testes
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-and-security:
+    name: Typecheck & Vitest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências (reprodutível)
+        run: npm ci
+
+      - name: Checagem estrita de tipos (TypeScript)
+        run: npx tsc --noEmit
+
+      - name: Suíte de testes de segurança, regras e catracas de qualidade
+        run: npm test
+
+  rls-live-staging:
+    name: RLS Live Integration (Staging)
+    needs: quality-and-security
+    runs-on: ubuntu-latest
+    if: vars.RLS_STAGING_ENABLED == 'true'
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Executar testes RLS ao vivo contra Staging
+        env:
+          RLS_TEST_URL: ${{ secrets.RLS_TEST_URL }}
+          RLS_TEST_ANON_KEY: ${{ secrets.RLS_TEST_ANON_KEY }}
+          RLS_TEST_USER_A_EMAIL: ${{ secrets.RLS_TEST_USER_A_EMAIL }}
+          RLS_TEST_USER_A_PASSWORD: ${{ secrets.RLS_TEST_USER_A_PASSWORD }}
+          RLS_TEST_USER_B_EMAIL: ${{ secrets.RLS_TEST_USER_B_EMAIL }}
+          RLS_TEST_USER_B_PASSWORD: ${{ secrets.RLS_TEST_USER_B_PASSWORD }}
+          RLS_TEST_ALLOW_WRITES: '1'
+        run: npm run test:rls-live

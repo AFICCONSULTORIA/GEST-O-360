@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { showToast } from '../../components/ui/Toast';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
 import { hasPermission } from '../../lib/permissions';
-import { DemoFillButton } from '../../components/DemoFillButton';
+import { DemoFillButton } from '../../components/DemoFillButton'; import { bestEffort } from '../../lib/logger';
 
 
 export const getAttachmentsArray = (attachment?: string): { name: string, url: string, role?: string }[] => {
@@ -104,7 +104,7 @@ export const ProtocolModule = ({ searchQuery = '', currentUser, currentInstituti
       if (!mod || mod === 'protocol' || mod === 'all') {
         const demoStorage = localStorage.getItem('gestao360_demo_protocols');
         if (demoStorage) {
-          try { setProtocols(JSON.parse(demoStorage)); } catch (e) {}
+          try { setProtocols(JSON.parse(demoStorage)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
         loadData();
       }

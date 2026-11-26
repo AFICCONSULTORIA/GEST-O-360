@@ -15,7 +15,7 @@ import {
   formatCPF, formatSUS, formatPhone, checkMedicationEarlyRefill, EarlyRefillCheckResult, DEFAULT_HEALTH_UNITS,
   generateUUID, isValidUUID
 } from './types';
-import { printDispensationReceipt } from './utils/printReceipt';
+import { printDispensationReceipt } from './utils/printReceipt'; import { bestEffort } from '../../lib/logger';
 
 export interface Medication {
   id: string;
@@ -89,7 +89,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       } else {
         const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
         if (demoMeds) {
-          try { setMedications(JSON.parse(demoMeds)); } catch (e) {}
+          try { setMedications(JSON.parse(demoMeds)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
       }
 
@@ -101,14 +101,14 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       } else {
         const demoDisp = localStorage.getItem('gestao360_demo_saude_dispensations');
         if (demoDisp) {
-          try { setLocalDispensations(JSON.parse(demoDisp)); } catch (e) {}
+          try { setLocalDispensations(JSON.parse(demoDisp)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
       }
     } catch (err) {
       console.error('Erro ao carregar dados da farmácia:', err);
       const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
       if (demoMeds) {
-        try { setMedications(JSON.parse(demoMeds)); } catch (e) {}
+        try { setMedications(JSON.parse(demoMeds)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
     } finally {
       setIsLoading(false);
@@ -123,7 +123,7 @@ export const FarmaciaModule: React.FC<FarmaciaModuleProps> = ({
       if (!mod || mod === 'saude' || mod === 'all') {
         const demoMeds = localStorage.getItem('gestao360_demo_saude_medications');
         if (demoMeds) {
-          try { setMedications(JSON.parse(demoMeds)); } catch (e) {}
+          try { setMedications(JSON.parse(demoMeds)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
         loadMedicationsAndDispensations();
       }

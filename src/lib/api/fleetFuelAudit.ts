@@ -8,9 +8,13 @@
 */
 
 import { supabase, supabaseAnon } from '../supabase';
+import { acquireOrderIssuanceLock, buildOrderIssuanceKey, isDuplicateFuelOrderCollision, releaseOrderIssuanceLock } from './fleetOrderIssuanceGuard';
+import { calculateRealtimeMetrics, parseExcelDate } from './fleetFuelRulesCore';
+
+export { calculateRealtimeMetrics, parseExcelDate };
 import { compressImageFile, uploadOptimizedImageToStorage } from '../imageUpload';
 import { downloadWorkbookXlsx } from '../../utils/spreadsheet';
-import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, getNextOrderNumber7Digits, formatOrderNumber7Digits, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel';
+import { FleetVehicle, FuelType, MetricType, FleetBudgetClassification, getLocalBudgetClassifications, getNextFuelOrderSequence, getNextOrderNumber7Digits, formatOrderNumber7Digits, ensureDriverExistsInSupabase, toBudgetUUID, isValidUUID, saveFuelOrderBudgetToSupabase } from './fleetFuel'; import { bestEffort, reportError } from '../logger';
 
 export type AnomalyLevel = 'none' | 'alerta_amarelo' | 'bloqueio_critico';
 export type TwoWayOrderStatus = 'autorizado_pendente' | 'aguardando_abastecimento' | 'abastecido' | 'auditado' | 'glosado' | 'cancelado';
@@ -70,11 +74,11 @@ export async function getBiddedFuelPricesFromSupabase(institutionId: string = 'i
         if (parsedNotes?.fuel_bidded_prices) {
           const remotePrices = { ...DEFAULT_BIDDED_PRICES, ...parsedNotes.fuel_bidded_prices };
           if (typeof window !== 'undefined') {
-            try { localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(remotePrices)); } catch { }
+            try { localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(remotePrices)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
           }
           return remotePrices;
         }
-      } catch { }
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
   } catch (err) {
     console.warn('[FleetFuelAudit] Aviso ao carregar precos licitados do Supabase:', err);
@@ -94,7 +98,7 @@ export function getBiddedFuelPrices(institutionId?: string): BiddedPricesMap {
       const parsed = JSON.parse(raw);
       return { ...DEFAULT_BIDDED_PRICES, ...parsed };
     }
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return DEFAULT_BIDDED_PRICES;
 }
 
@@ -126,14 +130,14 @@ export async function saveBiddedFuelPrices(
 
   try {
     localStorage.setItem(getPricesStorageKey(targetInst), JSON.stringify(updatedPrices));
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // Sincroniza diretamente com a tabela institutions.notes no Supabase (Fonte Única da Verdade)
   try {
     let currentNotesObj: Record<string, any> = {};
     const { data: instData } = await supabase.from('institutions').select('notes').eq('id', targetInst).maybeSingle();
     if (instData?.notes) {
-      try { currentNotesObj = JSON.parse(instData.notes); } catch { }
+      try { currentNotesObj = JSON.parse(instData.notes); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     currentNotesObj.fuel_bidded_prices = updatedPrices;
 
@@ -345,14 +349,14 @@ export function getFleetFuelAuditLogs(institutionId: string = 'inst_1'): FleetFu
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
 function saveLocalFleetFuelAuditLogs(logs: FleetFuelAuditLog[], institutionId: string = 'inst_1') {
   try {
     localStorage.setItem(getAuditLogsStorageKey(institutionId), JSON.stringify(logs.slice(0, 500)));
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 export async function getFleetFuelAuditLogsFromSupabase(institutionId: string = 'inst_1'): Promise<FleetFuelAuditLog[]> {
@@ -401,7 +405,7 @@ export async function getFleetFuelAuditLogsFromSupabase(institutionId: string = 
         });
       }
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
 
   // 2. Fallback sincronizado via institutions.notes (fuel_audit_logs)
   try {
@@ -430,9 +434,9 @@ export async function getFleetFuelAuditLogsFromSupabase(institutionId: string = 
             }
           }
         }
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
 
   const sorted = Array.from(mergedMap.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -478,14 +482,14 @@ export async function recordFleetFuelAuditLog(
     if (error) {
       await supabaseAnon.from('fuel_supply_audit_logs').insert([dbRow]);
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
 
   // 2. Sincroniza também os últimos 200 logs em institutions.notes para resiliência universal
   try {
     let currentNotesObj: Record<string, any> = {};
     const { data: instData } = await supabase.from('institutions').select('notes').eq('id', targetInst).maybeSingle();
     if (instData?.notes) {
-      try { currentNotesObj = JSON.parse(instData.notes); } catch {}
+      try { currentNotesObj = JSON.parse(instData.notes); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     const existingRemoteLogs = Array.isArray(currentNotesObj.fuel_audit_logs) ? currentNotesObj.fuel_audit_logs : [];
     currentNotesObj.fuel_audit_logs = [newLog, ...existingRemoteLogs.filter((l: any) => l?.id !== newLog.id)].slice(0, 200);
@@ -499,7 +503,7 @@ export async function recordFleetFuelAuditLog(
         notes: JSON.stringify(currentNotesObj)
       }).eq('id', targetInst);
     }
-  } catch {}
+  } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
 
   return newLog;
 }
@@ -537,7 +541,7 @@ function getLocalOrders(): TwoWayFuelOrder[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_ORDERS);
     if (raw) return JSON.parse(raw);
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
@@ -547,7 +551,7 @@ function getLocalOrders(): TwoWayFuelOrder[] {
 function saveLocalOrders(orders: TwoWayFuelOrder[]) {
   try {
     localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 /**
@@ -557,79 +561,14 @@ function getLocalVehicles(): FleetVehicle[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_VEHICLES);
     if (raw) return JSON.parse(raw);
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   return [];
 }
 
 function saveLocalVehicles(vehicles: FleetVehicle[]) {
   try {
     localStorage.setItem(STORAGE_KEY_VEHICLES, JSON.stringify(vehicles));
-  } catch { }
-}
-
-/**
- * Cálculo dinâmico em tempo real do consumo e matriz antifraude
- */
-export function calculateRealtimeMetrics(
-  previousOdometer: number,
-  currentOdometer: number,
-  liters: number,
-  expectedConsumption: number,
-  tankCapacity: number
-): ConsumptionAuditCalculation {
-  const isFirstOdometerRecord = !previousOdometer || previousOdometer <= 0;
-  const delta_km = isFirstOdometerRecord ? 0 : Math.max(0, currentOdometer - previousOdometer);
-  const effective_liters = liters > 0 ? liters : 1;
-  const raw_km_per_liter = isFirstOdometerRecord || delta_km <= 0 ? 0 : Number((delta_km / effective_liters).toFixed(2));
-  const calculated_km_per_liter = isFirstOdometerRecord ? 0 : Math.min(Math.max(raw_km_per_liter, 0), 99.99);
-
-  let deviation_percent = 0;
-  if (!isFirstOdometerRecord && expectedConsumption > 0 && calculated_km_per_liter > 0) {
-    const raw_dev = Number(
-      (((calculated_km_per_liter - expectedConsumption) / expectedConsumption) * 100).toFixed(2)
-    );
-    deviation_percent = Math.min(Math.max(raw_dev, -999.99), 999.99);
-  }
-
-  let anomaly_level: AnomalyLevel = 'none';
-  let anomaly_reason: string | undefined = undefined;
-  let is_blocked = false;
-
-  // 1. Bloqueio Crítico: Odômetro regressivo ou igual (apenas se já houver odômetro anterior registrado)
-  if (!isFirstOdometerRecord && currentOdometer <= previousOdometer) {
-    anomaly_level = 'bloqueio_critico';
-    anomaly_reason = `Odômetro Regressivo ou Inconsistente: KM informado (${currentOdometer}) é menor ou igual ao anterior (${previousOdometer}).`;
-    is_blocked = true;
-  }
-  // 2. Bloqueio Crítico: Volume abastecido superior à capacidade física do tanque
-  else if (liters > tankCapacity) {
-    anomaly_level = 'bloqueio_critico';
-    anomaly_reason = `Volume Superior à Capacidade do Tanque: Foram informados ${liters}L para um tanque de capacidade máxima de ${tankCapacity}L.`;
-    is_blocked = true;
-  }
-  // 3. Bloqueio Crítico: Desvio maior que -25% (consumo muito pior que o esperado - suspeita de dreno/desvio)
-  else if (!isFirstOdometerRecord && deviation_percent < -25) {
-    anomaly_level = 'bloqueio_critico';
-    anomaly_reason = `Consumo Crítico: Suspeita de Dreno/Desvio. Consumo apurado de ${calculated_km_per_liter} km/l teve desvio de ${deviation_percent}% em relação ao esperado (${expectedConsumption} km/l).`;
-    is_blocked = true;
-  }
-  // 4. Alerta Amarelo: Desvio entre -15% e -25%
-  else if (!isFirstOdometerRecord && deviation_percent < -15 && deviation_percent >= -25) {
-    anomaly_level = 'alerta_amarelo';
-    anomaly_reason = `Consumo com Desvio Moderado: Rendimento de ${calculated_km_per_liter} km/l teve variação de ${deviation_percent}% da meta (${expectedConsumption} km/l). Justificativa formal exigida.`;
-    is_blocked = false;
-  }
-
-  return {
-    delta_km,
-    effective_liters,
-    calculated_km_per_liter,
-    expected_consumption: expectedConsumption,
-    deviation_percent,
-    anomaly_level,
-    anomaly_reason,
-    is_blocked
-  };
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 }
 
 /**
@@ -651,7 +590,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
         if (data) {
           vehicle = data as FleetVehicle;
         }
-      } catch { }
+      } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
     }
 
     if (!vehicle) {
@@ -680,7 +619,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     throw new Error('A litragem autorizada deve ser superior a zero.');
   }
 
-  if (!isGalao && payload.liters_authorized > vehicle.tank_capacity && !payload.ignore_fraud_risk) {
+  if (!isGalao && vehicle.tank_capacity > 0 && payload.liters_authorized > vehicle.tank_capacity && !payload.ignore_fraud_risk) {
     throw new Error(
       `BLOQUEIO DE AUDITORIA: Litragem autorizada (${payload.liters_authorized.toFixed(2)}L) ultrapassa a capacidade máxima do tanque (${vehicle.tank_capacity.toFixed(2)}L - ${vehicle.model}).`
     );
@@ -701,7 +640,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   const supply_mode = isGalao
     ? 'litragem_fixa'
     : (payload.supply_mode || (vehicle.always_full_tank ? 'encher_tanque' : 'litragem_fixa'));
-  const liters_authorized = supply_mode === 'encher_tanque'
+  const liters_authorized = supply_mode === 'encher_tanque' && vehicle.tank_capacity > 0
     ? vehicle.tank_capacity
     : payload.liters_authorized;
 
@@ -783,8 +722,18 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     }
   }
 
-  // 6. Persistir no Supabase de forma resiliente
-  const orderRecord: Record<string, any> = {
+  // 6. Persistir no Supabase de forma resiliente (com trava anti-duplicação)
+  const issuanceLockKey = buildOrderIssuanceKey({
+    institutionId: newOrder.institution_id,
+    targetKey: isGalao ? (payload.galao_label || 'galao') : newOrder.vehicle_id,
+    currentOdometer: newOrder.current_odometer,
+    litersAuthorized: newOrder.liters_authorized
+  });
+  if (!acquireOrderIssuanceLock(issuanceLockKey)) {
+    throw new Error('Emissão já em andamento para este veículo. Aguarde a conclusão.');
+  }
+
+  const orderRecord: Record<string, unknown> = {
     id: newOrder.id,
     institution_id: newOrder.institution_id,
     order_number: newOrder.order_number,
@@ -810,7 +759,6 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
     created_at: newOrder.created_at
   };
 
-  // Se tiver um UUID de budget_classification_id, inclui na gravação
   if (resolvedBudgetId && isValidUUID(resolvedBudgetId)) {
     orderRecord.budget_classification_id = resolvedBudgetId;
   }
@@ -818,12 +766,10 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
   try {
     let { data, error } = await supabase.from('fuel_supply_orders').insert([orderRecord]).select().single();
 
-    // Retentativas resilientes para diferenças de schema no Supabase remoto
     for (let attempt = 0; attempt < 4 && error; attempt++) {
       const errMsg = error.message || '';
       const errCode = error.code || '';
 
-      // Coluna ausente no schema remoto (ex: migração pendente no Supabase)
       if (errCode === 'PGRST204' || errCode === '42703') {
         let stripped = false;
         if ('budget_classification_id' in orderRecord && errMsg.includes('budget_classification_id')) {
@@ -833,13 +779,10 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
         if (('target_type' in orderRecord || 'galao_label' in orderRecord) && (errMsg.includes('target_type') || errMsg.includes('galao_label'))) {
           delete orderRecord.target_type;
           delete orderRecord.galao_label;
-          if (isGalao) {
-            orderRecord.emergency_call_reason = `[GALÃO] ${payload.galao_label?.trim() || 'Galão / Bombona de Combustível'}`;
-          }
+          if (isGalao) orderRecord.emergency_call_reason = `[GALÃO] ${payload.galao_label?.trim() || 'Galão / Bombona de Combustível'}`;
           stripped = true;
         }
         if (!stripped) {
-          // Fallback genérico caso PGRST204 cite outra coluna opcional
           delete orderRecord.budget_classification_id;
           delete orderRecord.target_type;
           delete orderRecord.galao_label;
@@ -850,41 +793,22 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
         continue;
       }
 
-      // vehicle_id ainda com NOT NULL no banco remoto: cria/vincula registro virtual 'GALÃO' em fleet_vehicles
       if (isGalao && (errCode === '23502' || errMsg.includes('vehicle_id'))) {
-        let galaoVehId: string | null = null;
         const { data: existingGalao } = await supabase
-          .from('fleet_vehicles')
-          .select('id')
-          .eq('plate', 'GALÃO')
-          .eq('institution_id', newOrder.institution_id)
-          .limit(1)
-          .maybeSingle();
-
-        if (existingGalao?.id) {
-          galaoVehId = existingGalao.id;
-        } else {
+          .from('fleet_vehicles').select('id').eq('plate', 'GALÃO').eq('institution_id', newOrder.institution_id).limit(1).maybeSingle();
+        let galaoVehId: string | null = existingGalao?.id || null;
+        if (!galaoVehId) {
           const virtualId = generateUUID();
           const { data: createdGalao } = await supabase
             .from('fleet_vehicles')
             .insert([{
-              id: virtualId,
-              institution_id: newOrder.institution_id,
-              plate: 'GALÃO',
-              model: 'Galão / Bombona (Avulso)',
-              department: resolvedBudget?.department_local || 'Frota Municipal',
-              fuel_type: vehicle.fuel_type,
-              tank_capacity: 200,
-              metric_type: 'km',
-              expected_consumption: 0,
-              current_odometer: 0,
-              status: 'inativo'
+              id: virtualId, institution_id: newOrder.institution_id, plate: 'GALÃO', model: 'Galão / Bombona (Avulso)',
+              department: resolvedBudget?.department_local || 'Frota Municipal', fuel_type: vehicle.fuel_type,
+              tank_capacity: 200, metric_type: 'km', expected_consumption: 0, current_odometer: 0, status: 'inativo'
             }])
-            .select('id')
-            .single();
+            .select('id').single();
           galaoVehId = createdGalao?.id || virtualId;
         }
-
         if (galaoVehId) {
           orderRecord.vehicle_id = galaoVehId;
           newOrder.vehicle_id = galaoVehId;
@@ -898,8 +822,20 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
         }
       }
 
-      // Colisão simultânea no número sequencial (UNIQUE order_number)
       if (errCode === '23505') {
+        const { data: existingRow } = await supabase
+          .from('fuel_supply_orders')
+          .select('id, order_number, vehicle_id, galao_label, current_odometer, liters_authorized, created_at')
+          .eq('order_number', String(orderRecord.order_number))
+          .maybeSingle();
+        if (isDuplicateFuelOrderCollision(existingRow, {
+          vehicleId: isGalao ? null : newOrder.vehicle_id,
+          galaoLabel: isGalao ? (payload.galao_label?.trim() || 'Galão / Bombona') : null,
+          currentOdometer: newOrder.current_odometer,
+          litersAuthorized: newOrder.liters_authorized
+        })) {
+          throw new Error(`Supabase: A requisição ${String(orderRecord.order_number)} já foi emitida para este veículo e odômetro.`);
+        }
         const freshNumber = await getNextOrderNumber7Digits();
         newOrder.order_number = freshNumber;
         orderRecord.order_number = freshNumber;
@@ -924,6 +860,8 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
       throw err;
     }
     throw new Error(`Erro de comunicação com o Supabase ao emitir ordem: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    releaseOrderIssuanceLock(issuanceLockKey);
   }
 
   // 6.1 Garante que o condutor informado seja cadastrado automaticamente no Supabase (fleet_drivers)
@@ -947,7 +885,7 @@ export async function issueFuelAuthorization(payload: IssueOrderPayload): Promis
         .from('fleet_vehicles')
         .update({ current_odometer: current_odometer })
         .eq('id', vehicle.id);
-    } catch { }
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
 
     const localVehicles = getLocalVehicles();
     const vIdx = localVehicles.findIndex(v => v.id === vehicle.id);
@@ -1009,7 +947,7 @@ export async function validateAndCompleteFuelOrder(
       if (data) {
         order = data as TwoWayFuelOrder;
       }
-    } catch { }
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
   }
 
   if (!order) {
@@ -1033,7 +971,7 @@ export async function validateAndCompleteFuelOrder(
         if (anonVeh.data) data = anonVeh.data;
       }
       if (data) vehicle = data as FleetVehicle;
-    } catch { }
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
   }
 
   if (!vehicle) {
@@ -1078,7 +1016,7 @@ export async function validateAndCompleteFuelOrder(
         completionData.current_odometer,
         suppliedLiters,
         vehicle.expected_consumption || 8,
-        vehicle.tank_capacity || 200
+        Number(vehicle.tank_capacity || 0)
       );
 
   const originalDetectedFraudReason = audit.anomaly_reason || order.anomaly_reason;
@@ -1586,7 +1524,7 @@ function removeLocalOrderByIdentifier(clean: string) {
       return true;
     });
     saveLocalOrders(filtered);
-  } catch { }
+  } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
 }
 
 /**
@@ -1829,38 +1767,15 @@ export async function linkInvoiceToFuelOrder(
 }
 
 /**
- * Converte qualquer representação de data de planilha (número serial Excel, string BR ou ISO) em ISO String válido
- */
-export function parseExcelDate(raw: any): string {
-  if (!raw) return new Date().toISOString();
-  if (typeof raw === 'number') {
-    const date = new Date(Math.round((raw - 25569) * 86400 * 1000));
-    return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
-  }
-  if (raw instanceof Date) {
-    return isNaN(raw.getTime()) ? new Date().toISOString() : raw.toISOString();
-  }
-  const str = String(raw).trim();
-  const brMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
-  if (brMatch) {
-    const day = Number(brMatch[1]);
-    const month = Number(brMatch[2]) - 1;
-    const year = Number(brMatch[3]);
-    const hours = Number(brMatch[4] || 12);
-    const minutes = Number(brMatch[5] || 0);
-    const seconds = Number(brMatch[6] || 0);
-    const d = new Date(year, month, day, hours, minutes, seconds);
-    return isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
-  }
-  const parsed = new Date(str);
-  return isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
-}
-
-/**
  * Lançamento individual de Canhoto Físico / Abastecimento Antigo (Transição Legada)
  * Já entra com status 'abastecido', recalculando consumo histórico e atualizando o odômetro do veículo se aplicável.
  */
 export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Promise<TwoWayFuelOrder> {
+  const suppliedDate = parseExcelDate(payload.supplied_at);
+  if (!suppliedDate) {
+    throw new Error(`Data de abastecimento inválida ou ausente ("${String(payload.supplied_at ?? '')}").`);
+  }
+
   // 1. Localizar veículo por ID ou Placa
   let vehicles = getLocalVehicles();
   let vehicle: FleetVehicle | undefined;
@@ -1884,7 +1799,7 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
         const { data } = await supabase.from('fleet_vehicles').select('*').ilike('plate', `%${cleanPlate}%`).maybeSingle();
         if (data) vehicle = data as FleetVehicle;
       }
-    } catch { }
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
   }
 
   if (!vehicle) {
@@ -1921,8 +1836,6 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
   const calculatedKmPerLiter = deltaKm > 0 && litersSupplied > 0
     ? Number((deltaKm / litersSupplied).toFixed(2))
     : undefined;
-
-  const suppliedDate = payload.supplied_at ? parseExcelDate(payload.supplied_at) : new Date().toISOString();
 
   const newOrder: TwoWayFuelOrder = {
     id: generateUUID(),
@@ -2016,7 +1929,7 @@ export async function registerLegacyFuelOrder(payload: LegacyVoucherPayload): Pr
         detail: { order: newOrder }
       }));
     }
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return newOrder;
 }
@@ -2057,7 +1970,7 @@ export async function getNextAdvanceOrderNumber(institutionId?: string): Promise
       const seq = extractSeq(o.order_number);
       if (seq > maxSeq) maxSeq = seq;
     }
-  } catch { }
+  } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
 
   try {
     let query = supabase
@@ -2074,7 +1987,7 @@ export async function getNextAdvanceOrderNumber(institutionId?: string): Promise
         if (seq > maxSeq) maxSeq = seq;
       }
     }
-  } catch { }
+  } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
 
   return `ADT-${String(maxSeq + 1).padStart(4, '0')}`;
 }
@@ -2099,7 +2012,7 @@ export async function registerAdvanceTravelFuelOrder(
         .eq('id', payload.vehicle_id)
         .maybeSingle();
       if (data) vehicle = data as FleetVehicle;
-    } catch { }
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
   }
 
   if (!vehicle) {
@@ -2278,35 +2191,65 @@ export async function registerAdvanceTravelFuelOrder(
         detail: { order: newOrder }
       }));
     }
-  } catch { }
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return newOrder;
 }
 
+export interface RejectedLegacyBatchRow {
+  rowNumber: number;
+  identifier: string;
+  reason: string;
+}
+
 /**
- * Importação em Lote de Canhotos Antigos (via Planilha Excel ou CSV)
+ * Importação em Lote de Canhotos Antigos (via Planilha Excel ou CSV).
+ * Preserva o número original da linha na planilha e rejeita explicitamente datas inválidas.
  */
 export async function registerLegacyFuelOrdersBatch(
   payloads: LegacyVoucherPayload[]
-): Promise<{ successCount: number; errors: string[] }> {
+): Promise<{ successCount: number; errors: string[]; rejectedRows: RejectedLegacyBatchRow[] }> {
   const errors: string[] = [];
+  const rejectedRows: RejectedLegacyBatchRow[] = [];
   let successCount = 0;
 
-  // Ordena cronologicamente por data para que a evolução do odômetro ocorra na ordem natural
-  const sorted = [...payloads].sort((a, b) => new Date(a.supplied_at).getTime() - new Date(b.supplied_at).getTime());
+  const validIndexed: Array<{ rowNumber: number; parsedIso: string; timestampMs: number; item: LegacyVoucherPayload }> = [];
 
-  for (let i = 0; i < sorted.length; i++) {
-    const item = sorted[i];
+  payloads.forEach((item, idx) => {
+    const rowNumber = idx + 1;
+    const identifier = item.plate || item.voucher_number || item.custom_order_number || 'Sem identificação';
+    const parsedIso = parseExcelDate(item.supplied_at);
+    if (!parsedIso) {
+      const reason = `Data de abastecimento inválida ou ausente ("${String(item.supplied_at ?? '')}").`;
+      rejectedRows.push({ rowNumber, identifier, reason });
+      errors.push(`Linha ${rowNumber} (${identifier}): ${reason}`);
+      return;
+    }
+    validIndexed.push({
+      rowNumber,
+      parsedIso,
+      timestampMs: new Date(parsedIso).getTime(),
+      item: { ...item, supplied_at: parsedIso },
+    });
+  });
+
+  // Ordena cronologicamente por data validada para evoluir o odômetro na ordem natural
+  validIndexed.sort((a, b) => a.timestampMs - b.timestampMs);
+
+  for (const entry of validIndexed) {
+    const identifier = entry.item.plate || entry.item.voucher_number || entry.item.custom_order_number || 'Sem identificação';
     try {
-      await registerLegacyFuelOrder(item);
+      await registerLegacyFuelOrder(entry.item);
       successCount++;
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`Linha ${i + 1} (${item.plate || item.voucher_number || 'Sem identificação'}): ${msg}`);
+      const reason = err instanceof Error ? err.message : String(err);
+      rejectedRows.push({ rowNumber: entry.rowNumber, identifier, reason });
+      errors.push(`Linha ${entry.rowNumber} (${identifier}): ${reason}`);
     }
   }
 
-  return { successCount, errors };
+  rejectedRows.sort((a, b) => a.rowNumber - b.rowNumber);
+  return { successCount, errors, rejectedRows };
 }
 
 /**
@@ -2388,7 +2331,7 @@ export async function updateFuelOrderBudgetClassification(
           baseOrder = realList[rIdx];
         }
       }
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   const oldSheet = baseOrder?.budget_classification?.invoice_sheet || baseOrder?.budget_classification_id || 'Não definida';
@@ -2421,7 +2364,7 @@ export async function updateFuelOrderBudgetClassification(
       }
       localStorage.setItem('gestao360_real_orders', JSON.stringify(realList));
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // 2. Persistir no Supabase remoto usando a sincronização em nuvem resiliente (institutions.notes e coluna)
   try {
@@ -2470,7 +2413,7 @@ export async function updateFuelOrderBudgetClassification(
         bc.close();
       }
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return updatedOrder;
 }
@@ -2504,7 +2447,7 @@ export async function updateFuelOrderDate(
         .or(`id.eq.${orderId},order_number.eq.${orderId}`)
         .maybeSingle();
       if (data) baseOrder = data as TwoWayFuelOrder;
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
   }
 
   if (!baseOrder) {
@@ -2581,7 +2524,7 @@ export async function updateFuelOrderDate(
         detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
       }));
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return updatedOrder;
 }
@@ -2610,7 +2553,7 @@ export async function updateFuelOrderFuelType(
         .or(`id.eq.${orderId},order_number.eq.${orderId}`)
         .maybeSingle();
       if (data) baseOrder = data as TwoWayFuelOrder;
-    } catch {}
+    } catch (caughtErr) { reportError('fleetFuelAudit:rede', caughtErr); }
   }
 
   if (!baseOrder) {
@@ -2695,7 +2638,7 @@ export async function updateFuelOrderFuelType(
         detail: { orderId: updatedOrder.id, orderNumber: updatedOrder.order_number, order: updatedOrder }
       }));
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return updatedOrder;
 }

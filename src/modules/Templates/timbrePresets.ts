@@ -1,6 +1,21 @@
 import React from 'react';
 import { TimbreData, TimbreStyle, WatermarkConfig, MarginPreset, MarginConfig } from './types';
 import { Institution } from '../../types';
+import { escapeHtmlText } from '../../utils/sanitizeHtml';
+
+function safeCssColor(color?: string, fallback: string = '#1e3a8a'): string {
+  const clean = (color || '').trim();
+  return /^#[0-9a-fA-F]{3,8}$/.test(clean) ? clean : fallback;
+}
+
+function safeImageSrc(url?: string): string {
+  const clean = (url || '').trim();
+  if (!clean) return '';
+  if (/^(?:https?:\/\/|\/|data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml);)/i.test(clean)) {
+    return escapeHtmlText(clean);
+  }
+  return '';
+}
 
 export const DEFAULT_BRASAO_SVG = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="70" height="70"><path d="M50 5 L85 20 L85 60 C85 80 50 95 50 95 C50 95 15 80 15 60 L15 20 Z" fill="%231e3a8a" stroke="%23fbbf24" stroke-width="2.5"/><path d="M50 15 L75 27 L75 57 C75 72 50 83 50 83 C50 83 25 72 25 57 L25 27 Z" fill="%23ffffff" stroke="%231e3a8a" stroke-width="1.5"/><circle cx="50" cy="45" r="14" fill="%23fbbf24"/><path d="M50 35 L53 42 L60 43 L55 48 L56 55 L50 51 L44 55 L45 48 L40 43 L47 42 Z" fill="%231e3a8a"/><rect x="35" y="65" width="30" height="6" rx="2" fill="%231e3a8a"/></svg>`;
 
@@ -85,15 +100,16 @@ export const generateHeaderHtml = (timbre: TimbreData): string => {
   if (timbre.style === 'nenhum') return '<p><br></p>';
 
   if (timbre.style === 'imagem_cabecalho') {
-    if (timbre.headerImageUrl) {
+    const safeHeaderImg = safeImageSrc(timbre.headerImageUrl);
+    if (safeHeaderImg) {
       return `<div style="text-align: center; margin-bottom: 12px;" data-timbre-header="true">
-        <img src="${timbre.headerImageUrl}" alt="Cabeçalho Oficial" style="width: 100%; max-height: 140px; object-fit: contain;" />
+        <img src="${safeHeaderImg}" alt="Cabeçalho Oficial" style="width: 100%; max-height: 140px; object-fit: contain;" />
       </div>`;
     }
     // Fallback se ainda não tiver imagem
     return `<div style="text-align: center; border: 2px dashed #94a3b8; padding: 20px; border-radius: 8px; font-family: Inter, sans-serif; color: #64748b;" data-timbre-header="true">
       <p style="margin: 0; font-size: 11pt; font-weight: bold;">🖼️ Imagem do Cabeçalho Oficial</p>
-      <p style="margin: 4px 0 0 0; font-size: 9pt;">Clique em "Timbre & Papel Timbrado" para fazer o upload da imagem do cabeçalho da sua prefeitura.</p>
+      <p style="margin: 4px 0 0 0; font-size: 9pt;">Clique em "Timbre &amp; Papel Timbrado" para fazer o upload da imagem do cabeçalho da sua prefeitura.</p>
     </div>`;
   }
 
@@ -102,18 +118,24 @@ export const generateHeaderHtml = (timbre: TimbreData): string => {
     return `<div style="height: 60px; min-height: 60px;" data-timbre-header="true">&nbsp;</div>`;
   }
 
-  const logoHtml = timbre.logoUrl 
-    ? `<img src="${timbre.logoUrl}" alt="Brasão Oficial" style="height: 65px; max-width: 90px; object-fit: contain; margin-bottom: 6px; display: inline-block;" />`
+  const safeLogoUrl = safeImageSrc(timbre.logoUrl);
+  const logoHtml = safeLogoUrl
+    ? `<img src="${safeLogoUrl}" alt="Brasão Oficial" style="height: 65px; max-width: 90px; object-fit: contain; margin-bottom: 6px; display: inline-block;" />`
     : '';
 
-  const muniName = timbre.municipio?.toUpperCase() || 'MUNICÍPIO';
-  const ufName = timbre.estado?.toUpperCase() || 'ESTADO';
-  const prefName = timbre.prefeitura || `PREFEITURA MUNICIPAL DE ${muniName}`;
-  const secName = timbre.secretaria ? `<p style="margin: 1px 0 0 0; font-size: 11pt; font-weight: bold; color: #1e293b;">${timbre.secretaria.toUpperCase()}</p>` : '';
-  const depName = timbre.departamento ? `<p style="margin: 1px 0 0 0; font-size: 9pt; color: #475569;">${timbre.departamento.toUpperCase()}</p>` : '';
+  const accent = safeCssColor(timbre.accentColor, '#1e3a8a');
+  const modernAccent = safeCssColor(timbre.accentColor, '#0284c7');
+  const muniRaw = timbre.municipio?.toUpperCase() || 'MUNICÍPIO';
+  const ufRaw = timbre.estado?.toUpperCase() || 'ESTADO';
+  const ufName = escapeHtmlText(ufRaw);
+  const ufTitleCase = escapeHtmlText(ufRaw.charAt(0) + ufRaw.slice(1).toLowerCase());
+  const prefName = escapeHtmlText(timbre.prefeitura || `PREFEITURA MUNICIPAL DE ${muniRaw}`);
+  const secRaw = timbre.secretaria ? escapeHtmlText(timbre.secretaria) : '';
+  const secName = timbre.secretaria ? `<p style="margin: 1px 0 0 0; font-size: 11pt; font-weight: bold; color: #1e293b;">${escapeHtmlText(timbre.secretaria.toUpperCase())}</p>` : '';
+  const depName = timbre.departamento ? `<p style="margin: 1px 0 0 0; font-size: 9pt; color: #475569;">${escapeHtmlText(timbre.departamento.toUpperCase())}</p>` : '';
 
   if (timbre.style === 'secretaria') {
-    return `<div style="font-family: 'Times New Roman', serif; border-bottom: 2px solid ${timbre.accentColor || '#1e3a8a'}; padding-bottom: 10px; margin-bottom: 16px;" data-timbre-header="true">
+    return `<div style="font-family: 'Times New Roman', serif; border-bottom: 2px solid ${accent}; padding-bottom: 10px; margin-bottom: 16px;" data-timbre-header="true">
       <table style="width: 100%; border-collapse: collapse; border: none;">
         <tr>
           ${logoHtml ? `<td style="width: 80px; vertical-align: middle; border: none; padding: 0 16px 0 0;">${logoHtml}</td>` : ''}
@@ -132,22 +154,22 @@ export const generateHeaderHtml = (timbre: TimbreData): string => {
     return `<div style="text-align: center; font-family: 'Times New Roman', serif; margin-bottom: 16px;" data-timbre-header="true">
       ${logoHtml}
       <h3 style="margin: 2px 0 0 0; font-size: 13pt; font-weight: bold; letter-spacing: 1px; color: #0f172a;">${prefName}</h3>
-      <p style="margin: 2px 0 0 0; font-size: 11pt; font-weight: bold; color: ${timbre.accentColor || '#1e3a8a'}; text-transform: uppercase;">GABINETE DO PREFEITO</p>
+      <p style="margin: 2px 0 0 0; font-size: 11pt; font-weight: bold; color: ${accent}; text-transform: uppercase;">GABINETE DO PREFEITO</p>
       <p style="margin: 1px 0 0 0; font-size: 9.5pt; color: #64748b;">ESTADO DE ${ufName}</p>
-      <div style="width: 60%; height: 1.5px; background: ${timbre.accentColor || '#1e3a8a'}; margin: 10px auto 3px auto;"></div>
+      <div style="width: 60%; height: 1.5px; background: ${accent}; margin: 10px auto 3px auto;"></div>
       <div style="width: 30%; height: 1px; background: #94a3b8; margin: 0 auto;"></div>
     </div>`;
   }
 
   if (timbre.style === 'moderno') {
-    return `<div style="font-family: 'Inter', sans-serif; margin-bottom: 18px; border-bottom: 3px solid ${timbre.accentColor || '#0284c7'}; padding-bottom: 12px;" data-timbre-header="true">
+    return `<div style="font-family: 'Inter', sans-serif; margin-bottom: 18px; border-bottom: 3px solid ${modernAccent}; padding-bottom: 12px;" data-timbre-header="true">
       <div style="display: flex; align-items: center; justify-content: space-between;">
         <div style="display: flex; align-items: center; gap: 14px;">
           ${logoHtml}
           <div>
             <h3 style="margin: 0; font-size: 12pt; font-weight: 800; color: #0f172a; letter-spacing: -0.01em;">${prefName}</h3>
-            <p style="margin: 2px 0 0 0; font-size: 10pt; font-weight: 600; color: ${timbre.accentColor || '#0284c7'};">${timbre.secretaria || 'Administração Geral'}</p>
-            <p style="margin: 1px 0 0 0; font-size: 8.5pt; color: #64748b;">Estado de ${ufName.charAt(0) + ufName.slice(1).toLowerCase()}</p>
+            <p style="margin: 2px 0 0 0; font-size: 10pt; font-weight: 600; color: ${modernAccent};">${secRaw || 'Administração Geral'}</p>
+            <p style="margin: 1px 0 0 0; font-size: 8.5pt; color: #64748b;">Estado de ${ufTitleCase}</p>
           </div>
         </div>
       </div>
@@ -169,9 +191,10 @@ export const generateFooterHtml = (timbre: TimbreData): string => {
   if (timbre.style === 'nenhum') return '<p><br></p>';
 
   if (timbre.style === 'imagem_cabecalho') {
-    if (timbre.footerImageUrl) {
+    const safeFooterImg = safeImageSrc(timbre.footerImageUrl);
+    if (safeFooterImg) {
       return `<div style="text-align: center; margin-top: 10px;" data-timbre-footer="true">
-        <img src="${timbre.footerImageUrl}" alt="Rodapé Oficial" style="width: 100%; max-height: 80px; object-fit: contain;" />
+        <img src="${safeFooterImg}" alt="Rodapé Oficial" style="width: 100%; max-height: 80px; object-fit: contain;" />
       </div>`;
     }
   }
@@ -181,17 +204,18 @@ export const generateFooterHtml = (timbre: TimbreData): string => {
   }
 
   const parts: string[] = [];
-  if (timbre.endereco) parts.push(timbre.endereco);
-  if (timbre.cep) parts.push(`CEP: ${timbre.cep}`);
-  if (timbre.cnpj) parts.push(`CNPJ: ${timbre.cnpj}`);
-  if (timbre.telefone) parts.push(`Tel: ${timbre.telefone}`);
-  if (timbre.email) parts.push(`E-mail: ${timbre.email}`);
-  if (timbre.site) parts.push(timbre.site);
+  if (timbre.endereco) parts.push(escapeHtmlText(timbre.endereco));
+  if (timbre.cep) parts.push(`CEP: ${escapeHtmlText(timbre.cep)}`);
+  if (timbre.cnpj) parts.push(`CNPJ: ${escapeHtmlText(timbre.cnpj)}`);
+  if (timbre.telefone) parts.push(`Tel: ${escapeHtmlText(timbre.telefone)}`);
+  if (timbre.email) parts.push(`E-mail: ${escapeHtmlText(timbre.email)}`);
+  if (timbre.site) parts.push(escapeHtmlText(timbre.site));
 
   const contactLine = parts.length > 0 ? parts.join(' &nbsp;•&nbsp; ') : 'Documento Oficial Eletrônico';
+  const safePrefeitura = escapeHtmlText(timbre.prefeitura || 'Prefeitura Municipal');
 
   return `<div style="text-align: center; font-family: 'Times New Roman', serif; font-size: 8.5pt; color: #475569; border-top: 1px solid #cbd5e1; padding-top: 8px; margin-top: 16px;" data-timbre-footer="true">
-    <p style="margin: 0; font-weight: bold; color: #334155;">${timbre.prefeitura || 'Prefeitura Municipal'}</p>
+    <p style="margin: 0; font-weight: bold; color: #334155;">${safePrefeitura}</p>
     <p style="margin: 2px 0 0 0; font-size: 8pt; color: #64748b; line-height: 1.4;">${contactLine}</p>
   </div>`;
 };

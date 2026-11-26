@@ -25,7 +25,7 @@ import {
   COMMON_SPECIALTIES, DEFAULT_HEALTH_UNITS, DEFAULT_EXAM_TYPES,
   formatCPF, formatSUS, formatPhone, calculatePriority, getAge,
   generateUUID, isValidUUID 
-} from './types';
+} from './types'; import { bestEffort } from '../../lib/logger';
 
 export * from './types';
 export { ConsultorioModule } from './ConsultorioModule';
@@ -174,7 +174,7 @@ export const SaudeModule = ({
       } else {
         const localMeds = localStorage.getItem('gestao360_demo_saude_medications');
         if (localMeds) {
-          try { setMedications(JSON.parse(localMeds)); } catch (e) {}
+          try { setMedications(JSON.parse(localMeds)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         } else {
           setMedications(DEFAULT_MEDICATIONS);
           localStorage.setItem('gestao360_demo_saude_medications', JSON.stringify(DEFAULT_MEDICATIONS));
@@ -190,7 +190,7 @@ export const SaudeModule = ({
       } else {
         const localConsults = localStorage.getItem('gestao360_demo_saude_consultations');
         if (localConsults) {
-          try { setConsultations(JSON.parse(localConsults)); } catch (e) {}
+          try { setConsultations(JSON.parse(localConsults)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
       }
 
@@ -202,22 +202,22 @@ export const SaudeModule = ({
       } else {
         const localPresc = localStorage.getItem('gestao360_demo_saude_prescriptions');
         if (localPresc) {
-          try { setPrescriptions(JSON.parse(localPresc)); } catch (e) {}
+          try { setPrescriptions(JSON.parse(localPresc)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
         }
       }
 
     } catch (err) {
       console.error('Erro ao buscar dados de saúde:', err);
       const demoApts = localStorage.getItem('gestao360_demo_saude_appointments');
-      if (demoApts) { try { setAppointments(JSON.parse(demoApts)); } catch (e) {} }
+      if (demoApts) { try { setAppointments(JSON.parse(demoApts)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
       const demoPats = localStorage.getItem('gestao360_demo_saude_patients');
-      if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (e) {} }
+      if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
       const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
-      if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (e) {} }
+      if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
       const demoConsults = localStorage.getItem('gestao360_demo_saude_consultations');
-      if (demoConsults) { try { setConsultations(JSON.parse(demoConsults)); } catch (e) {} }
+      if (demoConsults) { try { setConsultations(JSON.parse(demoConsults)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
       const demoPresc = localStorage.getItem('gestao360_demo_saude_prescriptions');
-      if (demoPresc) { try { setPrescriptions(JSON.parse(demoPresc)); } catch (e) {} }
+      if (demoPresc) { try { setPrescriptions(JSON.parse(demoPresc)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
     } finally {
       setIsLoading(false);
     }
@@ -328,11 +328,11 @@ export const SaudeModule = ({
       const mod = e.detail?.moduleKey || e.detail?.module;
       if (!mod || mod === 'saude' || mod === 'all') {
         const demoApts = localStorage.getItem('gestao360_demo_saude_appointments');
-        if (demoApts) { try { setAppointments(JSON.parse(demoApts)); } catch (e) {} }
+        if (demoApts) { try { setAppointments(JSON.parse(demoApts)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
         const demoPats = localStorage.getItem('gestao360_demo_saude_patients');
-        if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (e) {} }
+        if (demoPats) { try { setPatients(JSON.parse(demoPats)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
         const demoExams = localStorage.getItem('gestao360_demo_saude_exams');
-        if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (e) {} }
+        if (demoExams) { try { setExamRequests(JSON.parse(demoExams)); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); } }
         loadData();
       }
     };

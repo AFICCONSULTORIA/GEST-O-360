@@ -1,4 +1,19 @@
-import { checkRateLimit, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from '../_utils/security.js';
+import { checkRateLimitAsync, isPayloadTooLarge, resolveAllowedOrigin, verifySupabaseAuthHeader } from '../_utils/security.js';
+
+interface NodeRequest {
+  method?: string;
+  headers?: Record<string, string | undefined>;
+  query?: Record<string, string | undefined>;
+  body?: Record<string, unknown>;
+}
+
+interface NodeResponse {
+  setHeader: (name: string, value: string) => NodeResponse;
+  status: (code: number) => NodeResponse;
+  json: (payload: unknown) => NodeResponse;
+  send: (payload: Buffer) => NodeResponse;
+  end: () => NodeResponse;
+}
 
 export const config = {
   maxDuration: 60,
@@ -124,7 +139,7 @@ async function resolveTenantCategoryFolder(
   );
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: NodeRequest, res: NodeResponse) {
   const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Vary', 'Origin');
@@ -140,7 +155,7 @@ export default async function handler(req: any, res: any) {
     return res.status(auth.status || 401).json({ error: auth.error });
   }
 
-  if (!checkRateLimit(`drive:${auth.userId}`, 40, 60_000)) {
+  if (!(await checkRateLimitAsync(`drive:${auth.userId}`, 40, 60_000))) {
     return res.status(429).json({ error: 'Limite de requisições ao Drive excedido. Aguarde um minuto.' });
   }
 
@@ -348,8 +363,8 @@ export default async function handler(req: any, res: any) {
       );
 
       if (!uploadResp.ok) {
-        const errText = await uploadResp.text();
-        return res.status(502).json({ error: `Falha ao enviar arquivo ao Google Drive: ${errText}` });
+        console.error('[drive/files] Falha no upload Google Drive:', uploadResp.status);
+        return res.status(502).json({ error: 'Falha ao enviar arquivo ao Google Drive.' });
       }
 
       const driveFile = (await uploadResp.json()) as DriveFileItem;
@@ -425,14 +440,16 @@ export default async function handler(req: any, res: any) {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ trashed: true }),
-      }).catch(() => {});
+      }).catch((trashErr: unknown) => {
+        console.warn('[drive/files] best-effort lixeira Drive:', trashErr instanceof Error ? trashErr.name : 'UnknownError');
+      });
 
       return res.status(200).json({ success: true });
     }
 
     return res.status(405).json({ error: 'Método não permitido.' });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : 'Erro interno na integração com o Google Drive.';
-    return res.status(500).json({ error: msg });
+  } catch (internalErr: unknown) {
+    console.error('[drive/files] Erro interno:', internalErr instanceof Error ? internalErr.name : 'UnknownError');
+    return res.status(500).json({ error: 'Erro interno na integração com o Google Drive.' });
   }
 }

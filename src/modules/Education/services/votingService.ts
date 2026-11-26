@@ -17,7 +17,7 @@ import {
   VoterRegistryEntry
 } from '../types/voting';
 import { maskCPF } from '../../../lib/masks';
-import { supabase } from '../../../lib/supabase';
+import { supabase } from '../../../lib/supabase'; import { bestEffort, reportError } from '../../../lib/logger';
 
 // Escolas Padrão: Vazio para uso estrito de dados reais cadastrados pela gestão
 export const DEFAULT_SCHOOLS: SchoolUnit[] = [];
@@ -212,7 +212,7 @@ class VotingStorage {
           return val;
         }
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     try {
       if (typeof window !== 'undefined' && window.sessionStorage) {
@@ -222,7 +222,7 @@ class VotingStorage {
           return sessVal;
         }
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     return this.memoryFallback[key] || null;
   }
@@ -239,13 +239,13 @@ class VotingStorage {
         if (typeof window !== 'undefined' && window.sessionStorage) {
           window.sessionStorage.setItem(key, value);
         }
-      } catch (_) {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
 
     if (emitEvent && typeof window !== 'undefined') {
       try {
         window.dispatchEvent(new CustomEvent('voting-data-changed', { detail: { key } }));
-      } catch (_) {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
   }
 }
@@ -709,7 +709,7 @@ export class VotingService {
         }
         return { voted: true, vote: dbVote };
       }
-    } catch (_) {}
+    } catch (caughtErr) { reportError('votingService:rede', caughtErr); }
 
     return { voted: false };
   }
@@ -1273,7 +1273,7 @@ export class VotingService {
     const rawSchools = VotingStorage.getItem(STORAGE_KEYS.SCHOOLS);
     let schools: SchoolUnit[] = [];
     if (rawSchools) {
-      try { schools = JSON.parse(rawSchools); } catch (_) {}
+      try { schools = JSON.parse(rawSchools); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     const cleanSchools = schools.filter(s => 
       !mockSchoolIds.includes(s.id) &&
@@ -1286,7 +1286,7 @@ export class VotingService {
     const rawCands = VotingStorage.getItem(STORAGE_KEYS.CANDIDATES);
     let cands: Candidate[] = [];
     if (rawCands) {
-      try { cands = JSON.parse(rawCands); } catch (_) {}
+      try { cands = JSON.parse(rawCands); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     const cleanCands = cands.filter(c => 
       !mockCandIds.includes(c.id) && 
@@ -1299,7 +1299,7 @@ export class VotingService {
     const rawVotes = VotingStorage.getItem(STORAGE_KEYS.VOTES);
     let votes: VoteRecord[] = [];
     if (rawVotes) {
-      try { votes = JSON.parse(rawVotes); } catch (_) {}
+      try { votes = JSON.parse(rawVotes); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     const cleanVotes = votes.filter(v => !mockSchoolIds.includes(v.schoolId));
     VotingStorage.setItem(STORAGE_KEYS.VOTES, JSON.stringify(cleanVotes));

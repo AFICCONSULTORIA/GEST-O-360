@@ -8,8 +8,9 @@ import { DocumentEditor } from './DocumentEditor';
 import { TimbreModal } from './TimbreModal';
 import { OFFICIAL_DEFAULT_TEMPLATES } from './defaultTemplates';
 import { createDefaultTimbreData, generateHeaderHtml, generateFooterHtml } from './timbrePresets';
+import { sanitizeRichHtml } from '../../utils/sanitizeHtml';
 import { showToast } from '../../components/ui/Toast';
-import { isDemoEnvironment } from '../../lib/demoManager';
+import { isDemoEnvironment } from '../../lib/demoManager'; import { bestEffort } from '../../lib/logger';
 
 const { 
   Plus, Search, Edit2, Trash2, FileText, Download, Clock, FileBadge, X, ChevronLeft,
@@ -69,7 +70,7 @@ export const TemplatesModule = ({
     if (cloudTimbre && typeof cloudTimbre === 'object') return cloudTimbre;
     const saved = localStorage.getItem(`@gestao360:timbre_config:${instKey}`);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return createDefaultTimbreData(currentInstitution);
   });
@@ -81,7 +82,7 @@ export const TemplatesModule = ({
     if (Array.isArray(cloudTemplates) && cloudTemplates.length > 0) return cloudTemplates;
     const saved = localStorage.getItem(`@gestao360:official_templates:${instKey}`);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return OFFICIAL_DEFAULT_TEMPLATES;
   });
@@ -97,7 +98,7 @@ export const TemplatesModule = ({
     if (Array.isArray(cloudDocs)) return cloudDocs;
     const saved = localStorage.getItem(`@gestao360:web_documents:${instKey}`);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     if (isDemo) {
       return [
@@ -687,7 +688,7 @@ export const TemplatesModule = ({
 
               <div 
                 className="w-full relative z-10"
-                dangerouslySetInnerHTML={{ __html: generateHeaderHtml(institutionTimbre) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(generateHeaderHtml(institutionTimbre)) }}
               />
 
               <div className="my-8 text-center text-neutral-300 text-xs italic font-serif relative z-10">
@@ -696,7 +697,7 @@ export const TemplatesModule = ({
 
               <div 
                 className="w-full relative z-10"
-                dangerouslySetInnerHTML={{ __html: generateFooterHtml(institutionTimbre) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(generateFooterHtml(institutionTimbre)) }}
               />
             </div>
           </div>

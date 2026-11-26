@@ -140,197 +140,25 @@ import { showToast } from '../../../components/ui/Toast';
 import { playFuelAlertChime, sendDesktopNotification } from '../../../utils/soundAlert';
 import { AdminUser, Institution } from '../../../types';
 import { supabase } from '../../../lib/supabase';
+import { bestEffort, reportError } from '../../../lib/logger';
+import {
+  FleetNotification,
+  formatRelativeNotificationTime,
+  resolveOrderBudget,
+  resolveOrderFinancials,
+  resolveFleetAuthorizedIssuer,
+  isAdvanceTravelOrder,
+  getOrderTimestamp,
+} from './fleet/fleetOrderHelpers';
+import { FleetDriversTab } from './fleet/FleetDriversTab';
+import { FleetStationsTab } from './fleet/FleetStationsTab';
+import { FleetLogsTab } from './fleet/FleetLogsTab';
+import { FleetToolsModal } from './fleet/FleetToolsModal';
+import { FleetBiddedPricesModal } from './fleet/FleetBiddedPricesModal';
+import { FleetLinkInvoiceModal } from './fleet/FleetLinkInvoiceModal';
 
-export interface FleetNotification {
-  id: string;
-  orderId?: string;
-  orderNumber: string;
-  type: 'abastecimento' | 'alerta_auditoria' | 'bloqueio_tce' | 'ordem_emitida';
-  title: string;
-  message: string;
-  plate?: string;
-  vehicleModel?: string;
-  driverName?: string;
-  stationName?: string;
-  liters?: number;
-  currentOdometer?: number;
-  pumpPhotoUrl?: string;
-  odometerPhotoUrl?: string;
-  timestamp: string;
-  read: boolean;
-  hasPhotos: boolean;
-  anomalyLevel?: 'none' | 'alerta_amarelo' | 'bloqueio_critico';
-  anomalyReason?: string;
-}
-
-function formatRelativeNotificationTime(dateIso: string): string {
-  try {
-    const d = new Date(dateIso);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    if (diffMs < 0) return 'Agora';
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'Agora mesmo';
-    if (diffMin < 60) return `há ${diffMin} min`;
-    const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24 && now.getDate() === d.getDate()) {
-      return `Hoje às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-    }
-    const yesterday = new Date(now);
-    yesterday.setDate(now.getDate() - 1);
-    if (yesterday.getDate() === d.getDate() && yesterday.getMonth() === d.getMonth()) {
-      return `Ontem às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-    }
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return 'Recente';
-  }
-}
-
-export function resolveOrderBudget(
-  order?: Partial<FuelSupplyOrder> | null,
-  vehicle?: FleetVehicle | null,
-  budgetClassifications: FleetBudgetClassification[] = []
-): FleetBudgetClassification | undefined {
-  if (!order && !vehicle) return undefined;
-  
-  // 1. Objeto budget_classification direto na ordem
-  if (order?.budget_classification && (order.budget_classification as any).invoice_sheet) {
-    return order.budget_classification as FleetBudgetClassification;
-  }
-  
-  // 2. ID ou número da ficha na ordem
-  if (order?.budget_classification_id) {
-    const match = budgetClassifications.find(b => 
-      b.id === order.budget_classification_id || 
-      b.invoice_sheet === order.budget_classification_id ||
-      b.id === toBudgetUUID(String(order.budget_classification_id))
-    );
-    if (match) return match;
-  }
-  
-  // 3. ID ou ficha no veículo
-  const v = vehicle || order?.vehicle;
-  if (v?.budget_classification_id) {
-    const match = budgetClassifications.find(b => 
-      b.id === v.budget_classification_id || 
-      b.invoice_sheet === v.budget_classification_id ||
-      b.id === toBudgetUUID(String(v.budget_classification_id))
-    );
-    if (match) return match;
-  }
-  
-  // 4. Objeto no veículo
-  if (v?.budget_classification && (v.budget_classification as any).invoice_sheet) {
-    return v.budget_classification as FleetBudgetClassification;
-  }
-  
-  return undefined;
-}
-
-/**
- * Resolução segura e à prova de falhas dos valores financeiros da ordem (evita NaN)
- */
-export function resolveOrderFinancials(
-  order: Partial<FuelSupplyOrder> | null | undefined,
-  biddedPricesMap?: BiddedPricesMap
-): {
-  unitPrice: number;
-  effectiveLiters: number;
-  effectiveValue: number;
-  formattedValue: string;
-  formattedUnitPrice: string;
-} {
-  if (!order) {
-    return {
-      unitPrice: 6.19,
-      effectiveLiters: 0,
-      effectiveValue: 0,
-      formattedValue: 'R$ 0,00',
-      formattedUnitPrice: 'R$ 6,19'
-    };
-  }
-
-  const isSupplied = order.status !== 'autorizado' && order.status !== 'autorizado_pendente';
-  const rawLiters = isSupplied && order.liters_supplied ? order.liters_supplied : order.liters_authorized;
-  const numLiters = Number(rawLiters);
-  const effectiveLiters = !isNaN(numLiters) && numLiters > 0 ? numLiters : 0;
-
-  // Preço unitário contratual com fallback seguro por combustível
-  const fuelKey = order.fuel_type as FuelType;
-  const priceFromConfig = fuelKey && biddedPricesMap?.[fuelKey]?.price ? Number(biddedPricesMap[fuelKey].price) : undefined;
-  const priceFromContractual = fuelKey && CONTRACTUAL_BIDDED_PRICES[fuelKey]?.price ? Number(CONTRACTUAL_BIDDED_PRICES[fuelKey].price) : undefined;
-
-  let unitPrice = 0;
-  const orderBiddedPrice = Number((order as any)?.bidded_unit_price);
-  const orderUnitPrice = Number(order.unit_price);
-
-  if (!isNaN(orderBiddedPrice) && orderBiddedPrice > 0) {
-    unitPrice = orderBiddedPrice;
-  } else if (!isNaN(orderUnitPrice) && orderUnitPrice > 0) {
-    unitPrice = orderUnitPrice;
-  } else if (typeof priceFromConfig === 'number' && !isNaN(priceFromConfig) && priceFromConfig > 0) {
-    unitPrice = priceFromConfig;
-  } else if (typeof priceFromContractual === 'number' && !isNaN(priceFromContractual) && priceFromContractual > 0) {
-    unitPrice = priceFromContractual;
-  } else {
-    unitPrice = 6.19;
-  }
-
-  if (isNaN(unitPrice) || unitPrice <= 0) unitPrice = 6.19;
-
-  // Valor total apurado com fallback seguro
-  const orderTotalValue = Number(order.total_value);
-  const orderTotalAuth = Number((order as any)?.total_authorized_value);
-
-  let effectiveValue = 0;
-  if (!isNaN(orderTotalValue) && orderTotalValue > 0) {
-    effectiveValue = orderTotalValue;
-  } else if (!isNaN(orderTotalAuth) && orderTotalAuth > 0) {
-    effectiveValue = orderTotalAuth;
-  } else {
-    effectiveValue = Number((effectiveLiters * unitPrice).toFixed(2));
-  }
-
-  if (isNaN(effectiveValue) || effectiveValue < 0) effectiveValue = 0;
-
-  return {
-    unitPrice,
-    effectiveLiters,
-    effectiveValue,
-    formattedValue: effectiveValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
-    formattedUnitPrice: `R$ ${unitPrice.toFixed(2)}`
-  };
-}
-
-function resolveFleetAuthorizedIssuer(user?: AdminUser | null): { name: string; role: string } {
-  const name = user?.name?.trim() || 'Gestor da Frota Municipal';
-  const role = user?.role === 'Prefeito' ? 'Prefeito Municipal' : 'Responsável pela Frota';
-  return { name, role };
-}
-
-function isAdvanceTravelOrder(order?: Partial<FuelSupplyOrder> | null): boolean {
-  if (!order) return false;
-  const anyOrder = order as any;
-  return (
-    anyOrder.supply_mode === 'adiantamento_viagem' ||
-    anyOrder.authorized_by_role === 'Adiantamento de Viagem' ||
-    String(anyOrder.notes || '').includes('[Adiantamento de Viagem]') ||
-    String(anyOrder.audit_justification || '').includes('[Adiantamento de Viagem]')
-  );
-}
-
-function getOrderTimestamp(order: FuelSupplyOrder): number {
-  const anyOrder = order as any;
-  const raw = anyOrder.fueling_date || order.supplied_at || order.created_at;
-  if (!raw) return 0;
-  if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const t = new Date(raw + 'T12:00:00').getTime();
-    if (!isNaN(t)) return t;
-  }
-  const parsed = new Date(raw).getTime();
-  return isNaN(parsed) ? 0 : parsed;
-}
+export type { FleetNotification };
+export { resolveOrderBudget, resolveOrderFinancials };
 
 interface FleetFuelManagerProps {
   currentUser?: AdminUser | null;
@@ -377,7 +205,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       const raw = localStorage.getItem(`gestao360_fleet_station_notifs_v2_${instId}`);
       if (raw) return JSON.parse(raw);
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     return [];
   });
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
@@ -680,7 +508,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       if (stored) {
         try {
           currentNotifs = JSON.parse(stored);
-        } catch {}
+        } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
 
       const rawLastVisit = localStorage.getItem(lastVisitKey);
@@ -798,7 +626,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       try {
         localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       return updated;
     });
 
@@ -812,7 +640,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       try {
         localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       return updated;
     });
   };
@@ -822,7 +650,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
     setNotifications([]);
     try {
       localStorage.removeItem(`gestao360_fleet_station_notifs_v2_${instId}`);
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   };
 
   const handleNotificationClick = (notif: FleetNotification) => {
@@ -831,7 +659,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       const instId = currentInstitution?.id || currentUser?.institution_id || 'inst_1';
       try {
         localStorage.setItem(`gestao360_fleet_station_notifs_v2_${instId}`, JSON.stringify(updated));
-      } catch {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       return updated;
     });
 
@@ -2438,8 +2266,14 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
     setIsNewOrderModalOpen(true);
   };
 
-  // Execução efetiva da criação de nova ordem (após validação ou decisão no popup de risco de fraude)
+  // Execução efetiva da criação de nova ordem (com trava contra duplo clique)
+  const issuingOrderRef = React.useRef(false);
+  const [isIssuingOrder, setIsIssuingOrder] = useState(false);
+
   const executeCreateOrder = async (ignoreFraudRisk: boolean = false, fraudJustification: string = '') => {
+    if (issuingOrderRef.current) return;
+    issuingOrderRef.current = true;
+    setIsIssuingOrder(true);
     const isGalao = newOrderForm.target_type === 'galao';
     try {
       const created = await issueFuelAuthorization({
@@ -2458,14 +2292,10 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
         authorized_by_name: newOrderForm.authorized_by_name,
         authorized_by_role: newOrderForm.authorized_by_role,
         budget_classification_id:
-          newOrderForm.budget_classification_id ||
-          (!isGalao ? selectedVehicleForNewOrder?.budget_classification_id : undefined),
+          newOrderForm.budget_classification_id || (!isGalao ? selectedVehicleForNewOrder?.budget_classification_id : undefined),
         budget_classification:
-          budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) ||
-          (!isGalao ? selectedVehicleForNewOrder?.budget_classification : undefined),
-        custom_order_number: newOrderForm.custom_order_number?.trim() 
-          ? formatOrderNumber7Digits(newOrderForm.custom_order_number.trim()) 
-          : undefined,
+          budgetClassifications.find(b => b.id === newOrderForm.budget_classification_id) || (!isGalao ? selectedVehicleForNewOrder?.budget_classification : undefined),
+        custom_order_number: newOrderForm.custom_order_number?.trim() ? formatOrderNumber7Digits(newOrderForm.custom_order_number.trim()) : undefined,
         ignore_fraud_risk: ignoreFraudRisk,
         fraud_risk_justification: fraudJustification || undefined
       });
@@ -2482,14 +2312,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
           actor_name: currentUser?.name || newOrderForm.authorized_by_name || 'Gestor da Frota',
           actor_role: currentUser?.role || newOrderForm.authorized_by_role || 'Responsável pela Frota',
           fueling_date: formatDateBRFromRaw(created.created_at),
-          changes: [
-            {
-              field: 'anomaly_level',
-              label: 'Semáforo de Emissão',
-              oldValue: emissionSemaphore.reason || 'Risco de Fraude na Emissão',
-              newValue: 'Ignorado com Justificativa'
-            }
-          ],
+          changes: [{ field: 'anomaly_level', label: 'Semáforo de Emissão', oldValue: emissionSemaphore.reason || 'Risco de Fraude na Emissão', newValue: 'Ignorado com Justificativa' }],
           notes: fraudJustification.trim()
         });
       }
@@ -2504,33 +2327,24 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       );
       setIsNewOrderModalOpen(false);
       setNewOrderStep(1);
-      
+
       const nextNum = await getNextOrderNumber7Digits();
       const issuer = resolveFleetAuthorizedIssuer(currentUser);
       setNewOrderForm({
-        custom_order_number: nextNum,
-        target_type: 'veiculo',
-        galao_label: '',
-        vehicle_id: '',
-        driver_name: '',
-        driver_document: '',
-        station_name: 'Auto Posto Central Municipal Ltda',
-        fuel_type: 'diesel_s10',
-        liters_authorized: 50,
-        current_odometer: 0,
-        supply_mode: 'litragem_fixa',
-        authorized_by_name: issuer.name,
-        authorized_by_role: issuer.role,
-        is_full_tank_order: false,
-        emergency_call_reason: '',
-        budget_classification_id: ''
+        custom_order_number: nextNum, target_type: 'veiculo', galao_label: '', vehicle_id: '', driver_name: '', driver_document: '',
+        station_name: 'Auto Posto Central Municipal Ltda', fuel_type: 'diesel_s10', liters_authorized: 50, current_odometer: 0,
+        supply_mode: 'litragem_fixa', authorized_by_name: issuer.name, authorized_by_role: issuer.role, is_full_tank_order: false,
+        emergency_call_reason: '', budget_classification_id: ''
       });
       loadData();
 
       // Dispara imediatamente a impressão da folha A4 com as 2 vias e QR Code
       imprimirCanhotoDuasVias(created, created.vehicle || (!isGalao ? selectedVehicleForNewOrder : undefined));
-    } catch (err: any) {
-      showToast(err.message || 'Erro ao emitir autorização.', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Erro ao emitir autorização.', 'error');
+    } finally {
+      issuingOrderRef.current = false;
+      setIsIssuingOrder(false);
     }
   };
 
@@ -2616,7 +2430,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
             litersSupplied: executionForm.liters_supplied
           },
           institutionId: currentUser?.institution_id
-        }).catch(() => {});
+        }).catch((caughtErr: unknown) => reportError('FleetFuelManager:promise', caughtErr));
         showToast(`Abastecimento registrado com RISCO DE FRAUDE aplicado: ${res.audit.anomaly_reason}`, 'error');
       } else if (res.audit.anomaly_level === 'alerta_amarelo') {
         dispatchAgentOfficeEvent({
@@ -2629,7 +2443,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
             deviationPercent: res.audit.deviation_percent
           },
           institutionId: currentUser?.institution_id
-        }).catch(() => {});
+        }).catch((caughtErr: unknown) => reportError('FleetFuelManager:promise', caughtErr));
         showToast(`Abastecimento registrado com ALERTA MODERADO (${res.audit.deviation_percent}% desvio).`, 'warning');
       } else {
         dispatchAgentOfficeEvent({
@@ -2641,7 +2455,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
             calculatedKmL: res.audit.calculated_km_per_liter
           },
           institutionId: currentUser?.institution_id
-        }).catch(() => {});
+        }).catch((caughtErr: unknown) => reportError('FleetFuelManager:promise', caughtErr));
         showToast(
           ignoreFraudRisk
             ? `Abastecimento salvo! Risco de Fraude ignorado mediante justificativa registrada.`
@@ -2683,7 +2497,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
         currentKm,
         suppliedLiters,
         v?.expected_consumption || 8,
-        v?.tank_capacity || 200
+        Number(v?.tank_capacity || 0)
       );
 
       if (previewAudit.anomaly_level === 'bloqueio_critico') {
@@ -4710,362 +4524,67 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
 
       {/* 8. CONTEÚDO PRINCIPAL: ABA 5 (Gestão de Motoristas / Condutores) */}
       {activeTab === 'drivers' && (
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Users size={16} className="text-amber-500" />
-                Cadastro Oficial de Motoristas e Condutores
-              </h4>
-              <p className="text-neutral-400 text-xs">Identificação de condutores, CPF, data de nascimento e lotação funcional</p>
-            </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar motorista, CPF ou secretaria..."
-                  value={driverSearchTerm}
-                  onChange={e => {
-                    setDriverSearchTerm(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full pl-8 pr-7 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
-                />
-                {driverSearchTerm && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDriverSearchTerm('');
-                      setCurrentPage(1);
-                    }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-full cursor-pointer"
-                    title="Limpar busca"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    showToast('Sincronizando motoristas com a nuvem Supabase...', 'info');
-                    await syncLocalDriversAndStationsToSupabase(currentUser?.institution_id || 'inst_1');
-                    await loadData(true);
-                    showToast('Motoristas sincronizados com a nuvem com sucesso!', 'success');
-                  } catch (err: any) {
-                    showToast(err.message || 'Erro na sincronização.', 'error');
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl cursor-pointer shrink-0 border border-amber-300 dark:border-amber-800 transition"
-                title="Sincronizar motoristas com a nuvem Supabase"
-              >
-                <CloudUpload size={14} className="text-amber-600 dark:text-amber-400" />
-                Sincronizar Nuvem
-              </button>
-              {drivers.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearAllDrivers}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl cursor-pointer shrink-0 border border-rose-300 dark:border-rose-800 transition shadow-sm"
-                  title="Excluir todos os motoristas cadastrados e zerar o banco de dados"
-                >
-                  <Trash2 size={14} className="text-rose-600 dark:text-rose-400" />
-                  Limpar Todos
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsDepartmentsModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 rounded-xl cursor-pointer shrink-0 border border-indigo-300 dark:border-indigo-800 transition"
-                title="Cadastrar, excluir e padronizar secretarias oficiais do município"
-              >
-                <Building2 size={14} className="text-indigo-600 dark:text-indigo-400" />
-                Secretarias ({officialDepartments.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsDriverBatchModalOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-neutral-700 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-xl cursor-pointer shrink-0 border border-neutral-300 dark:border-neutral-700 transition"
-              >
-                <FileSpreadsheet size={14} className="text-emerald-600 dark:text-emerald-400" />
-                Importar Planilha (.xlsx)
-              </button>
-              <button
-                onClick={handleOpenNewDriver}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"
-              >
-                <Plus size={14} /> Novo Motorista
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
-                <tr>
-                  <th className="px-4 py-3.5">Nome Completo</th>
-                  <th className="px-4 py-3.5">CPF</th>
-                  <th className="px-4 py-3.5">Data de Nascimento</th>
-                  <th className="px-4 py-3.5">Secretaria / Lotação</th>
-                  <th className="px-4 py-3.5">CNH / Categoria</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
-                {filteredDrivers.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-neutral-400">
-                      <Users size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
-                      <p className="font-bold text-neutral-800 dark:text-white">
-                        {drivers.length === 0 ? 'Nenhum motorista cadastrado ainda' : 'Nenhum motorista encontrado para os filtros selecionados'}
-                      </p>
-                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
-                        {drivers.length === 0
-                          ? 'Cadastre os condutores oficiais com Nome Completo, CPF, Data de Nascimento e Secretaria para emissão ágil de ordens.'
-                          : 'Tente alterar os termos da busca ou ajustar os filtros de secretaria e status acima.'}
-                      </p>
-                      {drivers.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDriverSearchTerm('');
-                            setSearchTerm('');
-                            setDepartmentFilter('all');
-                            setStatusFilter('all');
-                            setCurrentPage(1);
-                          }}
-                          className="mt-3 px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          Limpar Todos os Filtros
-                        </button>
-                      )}
-                      {drivers.length === 0 && (
-                        <button
-                          onClick={handleOpenNewDriver}
-                          className="mt-4 px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Plus size={14} /> Cadastrar Primeiro Motorista
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedDrivers.map(driver => (
-                    <tr key={driver.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
-                      <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
-                        {driver.full_name}
-                      </td>
-                      <td className="px-4 py-3.5 font-mono text-neutral-700 dark:text-neutral-300 font-semibold">
-                        {driver.cpf || <span className="text-neutral-400 italic font-sans font-normal">Não informado</span>}
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
-                        {driver.birth_date ? new Date(driver.birth_date + 'T00:00:00').toLocaleDateString('pt-BR') : '-'}
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-700 dark:text-neutral-300">
-                        {driver.department}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span className="font-mono text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
-                          {driver.cnh_number || '-'} {driver.cnh_category ? `(Cat. ${driver.cnh_category})` : ''}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {driver.status === 'ativo' && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            <CheckCircle2 size={10} /> Ativo
-                          </span>
-                        )}
-                        {driver.status === 'afastado' && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                            <AlertCircle size={10} /> Afastado
-                          </span>
-                        )}
-                        {driver.status === 'inativo' && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-                            Inativo
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenEditDriver(driver)}
-                            title="Editar Motorista"
-                            className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteDriver(driver)}
-                            title="Excluir Motorista"
-                            className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginação de 30 itens por página */}
-          {renderPagination(currentPage, totalPagesDrivers, filteredDrivers.length, setCurrentPage)}
-        </div>
+        <FleetDriversTab
+          drivers={drivers}
+          filteredDrivers={filteredDrivers}
+          paginatedDrivers={paginatedDrivers}
+          driverSearchTerm={driverSearchTerm}
+          onDriverSearchTermChange={(term) => {
+            setDriverSearchTerm(term);
+            setCurrentPage(1);
+          }}
+          onClearAllFilters={() => {
+            setDriverSearchTerm('');
+            setSearchTerm('');
+            setDepartmentFilter('all');
+            setStatusFilter('all');
+            setCurrentPage(1);
+          }}
+          onSyncCloud={async () => {
+            try {
+              showToast('Sincronizando motoristas com a nuvem Supabase...', 'info');
+              await syncLocalDriversAndStationsToSupabase(currentUser?.institution_id || 'inst_1');
+              await loadData(true);
+              showToast('Motoristas sincronizados com a nuvem com sucesso!', 'success');
+            } catch (err: unknown) {
+              showToast(err instanceof Error ? err.message : 'Erro na sincronização.', 'error');
+            }
+          }}
+          onClearAllDrivers={handleClearAllDrivers}
+          onOpenDepartmentsModal={() => setIsDepartmentsModalOpen(true)}
+          officialDepartmentsCount={officialDepartments.length}
+          onOpenDriverBatchModal={() => setIsDriverBatchModalOpen(true)}
+          onOpenNewDriver={handleOpenNewDriver}
+          onOpenEditDriver={handleOpenEditDriver}
+          onDeleteDriver={handleDeleteDriver}
+          paginationNode={renderPagination(currentPage, totalPagesDrivers, filteredDrivers.length, setCurrentPage)}
+        />
       )}
 
       {/* 9. CONTEÚDO PRINCIPAL: ABA 6 (Gestão de Postos Credenciados) */}
       {activeTab === 'stations' && (
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-neutral-100 dark:border-neutral-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div>
-              <h4 className="text-sm font-black text-neutral-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                <Store size={16} className="text-amber-500" />
-                Rede de Postos Conveniados Credenciados
-              </h4>
-              <p className="text-neutral-400 text-xs">Fornecedores habilitados para fornecimento de combustível à frota</p>
-            </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                <input
-                  type="text"
-                  placeholder="Buscar posto ou CNPJ..."
-                  value={stationSearchTerm}
-                  onChange={e => setStationSearchTerm(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs focus:outline-none"
-                />
-              </div>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    showToast('Sincronizando postos com a nuvem Supabase...', 'info');
-                    await syncLocalDriversAndStationsToSupabase(currentUser?.institution_id || 'inst_1');
-                    await loadData(true);
-                    showToast('Postos credenciados sincronizados com a nuvem!', 'success');
-                  } catch (err: any) {
-                    showToast(err.message || 'Erro na sincronização.', 'error');
-                  }
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 rounded-xl cursor-pointer shrink-0 border border-amber-300 dark:border-amber-800 transition"
-                title="Sincronizar postos com a nuvem Supabase"
-              >
-                <CloudUpload size={14} className="text-amber-600 dark:text-amber-400" />
-                Sincronizar Nuvem
-              </button>
-              {stations.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearAllStations}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 rounded-xl cursor-pointer shrink-0 border border-rose-300 dark:border-rose-800 transition shadow-sm"
-                  title="Excluir todos os postos credenciados e zerar o banco de dados"
-                >
-                  <Trash2 size={14} className="text-rose-600 dark:text-rose-400" />
-                  Limpar Todos
-                </button>
-              )}
-              <button
-                onClick={handleOpenNewStation}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-white bg-neutral-900 dark:bg-white dark:text-neutral-950 rounded-xl cursor-pointer shrink-0"
-              >
-                <Plus size={14} /> Novo Posto
-              </button>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
-                <tr>
-                  <th className="px-4 py-3.5">Razão Social / Nome Fantasia</th>
-                  <th className="px-4 py-3.5">CNPJ</th>
-                  <th className="px-4 py-3.5">Endereço / Localização</th>
-                  <th className="px-4 py-3.5">Município / UF</th>
-                  <th className="px-4 py-3.5">Telefone</th>
-                  <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
-                {filteredStations.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="text-center py-12 text-neutral-400">
-                      <Store size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
-                      <p className="font-bold text-neutral-800 dark:text-white">Nenhum posto credenciado cadastrado ainda</p>
-                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
-                        Cadastre os postos de combustíveis conveniados para facilitar a emissão ágil de ordens.
-                      </p>
-                      <button
-                        onClick={handleOpenNewStation}
-                        className="mt-4 px-4 py-2 bg-neutral-900 dark:bg-white dark:text-neutral-950 text-white rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Plus size={14} /> Cadastrar Primeiro Posto
-                      </button>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedStations.map(station => (
-                    <tr key={station.id} className="hover:bg-neutral-50/60 dark:hover:bg-neutral-800/40 transition-colors">
-                      <td className="px-4 py-3.5 font-bold text-neutral-900 dark:text-white">
-                        {station.name}
-                      </td>
-                      <td className="px-4 py-3.5 font-mono text-neutral-700 dark:text-neutral-300 font-semibold">
-                        {station.cnpj || '-'}
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
-                        {station.address || '-'}
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-700 dark:text-neutral-300 font-medium">
-                        {station.city || 'Torixoréu - MT'}
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-600 dark:text-neutral-300">
-                        {station.phone || '-'}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        {station.status === 'ativo' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                            <CheckCircle2 size={10} /> Credenciado
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-                            Inativo
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => handleOpenEditStation(station)}
-                            title="Editar Posto"
-                            className="p-1.5 text-blue-600 hover:text-blue-800 dark:text-blue-400 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Edit2 size={13} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteStation(station)}
-                            title="Excluir Posto"
-                            className="p-1.5 text-rose-600 hover:text-rose-800 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Paginação de 30 itens por página */}
-          {renderPagination(currentPage, totalPagesStations, filteredStations.length, setCurrentPage)}
-        </div>
+        <FleetStationsTab
+          stations={stations}
+          filteredStations={filteredStations}
+          paginatedStations={paginatedStations}
+          stationSearchTerm={stationSearchTerm}
+          onStationSearchTermChange={setStationSearchTerm}
+          onSyncCloud={async () => {
+            try {
+              showToast('Sincronizando postos com a nuvem Supabase...', 'info');
+              await syncLocalDriversAndStationsToSupabase(currentUser?.institution_id || 'inst_1');
+              await loadData(true);
+              showToast('Postos credenciados sincronizados com a nuvem!', 'success');
+            } catch (err: unknown) {
+              showToast(err instanceof Error ? err.message : 'Erro na sincronização.', 'error');
+            }
+          }}
+          onClearAllStations={handleClearAllStations}
+          onOpenNewStation={handleOpenNewStation}
+          onOpenEditStation={handleOpenEditStation}
+          onDeleteStation={handleDeleteStation}
+          paginationNode={renderPagination(currentPage, totalPagesStations, filteredStations.length, setCurrentPage)}
+        />
       )}
 
       {/* ABA RELATÓRIOS: COMPARATIVO MÊS A MÊS E POR SECRETARIA */}
@@ -5080,209 +4599,17 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
 
       {/* ABA 7: TRILHA DE AUDITORIA & LOGS DE ALTERAÇÕES DO SISTEMA */}
       {activeTab === 'logs' && (
-        <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-100 dark:border-neutral-800 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-neutral-100 dark:border-neutral-800 space-y-4">
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <History size={22} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                      Trilha de Auditoria & Logs de Alterações do Sistema
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
-                      Data Original Protegida
-                    </span>
-                  </div>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
-                    Registro cronológico de todas as edições de abastecimento, alterações manuais de data, mudanças de dotação e homologações para auditorias futuras.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
-                <div className="relative flex-1 sm:w-64">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar ordem, placa, responsável ou campo..."
-                    value={auditLogSearchTerm}
-                    onChange={e => setAuditLogSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-
-                <select
-                  value={auditLogTypeFilter}
-                  onChange={e => setAuditLogTypeFilter(e.target.value)}
-                  className="px-3 py-2 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                >
-                  <option value="all">Todas as Operações ({auditLogs.length})</option>
-                  <option value="EDICAO_ABASTECIMENTO">Edição de Dados (Data Preservada)</option>
-                  <option value="ALTERACAO_DATA">Alteração Manual de Data</option>
-                  <option value="ALTERACAO_DOTACAO">Alteração de Ficha Orçamentária</option>
-                  <option value="HOMOLOGACAO_TCE">Homologação TCE</option>
-                  <option value="REABERTURA_ORDEM">Reabertura de Ordem</option>
-                  <option value="RETIRADA_RISCO_FRAUDE">Retirada de Risco de Fraude</option>
-                  <option value="GLOSA_ORDEM">Glosa / Bloqueio</option>
-                  <option value="EXCLUSAO_ORDEM">Exclusão de Ordem</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={handleExportAuditLogsExcel}
-                  disabled={filteredAuditLogs.length === 0}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
-                >
-                  <FileSpreadsheet size={14} />
-                  <span>Exportar Logs (Excel)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Resumo Rápido dos Logs */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-              <div className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/70 dark:border-neutral-800">
-                <span className="text-[10px] font-bold uppercase text-neutral-400 block">Total de Eventos</span>
-                <span className="text-lg font-black text-neutral-900 dark:text-white">{auditLogs.length}</span>
-              </div>
-              <div className="p-3 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/70 dark:border-blue-900/40">
-                <span className="text-[10px] font-bold uppercase text-blue-600 dark:text-blue-400 block">Edições de Abastecimento</span>
-                <span className="text-lg font-black text-blue-700 dark:text-blue-300">
-                  {auditLogs.filter(l => l.action_type === 'EDICAO_ABASTECIMENTO').length}
-                </span>
-              </div>
-              <div className="p-3 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-900/40">
-                <span className="text-[10px] font-bold uppercase text-amber-700 dark:text-amber-400 block">Alterações Manuais de Data</span>
-                <span className="text-lg font-black text-amber-700 dark:text-amber-300">
-                  {auditLogs.filter(l => l.action_type === 'ALTERACAO_DATA' || (l.changes || []).some(c => c.field === 'supplied_at')).length}
-                </span>
-              </div>
-              <div className="p-3 rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-900/40">
-                <span className="text-[10px] font-bold uppercase text-emerald-700 dark:text-emerald-400 block">Dotações & Homologações</span>
-                <span className="text-lg font-black text-emerald-700 dark:text-emerald-300">
-                  {auditLogs.filter(l => l.action_type === 'ALTERACAO_DOTACAO' || l.action_type === 'HOMOLOGACAO_TCE' || l.action_type === 'REABERTURA_ORDEM').length}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 dark:text-neutral-400 font-bold uppercase text-[10px] tracking-wider border-b border-neutral-100 dark:border-neutral-800">
-                <tr>
-                  <th className="px-4 py-3.5">Data/Hora do Log</th>
-                  <th className="px-4 py-3.5">Ordem & Veículo</th>
-                  <th className="px-4 py-3.5">Data do Abastecimento</th>
-                  <th className="px-4 py-3.5">Operação</th>
-                  <th className="px-4 py-3.5">Alterações Registradas (De → Para)</th>
-                  <th className="px-4 py-3.5">Responsável</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800 font-medium">
-                {filteredAuditLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="text-center py-14 text-neutral-400">
-                      <History size={36} className="mx-auto text-amber-500 mb-2 opacity-60" />
-                      <p className="font-bold text-neutral-800 dark:text-white">
-                        Nenhum registro de alteração encontrado
-                      </p>
-                      <p className="text-xs mt-1 max-w-md mx-auto text-neutral-500">
-                        Toda edição de quilometragem, litragem, ficha orçamentária ou data de abastecimento ficará gravada aqui automaticamente para auditoria.
-                      </p>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedAuditLogs.map(log => {
-                    const badgeStyle =
-                      log.action_type === 'ALTERACAO_DATA'
-                        ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-amber-300'
-                        : log.action_type === 'EDICAO_ABASTECIMENTO'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/60 dark:text-blue-300 border-blue-300'
-                          : log.action_type === 'ALTERACAO_DOTACAO'
-                            ? 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300'
-                            : log.action_type === 'EXCLUSAO_ORDEM' || log.action_type === 'GLOSA_ORDEM'
-                              ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border-rose-300'
-                              : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300';
-
-                    return (
-                      <tr key={log.id} className="hover:bg-neutral-50/70 dark:hover:bg-neutral-800/40 transition-colors align-top">
-                        <td className="px-4 py-3.5 whitespace-nowrap font-mono text-[11px] text-neutral-600 dark:text-neutral-300">
-                          <span className="font-bold text-neutral-900 dark:text-white block">
-                            {new Date(log.created_at).toLocaleDateString('pt-BR')}
-                          </span>
-                          <span className="text-[10px] text-neutral-400">
-                            às {new Date(log.created_at).toLocaleTimeString('pt-BR')}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="font-mono font-black text-xs text-amber-600 dark:text-amber-400 block">
-                            #{log.order_number}
-                          </span>
-                          <span className="text-[11px] text-neutral-600 dark:text-neutral-300 font-bold">
-                            {log.vehicle_plate || 'Frota'} {log.vehicle_model ? `• ${log.vehicle_model}` : ''}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-neutral-100 dark:bg-neutral-800 font-mono text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                            <Calendar size={12} className="text-amber-500" />
-                            {log.fueling_date || '-'}
-                          </span>
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <span className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${badgeStyle}`}>
-                            {log.action_label}
-                          </span>
-                          {log.notes && (
-                            <p className="text-[11px] text-neutral-400 mt-1 max-w-xs">
-                              {log.notes}
-                            </p>
-                          )}
-                        </td>
-
-                        <td className="px-4 py-3.5">
-                          <div className="space-y-1.5">
-                            {(log.changes || []).map((chg, idx) => (
-                              <div
-                                key={idx}
-                                className="flex flex-wrap items-center gap-1.5 text-[11px] bg-neutral-50 dark:bg-neutral-800/70 px-2.5 py-1.5 rounded-xl border border-neutral-200/70 dark:border-neutral-700/70"
-                              >
-                                <strong className="text-neutral-700 dark:text-neutral-200">{chg.label}:</strong>
-                                <span className="line-through text-rose-600 dark:text-rose-400 font-mono bg-rose-50 dark:bg-rose-950/40 px-1.5 py-0.5 rounded">
-                                  {chg.oldValue}
-                                </span>
-                                <ArrowRight size={11} className="text-neutral-400 shrink-0" />
-                                <span className="text-emerald-700 dark:text-emerald-300 font-mono font-bold bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded">
-                                  {chg.newValue}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className="font-bold text-neutral-900 dark:text-white block">
-                            {log.actor_name}
-                          </span>
-                          <span className="text-[10px] text-neutral-400">
-                            {log.actor_role || 'Gestor'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {renderPagination(currentPage, totalPagesAuditLogs, filteredAuditLogs.length, setCurrentPage)}
-        </div>
+        <FleetLogsTab
+          auditLogs={auditLogs}
+          filteredAuditLogs={filteredAuditLogs}
+          paginatedAuditLogs={paginatedAuditLogs}
+          auditLogSearchTerm={auditLogSearchTerm}
+          onAuditLogSearchTermChange={setAuditLogSearchTerm}
+          auditLogTypeFilter={auditLogTypeFilter}
+          onAuditLogTypeFilterChange={setAuditLogTypeFilter}
+          onExportAuditLogsExcel={handleExportAuditLogsExcel}
+          paginationNode={renderPagination(currentPage, totalPagesAuditLogs, filteredAuditLogs.length, setCurrentPage)}
+        />
       )}
 
       {/* MODAL 1: EMISSÃO DE NOVA ORDEM DIGITAL GUIADA EM 3 PASSOS (UX FLUIDA) */}
@@ -6335,6 +5662,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
                       <button
                         type="submit"
                         disabled={
+                          isIssuingOrder ||
                           !emissionSemaphore.canEmit ||
                           (newOrderForm.target_type === 'galao'
                             ? !newOrderForm.galao_label.trim()
@@ -6342,6 +5670,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
                           !newOrderForm.driver_name
                         }
                         className={`px-5 py-2.5 text-xs font-black text-white rounded-xl transition-all flex items-center gap-2 shadow-lg ${
+                          isIssuingOrder ||
                           !emissionSemaphore.canEmit ||
                           (newOrderForm.target_type === 'galao'
                             ? !newOrderForm.galao_label.trim()
@@ -6352,7 +5681,7 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
                         }`}
                       >
                         <Printer size={16} />
-                        <span>Emitir Ordem & Imprimir Canhoto em 2 Vias (A4)</span>
+                        <span>{isIssuingOrder ? 'Emitindo Ordem...' : 'Emitir Ordem & Imprimir Canhoto em 2 Vias (A4)'}</span>
                       </button>
                     </div>
                   </div>
@@ -7400,181 +6729,21 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       </AnimatePresence>
 
       {/* JANELA POPUP: OPÇÕES, TABELAS & FERRAMENTAS DE GESTÃO */}
-      <AnimatePresence>
-        {isToolsModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-xl w-full p-6 space-y-4"
-            >
-              <div className="flex justify-between items-center pb-3 border-b border-neutral-100 dark:border-neutral-800">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                    <Sliders size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                      Opções & Ferramentas da Frota
-                    </h3>
-                    <p className="text-xs text-neutral-400">
-                      Tabelas contratuais, dotações orçamentárias, canhotos antigos e relatórios TCE
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsToolsModalOpen(false)}
-                  className="p-2 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsToolsModalOpen(false);
-                    setPriceEditForm(biddedPrices);
-                    setIsPriceConfigModalOpen(true);
-                  }}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-amber-400 dark:hover:border-amber-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
-                >
-                  <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
-                    <Sliders size={18} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Preços Licitados</h4>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Tabela de preços por litro e reequilíbrio contratual
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsToolsModalOpen(false);
-                    setIsBudgetClassificationsModalOpen(true);
-                  }}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-blue-400 dark:hover:border-blue-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
-                >
-                  <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
-                    <Layers size={18} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Fichas Orçamentárias</h4>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Centros de custo, fontes de recurso e dotações
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsToolsModalOpen(false);
-                    setIsLegacyVoucherModalOpen(true);
-                  }}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-amber-400 dark:hover:border-amber-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
-                >
-                  <div className="p-2.5 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300">
-                    <FileText size={18} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Lançar Canhoto Antigo</h4>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Registrar ou importar talões de papel retroativos
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsToolsModalOpen(false);
-                    handleOpenAdvanceFuelModal();
-                  }}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-cyan-400 dark:hover:border-cyan-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
-                >
-                  <div className="p-2.5 rounded-xl bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300">
-                    <Fuel size={18} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Abastecimento de Adiantamento</h4>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Lançar abastecimento de viagem com fotos do odômetro e bomba
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsToolsModalOpen(false);
-                    handleExportExcel();
-                  }}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-emerald-400 dark:hover:border-emerald-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
-                >
-                  <div className="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
-                    <FileSpreadsheet size={18} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Exportar TCE (Excel)</h4>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Baixar planilha auditada para prestação de contas
-                    </p>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsToolsModalOpen(false);
-                    handleOpenFuelValidator();
-                  }}
-                  className="p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:border-blue-400 dark:hover:border-blue-700 bg-neutral-50/70 dark:bg-neutral-800/40 text-left transition-all cursor-pointer flex items-start gap-3"
-                >
-                  <div className="p-2.5 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300">
-                    <ExternalLink size={18} />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-neutral-900 dark:text-white">Validador de Abastecimento</h4>
-                    <p className="text-[11px] text-neutral-500 mt-0.5">
-                      Abrir portal público do posto/motorista em nova aba
-                    </p>
-                  </div>
-                </button>
-              </div>
-
-              {orders.length > 0 && (
-                <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsToolsModalOpen(false);
-                      handleClearAllOrders();
-                    }}
-                    className="px-3.5 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Trash2 size={14} />
-                    <span>Limpar Ordens de Teste</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsToolsModalOpen(false)}
-                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 rounded-xl cursor-pointer"
-                  >
-                    Fechar
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <FleetToolsModal
+        isOpen={isToolsModalOpen}
+        onClose={() => setIsToolsModalOpen(false)}
+        hasOrders={orders.length > 0}
+        onOpenPriceConfig={() => {
+          setPriceEditForm(biddedPrices);
+          setIsPriceConfigModalOpen(true);
+        }}
+        onOpenBudgetClassifications={() => setIsBudgetClassificationsModalOpen(true)}
+        onOpenLegacyVoucher={() => setIsLegacyVoucherModalOpen(true)}
+        onOpenAdvanceFuel={handleOpenAdvanceFuelModal}
+        onExportExcel={handleExportExcel}
+        onOpenFuelValidator={() => handleOpenFuelValidator()}
+        onClearAllOrders={handleClearAllOrders}
+      />
 
       {/* MODAL 4: CADASTRO DE NOVO VEÍCULO */}
       <AnimatePresence>
@@ -8816,296 +7985,31 @@ export const FleetFuelManager: React.FC<FleetFuelManagerProps> = ({ currentUser,
       </AnimatePresence>
 
       {/* MODAL 9: TABELA DE PREÇOS LICITADOS E REEQUILÍBRIO CONTRATUAL */}
-      <AnimatePresence>
-        {isPriceConfigModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-2xl w-full p-6 max-h-[92vh] overflow-y-auto"
-            >
-              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
-                    <Sliders size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                      Preços Licitados & Reequilíbrio Contratual
-                    </h3>
-                    <p className="text-neutral-400 text-xs">
-                      Valores homologados por combustível e termos de aditivo (Lei 14.133/2021)
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsPriceConfigModalOpen(false)}
-                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveBiddedPrices} className="mt-4 space-y-4">
-                {/* Banner de Conformidade TCE */}
-                <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-start gap-3 text-xs text-amber-900 dark:text-amber-200">
-                  <ShieldCheck size={18} className="text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="block font-bold mb-0.5">Parâmetros Licitatórios Travados na Emissão</strong>
-                    <span>
-                      Toda ordem de fornecimento emitida utilizará obrigatoriamente os preços unitários desta tabela. Havendo reajuste ou reequilíbrio econômico homologado, atualize os valores abaixo indicando o Termo Aditivo.
-                    </span>
-                  </div>
-                </div>
-
-                {/* Grade de Combustíveis e Valores Licitados */}
-                <div className="space-y-3">
-                  <h4 className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 tracking-wider">
-                    Valores Homologados por Combustível (R$ / Litro)
-                  </h4>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {(['diesel_s10', 'diesel_s500', 'gasolina', 'etanol', 'arla32'] as const).map(fuel => {
-                      const item = priceEditForm[fuel] || { price: 6.00, name: fuel, contractNumber: '' };
-                      return (
-                        <div
-                          key={fuel}
-                          className="p-3 rounded-2xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 space-y-2"
-                        >
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                              {item.name || fuel}
-                            </span>
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold">
-                              {fuel.toUpperCase().replace('_', ' ')}
-                            </span>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <div>
-                              <label className="block text-[10px] text-neutral-500 font-bold mb-0.5">
-                                Preço Licitado (R$/L) *
-                              </label>
-                              <div className="relative">
-                                <span className="absolute left-2.5 top-2 text-xs font-bold text-neutral-400">R$</span>
-                                <input
-                                  type="number"
-                                  step="0.001"
-                                  min="0.001"
-                                  required
-                                  value={item.price}
-                                  onChange={e => {
-                                    const val = parseFloat(e.target.value) || 0;
-                                    setPriceEditForm(prev => ({
-                                      ...prev,
-                                      [fuel]: {
-                                        ...prev[fuel],
-                                        price: val
-                                      }
-                                    }));
-                                  }}
-                                  className="w-full pl-8 pr-2 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-xl text-xs font-black text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                                />
-                              </div>
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] text-neutral-500 font-bold mb-0.5">
-                                Ata / Lote Contratual
-                              </label>
-                              <input
-                                type="text"
-                                placeholder="Ex: ATA 042/26 - Lote 01"
-                                value={item.contractNumber || ''}
-                                onChange={e => {
-                                  const val = e.target.value;
-                                  setPriceEditForm(prev => ({
-                                    ...prev,
-                                    [fuel]: {
-                                      ...prev[fuel],
-                                      contractNumber: val
-                                    }
-                                  }));
-                                }}
-                                className="w-full px-2 py-1.5 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-xl text-[11px] font-medium text-neutral-800 dark:text-neutral-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Registro Formal do Reequilíbrio */}
-                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/40 rounded-2xl border border-neutral-200 dark:border-neutral-700 space-y-3">
-                  <span className="text-xs font-black uppercase text-neutral-700 dark:text-neutral-300 flex items-center gap-1.5">
-                    <FileCheck size={14} className="text-amber-600" />
-                    Registro de Reequilíbrio / Termo Aditivo
-                  </span>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                        Instrumento Jurídico / Termo Aditivo
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Termo Aditivo nº 02/2026 - Reequilíbrio ANP"
-                        value={rebalanceTermInput}
-                        onChange={e => setRebalanceTermInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                        Motivação / Fundamentação Legal
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ex: Variação de preços comprovada por nota fiscal de refinaria"
-                        value={rebalanceReasonInput}
-                        onChange={e => setRebalanceReasonInput(e.target.value)}
-                        className="w-full px-3 py-2 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Rodapé do Modal */}
-                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-                  <button
-                    type="button"
-                    onClick={() => setIsPriceConfigModalOpen(false)}
-                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckSquare size={14} />
-                    <span>Salvar e Atualizar Preços Licitados</span>
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <FleetBiddedPricesModal
+        isOpen={isPriceConfigModalOpen}
+        onClose={() => setIsPriceConfigModalOpen(false)}
+        priceEditForm={priceEditForm}
+        setPriceEditForm={setPriceEditForm}
+        rebalanceTermInput={rebalanceTermInput}
+        setRebalanceTermInput={setRebalanceTermInput}
+        rebalanceReasonInput={rebalanceReasonInput}
+        setRebalanceReasonInput={setRebalanceReasonInput}
+        onSubmit={handleSaveBiddedPrices}
+      />
 
       {/* MODAL 10: VINCULAÇÃO DE NOTA FISCAL FATURADA (CONTROLE INTERNO) */}
-      <AnimatePresence>
-        {isLinkInvoiceModalOpen && invoiceLinkOrder && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl max-w-lg w-full p-6 overflow-hidden"
-            >
-              <div className="flex justify-between items-center pb-4 border-b border-neutral-100 dark:border-neutral-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                    <Receipt size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                      Vincular Nota Fiscal à Requisição
-                    </h3>
-                    <p className="text-neutral-400 text-xs">Controle Interno & Conciliação Faturada</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setIsLinkInvoiceModalOpen(false);
-                    setInvoiceLinkOrder(null);
-                    setInvoiceLinkNumber('');
-                  }}
-                  className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-white rounded-lg cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveLinkedInvoice} className="mt-4 space-y-4">
-                {/* Resumo da Requisição */}
-                <div className="p-3.5 bg-neutral-50 dark:bg-neutral-800/60 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-xs space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-500">Ordem de Fornecimento:</span>
-                    <span className="font-mono font-bold text-amber-600">{invoiceLinkOrder.order_number}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-500">Veículo Oficial:</span>
-                    <span className="font-bold text-neutral-800 dark:text-neutral-200">
-                      {invoiceLinkOrder.vehicle?.model || 'Veículo Municipal'} ({invoiceLinkOrder.vehicle?.plate})
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-500">Motorista:</span>
-                    <span className="font-medium">{invoiceLinkOrder.driver_name}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-neutral-500">Combustível & Litros:</span>
-                    <span className="font-bold text-blue-600">
-                      {invoiceLinkOrder.liters_supplied || invoiceLinkOrder.liters_authorized} L ({formatFuelLabel(invoiceLinkOrder.fuel_type)})
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center pt-1 border-t border-neutral-200 dark:border-neutral-700">
-                    <span className="text-neutral-500">Valor Homologado:</span>
-                    <strong className="text-emerald-600 font-bold">
-                      R$ {Number(invoiceLinkOrder.total_authorized_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </strong>
-                  </div>
-                </div>
-
-                {/* Input do Número da Nota Fiscal */}
-                <div>
-                  <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                    Número da Nota Fiscal / Fatura Eletrônica (NF-e) *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ex: NF-e 004821 ou Fatura Mensal 2026/089"
-                    value={invoiceLinkNumber}
-                    onChange={e => setInvoiceLinkNumber(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-bold font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    autoFocus
-                  />
-                  <p className="text-[11px] text-neutral-500 mt-1">
-                    Insira o número da nota fiscal enviada posteriormente pelo posto conveniado para liquidar a despesa.
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsLinkInvoiceModalOpen(false);
-                      setInvoiceLinkOrder(null);
-                      setInvoiceLinkNumber('');
-                    }}
-                    className="px-4 py-2 text-xs font-bold text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-xl cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckSquare size={14} />
-                    <span>Vincular Nota Fiscal</span>
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <FleetLinkInvoiceModal
+        isOpen={isLinkInvoiceModalOpen}
+        order={invoiceLinkOrder}
+        invoiceLinkNumber={invoiceLinkNumber}
+        onInvoiceLinkNumberChange={setInvoiceLinkNumber}
+        onClose={() => {
+          setIsLinkInvoiceModalOpen(false);
+          setInvoiceLinkOrder(null);
+          setInvoiceLinkNumber('');
+        }}
+        onSubmit={handleSaveLinkedInvoice}
+      />
 
       {/* MODAL 11: EDIÇÃO / REMANEJAMENTO RÁPIDO DE FICHA ORÇAMENTÁRIA DA ORDEM */}
       <AnimatePresence>

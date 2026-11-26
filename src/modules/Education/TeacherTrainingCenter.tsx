@@ -8,7 +8,7 @@ import {
 import { 
   getTeacherTrainings, 
   saveTeacherTraining 
-} from '../../lib/api/education';
+} from '../../lib/api/education'; import { bestEffort } from '../../lib/logger';
 
 export interface Lesson {
   id: string;
@@ -313,7 +313,7 @@ export const TeacherTrainingCenter: React.FC = () => {
   const [courses, setCourses] = useState<Course[]>(() => {
     const saved = localStorage.getItem('gestao360_teacher_courses');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return DEFAULT_COURSES;
   });
@@ -322,7 +322,7 @@ export const TeacherTrainingCenter: React.FC = () => {
   const [manuals, setManuals] = useState<ManualDoc[]>(() => {
     const saved = localStorage.getItem('gestao360_teacher_manuals');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return DEFAULT_MANUALS;
   });
@@ -337,7 +337,7 @@ export const TeacherTrainingCenter: React.FC = () => {
   const [certificates, setCertificates] = useState<TeacherCertificate[]>(() => {
     const saved = localStorage.getItem('gestao360_teacher_certificates');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return [];
   });

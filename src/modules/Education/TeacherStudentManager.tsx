@@ -6,7 +6,7 @@ import {
   Key, Copy, Check, Camera, RotateCcw, Plus
 } from 'lucide-react';
 import { generateEnrollmentCode, getTeacherStudents, TeacherStudent, assignStudentClass } from '../../lib/api/education';
-import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar';
+import { EducationAvatar, optimizeAvatarImage } from './components/EducationAvatar'; import { bestEffort } from '../../lib/logger';
 
 const MOCK_SUBJECTS = [
   { id: 1, name: 'Matemática', color: 'bg-blue-500' },
@@ -34,7 +34,7 @@ export const TeacherStudentManager = () => {
   const [classes, setClasses] = useState<any[]>(() => {
     const saved = localStorage.getItem('gestao360_classes');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return MOCK_CLASSES;
   });
@@ -135,7 +135,7 @@ export const TeacherStudentManager = () => {
   const [subjectsList, setSubjectsList] = useState<any[]>(() => {
     const saved = localStorage.getItem('gestao360_subjects');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
     return MOCK_SUBJECTS;
   });

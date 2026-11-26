@@ -1,4 +1,4 @@
-import { supabase, supabaseAnon } from '../supabase';
+import { supabase, supabaseAnon } from '../supabase'; import { bestEffort, reportError } from '../logger';
 
 export interface StudentData {
   id: string;
@@ -162,7 +162,7 @@ export function deserializeCourseRowMeta(row: any): {
       const map = JSON.parse(mapRaw);
       if (Array.isArray(map[row.id])) localClasses = map[row.id];
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   const dbClasses = Array.isArray(row?.target_classes)
     ? row.target_classes.filter(Boolean)
@@ -434,7 +434,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
           .eq('student_id', eduNew.id)
           .maybeSingle();
         if (enr?.class_name) className = enr.class_name;
-      } catch (e) {}
+      } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
       return {
         id: eduNew.id,
@@ -498,7 +498,7 @@ export async function getStudentProfile(studentId: string): Promise<StudentProfi
         };
       }
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // 4. Fallback final nos Alunos Modelo Demo
   const demo = DEFAULT_DEMO_STUDENTS.find(s => s.id === String(studentId) || s.enrollment_code === studentId);
@@ -577,7 +577,7 @@ export async function getCompletedLessons(studentId: string, courseId?: string):
           if (p.lesson_id) completedIds.add(String(p.lesson_id));
         });
       }
-    } catch (e) {}
+    } catch (caughtErr) { reportError('education:rede', caughtErr); }
   } catch (err) {
     console.warn('Erro ao consultar lições concluídas no Supabase:', err);
   }
@@ -591,7 +591,7 @@ export async function getCompletedLessons(studentId: string, courseId?: string):
         list.forEach((lid: any) => completedIds.add(String(lid)));
       }
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return Array.from(completedIds);
 }
@@ -739,7 +739,7 @@ export async function completeLesson(
       list.push(actualLessonId);
       localStorage.setItem(key, JSON.stringify(list));
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   const sUuid = toUUID(studentId);
   const cUuid = toUUID(actualCourseId);
@@ -774,7 +774,7 @@ export async function completeLesson(
           completed: true,
           completed_at: new Date().toISOString()
         }, { onConflict: 'student_id,lesson_id' });
-      } catch (e) {}
+      } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
       return {
         success: true,
@@ -1232,7 +1232,7 @@ export async function fetchClassmates(
             }
           }
         }
-      } catch (e) {}
+      } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
     }
   }
 
@@ -1278,7 +1278,7 @@ export async function fetchClassmates(
           if (p.enrollmentId) localMap.set(p.enrollmentId.toUpperCase().trim(), p);
         });
       }
-    } catch (e) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     for (const enr of enrollments) {
       // Exclui o próprio aluno logado
@@ -1360,7 +1360,7 @@ export async function fetchClassmates(
         isOnline: true
       }));
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return [];
 }
@@ -1557,7 +1557,7 @@ export async function assignStudentClass(params: {
     }
 
     localStorage.setItem('gestao360_students', JSON.stringify(list));
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   window.dispatchEvent(new CustomEvent('students-updated'));
   return true;
@@ -1693,7 +1693,7 @@ export async function getTeacherStudents(teacherId?: string): Promise<TeacherStu
         }));
       }
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   // 3. Fallback nos alunos demo
   return DEFAULT_DEMO_STUDENTS.map(s => ({
@@ -1770,7 +1770,7 @@ export async function getInterventionPlans(teacherId: string): Promise<Intervent
         updated_at: new Date().toISOString()
       }));
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return [];
 }
@@ -1866,7 +1866,7 @@ export async function createInterventionPlan(
       logs: []
     });
     localStorage.setItem('gestao360_interventions', JSON.stringify(list));
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return created;
 }
@@ -1919,7 +1919,7 @@ export async function updateInterventionPlanStatus(
       });
       localStorage.setItem('gestao360_interventions', JSON.stringify(updated));
     }
-  } catch (e) {}
+  } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
   return true;
 }
@@ -2538,7 +2538,7 @@ export async function getStudentReportCardData(
       .maybeSingle();
 
     if (data) enrollment = data as EnrollmentRecord;
-  } catch (e) {}
+  } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
   // 1b. Verifica lista de matrículas locais/demonstração caso não esteja no banco
   if (!enrollment) {
@@ -2553,7 +2553,7 @@ export async function getStudentReportCardData(
       if (matchedEnrollment) {
         enrollment = matchedEnrollment;
       }
-    } catch (_) {}
+    } catch (caughtErr) { reportError('education:rede', caughtErr); }
   }
 
   // 1c. Verifica cadastro local do Portal do Professor (gestao360_students) ou DEFAULT_DEMO_STUDENTS
@@ -2570,7 +2570,7 @@ export async function getStudentReportCardData(
             (studentHint?.name && String(s.name || '').toLowerCase() === studentHint.name.trim().toLowerCase())
         );
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   const demoMatch = DEFAULT_DEMO_STUDENTS.find(
@@ -2617,7 +2617,7 @@ export async function getStudentReportCardData(
     if (gradesData && gradesData.length > 0) {
       grades = gradesData as GradeRecord[];
     }
-  } catch (e) {}
+  } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
   let proficienciesList: ProficiencyRecord[] = [];
   try {
@@ -2629,7 +2629,7 @@ export async function getStudentReportCardData(
     if (profData && profData.length > 0) {
       proficienciesList = profData as ProficiencyRecord[];
     }
-  } catch (e) {}
+  } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
   // Fallback cache local de proficiências (sincronizado com TeacherProficiencyEntry)
   if (typeof localStorage !== 'undefined') {
@@ -2651,7 +2651,7 @@ export async function getStudentReportCardData(
           proficienciesList = Array.from(mergedMap.values());
         }
       }
-    } catch (_) {}
+    } catch (caughtErr) { reportError('education:rede', caughtErr); }
   }
 
   // 3. Busca faltas e presença
@@ -2666,7 +2666,7 @@ export async function getStudentReportCardData(
     if (count !== null && count !== undefined) {
       totalAbsencesCount = count;
     }
-  } catch (e) {}
+  } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
   const standardSubjects = [
     'Língua Portuguesa',
@@ -2902,7 +2902,7 @@ export async function getClassAttendanceSheetData(
       .lte('date', endDate);
 
     if (data && data.length > 0) attendances = data as AttendanceRecord[];
-  } catch (e) {}
+  } catch (caughtErr) { reportError('education:rede', caughtErr); }
 
   const studentRows = enrollments.map((en, idx) => {
     const studentRecords = attendances.filter(a => a.enrollment_id === en.id);
@@ -3174,7 +3174,7 @@ export async function getProficienciesByClass(
         const parsed: ProficiencyRecord[] = JSON.parse(saved);
         return parsed.filter(p => p.subject === subject && p.bimester === bimester);
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   return [];
@@ -3442,7 +3442,7 @@ export async function getAssignedTeachersList(): Promise<TeacherRecord[]> {
           }));
         }
       }
-    } catch (_) {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
   }
 
   // Fallback padrão

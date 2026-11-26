@@ -49,3 +49,28 @@ export function sanitizeRichHtml(rawHtml: string): string {
     .replace(/\b(?:javascript|vbscript)\s*:/gi, 'blocked:')
     .replace(/data\s*:\s*text\/html/gi, 'blocked:');
 }
+
+/**
+ * Sanitização estrita para SVGs embutidos (ex.: QR Codes gerados no cliente).
+ * Preserva apenas primitivas geométricas seguras de SVG e bloqueia scripts,
+ * foreignObject, links externos e handlers de evento.
+ */
+export function sanitizeSvgHtml(rawSvg: string): string {
+  if (!rawSvg) return '';
+
+  if (typeof window !== 'undefined' && typeof DOMPurify?.sanitize === 'function') {
+    return DOMPurify.sanitize(rawSvg, {
+      USE_PROFILES: { svg: true, svgFilters: false },
+      FORBID_TAGS: ['script', 'style', 'foreignObject', 'iframe', 'object', 'embed', 'a', 'animate', 'set'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'href', 'xlink:href'],
+      ALLOW_DATA_ATTR: false,
+    });
+  }
+
+  return rawSvg
+    .replace(/<(script|style|foreignObject|iframe|object|embed|a|animate|set)\b[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|foreignObject|iframe|object|embed|a|animate|set)\b[^>]*\/?>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\b(?:xlink:)?href\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\b(?:javascript|vbscript)\s*:/gi, 'blocked:');
+}

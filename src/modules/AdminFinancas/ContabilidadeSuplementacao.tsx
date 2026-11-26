@@ -34,7 +34,7 @@ import {
   parseFiorilliFichasPdf,
   parseFichasSpreadsheet,
   ParsedFichaOrcamentaria
-} from './utils/fiorilliFichasParser';
+} from './utils/fiorilliFichasParser'; import { bestEffort, reportError } from '../../lib/logger';
 
 export interface ContabilidadeFicha extends ParsedFichaOrcamentaria {
   id: string;
@@ -299,7 +299,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       if (instData?.notes) {
         try {
           notesObj = JSON.parse(instData.notes);
-        } catch {}
+        } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
       }
       notesObj[`contabilidade_fichas_${targetEx}`] = rows;
       const { error: notesErr } = await runWithSupabaseFallback((client) =>
@@ -308,7 +308,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
       if (!notesErr) {
         savedToTable = true;
       }
-    } catch {}
+    } catch (caughtErr) { reportError('ContabilidadeSuplementacao:rede', caughtErr); }
 
     setCloudStatus(savedToTable ? 'synced' : 'local');
     return savedToTable;
@@ -517,7 +517,7 @@ export const ContabilidadeSuplementacao: React.FC<ContabilidadeSuplementacaoProp
                 loadedFichas = savedNoteFichas;
                 loadedFromRemote = true;
               }
-            } catch {}
+            } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
           }
         }
       } catch {

@@ -6,7 +6,9 @@ import {
 } from 'lucide-react';
 import { TimbreData, TimbreStyle, WatermarkConfig, WatermarkType } from './types';
 import { BUILTIN_TIMBRE_PRESETS, generateHeaderHtml, generateFooterHtml, DEFAULT_BRASAO_SVG } from './timbrePresets';
+import { sanitizeRichHtml } from '../../utils/sanitizeHtml';
 import { showToast } from '../../components/ui/Toast';
+import { bestEffort } from '../../lib/logger';
 
 interface TimbreModalProps {
   isOpen: boolean;
@@ -66,7 +68,7 @@ export const TimbreModal: React.FC<TimbreModalProps> = ({
     // Salva nas configurações locais como preferência da prefeitura
     try {
       localStorage.setItem('@gestao360:timbre_config', JSON.stringify(timbre));
-    } catch {}
+    } catch (caughtErr) { bestEffort('armazenamento local indisponível ou JSON local inválido; segue com valor padrão', caughtErr); }
 
     onApplyTimbre(timbre, watermark);
     showToast('Timbre e papel timbrado aplicados!', 'success');
@@ -597,7 +599,7 @@ export const TimbreModal: React.FC<TimbreModalProps> = ({
               {/* Header Preview */}
               <div 
                 className="w-full relative z-10"
-                dangerouslySetInnerHTML={{ __html: generateHeaderHtml(timbre) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(generateHeaderHtml(timbre)) }}
               />
 
               {/* Dummy Document Body */}
@@ -611,7 +613,7 @@ export const TimbreModal: React.FC<TimbreModalProps> = ({
               {/* Footer Preview */}
               <div 
                 className="w-full relative z-10"
-                dangerouslySetInnerHTML={{ __html: generateFooterHtml(timbre) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(generateFooterHtml(timbre)) }}
               />
             </div>
             

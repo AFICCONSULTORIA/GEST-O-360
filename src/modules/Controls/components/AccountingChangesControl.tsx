@@ -39,7 +39,7 @@ import { LivroAlteracoesContabeis } from './LivroAlteracoesContabeis';
 import { ContabilidadeSuplementacao } from '../../AdminFinancas/ContabilidadeSuplementacao';
 import { AdminUser, Institution } from '../../../types';
 import { hasPermission } from '../../../lib/permissions';
-import { useMunicipalDepartments } from '../../../lib/api/departments';
+import { useMunicipalDepartments } from '../../../lib/api/departments'; import { bestEffort } from '../../../lib/logger';
 
 interface AccountingChangesControlProps {
   searchQuery?: string;
@@ -94,7 +94,7 @@ const formatFullDate = (dateStr?: string): string => {
     if (!isNaN(d.getTime())) {
       return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
   return clean;
 };
 
@@ -110,7 +110,7 @@ const formatFullDateExtenso = (dateStr?: string): string => {
         return `${d} de ${MONTH_NAMES[mIdx]} de ${y}`;
       }
     }
-  } catch {}
+  } catch (caughtErr) { bestEffort('operação auxiliar de interface/formatação; mantém valor original', caughtErr); }
   return formatFullDate(dateStr);
 };
 
