@@ -265,4 +265,111 @@ BEGIN
   END LOOP;
 END $$;
 
+-- 4. SEPARAR POLICIES `TO anon` DE FUNÇÕES `authenticated`-ONLY
+--    Evita `42501 permission denied for function is_super_admin` nos portais
+--    públicos sem login (Validador de Certificados, Formulários Públicos,
+--    Transparência Salarial e Urna de Eleição Escolar).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'education_certificate_templates') THEN
+    DROP POLICY IF EXISTS "education_certificate_templates_public_verify_select" ON public.education_certificate_templates;
+    DROP POLICY IF EXISTS "education_certificate_templates_anon_verify_select" ON public.education_certificate_templates;
+    CREATE POLICY "education_certificate_templates_anon_verify_select"
+      ON public.education_certificate_templates FOR SELECT TO anon
+      USING (
+        EXISTS (
+          SELECT 1 FROM public.education_declaration_campaigns c
+          WHERE c.template_id = education_certificate_templates.id AND c.is_active = true
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.education_issued_certificates ic
+          WHERE ic.template_id = education_certificate_templates.id AND COALESCE(ic.status, 'valido') = 'valido'
+        )
+      );
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'education_issued_certificates') THEN
+    DROP POLICY IF EXISTS "education_issued_certificates_public_valid_select" ON public.education_issued_certificates;
+    DROP POLICY IF EXISTS "education_issued_certificates_anon_valid_select" ON public.education_issued_certificates;
+    CREATE POLICY "education_issued_certificates_anon_valid_select"
+      ON public.education_issued_certificates FOR SELECT TO anon
+      USING (COALESCE(status, 'valido') = 'valido');
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'education_declaration_campaigns') THEN
+    DROP POLICY IF EXISTS "education_declaration_campaigns_active_select" ON public.education_declaration_campaigns;
+    DROP POLICY IF EXISTS "education_declaration_campaigns_anon_active_select" ON public.education_declaration_campaigns;
+    CREATE POLICY "education_declaration_campaigns_anon_active_select"
+      ON public.education_declaration_campaigns FOR SELECT TO anon
+      USING (is_active = true);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'municipal_salary_laws') THEN
+    DROP POLICY IF EXISTS "municipal_salary_laws_public_transparency_select" ON public.municipal_salary_laws;
+    DROP POLICY IF EXISTS "municipal_salary_laws_anon_transparency_select" ON public.municipal_salary_laws;
+    CREATE POLICY "municipal_salary_laws_anon_transparency_select"
+      ON public.municipal_salary_laws FOR SELECT TO anon
+      USING (is_active = true);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'municipal_salary_tables') THEN
+    DROP POLICY IF EXISTS "municipal_salary_tables_public_transparency_select" ON public.municipal_salary_tables;
+    DROP POLICY IF EXISTS "municipal_salary_tables_anon_transparency_select" ON public.municipal_salary_tables;
+    CREATE POLICY "municipal_salary_tables_anon_transparency_select"
+      ON public.municipal_salary_tables FOR SELECT TO anon
+      USING (
+        EXISTS (
+          SELECT 1 FROM public.municipal_salary_laws l
+          WHERE l.id = municipal_salary_tables.law_id AND l.is_active = true
+        )
+      );
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'municipal_salary_entries') THEN
+    DROP POLICY IF EXISTS "municipal_salary_entries_public_transparency_select" ON public.municipal_salary_entries;
+    DROP POLICY IF EXISTS "municipal_salary_entries_anon_transparency_select" ON public.municipal_salary_entries;
+    CREATE POLICY "municipal_salary_entries_anon_transparency_select"
+      ON public.municipal_salary_entries FOR SELECT TO anon
+      USING (
+        EXISTS (
+          SELECT 1 FROM public.municipal_salary_tables t
+          JOIN public.municipal_salary_laws l ON l.id = t.law_id
+          WHERE t.id = municipal_salary_entries.salary_table_id AND l.is_active = true
+        )
+      );
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'edu_voting_schools') THEN
+    DROP POLICY IF EXISTS "edu_voting_schools_public_open_select" ON public.edu_voting_schools;
+    DROP POLICY IF EXISTS "edu_voting_schools_anon_open_select" ON public.edu_voting_schools;
+    CREATE POLICY "edu_voting_schools_anon_open_select"
+      ON public.edu_voting_schools FOR SELECT TO anon
+      USING (COALESCE(voting_status, 'open') = 'open');
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'edu_voting_elections') THEN
+    DROP POLICY IF EXISTS "edu_voting_elections_public_open_select" ON public.edu_voting_elections;
+    DROP POLICY IF EXISTS "edu_voting_elections_anon_open_select" ON public.edu_voting_elections;
+    CREATE POLICY "edu_voting_elections_anon_open_select"
+      ON public.edu_voting_elections FOR SELECT TO anon
+      USING (COALESCE(status, 'open') = 'open');
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'edu_voting_candidates') THEN
+    DROP POLICY IF EXISTS "edu_voting_candidates_public_active_select" ON public.edu_voting_candidates;
+    DROP POLICY IF EXISTS "edu_voting_candidates_anon_active_select" ON public.edu_voting_candidates;
+    CREATE POLICY "edu_voting_candidates_anon_active_select"
+      ON public.edu_voting_candidates FOR SELECT TO anon
+      USING (COALESCE(active, true) = true);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'public_forms') THEN
+    DROP POLICY IF EXISTS "public_forms_published_select" ON public.public_forms;
+    DROP POLICY IF EXISTS "public_forms_anon_published_select" ON public.public_forms;
+    CREATE POLICY "public_forms_anon_published_select"
+      ON public.public_forms FOR SELECT TO anon
+      USING (status = 'published');
+  END IF;
+END $$;
+
 NOTIFY pgrst, 'reload schema';
