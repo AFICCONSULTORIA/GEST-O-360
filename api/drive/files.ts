@@ -119,23 +119,34 @@ async function ensureDriveFolder(
   return created.id;
 }
 
-async function resolveTenantCategoryFolder(
+async function resolveTenantRootFolder(
   accessToken: string,
-  institutionName: string,
-  category: string
+  institutionName: string
 ): Promise<string> {
   const configuredRootId = process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID?.trim();
   const rootFolderId =
     configuredRootId || (await ensureDriveFolder(accessToken, 'GESTAO_360_ARQUIVOS'));
-  const instFolderId = await ensureDriveFolder(
+  return ensureDriveFolder(
     accessToken,
     institutionName.replace(/[\\/:*?"<>|]/g, '-').slice(0, 80) || 'Prefeitura',
     rootFolderId
   );
+}
+
+async function resolveTenantCategoryFolder(
+  accessToken: string,
+  institutionName: string,
+  category: string,
+  parentDriveFolderId?: string | null
+): Promise<string> {
+  const baseParentId =
+    parentDriveFolderId && /^[a-zA-Z0-9_-]{10,120}$/.test(parentDriveFolderId)
+      ? parentDriveFolderId
+      : await resolveTenantRootFolder(accessToken, institutionName);
   return ensureDriveFolder(
     accessToken,
     category.replace(/[\\/:*?"<>|]/g, '-').slice(0, 60) || 'Geral',
-    instFolderId
+    baseParentId
   );
 }
 
@@ -143,7 +154,7 @@ export default async function handler(req: NodeRequest, res: NodeResponse) {
   const allowedOrigin = resolveAllowedOrigin(req.headers?.origin);
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
@@ -295,22 +306,120 @@ export default async function handler(req: NodeRequest, res: NodeResponse) {
         }
       }
 
+      // 4. Lista pastas personalizadas no Supabase (graceful fallback se a migração de pastas ainda não foi rodada)
+      let folders: unknown[] = [];
+      let foldersTableMissing = false;
+      try {
+        const foldersUrl = new URL(`${supabaseUrl}/rest/v1/institutional_drive_folders`);
+        foldersUrl.searchParams.set('select', '*');
+        foldersUrl.searchParams.set('institution_id', `eq.${institutionId}`);
+        foldersUrl.searchParams.set('order', 'name.asc');
+        foldersUrl.searchParams.set('limit', '500');
+        const foldersResp = await fetch(foldersUrl.toString(), {
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: userAuthHeader,
+          },
+        });
+        if (foldersResp.ok) {
+          const foldersPayload = await foldersResp.json().catch(() => []);
+          folders = Array.isArray(foldersPayload) ? foldersPayload : [];
+        } else {
+          const errPayload = await foldersResp.json().catch(() => ({}));
+          const errCode = String(errPayload?.code || '');
+          const errMsg = String(errPayload?.message || '');
+          if (errCode === '42P01' || errCode === 'PGRST205' || errMsg.includes('institutional_drive_folders')) {
+            foldersTableMissing = true;
+          }
+        }
+      } catch {
+        // Segue sem pastas personalizadas
+      }
+
       return res.status(200).json({
         configured: true,
         quota,
         driveAccount,
         dbTableMissing,
         dbError,
+        foldersTableMissing,
+        folders,
         files: Array.isArray(listPayload) ? listPayload : [],
       });
     }
 
-    // POST: Upload de arquivo em Base64 para a pasta do município no Google Drive + grava índice no Supabase
+    // POST: Criar pasta personalizada OU enviar arquivo em Base64
     if (req.method === 'POST') {
+      const action = String(req.body?.action || 'upload').trim();
+
+      if (action === 'create_folder') {
+        const institutionId = String(req.body?.institutionId || 'inst_1').trim() || 'inst_1';
+        const institutionName = String(req.body?.institutionName || 'Prefeitura Municipal').trim();
+        const name = String(req.body?.name || '').trim().slice(0, 80);
+        const parentId = req.body?.parentId ? String(req.body.parentId).trim() : null;
+        const parentDriveFolderId = req.body?.parentDriveFolderId
+          ? String(req.body.parentDriveFolderId).trim()
+          : null;
+        const color = String(req.body?.color || 'blue').trim().slice(0, 24);
+        const createdByName = String(req.body?.createdByName || 'Servidor Público').trim().slice(0, 120);
+
+        if (!name || name.length < 1) {
+          return res.status(400).json({ error: 'Informe um nome válido para a pasta.' });
+        }
+
+        const driveFolderId = await resolveTenantCategoryFolder(
+          accessToken,
+          institutionName || institutionId,
+          name,
+          parentDriveFolderId
+        );
+
+        const insertResp = await fetch(`${supabaseUrl}/rest/v1/institutional_drive_folders`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: userAuthHeader,
+            'Content-Type': 'application/json',
+            Prefer: 'return=representation',
+          },
+          body: JSON.stringify({
+            institution_id: institutionId,
+            name,
+            parent_id: parentId || null,
+            color: color || 'blue',
+            drive_folder_id: driveFolderId,
+            created_by_id: auth.userId,
+            created_by_name: createdByName,
+          }),
+        });
+
+        const inserted = await insertResp.json().catch(() => []);
+        if (!insertResp.ok) {
+          const errCode = String(inserted?.code || '');
+          if (errCode === '23505') {
+            return res.status(409).json({ error: 'Já existe uma pasta com este nome neste local.' });
+          }
+          if (errCode === '42P01' || errCode === 'PGRST205') {
+            return res.status(503).json({
+              error: 'Execute a migração 20261127010000_drive_folders_and_file_organization.sql no Supabase para habilitar pastas personalizadas.',
+            });
+          }
+          return res.status(insertResp.status).json({ error: 'Não foi possível criar a pasta no banco de dados.' });
+        }
+
+        return res.status(200).json({
+          configured: true,
+          folder: Array.isArray(inserted) ? inserted[0] : inserted,
+        });
+      }
+
       const {
         institutionId = 'inst_1',
         institutionName = 'Prefeitura Municipal',
         category = 'Geral',
+        folderId: targetFolderUuid = null,
+        targetDriveFolderId = null,
+        tags = [],
         fileName,
         mimeType = 'application/octet-stream',
         base64Data,
@@ -329,11 +438,18 @@ export default async function handler(req: NodeRequest, res: NodeResponse) {
       const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
       const fileBuffer = Buffer.from(cleanBase64, 'base64');
 
-      const folderId = await resolveTenantCategoryFolder(
-        accessToken,
-        String(institutionName || institutionId),
-        String(category || 'Geral')
-      );
+      const validDriveParent =
+        typeof targetDriveFolderId === 'string' && /^[a-zA-Z0-9_-]{10,120}$/.test(targetDriveFolderId)
+          ? targetDriveFolderId
+          : null;
+
+      const folderId =
+        validDriveParent ||
+        (await resolveTenantCategoryFolder(
+          accessToken,
+          String(institutionName || institutionId),
+          String(category || 'Geral')
+        ));
 
       // Multipart upload para Google Drive v3
       const boundary = `-------gestao360_${Date.now()}`;
@@ -368,9 +484,37 @@ export default async function handler(req: NodeRequest, res: NodeResponse) {
       }
 
       const driveFile = (await uploadResp.json()) as DriveFileItem;
+      const cleanTags = Array.isArray(tags)
+        ? tags
+            .map((t) => String(t || '').trim().slice(0, 32))
+            .filter(Boolean)
+            .slice(0, 10)
+        : [];
+
+      const baseRecord: Record<string, unknown> = {
+        institution_id: String(institutionId || 'inst_1'),
+        drive_file_id: driveFile.id,
+        drive_folder_id: folderId,
+        file_name: driveFile.name || fileName.trim(),
+        mime_type: driveFile.mimeType || mimeType,
+        size_bytes: Number(driveFile.size || fileBuffer.length),
+        folder_category: String(category || 'Geral'),
+        description: String(description || '').slice(0, 500) || null,
+        web_view_link: driveFile.webViewLink || null,
+        web_content_link: driveFile.webContentLink || null,
+        uploaded_by_id: auth.userId,
+        uploaded_by_name: String(uploadedByName || 'Servidor Público').slice(0, 120),
+      };
+
+      if (targetFolderUuid && typeof targetFolderUuid === 'string') {
+        baseRecord.folder_id = targetFolderUuid;
+      }
+      if (cleanTags.length > 0) {
+        baseRecord.tags = cleanTags;
+      }
 
       // Salva registro no Supabase respeitando RLS do usuário autenticado
-      const insertResp = await fetch(`${supabaseUrl}/rest/v1/institutional_drive_files`, {
+      let insertResp = await fetch(`${supabaseUrl}/rest/v1/institutional_drive_files`, {
         method: 'POST',
         headers: {
           apikey: supabaseAnonKey,
@@ -378,21 +522,24 @@ export default async function handler(req: NodeRequest, res: NodeResponse) {
           'Content-Type': 'application/json',
           Prefer: 'return=representation',
         },
-        body: JSON.stringify({
-          institution_id: String(institutionId || 'inst_1'),
-          drive_file_id: driveFile.id,
-          drive_folder_id: folderId,
-          file_name: driveFile.name || fileName.trim(),
-          mime_type: driveFile.mimeType || mimeType,
-          size_bytes: Number(driveFile.size || fileBuffer.length),
-          folder_category: String(category || 'Geral'),
-          description: String(description || '').slice(0, 500) || null,
-          web_view_link: driveFile.webViewLink || null,
-          web_content_link: driveFile.webContentLink || null,
-          uploaded_by_id: auth.userId,
-          uploaded_by_name: String(uploadedByName || 'Servidor Público').slice(0, 120),
-        }),
+        body: JSON.stringify(baseRecord),
       });
+
+      // Fallback caso a migração 20261127010000 (colunas folder_id/tags) ainda não tenha sido aplicada
+      if (!insertResp.ok && (baseRecord.folder_id || baseRecord.tags)) {
+        delete baseRecord.folder_id;
+        delete baseRecord.tags;
+        insertResp = await fetch(`${supabaseUrl}/rest/v1/institutional_drive_files`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: userAuthHeader,
+            'Content-Type': 'application/json',
+            Prefer: 'return=representation',
+          },
+          body: JSON.stringify(baseRecord),
+        });
+      }
 
       const insertedRows = await insertResp.json().catch(() => []);
       if (!insertResp.ok) {
@@ -408,9 +555,200 @@ export default async function handler(req: NodeRequest, res: NodeResponse) {
       });
     }
 
-    // DELETE: Remove registro do Supabase (RLS) e move arquivo para a lixeira do Google Drive
+    // PATCH: Organizar arquivo (mover pasta, renomear, descrição, favorito, tags) ou editar pasta
+    if (req.method === 'PATCH') {
+      const resource = String(req.body?.resource || 'file').trim();
+
+      if (resource === 'folder') {
+        const id = String(req.body?.id || '').trim();
+        if (!id) {
+          return res.status(400).json({ error: 'ID da pasta é obrigatório.' });
+        }
+        const patchBody: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (typeof req.body?.name === 'string' && req.body.name.trim()) {
+          patchBody.name = req.body.name.trim().slice(0, 80);
+        }
+        if (typeof req.body?.color === 'string' && req.body.color.trim()) {
+          patchBody.color = req.body.color.trim().slice(0, 24);
+        }
+        if (req.body?.parentId !== undefined) {
+          patchBody.parent_id = req.body.parentId ? String(req.body.parentId).trim() : null;
+        }
+
+        const updateResp = await fetch(
+          `${supabaseUrl}/rest/v1/institutional_drive_folders?id=eq.${encodeURIComponent(id)}`,
+          {
+            method: 'PATCH',
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: userAuthHeader,
+              'Content-Type': 'application/json',
+              Prefer: 'return=representation',
+            },
+            body: JSON.stringify(patchBody),
+          }
+        );
+
+        const updatedRows = await updateResp.json().catch(() => []);
+        if (!updateResp.ok || !Array.isArray(updatedRows) || updatedRows.length === 0) {
+          const errCode = String(updatedRows?.code || '');
+          if (errCode === '23505') {
+            return res.status(409).json({ error: 'Já existe uma pasta com este nome neste local.' });
+          }
+          return res.status(updateResp.ok ? 403 : updateResp.status).json({
+            error: 'Não foi possível atualizar a pasta.',
+          });
+        }
+
+        const updatedFolder = updatedRows[0] as { drive_folder_id?: string | null; name?: string };
+        if (patchBody.name && updatedFolder.drive_folder_id) {
+          await fetch(
+            `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(updatedFolder.drive_folder_id)}`,
+            {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ name: patchBody.name }),
+            }
+          ).catch((syncErr: unknown) => {
+            console.warn('[drive/files] best-effort rename pasta Drive:', syncErr instanceof Error ? syncErr.name : 'UnknownError');
+          });
+        }
+
+        return res.status(200).json({ success: true, folder: updatedFolder });
+      }
+
+      // Atualização de arquivo (file)
+      const id = String(req.body?.id || '').trim();
+      const driveFileId = String(req.body?.driveFileId || '').trim();
+      if (!id) {
+        return res.status(400).json({ error: 'ID do arquivo é obrigatório.' });
+      }
+
+      const patchBody: Record<string, unknown> = {};
+      if (typeof req.body?.fileName === 'string' && req.body.fileName.trim()) {
+        patchBody.file_name = req.body.fileName.trim().slice(0, 200);
+      }
+      if (req.body?.description !== undefined) {
+        patchBody.description = String(req.body.description || '').trim().slice(0, 500) || null;
+      }
+      if (typeof req.body?.folderCategory === 'string' && req.body.folderCategory.trim()) {
+        patchBody.folder_category = req.body.folderCategory.trim().slice(0, 80);
+      }
+      if (req.body?.folderId !== undefined) {
+        patchBody.folder_id = req.body.folderId ? String(req.body.folderId).trim() : null;
+      }
+      if (typeof req.body?.isStarred === 'boolean') {
+        patchBody.is_starred = req.body.isStarred;
+      }
+      if (Array.isArray(req.body?.tags)) {
+        patchBody.tags = req.body.tags
+          .map((t: unknown) => String(t || '').trim().slice(0, 32))
+          .filter(Boolean)
+          .slice(0, 10);
+      }
+
+      // Se mudou de pasta e tem driveFileId, move fisicamente no Google Drive (best-effort)
+      const targetDriveFolderId =
+        typeof req.body?.targetDriveFolderId === 'string' &&
+        /^[a-zA-Z0-9_-]{10,120}$/.test(req.body.targetDriveFolderId)
+          ? req.body.targetDriveFolderId
+          : null;
+      const previousDriveFolderId =
+        typeof req.body?.previousDriveFolderId === 'string' &&
+        /^[a-zA-Z0-9_-]{10,120}$/.test(req.body.previousDriveFolderId)
+          ? req.body.previousDriveFolderId
+          : null;
+
+      if (targetDriveFolderId) {
+        patchBody.drive_folder_id = targetDriveFolderId;
+      }
+
+      if (Object.keys(patchBody).length === 0) {
+        return res.status(400).json({ error: 'Nenhum campo informado para atualização.' });
+      }
+
+      const updateResp = await fetch(
+        `${supabaseUrl}/rest/v1/institutional_drive_files?id=eq.${encodeURIComponent(id)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: userAuthHeader,
+            'Content-Type': 'application/json',
+            Prefer: 'return=representation',
+          },
+          body: JSON.stringify(patchBody),
+        }
+      );
+
+      const updatedRows = await updateResp.json().catch(() => []);
+      if (!updateResp.ok || !Array.isArray(updatedRows) || updatedRows.length === 0) {
+        return res.status(updateResp.ok ? 403 : updateResp.status).json({
+          error:
+            'Não foi possível atualizar o arquivo. Verifique se a migração 20261127010000 foi aplicada no Supabase.',
+        });
+      }
+
+      // Sincroniza nome/descrição/pasta no Google Drive (best-effort)
+      if (driveFileId && /^[a-zA-Z0-9_-]{10,120}$/.test(driveFileId)) {
+        const drivePatchUrl = new URL(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(driveFileId)}`);
+        if (targetDriveFolderId && targetDriveFolderId !== previousDriveFolderId) {
+          drivePatchUrl.searchParams.set('addParents', targetDriveFolderId);
+          if (previousDriveFolderId) {
+            drivePatchUrl.searchParams.set('removeParents', previousDriveFolderId);
+          }
+        }
+        const driveMeta: Record<string, unknown> = {};
+        if (patchBody.file_name) driveMeta.name = patchBody.file_name;
+        if (req.body?.description !== undefined) driveMeta.description = patchBody.description || '';
+
+        if (Object.keys(driveMeta).length > 0 || drivePatchUrl.searchParams.has('addParents')) {
+          await fetch(drivePatchUrl.toString(), {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(driveMeta),
+          }).catch((syncErr: unknown) => {
+            console.warn('[drive/files] best-effort sync arquivo Drive:', syncErr instanceof Error ? syncErr.name : 'UnknownError');
+          });
+        }
+      }
+
+      return res.status(200).json({ success: true, file: updatedRows[0] });
+    }
+
+    // DELETE: Remove pasta OU arquivo do Supabase (RLS) e move para a lixeira do Google Drive
     if (req.method === 'DELETE') {
+      const resource = String(req.query?.resource || 'file').trim();
       const id = String(req.query?.id || '').trim();
+
+      if (resource === 'folder') {
+        if (!id) {
+          return res.status(400).json({ error: 'ID da pasta é obrigatório.' });
+        }
+        const delFolderResp = await fetch(
+          `${supabaseUrl}/rest/v1/institutional_drive_folders?id=eq.${encodeURIComponent(id)}`,
+          {
+            method: 'DELETE',
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: userAuthHeader,
+              Prefer: 'return=representation',
+            },
+          }
+        );
+        const deletedFolders = await delFolderResp.json().catch(() => []);
+        if (!delFolderResp.ok || !Array.isArray(deletedFolders) || deletedFolders.length === 0) {
+          return res.status(403).json({ error: 'Sem permissão ou pasta não localizada para exclusão.' });
+        }
+        return res.status(200).json({ success: true });
+      }
+
       const driveFileId = String(req.query?.driveFileId || '').trim();
       if (!id || !driveFileId) {
         return res.status(400).json({ error: 'Parâmetros id e driveFileId são obrigatórios.' });

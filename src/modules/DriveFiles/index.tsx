@@ -22,25 +22,52 @@ import {
   Clock,
   CloudUpload,
   Folder,
+  FolderPlus,
+  FolderInput,
   Database,
   ArrowUpDown,
-  FileCheck2,
-  XCircle
+  XCircle,
+  Star,
+  SlidersHorizontal,
+  ChevronRight,
+  ChevronLeft,
+  Pencil,
+  Tag,
+  CheckSquare,
+  Square,
+  Sparkles,
+  GripVertical
 } from 'lucide-react';
 import { AdminUser, Institution } from '../../types';
 import { showToast } from '../../components/ui/Toast';
 import {
   DriveAccountInfo,
   DriveFileRecord,
+  DriveFolderRecord,
   DriveQuotaInfo,
   MAX_DIRECT_UPLOAD_BYTES,
   MAX_DIRECT_UPLOAD_MB,
+  createDriveFolder,
   deleteDriveFile,
+  deleteDriveFolder,
   downloadDriveFile,
   fetchDriveFilePreviewUrl,
   listDriveFiles,
+  updateDriveFile,
+  updateDriveFolder,
   uploadDriveFile
 } from '../../lib/api/driveFiles';
+import {
+  DeleteFolderModal,
+  EditFileModal,
+  FolderFormModal,
+  MoveFilesModal,
+  getFolderColorStyle
+} from './components/DriveModals';
+import { DriveSidebar, QuickNavFilter } from './components/DriveSidebar';
+import { DriveFilesList } from './components/DriveFilesList';
+import { DrivePreviewModals } from './components/DrivePreviewModals';
+import { DriveSubfoldersGrid } from './components/DriveSubfoldersGrid';
 
 interface DriveFilesModuleProps {
   currentUser?: AdminUser | null;
@@ -50,18 +77,18 @@ interface DriveFilesModuleProps {
 type ViewMode = 'list' | 'grid';
 type SortOption = 'newest' | 'oldest' | 'largest' | 'name';
 type FileTypeFilter = 'all' | 'pdf' | 'image' | 'sheet' | 'doc';
+type DateRangeFilter = 'all' | 'today' | '7d' | '30d' | 'year';
 
 interface UploadQueueItem {
   id: string;
   file: File;
   category: string;
-  description: string;
+  folderId: string | null;
   status: 'queued' | 'uploading' | 'done' | 'error';
   error?: string;
 }
 
-const DRIVE_CATEGORIES = [
-  'Todas',
+const DEFAULT_CATEGORIES = [
   'Geral',
   'Frotas & Abastecimento',
   'Educação',
@@ -106,32 +133,62 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
   const institutionName = currentInstitution?.name || 'Prefeitura Municipal';
 
   const [files, setFiles] = useState<DriveFileRecord[]>([]);
+  const [folders, setFolders] = useState<DriveFolderRecord[]>([]);
   const [quota, setQuota] = useState<DriveQuotaInfo | null>(null);
   const [driveAccount, setDriveAccount] = useState<DriveAccountInfo | null>(null);
   const [isConfigured, setIsConfigured] = useState<boolean>(true);
   const [configMessage, setConfigMessage] = useState<string | null>(null);
   const [dbTableMissing, setDbTableMissing] = useState<boolean>(false);
+  const [foldersTableMissing, setFoldersTableMissing] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [selectedCategory, setSelectedCategory] = useState('Todas');
+  // Navegação e Localização Atual
+  const [quickNav, setQuickNav] = useState<QuickNavFilter>('all');
+  const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  // Filtros e Visualização
   const [typeFilter, setTypeFilter] = useState<FileTypeFilter>('all');
+  const [dateFilter, setDateFilter] = useState<DateRangeFilter>('all');
+  const [uploaderFilter, setUploaderFilter] = useState<string>('all');
+  const [tagFilter, setTagFilter] = useState<string>('');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [searchTerm, setSearchTerm] = useState('');
 
-  const [uploadCategory, setUploadCategory] = useState('Geral');
+  // Seleção em Lote
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Upload & Drag-and-Drop
   const [uploadDescription, setUploadDescription] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [isExternalDragging, setIsExternalDragging] = useState(false);
+  const [draggingFileId, setDraggingFileId] = useState<string | null>(null);
+  const [dropTargetKey, setDropTargetKey] = useState<string | null>(null);
   const [uploadQueue, setUploadQueue] = useState<UploadQueueItem[]>([]);
   const [isProcessingQueue, setIsProcessingQueue] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Modais & Ações
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<DriveFolderRecord | null>(null);
+  const [savingFolder, setSavingFolder] = useState(false);
+  const [deletingFolder, setDeletingFolder] = useState<DriveFolderRecord | null>(null);
+  const [deletingFolderBusy, setDeletingFolderBusy] = useState(false);
+
+  const [moveTargets, setMoveTargets] = useState<DriveFileRecord[]>([]);
+  const [movingFiles, setMovingFiles] = useState(false);
+  const [editingFile, setEditingFile] = useState<DriveFileRecord | null>(null);
+  const [savingFile, setSavingFile] = useState(false);
 
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [previewItem, setPreviewItem] = useState<DriveFileRecord | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DriveFileRecord | null>(null);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   const loadFiles = useCallback(async () => {
@@ -143,8 +200,10 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
       setQuota(res.quota || null);
       setDriveAccount(res.driveAccount || null);
       setDbTableMissing(Boolean(res.dbTableMissing));
+      setFoldersTableMissing(Boolean(res.foldersTableMissing));
       setDbError(res.dbError || null);
-      setFiles(res.files);
+      setFolders(res.folders || []);
+      setFiles(res.files || []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro ao consultar Banco de Arquivos.';
       showToast(msg, 'error');
@@ -163,6 +222,180 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
     };
   }, [previewUrl]);
 
+  // Limpa seleção ao trocar de pasta/filtro principal
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeFolderId, activeCategory, quickNav]);
+
+  const activeFolder = useMemo(
+    () => (activeFolderId ? folders.find((f) => f.id === activeFolderId) || null : null),
+    [activeFolderId, folders]
+  );
+
+  // Trilha de Breadcrumb para pastas hierárquicas
+  const breadcrumbs = useMemo(() => {
+    const chain: DriveFolderRecord[] = [];
+    let current = activeFolder;
+    let guard = 0;
+    while (current && guard < 8) {
+      chain.unshift(current);
+      current = current.parent_id ? folders.find((f) => f.id === current?.parent_id) || null : null;
+      guard += 1;
+    }
+    return chain;
+  }, [activeFolder, folders]);
+
+  // Subpastas visíveis no nível atual (apenas quando não está filtrando por Secretaria fixa ou Favoritos/Recentes)
+  const visibleSubfolders = useMemo(() => {
+    if (activeCategory || quickNav !== 'all') return [];
+    const q = searchTerm.trim().toLowerCase();
+    return folders
+      .filter((f) => (activeFolderId ? f.parent_id === activeFolderId : !f.parent_id))
+      .filter((f) => (!q ? true : f.name.toLowerCase().includes(q)));
+  }, [folders, activeFolderId, activeCategory, quickNav, searchTerm]);
+
+  // Contagens por pasta personalizada, secretaria, favoritos e recentes
+  const counts = useMemo(() => {
+    const byFolderId = new Map<string, number>();
+    const byCategory = new Map<string, { count: number; bytes: number }>();
+    const uploaders = new Set<string>();
+    const tagsSet = new Set<string>();
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    let starred = 0;
+    let recent = 0;
+    let totalBytes = 0;
+
+    for (const f of files) {
+      totalBytes += Number(f.size_bytes) || 0;
+      if (f.is_starred) starred += 1;
+      if (new Date(f.created_at).getTime() >= sevenDaysAgo) recent += 1;
+      if (f.folder_id) {
+        byFolderId.set(f.folder_id, (byFolderId.get(f.folder_id) || 0) + 1);
+      }
+      const cat = f.folder_category || 'Geral';
+      const prev = byCategory.get(cat) || { count: 0, bytes: 0 };
+      prev.count += 1;
+      prev.bytes += Number(f.size_bytes) || 0;
+      byCategory.set(cat, prev);
+
+      if (f.uploaded_by_name) uploaders.add(f.uploaded_by_name);
+      if (Array.isArray(f.tags)) {
+        for (const t of f.tags) {
+          if (t) tagsSet.add(t);
+        }
+      }
+    }
+
+    return {
+      totalFiles: files.length,
+      totalBytes,
+      starred,
+      recent,
+      byFolderId,
+      byCategory,
+      uploaders: Array.from(uploaders).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      allTags: Array.from(tagsSet).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+    };
+  }, [files]);
+
+  const activeFiltersCount = useMemo(() => {
+    let n = 0;
+    if (typeFilter !== 'all') n += 1;
+    if (dateFilter !== 'all') n += 1;
+    if (uploaderFilter !== 'all') n += 1;
+    if (tagFilter) n += 1;
+    if (searchTerm.trim()) n += 1;
+    return n;
+  }, [typeFilter, dateFilter, uploaderFilter, tagFilter, searchTerm]);
+
+  const clearAllFilters = () => {
+    setTypeFilter('all');
+    setDateFilter('all');
+    setUploaderFilter('all');
+    setTagFilter('');
+    setSearchTerm('');
+  };
+
+  // Lista filtrada e ordenada de arquivos
+  const filteredFiles = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    const now = Date.now();
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1).getTime();
+
+    const list = files.filter((f) => {
+      if (quickNav === 'starred' && !f.is_starred) return false;
+      if (quickNav === 'recent' && new Date(f.created_at).getTime() < now - 7 * 24 * 60 * 60 * 1000) {
+        return false;
+      }
+
+      if (activeFolderId) {
+        if (f.folder_id !== activeFolderId) return false;
+      } else if (activeCategory) {
+        if (f.folder_category !== activeCategory) return false;
+      }
+
+      if (typeFilter !== 'all' && getFileTypeCategory(f.mime_type, f.file_name) !== typeFilter) {
+        return false;
+      }
+
+      if (dateFilter !== 'all') {
+        const ts = new Date(f.created_at).getTime();
+        if (dateFilter === 'today' && ts < startOfToday.getTime()) return false;
+        if (dateFilter === '7d' && ts < now - 7 * 24 * 60 * 60 * 1000) return false;
+        if (dateFilter === '30d' && ts < now - 30 * 24 * 60 * 60 * 1000) return false;
+        if (dateFilter === 'year' && ts < startOfYear) return false;
+      }
+
+      if (uploaderFilter !== 'all' && f.uploaded_by_name !== uploaderFilter) return false;
+
+      if (tagFilter) {
+        const tags = Array.isArray(f.tags) ? f.tags : [];
+        if (!tags.some((t) => t.toLowerCase() === tagFilter.toLowerCase())) return false;
+      }
+
+      if (!q) return true;
+      const tagsText = Array.isArray(f.tags) ? f.tags.join(' ').toLowerCase() : '';
+      return (
+        f.file_name.toLowerCase().includes(q) ||
+        f.folder_category.toLowerCase().includes(q) ||
+        (f.description || '').toLowerCase().includes(q) ||
+        (f.uploaded_by_name || '').toLowerCase().includes(q) ||
+        tagsText.includes(q)
+      );
+    });
+
+    return [...list].sort((a, b) => {
+      if (sortBy === 'oldest') {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      if (sortBy === 'largest') {
+        return (Number(b.size_bytes) || 0) - (Number(a.size_bytes) || 0);
+      }
+      if (sortBy === 'name') {
+        return a.file_name.localeCompare(b.file_name, 'pt-BR');
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [
+    files,
+    quickNav,
+    activeFolderId,
+    activeCategory,
+    typeFilter,
+    dateFilter,
+    uploaderFilter,
+    tagFilter,
+    searchTerm,
+    sortBy
+  ]);
+
+  const currentDestinationLabel = activeFolder
+    ? activeFolder.name
+    : activeCategory || 'Geral';
+
+  // Upload para o contexto atual (pasta aberta ou secretaria selecionada)
   const enqueueAndUploadFiles = async (selectedFiles: FileList | File[]) => {
     const fileArray = Array.from(selectedFiles);
     if (fileArray.length === 0) return;
@@ -172,7 +405,9 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
       return;
     }
 
-    const activeCategory = uploadCategory;
+    const targetCategory = activeFolder ? activeFolder.name : activeCategory || 'Geral';
+    const targetFolderId = activeFolder ? activeFolder.id : null;
+    const targetDriveFolderId = activeFolder?.drive_folder_id || null;
     const activeDescription = uploadDescription.trim();
 
     const newItems: UploadQueueItem[] = fileArray.map((file, idx) => {
@@ -180,8 +415,8 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
       return {
         id: `${Date.now()}_${idx}_${file.name}`,
         file,
-        category: activeCategory,
-        description: activeDescription,
+        category: targetCategory,
+        folderId: targetFolderId,
         status: tooLarge ? 'error' : 'queued',
         error: tooLarge
           ? `Excede o limite de ${MAX_DIRECT_UPLOAD_MB} MB (${formatBytes(file.size)})`
@@ -206,7 +441,9 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
           institutionId,
           institutionName,
           category: item.category,
-          description: item.description,
+          folderId: item.folderId,
+          targetDriveFolderId,
+          description: activeDescription,
           uploadedByName: currentUser?.name || 'Servidor Público'
         });
 
@@ -228,25 +465,247 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
 
     if (successCount > 0) {
       setUploadDescription('');
+      setShowUploadPanel(false);
       showToast(
         successCount === 1
-          ? 'Arquivo enviado ao Google Drive com sucesso!'
-          : `${successCount} arquivos enviados ao Google Drive!`,
+          ? `Arquivo enviado para "${targetCategory}"!`
+          : `${successCount} arquivos enviados para "${targetCategory}"!`,
         'success'
       );
       void loadFiles();
     }
   };
 
+  // Criar ou Editar Pasta
+  const handleSubmitFolder = async (payload: { name: string; color: string }) => {
+    setSavingFolder(true);
+    try {
+      if (editingFolder) {
+        const updated = await updateDriveFolder({
+          id: editingFolder.id,
+          name: payload.name,
+          color: payload.color
+        });
+        setFolders((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+        showToast(`Pasta "${updated.name}" atualizada!`, 'success');
+      } else {
+        const created = await createDriveFolder({
+          institutionId,
+          institutionName,
+          name: payload.name,
+          parentId: activeFolder?.id || null,
+          parentDriveFolderId: activeFolder?.drive_folder_id || null,
+          color: payload.color,
+          createdByName: currentUser?.name || 'Servidor Público'
+        });
+        setFolders((prev) =>
+          [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+        );
+        showToast(`Pasta "${created.name}" criada com sucesso!`, 'success');
+      }
+      setFolderModalOpen(false);
+      setEditingFolder(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível salvar a pasta.';
+      showToast(msg, 'error');
+    } finally {
+      setSavingFolder(false);
+    }
+  };
+
+  const handleConfirmDeleteFolder = async () => {
+    if (!deletingFolder) return;
+    setDeletingFolderBusy(true);
+    try {
+      await deleteDriveFolder(deletingFolder.id);
+      if (activeFolderId === deletingFolder.id) {
+        setActiveFolderId(deletingFolder.parent_id || null);
+      }
+      setFolders((prev) => prev.filter((f) => f.id !== deletingFolder.id));
+      setFiles((prev) =>
+        prev.map((file) => (file.folder_id === deletingFolder.id ? { ...file, folder_id: null } : file))
+      );
+      showToast(`Pasta "${deletingFolder.name}" excluída.`, 'info');
+      setDeletingFolder(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível excluir a pasta.';
+      showToast(msg, 'error');
+    } finally {
+      setDeletingFolderBusy(false);
+    }
+  };
+
+  // Favoritar com 1 clique (otimista)
+  const handleToggleStar = async (item: DriveFileRecord) => {
+    const nextStar = !item.is_starred;
+    setFiles((prev) => prev.map((f) => (f.id === item.id ? { ...f, is_starred: nextStar } : f)));
+    try {
+      await updateDriveFile({ id: item.id, isStarred: nextStar });
+    } catch (err: unknown) {
+      setFiles((prev) => prev.map((f) => (f.id === item.id ? { ...f, is_starred: !nextStar } : f)));
+      const msg = err instanceof Error ? err.message : 'Não foi possível atualizar favorito.';
+      showToast(msg, 'error');
+    }
+  };
+
+  // Mover 1 ou mais arquivos para pasta/secretaria
+  const handleMoveFilesTo = async (
+    targetList: DriveFileRecord[],
+    destination: { folderId: string | null; folderCategory: string; driveFolderId?: string | null }
+  ) => {
+    if (targetList.length === 0) return;
+    setMovingFiles(true);
+    let movedCount = 0;
+    try {
+      for (const file of targetList) {
+        const updated = await updateDriveFile({
+          id: file.id,
+          driveFileId: file.drive_file_id,
+          folderId: destination.folderId,
+          folderCategory: destination.folderCategory,
+          targetDriveFolderId: destination.driveFolderId || null,
+          previousDriveFolderId: file.drive_folder_id || null
+        });
+        setFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+        movedCount += 1;
+      }
+      showToast(
+        movedCount === 1
+          ? `Arquivo movido para "${destination.folderCategory}".`
+          : `${movedCount} arquivos movidos para "${destination.folderCategory}".`,
+        'success'
+      );
+      setMoveTargets([]);
+      setSelectedIds(new Set());
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível mover o(s) arquivo(s).';
+      showToast(msg, 'error');
+    } finally {
+      setMovingFiles(false);
+    }
+  };
+
+  // Editar nome, descrição e tags do arquivo
+  const handleSaveFileEdit = async (payload: { fileName: string; description: string; tags: string[] }) => {
+    if (!editingFile) return;
+    setSavingFile(true);
+    try {
+      const updated = await updateDriveFile({
+        id: editingFile.id,
+        driveFileId: editingFile.drive_file_id,
+        fileName: payload.fileName,
+        description: payload.description,
+        tags: payload.tags
+      });
+      setFiles((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+      showToast('Detalhes do arquivo atualizados!', 'success');
+      setEditingFile(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Não foi possível atualizar o arquivo.';
+      showToast(msg, 'error');
+    } finally {
+      setSavingFile(false);
+    }
+  };
+
+  // Ações em lote
+  const selectedFiles = useMemo(
+    () => filteredFiles.filter((f) => selectedIds.has(f.id)),
+    [filteredFiles, selectedIds]
+  );
+
+  const toggleSelectFile = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = () => {
+    if (selectedIds.size === filteredFiles.length && filteredFiles.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredFiles.map((f) => f.id)));
+    }
+  };
+
+  const handleBulkStar = async () => {
+    if (selectedFiles.length === 0) return;
+    const allStarred = selectedFiles.every((f) => f.is_starred);
+    const nextVal = !allStarred;
+    try {
+      for (const f of selectedFiles) {
+        await updateDriveFile({ id: f.id, isStarred: nextVal });
+      }
+      setFiles((prev) =>
+        prev.map((f) => (selectedIds.has(f.id) ? { ...f, is_starred: nextVal } : f))
+      );
+      showToast(
+        nextVal
+          ? `${selectedFiles.length} arquivo(s) marcados como favoritos.`
+          : `${selectedFiles.length} arquivo(s) removidos dos favoritos.`,
+        'success'
+      );
+      setSelectedIds(new Set());
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao atualizar favoritos em lote.';
+      showToast(msg, 'error');
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedFiles.length === 0) return;
+    setBulkDeleting(true);
+    let removed = 0;
+    try {
+      for (const f of selectedFiles) {
+        await deleteDriveFile(f.id, f.drive_file_id);
+        removed += 1;
+      }
+      setFiles((prev) => prev.filter((f) => !selectedIds.has(f.id)));
+      setSelectedIds(new Set());
+      showToast(`${removed} arquivo(s) movidos para a lixeira do Google Drive.`, 'info');
+      void loadFiles();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Erro ao excluir arquivos selecionados.';
+      showToast(msg, 'error');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  // Drag & Drop interno (arrastar arquivo para uma pasta)
+  const handleDropOnFolder = async (
+    e: React.DragEvent,
+    destination: { folderId: string | null; folderCategory: string; driveFolderId?: string | null }
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDropTargetKey(null);
+    const draggedId = e.dataTransfer.getData('application/x-gestao360-file-id') || draggingFileId;
+    setDraggingFileId(null);
+    if (!draggedId) return;
+
+    const toMove =
+      selectedIds.has(draggedId) && selectedFiles.length > 1
+        ? selectedFiles
+        : files.filter((f) => f.id === draggedId);
+
+    if (toMove.length > 0) {
+      await handleMoveFilesTo(toMove, destination);
+    }
+  };
+
+  // Preview, Download e Exclusão Individual
   const handleOpenPreview = async (item: DriveFileRecord) => {
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
     setPreviewItem(item);
-    if (!canPreviewInline(item.mime_type, item.file_name)) {
-      return;
-    }
+    if (!canPreviewInline(item.mime_type, item.file_name)) return;
     setPreviewLoading(true);
     try {
       const url = await fetchDriveFilePreviewUrl(item.drive_file_id);
@@ -285,9 +744,7 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
     try {
       await deleteDriveFile(deleteTarget.id, deleteTarget.drive_file_id);
       setFiles((prev) => prev.filter((f) => f.id !== deleteTarget.id));
-      if (previewItem?.id === deleteTarget.id) {
-        handleClosePreview();
-      }
+      if (previewItem?.id === deleteTarget.id) handleClosePreview();
       showToast(`"${deleteTarget.file_name}" movido para a lixeira do Google Drive.`, 'info');
       setDeleteTarget(null);
       void loadFiles();
@@ -298,33 +755,6 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
       setDeleting(false);
     }
   };
-
-  const stats = useMemo(() => {
-    const totalBytes = files.reduce((acc, f) => acc + (Number(f.size_bytes) || 0), 0);
-    const byCategory = new Map<string, { count: number; bytes: number }>();
-
-    for (const f of files) {
-      const cat = f.folder_category || 'Geral';
-      const current = byCategory.get(cat) || { count: 0, bytes: 0 };
-      current.count += 1;
-      current.bytes += Number(f.size_bytes) || 0;
-      byCategory.set(cat, current);
-    }
-
-    const sortedCategories = Array.from(byCategory.entries())
-      .map(([name, info]) => ({ name, ...info }))
-      .sort((a, b) => b.bytes - a.bytes || b.count - a.count);
-
-    const latestFile = files.length > 0 ? files[0] : null;
-
-    return {
-      totalFiles: files.length,
-      totalBytes,
-      byCategory,
-      sortedCategories,
-      latestFile
-    };
-  }, [files]);
 
   const usagePercent = useMemo(() => {
     if (!quota || !quota.limitBytes) return 0;
@@ -339,37 +769,7 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
   const quotaBarColor =
     usagePercent >= 90 ? 'bg-rose-500' : usagePercent >= 70 ? 'bg-amber-500' : 'bg-blue-600';
 
-  const filteredFiles = useMemo(() => {
-    const q = searchTerm.trim().toLowerCase();
-    const list = files.filter((f) => {
-      if (selectedCategory !== 'Todas' && f.folder_category !== selectedCategory) return false;
-      if (typeFilter !== 'all' && getFileTypeCategory(f.mime_type, f.file_name) !== typeFilter) {
-        return false;
-      }
-      if (!q) return true;
-      return (
-        f.file_name.toLowerCase().includes(q) ||
-        f.folder_category.toLowerCase().includes(q) ||
-        (f.description || '').toLowerCase().includes(q) ||
-        (f.uploaded_by_name || '').toLowerCase().includes(q)
-      );
-    });
-
-    return [...list].sort((a, b) => {
-      if (sortBy === 'oldest') {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-      if (sortBy === 'largest') {
-        return (Number(b.size_bytes) || 0) - (Number(a.size_bytes) || 0);
-      }
-      if (sortBy === 'name') {
-        return a.file_name.localeCompare(b.file_name, 'pt-BR');
-      }
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    });
-  }, [files, selectedCategory, typeFilter, searchTerm, sortBy]);
-
-  const renderFileIcon = (mime?: string | null, name?: string, size: number = 20) => {
+  const renderFileIcon = (mime?: string | null, name?: string, size: number = 19) => {
     const t = getFileTypeCategory(mime, name);
     if (t === 'image') return <ImageIcon size={size} className="text-blue-500" />;
     if (t === 'sheet') return <FileSpreadsheet size={size} className="text-emerald-500" />;
@@ -378,872 +778,699 @@ export const DriveFilesModule: React.FC<DriveFilesModuleProps> = ({
     return <FileIcon size={size} className="text-neutral-500" />;
   };
 
+  const rootCustomFolders = useMemo(() => folders.filter((f) => !f.parent_id), [folders]);
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-16">
-      {/* Cabeçalho Institucional */}
-      <div className="bg-white dark:bg-neutral-900 p-6 sm:p-7 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-blue-600/20">
-            <HardDrive size={26} />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
-                Banco de Arquivos
-              </h2>
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-200 dark:border-emerald-800">
-                <ShieldCheck size={12} /> Multi-Tenant Isolado
-              </span>
-              {isConfigured && driveAccount?.email && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-[10px] font-bold border border-blue-200/80 dark:border-blue-800">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  {driveAccount.email}
-                </span>
-              )}
+    <div
+      className="max-w-7xl mx-auto pb-16 space-y-5 relative"
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files') && isConfigured) {
+          e.preventDefault();
+          setIsExternalDragging(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) {
+          setIsExternalDragging(false);
+        }
+      }}
+      onDrop={(e) => {
+        if (e.dataTransfer.files?.length && isConfigured) {
+          e.preventDefault();
+          setIsExternalDragging(false);
+          void enqueueAndUploadFiles(e.dataTransfer.files);
+        }
+      }}
+    >
+      {/* Overlay de Drag & Drop Global */}
+      {isExternalDragging && (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDragLeave={() => setIsExternalDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsExternalDragging(false);
+            if (e.dataTransfer.files?.length) {
+              void enqueueAndUploadFiles(e.dataTransfer.files);
+            }
+          }}
+          className="fixed inset-0 z-40 bg-blue-600/15 dark:bg-blue-950/50 backdrop-blur-xs flex items-center justify-center p-6"
+        >
+          <div className="bg-white dark:bg-neutral-900 border-2 border-dashed border-blue-500 rounded-3xl p-10 max-w-md w-full text-center shadow-2xl space-y-3">
+            <div className="w-16 h-16 mx-auto rounded-2xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <CloudUpload size={32} />
             </div>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-              Repositório conectado ao Google Drive • Pasta institucional:{' '}
-              <strong className="text-neutral-800 dark:text-neutral-200">{institutionName}</strong>
+            <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+              Solte os arquivos para enviar
+            </h3>
+            <p className="text-xs font-semibold text-neutral-500">
+              Destino: <strong className="text-blue-600 dark:text-blue-400">{currentDestinationLabel}</strong> • Até{' '}
+              {MAX_DIRECT_UPLOAD_MB} MB por arquivo
             </p>
           </div>
         </div>
+      )}
 
-        <div className="flex items-center gap-2 w-full lg:w-auto">
-          <button
-            type="button"
-            onClick={() => void loadFiles()}
-            disabled={loading}
-            className="px-3.5 py-2.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold inline-flex items-center gap-2 cursor-pointer transition-colors"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            <span>Atualizar</span>
-          </button>
-          <button
-            type="button"
-            disabled={isProcessingQueue || !isConfigured}
-            onClick={() => fileInputRef.current?.click()}
-            className="flex-1 lg:flex-initial px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider inline-flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-blue-600/20 transition-all"
-          >
-            <Upload size={14} />
-            <span>Enviar Arquivos</span>
-          </button>
-        </div>
-      </div>
+      {/* Input oculto de arquivos */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files?.length) {
+            void enqueueAndUploadFiles(e.target.files);
+          }
+        }}
+      />
 
-      {/* Alertas de Diagnóstico (OAuth ou Tabela SQL) */}
+      {/* Alertas de Diagnóstico (OAuth ou Migração SQL) */}
       {!isConfigured && (
-        <div className="p-5 rounded-3xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 space-y-2">
-          <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-black text-sm">
-            <AlertTriangle size={18} />
-            <span>Configuração OAuth pendente no servidor (Vercel)</span>
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 flex items-start gap-3">
+          <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-amber-900 dark:text-amber-200 space-y-1">
+            <p className="font-black">Configuração OAuth pendente no servidor (Vercel)</p>
+            <p>{configMessage || 'Defina GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_DRIVE_REFRESH_TOKEN na Vercel.'}</p>
           </div>
-          <p className="text-xs text-amber-900/90 dark:text-amber-200/90 leading-relaxed">
-            {configMessage ||
-              'Defina as variáveis GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET e GOOGLE_DRIVE_REFRESH_TOKEN nas Environment Variables da Vercel para ativar o envio direto ao Google Drive.'}
-          </p>
         </div>
       )}
 
       {isConfigured && (dbTableMissing || dbError) && (
-        <div className="p-5 rounded-3xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/80 space-y-2">
-          <div className="flex items-center gap-2 text-rose-800 dark:text-rose-300 font-black text-sm">
-            <Database size={18} />
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/80 flex items-start gap-3">
+          <Database size={18} className="text-rose-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-rose-900 dark:text-rose-200 space-y-1">
+            <p className="font-black">
+              {dbTableMissing ? 'Tabela do Banco de Arquivos não encontrada' : 'Aviso ao consultar Supabase'}
+            </p>
+            <p>{dbError}</p>
+          </div>
+        </div>
+      )}
+
+      {isConfigured && !dbTableMissing && foldersTableMissing && (
+        <div className="p-3.5 rounded-2xl bg-blue-50/80 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900 dark:text-blue-200">
+          <div className="flex items-center gap-2">
+            <Sparkles size={15} className="text-blue-600 shrink-0" />
             <span>
-              {dbTableMissing
-                ? 'Tabela do Banco de Arquivos ainda não criada no Supabase'
-                : 'Aviso ao consultar índice de arquivos no Supabase'}
+              Para ativar <strong>pastas personalizadas, subpastas, favoritos e tags</strong>, execute a migração{' '}
+              <code className="font-mono bg-white/80 dark:bg-neutral-900 px-1.5 py-0.5 rounded-md text-[11px]">
+                20261127010000_drive_folders_and_file_organization.sql
+              </code>{' '}
+              no Supabase.
             </span>
-          </div>
-          <p className="text-xs text-rose-900/90 dark:text-rose-200/90 leading-relaxed">
-            {dbError}
-          </p>
-          {dbTableMissing && (
-            <p className="text-[11px] font-mono bg-white/80 dark:bg-neutral-900/80 px-3 py-2 rounded-xl text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-900">
-              Execute no SQL Editor do Supabase: supabase/migrations/20261124010000_institutional_drive_files.sql
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Painel de Monitoramento de Espaço e Arquivos (KPIs) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="md:col-span-2 bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm flex flex-col justify-between">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-                Armazenamento Google Drive
-              </span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-neutral-900 dark:text-white">
-                  {quota ? formatBytes(quota.usageBytes) : '—'}
-                </span>
-                <span className="text-xs font-bold text-neutral-500">
-                  de {quota && quota.limitBytes > 0 ? formatBytes(quota.limitBytes) : '5.00 TB'}
-                </span>
-              </div>
-            </div>
-            <span className="px-2.5 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-black">
-              {usagePercent.toFixed(1)}% usado
-            </span>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <div className="h-2.5 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
-              <div
-                className={`h-full ${quotaBarColor} rounded-full transition-all duration-500`}
-                style={{ width: `${Math.max(quota && quota.usageBytes > 0 ? 2 : 0, usagePercent)}%` }}
-              />
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
-              <span>
-                Livre: <strong className="text-emerald-600 dark:text-emerald-400">{quota ? formatBytes(freeBytes) : '—'}</strong>
-              </span>
-              {quota?.usageInDriveTrashBytes !== undefined && quota.usageInDriveTrashBytes > 0 && (
-                <span>
-                  Lixeira: <strong className="text-amber-600 dark:text-amber-400">{formatBytes(quota.usageInDriveTrashBytes)}</strong>
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-              Nesta Instituição
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <FileCheck2 size={16} />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-neutral-900 dark:text-white">
-              {stats.totalFiles}{' '}
-              <span className="text-xs font-bold text-neutral-500">
-                {stats.totalFiles === 1 ? 'arquivo' : 'arquivos'}
-              </span>
-            </div>
-            <p className="text-xs font-semibold text-neutral-500 mt-1">
-              Total ocupado:{' '}
-              <strong className="text-neutral-800 dark:text-neutral-200">
-                {formatBytes(stats.totalBytes)}
-              </strong>
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400">
-              Último Envio
-            </span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <Clock size={16} />
-            </div>
-          </div>
-          {stats.latestFile ? (
-            <div className="mt-2 min-w-0">
-              <p className="text-xs font-black text-neutral-900 dark:text-white truncate" title={stats.latestFile.file_name}>
-                {stats.latestFile.file_name}
-              </p>
-              <p className="text-[11px] font-semibold text-neutral-500 mt-1 truncate">
-                {new Date(stats.latestFile.created_at).toLocaleString('pt-BR', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}{' '}
-                • {stats.latestFile.folder_category}
-              </p>
-            </div>
-          ) : (
-            <div className="mt-2">
-              <p className="text-xs font-bold text-neutral-400">Nenhum envio registrado</p>
-              <p className="text-[11px] text-neutral-400 mt-0.5">
-                {stats.sortedCategories.length} pastas ativas
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Distribuição de Espaço por Pasta / Secretaria */}
-      {stats.sortedCategories.length > 0 && (
-        <div className="bg-white dark:bg-neutral-900 p-5 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-black uppercase tracking-wider text-neutral-500 flex items-center gap-2">
-              <Folder size={14} className="text-blue-500" />
-              <span>Acompanhamento por Pasta / Secretaria</span>
-            </h3>
-            <span className="text-[11px] font-semibold text-neutral-400">
-              Clique em uma pasta para filtrar
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-            {stats.sortedCategories.map((cat) => {
-              const pct = stats.totalBytes > 0 ? Math.round((cat.bytes / stats.totalBytes) * 100) : 0;
-              const isSelected = selectedCategory === cat.name;
-              return (
-                <button
-                  key={cat.name}
-                  type="button"
-                  onClick={() => setSelectedCategory(isSelected ? 'Todas' : cat.name)}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                    isSelected
-                      ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-400 dark:border-blue-600 ring-1 ring-blue-400/40'
-                      : 'bg-neutral-50/70 dark:bg-neutral-800/40 border-neutral-200/70 dark:border-neutral-800 hover:border-blue-300 dark:hover:border-blue-700'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-black text-neutral-800 dark:text-neutral-100 truncate">
-                      {cat.name}
-                    </span>
-                    <span className="text-[10px] font-bold text-neutral-500 shrink-0">
-                      {cat.count} {cat.count === 1 ? 'arq.' : 'arqs.'}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-700 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full"
-                      style={{ width: `${Math.max(4, pct)}%` }}
-                    />
-                  </div>
-                  <div className="mt-1.5 flex items-center justify-between text-[10px] font-bold text-neutral-500">
-                    <span>{formatBytes(cat.bytes)}</span>
-                    <span>{pct}%</span>
-                  </div>
-                </button>
-              );
-            })}
           </div>
         </div>
       )}
 
-      {/* Área de Upload com Drag & Drop + Múltiplos Arquivos */}
-      <div className="bg-white dark:bg-neutral-900 p-5 sm:p-6 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div className="md:col-span-4">
-            <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-500 mb-1.5">
-              Pasta / Secretaria de Destino
-            </label>
-            <select
-              value={uploadCategory}
-              onChange={(e) => setUploadCategory(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-bold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30 cursor-pointer"
-            >
-              {DRIVE_CATEGORIES.filter((c) => c !== 'Todas').map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="md:col-span-8">
-            <label className="block text-[11px] font-black uppercase tracking-wider text-neutral-500 mb-1.5">
-              Descrição / Referência (Aplicada ao envio)
-            </label>
-            <input
-              type="text"
-              value={uploadDescription}
-              onChange={(e) => setUploadDescription(e.target.value)}
-              placeholder="Ex: Contrato 042/2026, Nota Fiscal nº 1280, Ofício Circular..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-            />
-          </div>
-        </div>
-
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (isConfigured) setIsDragging(true);
+      {/* Layout Principal em 2 Colunas (Sidebar + Explorer) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* SIDEBAR ESQUERDA: Ações, Atalhos, Árvore de Pastas e Cota */}
+        <DriveSidebar
+          institutionName={institutionName}
+          isConfigured={isConfigured}
+          isProcessingQueue={isProcessingQueue}
+          quickNav={quickNav}
+          activeFolderId={activeFolderId}
+          activeCategory={activeCategory}
+          folders={folders}
+          rootCustomFolders={rootCustomFolders}
+          defaultCategories={DEFAULT_CATEGORIES}
+          counts={counts}
+          quota={quota}
+          driveAccount={driveAccount}
+          usagePercent={usagePercent}
+          freeBytes={freeBytes}
+          quotaBarColor={quotaBarColor}
+          draggingFileId={draggingFileId}
+          dropTargetKey={dropTargetKey}
+          formatBytes={formatBytes}
+          onTriggerUpload={() => fileInputRef.current?.click()}
+          onNewFolder={() => {
+            setEditingFolder(null);
+            setFolderModalOpen(true);
           }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-            if (isConfigured && e.dataTransfer.files?.length) {
-              void enqueueAndUploadFiles(e.dataTransfer.files);
-            }
+          onSelectQuickNav={(nav) => {
+            setQuickNav(nav);
+            setActiveFolderId(null);
+            setActiveCategory(null);
           }}
-          onClick={() => {
-            if (isConfigured && !isProcessingQueue) fileInputRef.current?.click();
+          onSelectFolder={(folderId) => {
+            setQuickNav('all');
+            setActiveCategory(null);
+            setActiveFolderId(folderId);
           }}
-          className={`relative rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
-            !isConfigured
-              ? 'border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/40 opacity-60 cursor-not-allowed'
-              : isDragging
-                ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/30 scale-[1.005] cursor-copy'
-                : 'border-neutral-300 dark:border-neutral-700 hover:border-blue-400 dark:hover:border-blue-600 hover:bg-neutral-50/80 dark:hover:bg-neutral-800/40 cursor-pointer'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.length) {
-                void enqueueAndUploadFiles(e.target.files);
-              }
-            }}
-          />
-          <div className="flex flex-col items-center gap-2">
-            <div className="w-11 h-11 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center">
-              {isProcessingQueue ? (
-                <RefreshCw size={22} className="animate-spin" />
-              ) : (
-                <CloudUpload size={22} />
-              )}
-            </div>
-            <div>
-              <p className="text-xs sm:text-sm font-black text-neutral-800 dark:text-neutral-100">
-                {isProcessingQueue
-                  ? 'Enviando arquivos para o Google Drive...'
-                  : 'Arraste e solte arquivos aqui, ou clique para selecionar'}
-              </p>
-              <p className="text-[11px] font-medium text-neutral-500 mt-0.5">
-                Suporta envio múltiplo (PDF, imagens, planilhas, documentos) • Até {MAX_DIRECT_UPLOAD_MB} MB por arquivo • Pasta:{' '}
-                <strong>{uploadCategory}</strong>
-              </p>
-            </div>
-          </div>
-        </div>
+          onSelectCategory={(cat) => {
+            setQuickNav('all');
+            setActiveFolderId(null);
+            setActiveCategory(cat);
+          }}
+          onSetDropTargetKey={setDropTargetKey}
+          onDropOnFolder={handleDropOnFolder}
+        />
 
-        {uploadQueue.length > 0 && (
-          <div className="rounded-2xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/80 dark:border-neutral-800 p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-black uppercase tracking-wider text-neutral-500">
-                Fila de Envios ({uploadQueue.length})
-              </span>
-              {!isProcessingQueue && (
-                <button
-                  type="button"
-                  onClick={() => setUploadQueue([])}
-                  className="text-[11px] font-bold text-neutral-500 hover:text-neutral-800 dark:hover:text-white cursor-pointer"
-                >
-                  Limpar fila
-                </button>
-              )}
-            </div>
-            <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1">
-              {uploadQueue.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800 text-xs"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    {item.status === 'uploading' && (
-                      <RefreshCw size={14} className="animate-spin text-blue-500 shrink-0" />
-                    )}
-                    {item.status === 'queued' && (
-                      <Clock size={14} className="text-neutral-400 shrink-0" />
-                    )}
-                    {item.status === 'done' && (
-                      <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                    )}
-                    {item.status === 'error' && (
-                      <XCircle size={14} className="text-rose-500 shrink-0" />
-                    )}
-                    <div className="min-w-0">
-                      <p className="font-bold text-neutral-800 dark:text-neutral-100 truncate">
-                        {item.file.name}
-                      </p>
-                      {item.error && (
-                        <p className="text-[10px] font-semibold text-rose-500 truncate">{item.error}</p>
-                      )}
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-bold text-neutral-400 shrink-0">
-                    {formatBytes(item.file.size)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Barra de Filtros, Busca, Ordenação e Alternador Grade/Lista */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-          {DRIVE_CATEGORIES.map((cat) => {
-            const count =
-              cat === 'Todas' ? stats.totalFiles : stats.byCategory.get(cat)?.count || 0;
-            return (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap cursor-pointer transition-all inline-flex items-center gap-1.5 ${
-                  selectedCategory === cat
-                    ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 shadow-xs'
-                    : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800'
-                }`}
-              >
-                <span>{cat}</span>
-                {count > 0 && (
-                  <span
-                    className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
-                      selectedCategory === cat
-                        ? 'bg-white/20 dark:bg-neutral-900/15'
-                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-500'
-                    }`}
+        {/* ÁREA PRINCIPAL (EXPLORER DE ARQUIVOS E PASTAS) */}
+        <section className="lg:col-span-9 space-y-4 min-w-0">
+          {/* Topo: Breadcrumb + Ações da Pasta Atual */}
+          <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm p-4 sm:p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {/* Breadcrumb Navegável */}
+              <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                {(activeFolder || activeCategory || quickNav !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeFolder?.parent_id) {
+                        setActiveFolderId(activeFolder.parent_id);
+                      } else {
+                        setActiveFolderId(null);
+                        setActiveCategory(null);
+                        setQuickNav('all');
+                      }
+                    }}
+                    title="Voltar um nível"
+                    className="p-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 cursor-pointer mr-1"
                   >
-                    {count}
-                  </span>
+                    <ChevronLeft size={15} />
+                  </button>
                 )}
-              </button>
-            );
-          })}
-        </div>
 
-        <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
-          <div className="relative flex-1 max-w-md">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por nome, descrição, secretaria ou servidor..."
-              className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 cursor-pointer"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-0.5 text-[11px] font-bold">
-              {(
-                [
-                  { id: 'all', label: 'Todos' },
-                  { id: 'pdf', label: 'PDF' },
-                  { id: 'image', label: 'Imagens' },
-                  { id: 'sheet', label: 'Planilhas' },
-                  { id: 'doc', label: 'Docs' }
-                ] as const
-              ).map((t) => (
                 <button
-                  key={t.id}
                   type="button"
-                  onClick={() => setTypeFilter(t.id)}
-                  className={`px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                    typeFilter === t.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                  onClick={() => {
+                    setQuickNav('all');
+                    setActiveFolderId(null);
+                    setActiveCategory(null);
+                  }}
+                  className={`text-sm font-black tracking-tight cursor-pointer transition-colors ${
+                    !activeFolder && !activeCategory && quickNav === 'all'
+                      ? 'text-neutral-900 dark:text-white'
+                      : 'text-neutral-400 hover:text-blue-600'
                   }`}
                 >
-                  {t.label}
+                  Meu Repositório
                 </button>
-              ))}
-            </div>
 
-            <div className="relative inline-flex items-center">
-              <ArrowUpDown size={13} className="absolute left-3 text-neutral-400 pointer-events-none" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortOption)}
-                className="pl-8 pr-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-xs font-bold text-neutral-700 dark:text-neutral-200 focus:outline-none cursor-pointer"
-              >
-                <option value="newest">Mais recentes</option>
-                <option value="oldest">Mais antigos</option>
-                <option value="largest">Maior tamanho</option>
-                <option value="name">Nome (A–Z)</option>
-              </select>
-            </div>
+                {quickNav === 'starred' && (
+                  <>
+                    <ChevronRight size={14} className="text-neutral-400" />
+                    <span className="text-sm font-black text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
+                      <Star size={14} /> Favoritos
+                    </span>
+                  </>
+                )}
 
-            <div className="inline-flex items-center rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-0.5">
-              <button
-                type="button"
-                onClick={() => setViewMode('list')}
-                title="Visualização em lista"
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  viewMode === 'list'
-                    ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950'
-                    : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                }`}
-              >
-                <ListIcon size={14} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                title="Visualização em grade"
-                className={`p-2 rounded-lg cursor-pointer transition-colors ${
-                  viewMode === 'grid'
-                    ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950'
-                    : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
-                }`}
-              >
-                <LayoutGrid size={14} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+                {quickNav === 'recent' && (
+                  <>
+                    <ChevronRight size={14} className="text-neutral-400" />
+                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                      Recentes (7 dias)
+                    </span>
+                  </>
+                )}
 
-      {/* Lista ou Grade de Arquivos */}
-      <div className="bg-white dark:bg-neutral-900 rounded-3xl border border-neutral-200/80 dark:border-neutral-800 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="p-6 space-y-3">
-            {[1, 2, 3, 4].map((n) => (
-              <div
-                key={n}
-                className="h-16 rounded-2xl bg-neutral-100 dark:bg-neutral-800/70 animate-pulse"
-              />
-            ))}
-          </div>
-        ) : filteredFiles.length === 0 ? (
-          <div className="p-14 text-center space-y-3">
-            <div className="w-16 h-16 mx-auto rounded-3xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-400">
-              <FolderOpen size={30} />
-            </div>
-            <div>
-              <p className="text-sm font-black text-neutral-700 dark:text-neutral-200">
-                {files.length === 0
-                  ? 'Seu Banco de Arquivos ainda está vazio'
-                  : 'Nenhum arquivo encontrado com os filtros atuais'}
-              </p>
-              <p className="text-xs text-neutral-400 mt-1">
-                {files.length === 0
-                  ? 'Arraste documentos para a área acima ou clique no botão abaixo para enviar ao Google Drive.'
-                  : 'Tente limpar a busca ou selecionar outra pasta/tipo de arquivo.'}
-              </p>
-            </div>
-            {files.length === 0 && isConfigured && (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="mt-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider inline-flex items-center gap-2 cursor-pointer"
-              >
-                <Upload size={14} />
-                <span>Enviar Primeiro Arquivo</span>
-              </button>
-            )}
-          </div>
-        ) : viewMode === 'list' ? (
-          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
-            {filteredFiles.map((item) => {
-              const previewable = canPreviewInline(item.mime_type, item.file_name);
-              return (
-                <div
-                  key={item.id}
-                  className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-50/70 dark:hover:bg-neutral-800/40 transition-colors"
-                >
-                  <div className="flex items-start gap-3.5 min-w-0">
-                    <div className="w-11 h-11 rounded-2xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
-                      {renderFileIcon(item.mime_type, item.file_name, 20)}
-                    </div>
-                    <div className="min-w-0">
+                {activeCategory && !activeFolder && (
+                  <>
+                    <ChevronRight size={14} className="text-neutral-400" />
+                    <span className="text-sm font-black text-neutral-900 dark:text-white">
+                      {activeCategory}
+                    </span>
+                  </>
+                )}
+
+                {breadcrumbs.map((crumb, index) => {
+                  const isLast = index === breadcrumbs.length - 1;
+                  return (
+                    <React.Fragment key={crumb.id}>
+                      <ChevronRight size={14} className="text-neutral-400" />
                       <button
                         type="button"
-                        onClick={() => void handleOpenPreview(item)}
-                        className="text-left text-xs sm:text-sm font-black text-neutral-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 truncate block max-w-full cursor-pointer transition-colors"
+                        onClick={() => setActiveFolderId(crumb.id)}
+                        className={`text-sm font-black truncate max-w-[180px] cursor-pointer ${
+                          isLast
+                            ? 'text-neutral-900 dark:text-white'
+                            : 'text-neutral-400 hover:text-blue-600'
+                        }`}
                       >
-                        {item.file_name}
+                        {crumb.name}
                       </button>
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-neutral-500 mt-1">
-                        <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-bold">
-                          {item.folder_category}
-                        </span>
-                        <span className="font-bold text-neutral-700 dark:text-neutral-300">
-                          {formatBytes(item.size_bytes)}
-                        </span>
-                        <span>• {item.uploaded_by_name}</span>
-                        <span>
-                          •{' '}
-                          {new Date(item.created_at).toLocaleDateString('pt-BR', {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric'
-                          })}
-                        </span>
-                      </div>
-                      {item.description && (
-                        <p className="text-[11px] text-neutral-400 mt-1 truncate">
-                          {item.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                    </React.Fragment>
+                  );
+                })}
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => void handleOpenPreview(item)}
-                      className="px-2.5 py-1.5 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 text-xs font-bold inline-flex items-center gap-1 cursor-pointer"
-                      title={previewable ? 'Visualizar arquivo' : 'Ver detalhes'}
-                    >
-                      <Eye size={13} />
-                      <span className="hidden md:inline">{previewable ? 'Visualizar' : 'Detalhes'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={downloadingId === item.id}
-                      onClick={() => void handleDownload(item)}
-                      className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 text-xs font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                      title="Baixar arquivo"
-                    >
-                      {downloadingId === item.id ? (
-                        <RefreshCw size={13} className="animate-spin" />
-                      ) : (
-                        <Download size={13} />
-                      )}
-                      <span>Baixar</span>
-                    </button>
-                    {item.web_view_link && (
-                      <a
-                        href={item.web_view_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300"
-                        title="Abrir no Google Drive"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setDeleteTarget(item)}
-                      className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer"
-                      title="Mover para lixeira"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredFiles.map((item) => (
-              <div
-                key={item.id}
-                className="p-4 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/40 dark:bg-neutral-800/30 hover:border-blue-300 dark:hover:border-blue-700 transition-all flex flex-col justify-between gap-4"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="w-11 h-11 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200/70 dark:border-neutral-700 flex items-center justify-center shrink-0">
-                      {renderFileIcon(item.mime_type, item.file_name, 22)}
-                    </div>
-                    <span className="px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 text-[10px] font-black">
-                      {item.folder_category}
-                    </span>
-                  </div>
-                  <div className="min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => void handleOpenPreview(item)}
-                      className="text-left text-xs font-black text-neutral-900 dark:text-white hover:text-blue-600 truncate block w-full cursor-pointer"
-                      title={item.file_name}
-                    >
-                      {item.file_name}
-                    </button>
-                    {item.description && (
-                      <p className="text-[11px] text-neutral-500 mt-1 line-clamp-2">
-                        {item.description}
-                      </p>
-                    )}
-                    <div className="flex items-center justify-between text-[10px] font-bold text-neutral-400 mt-2">
-                      <span>{formatBytes(item.size_bytes)}</span>
-                      <span>{new Date(item.created_at).toLocaleDateString('pt-BR')}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between gap-1.5 pt-3 border-t border-neutral-200/60 dark:border-neutral-800">
-                  <button
-                    type="button"
-                    onClick={() => void handleOpenPreview(item)}
-                    className="flex-1 py-1.5 rounded-xl bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer"
-                  >
-                    <Eye size={12} />
-                    <span>Abrir</span>
-                  </button>
-                  <button
-                    type="button"
-                    disabled={downloadingId === item.id}
-                    onClick={() => void handleDownload(item)}
-                    className="flex-1 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold inline-flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
-                  >
-                    <Download size={12} />
-                    <span>Baixar</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget(item)}
-                    className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer"
-                    title="Excluir"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
+                <span className="ml-2 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-wider border border-emerald-200/70 dark:border-emerald-800 hidden sm:inline-flex items-center gap-1">
+                  <ShieldCheck size={11} /> Isolado
+                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* Modal de Pré-visualização / Detalhes do Arquivo */}
-      {previewItem && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={handleClosePreview}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 w-full max-w-4xl max-h-[90vh] rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 sm:p-5 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
-                  {renderFileIcon(previewItem.mime_type, previewItem.file_name, 20)}
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-black text-neutral-900 dark:text-white truncate">
-                    {previewItem.file_name}
-                  </h3>
-                  <p className="text-[11px] font-semibold text-neutral-500">
-                    {previewItem.folder_category} • {formatBytes(previewItem.size_bytes)} • Enviado por{' '}
-                    {previewItem.uploaded_by_name}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleClosePreview}
-                className="p-2 rounded-xl hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-auto bg-neutral-50 dark:bg-neutral-950 p-4 flex items-center justify-center min-h-[320px]">
-              {previewLoading ? (
-                <div className="flex flex-col items-center gap-2 text-xs font-bold text-neutral-500">
-                  <RefreshCw size={24} className="animate-spin text-blue-500" />
-                  <span>Carregando pré-visualização segura...</span>
-                </div>
-              ) : previewUrl && getFileTypeCategory(previewItem.mime_type, previewItem.file_name) === 'image' ? (
-                <img
-                  src={previewUrl}
-                  alt={previewItem.file_name}
-                  className="max-h-[62vh] max-w-full rounded-xl object-contain shadow-md"
-                />
-              ) : previewUrl && getFileTypeCategory(previewItem.mime_type, previewItem.file_name) === 'pdf' ? (
-                <iframe
-                  src={previewUrl}
-                  title={previewItem.file_name}
-                  className="w-full h-[62vh] rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white"
-                />
-              ) : (
-                <div className="text-center space-y-2 max-w-md p-6">
-                  <div className="w-14 h-14 mx-auto rounded-2xl bg-neutral-200/70 dark:bg-neutral-800 flex items-center justify-center">
-                    {renderFileIcon(previewItem.mime_type, previewItem.file_name, 26)}
-                  </div>
-                  <p className="text-sm font-black text-neutral-800 dark:text-neutral-200">
-                    Pré-visualização não disponível para este formato
-                  </p>
-                  <p className="text-xs text-neutral-500">
-                    {previewItem.description || 'Faça o download ou abra diretamente no Google Drive para visualizar este arquivo.'}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 border-t border-neutral-200 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2 bg-white dark:bg-neutral-900">
-              <span className="text-[11px] font-semibold text-neutral-500">
-                {previewItem.description ? `Obs: ${previewItem.description}` : `Registrado em ${new Date(previewItem.created_at).toLocaleString('pt-BR')}`}
-              </span>
-              <div className="flex items-center gap-2">
-                {previewItem.web_view_link && (
-                  <a
-                    href={previewItem.web_view_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3.5 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-bold inline-flex items-center gap-1.5"
-                  >
-                    <ExternalLink size={14} />
-                    <span>Abrir no Drive</span>
-                  </a>
-                )}
+              {/* Ações de Barra Superior */}
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => void handleDownload(previewItem)}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black inline-flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => setShowUploadPanel((v) => !v)}
+                  className={`px-3 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    showUploadPanel
+                      ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                      : 'bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+                  }`}
                 >
-                  <Download size={14} />
-                  <span>Baixar Arquivo</span>
+                  <CloudUpload size={14} />
+                  <span className="hidden sm:inline">Upload com Descrição</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void loadFiles()}
+                  disabled={loading}
+                  title="Atualizar listagem"
+                  className="p-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-200 cursor-pointer"
+                >
+                  <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Modal de Confirmação de Exclusão */}
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => !deleting && setDeleteTarget(null)}
-        >
-          <div
-            className="bg-white dark:bg-neutral-900 w-full max-w-md rounded-3xl border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
-                <Trash2 size={20} />
+            {/* Painel de Upload Sob Demanda (limpo e colapsável) */}
+            {(showUploadPanel || uploadQueue.length > 0) && (
+              <div className="rounded-2xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-800 p-4 space-y-3">
+                {showUploadPanel && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <input
+                      type="text"
+                      value={uploadDescription}
+                      onChange={(e) => setUploadDescription(e.target.value)}
+                      placeholder={`Descrição opcional para os arquivos enviados em "${currentDestinationLabel}"...`}
+                      className="flex-1 px-3.5 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                    />
+                    <button
+                      type="button"
+                      disabled={isProcessingQueue || !isConfigured}
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-black inline-flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <Upload size={14} />
+                      <span>Selecionar Arquivos</span>
+                    </button>
+                  </div>
+                )}
+
+                {uploadQueue.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
+                        Fila de Envio ({uploadQueue.length})
+                      </span>
+                      {!isProcessingQueue && (
+                        <button
+                          type="button"
+                          onClick={() => setUploadQueue([])}
+                          className="text-[11px] font-bold text-neutral-500 hover:text-neutral-800 dark:hover:text-white cursor-pointer"
+                        >
+                          Limpar
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                      {uploadQueue.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between gap-3 px-3 py-1.5 rounded-xl bg-white dark:bg-neutral-900 border border-neutral-200/60 dark:border-neutral-800 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            {item.status === 'uploading' && (
+                              <RefreshCw size={13} className="animate-spin text-blue-500 shrink-0" />
+                            )}
+                            {item.status === 'queued' && (
+                              <Clock size={13} className="text-neutral-400 shrink-0" />
+                            )}
+                            {item.status === 'done' && (
+                              <CheckCircle2 size={13} className="text-emerald-500 shrink-0" />
+                            )}
+                            {item.status === 'error' && (
+                              <XCircle size={13} className="text-rose-500 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-bold text-neutral-800 dark:text-neutral-100 truncate">
+                                {item.file.name}
+                              </p>
+                              {item.error && (
+                                <p className="text-[10px] font-semibold text-rose-500 truncate">{item.error}</p>
+                              )}
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold text-neutral-400 shrink-0">
+                            {formatBytes(item.file.size)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div>
-                <h3 className="text-base font-black text-neutral-900 dark:text-white">
-                  Excluir arquivo?
-                </h3>
-                <p className="text-xs text-neutral-500">
-                  Ele será removido do sistema e movido para a lixeira do Google Drive.
-                </p>
+            )}
+
+            {/* Barra de Busca, Tipos, Filtros Avançados e Alternador Lista/Grade */}
+            <div className="flex flex-col md:flex-row gap-2.5 items-stretch md:items-center justify-between">
+              <div className="relative flex-1">
+                <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-neutral-400" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Buscar por nome, #etiqueta, descrição ou servidor..."
+                  className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-800/50 text-xs font-semibold text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 cursor-pointer"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 p-0.5 text-[11px] font-bold">
+                  {(
+                    [
+                      { id: 'all', label: 'Todos' },
+                      { id: 'pdf', label: 'PDF' },
+                      { id: 'image', label: 'Imagens' },
+                      { id: 'sheet', label: 'Planilhas' },
+                      { id: 'doc', label: 'Docs' }
+                    ] as const
+                  ).map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setTypeFilter(t.id)}
+                      className={`px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                        typeFilter === t.id
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-neutral-600 dark:text-neutral-300 hover:bg-white dark:hover:bg-neutral-800'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedFilters((v) => !v)}
+                  className={`px-3 py-2 rounded-xl border text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                    showAdvancedFilters || activeFiltersCount > 0
+                      ? 'bg-blue-50 dark:bg-blue-950/40 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                      : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                  }`}
+                >
+                  <SlidersHorizontal size={13} />
+                  <span>Filtros</span>
+                  {activeFiltersCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-md bg-blue-600 text-white text-[10px] font-black">
+                      {activeFiltersCount}
+                    </span>
+                  )}
+                </button>
+
+                <div className="inline-flex items-center rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/60 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('list')}
+                    title="Lista"
+                    className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                      viewMode === 'list'
+                        ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950'
+                        : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <ListIcon size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('grid')}
+                    title="Grade"
+                    className={`p-2 rounded-lg cursor-pointer transition-colors ${
+                      viewMode === 'grid'
+                        ? 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-950'
+                        : 'text-neutral-500 hover:text-neutral-900 dark:hover:text-white'
+                    }`}
+                  >
+                    <LayoutGrid size={14} />
+                  </button>
+                </div>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-neutral-800/70 border border-neutral-200/70 dark:border-neutral-700">
-              <p className="text-xs font-black text-neutral-900 dark:text-white truncate">
-                {deleteTarget.file_name}
-              </p>
-              <p className="text-[11px] font-semibold text-neutral-500 mt-0.5">
-                {deleteTarget.folder_category} • {formatBytes(deleteTarget.size_bytes)}
-              </p>
-            </div>
+            {/* Painel de Filtros Avançados Expansível */}
+            {showAdvancedFilters && (
+              <div className="pt-3 border-t border-neutral-100 dark:border-neutral-800 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-400 mb-1">
+                    Período de Envio
+                  </label>
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value as DateRangeFilter)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-bold text-neutral-800 dark:text-neutral-100 cursor-pointer"
+                  >
+                    <option value="all">Qualquer data</option>
+                    <option value="today">Hoje</option>
+                    <option value="7d">Últimos 7 dias</option>
+                    <option value="30d">Últimos 30 dias</option>
+                    <option value="year">Este ano</option>
+                  </select>
+                </div>
 
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-bold cursor-pointer disabled:opacity-50"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() => void handleConfirmDelete()}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              >
-                {deleting && <RefreshCw size={13} className="animate-spin" />}
-                <span>{deleting ? 'Excluindo...' : 'Mover para Lixeira'}</span>
-              </button>
-            </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-400 mb-1">
+                    Enviado por
+                  </label>
+                  <select
+                    value={uploaderFilter}
+                    onChange={(e) => setUploaderFilter(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-bold text-neutral-800 dark:text-neutral-100 cursor-pointer"
+                  >
+                    <option value="all">Todos os servidores</option>
+                    {counts.uploaders.map((u) => (
+                      <option key={u} value={u}>
+                        {u}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-wider text-neutral-400 mb-1">
+                    Ordenação
+                  </label>
+                  <div className="relative">
+                    <ArrowUpDown size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as SortOption)}
+                      className="w-full pl-8 pr-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-xs font-bold text-neutral-800 dark:text-neutral-100 cursor-pointer"
+                    >
+                      <option value="newest">Mais recentes</option>
+                      <option value="oldest">Mais antigos</option>
+                      <option value="largest">Maior tamanho</option>
+                      <option value="name">Nome (A–Z)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {counts.allTags.length > 0 && (
+                  <div className="sm:col-span-3 flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-neutral-400 inline-flex items-center gap-1 mr-1">
+                      <Tag size={11} /> Etiquetas:
+                    </span>
+                    {counts.allTags.map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setTagFilter(tagFilter === tag ? '' : tag)}
+                        className={`px-2 py-0.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors ${
+                          tagFilter === tag
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-blue-50 dark:hover:bg-blue-950/40'
+                        }`}
+                      >
+                        #{tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {activeFiltersCount > 0 && (
+                  <div className="sm:col-span-3 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={clearAllFilters}
+                      className="text-[11px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 cursor-pointer"
+                    >
+                      Limpar todos os filtros ({activeFiltersCount})
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+
+          {/* Barra Contextual de Seleção em Lote */}
+          {selectedIds.size > 0 && (
+            <div className="bg-blue-600 text-white rounded-2xl px-4 py-3 shadow-lg shadow-blue-600/20 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 text-xs font-black">
+                <CheckSquare size={16} />
+                <span>
+                  {selectedIds.size} {selectedIds.size === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMoveTargets(selectedFiles)}
+                  className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <FolderInput size={13} />
+                  <span>Mover para pasta</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleBulkStar()}
+                  className="px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <Star size={13} />
+                  <span>Favoritar</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkDeleting}
+                  onClick={() => void handleBulkDelete()}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60 transition-colors"
+                >
+                  {bulkDeleting ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  <span>Excluir</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIds(new Set())}
+                  className="p-1.5 rounded-xl hover:bg-white/15 cursor-pointer"
+                  title="Limpar seleção"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Grade de Subpastas no Diretório Atual */}
+          <DriveSubfoldersGrid
+            visibleSubfolders={visibleSubfolders}
+            allFolders={folders}
+            byFolderId={counts.byFolderId}
+            draggingFileId={draggingFileId}
+            dropTargetKey={dropTargetKey}
+            onSetDropTargetKey={setDropTargetKey}
+            onDropOnFolder={handleDropOnFolder}
+            onOpenFolder={(folderId) => setActiveFolderId(folderId)}
+            onEditFolder={(folder) => {
+              setEditingFolder(folder);
+              setFolderModalOpen(true);
+            }}
+            onDeleteFolder={(folder) => setDeletingFolder(folder)}
+          />
+
+          {/* Lista ou Grade de Arquivos */}
+          <DriveFilesList
+            loading={loading}
+            viewMode={viewMode}
+            filteredFiles={filteredFiles}
+            selectedIds={selectedIds}
+            activeFiltersCount={activeFiltersCount}
+            activeFolder={activeFolder}
+            currentDestinationLabel={currentDestinationLabel}
+            isConfigured={isConfigured}
+            downloadingId={downloadingId}
+            formatBytes={formatBytes}
+            canPreviewInline={canPreviewInline}
+            renderFileIcon={renderFileIcon}
+            onToggleSelectAll={toggleSelectAllVisible}
+            onToggleSelectFile={toggleSelectFile}
+            onClearAllFilters={clearAllFilters}
+            onTriggerUpload={() => fileInputRef.current?.click()}
+            onDragStartFile={(id, e) => {
+              setDraggingFileId(id);
+              e.dataTransfer.setData('application/x-gestao360-file-id', id);
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragEndFile={() => {
+              setDraggingFileId(null);
+              setDropTargetKey(null);
+            }}
+            onToggleStar={handleToggleStar}
+            onOpenPreview={handleOpenPreview}
+            onSelectTagFilter={(tag) => setTagFilter(tag)}
+            onMoveSingle={(item) => setMoveTargets([item])}
+            onEditFile={(item) => setEditingFile(item)}
+            onDownload={handleDownload}
+            onDeleteFile={(item) => setDeleteTarget(item)}
+          />
+        </section>
+      </div>
+
+      {/* Modais de Organização */}
+      <FolderFormModal
+        open={folderModalOpen}
+        editingFolder={editingFolder}
+        parentFolderName={editingFolder ? null : activeFolder?.name || null}
+        saving={savingFolder}
+        onClose={() => {
+          setFolderModalOpen(false);
+          setEditingFolder(null);
+        }}
+        onSubmit={handleSubmitFolder}
+      />
+
+      <MoveFilesModal
+        open={moveTargets.length > 0}
+        filesCount={moveTargets.length}
+        singleFileName={moveTargets.length === 1 ? moveTargets[0].file_name : undefined}
+        folders={folders}
+        defaultCategories={DEFAULT_CATEGORIES}
+        saving={movingFiles}
+        onClose={() => setMoveTargets([])}
+        onMove={(dest) => handleMoveFilesTo(moveTargets, dest)}
+      />
+
+      <EditFileModal
+        file={editingFile}
+        saving={savingFile}
+        onClose={() => setEditingFile(null)}
+        onSave={handleSaveFileEdit}
+      />
+
+      <DeleteFolderModal
+        folder={deletingFolder}
+        deleting={deletingFolderBusy}
+        onClose={() => setDeletingFolder(null)}
+        onConfirm={handleConfirmDeleteFolder}
+      />
+
+      {/* Modal de Pré-visualização e Exclusão */}
+      <DrivePreviewModals
+        previewItem={previewItem}
+        previewUrl={previewUrl}
+        previewLoading={previewLoading}
+        deleteTarget={deleteTarget}
+        deleting={deleting}
+        formatBytes={formatBytes}
+        getFileTypeCategory={getFileTypeCategory}
+        renderFileIcon={renderFileIcon}
+        onClosePreview={handleClosePreview}
+        onDownload={handleDownload}
+        onCloseDelete={() => setDeleteTarget(null)}
+        onConfirmDelete={handleConfirmDelete}
+      />
     </div>
   );
 };
