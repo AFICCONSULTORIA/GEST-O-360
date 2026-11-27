@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { saveAs } from 'file-saver';
 import { 
   FileBadge, Plus, Upload, Download, Search, CheckCircle2, 
   AlertTriangle, Eye, Copy, RefreshCw, Sparkles, FileText, 
@@ -25,6 +26,8 @@ import {
   generateCertificatePdfBlob, 
   downloadCertificatePdf 
 } from './CertificateDocumentPDF';
+import { CertificatePreviewModal } from './CertificatePreviewModal';
+import { CertificateDeleteModals } from './CertificateDeleteModals';
 import { 
   createBatchCertificates, 
   fetchIssuedCertificates, 
@@ -170,6 +173,8 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [bankSearch, setBankSearch] = useState('');
   const [bankFilterType, setBankFilterType] = useState<string>('all');
+  const [bankPage, setBankPage] = useState(1);
+  const BANK_PAGE_SIZE = 30;
 
   // Permissão de Super Admin para exclusão no Banco de Certificados
   const isSuperAdmin = currentUser?.role === 'Super Admin' || 
@@ -184,6 +189,49 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
 
   // Modal de Visualização
   const [previewModalCert, setPreviewModalCert] = useState<IssuedCertificate | null>(null);
+  const [isDraftPreviewModal, setIsDraftPreviewModal] = useState(false);
+
+  const openDraftPreview = () => {
+    const sampleRecipient = recipients[0] || {
+      name: 'Maria Aparecida da Silva (Exemplo)',
+      document: '000.000.000-00',
+      role: 'participante' as const
+    };
+    const draftTemplate: CertificateTemplate = {
+      id: 'draft-preview',
+      institution_id: currentInstitution?.id || 'inst_1',
+      document_kind: 'certificado',
+      title: courseTitle.trim() || 'Formação Continuada Municipal',
+      event_type: eventType,
+      workload_hours: workloadHours || 40,
+      event_date_start: dateStart,
+      event_date_end: dateEnd || null,
+      issuer_name: issuerName.trim() || 'Coordenação Pedagógica Municipal',
+      issuer_role: issuerRole.trim() || 'Formador(a)',
+      secretariat_name: secretariatName,
+      background_mode: backgroundMode,
+      preset_theme: presetTheme,
+      custom_background_url: backgroundMode === 'custom_upload' ? customBackgroundUrl : null,
+      program_content: programContent.trim() || null
+    };
+    const draftCert: IssuedCertificate = {
+      id: 'draft-preview-cert',
+      institution_id: currentInstitution?.id || 'inst_1',
+      template_id: 'draft-preview',
+      document_kind: 'certificado',
+      recipient_name: sampleRecipient.name,
+      recipient_document: sampleRecipient.document,
+      recipient_role: sampleRecipient.role,
+      validation_hash: 'CERT-2026-PREV01',
+      qr_code_url: `${window.location.origin}/validar-documento?codigo=CERT-2026-PREV01`,
+      download_count: 1,
+      status: 'valido',
+      created_at: new Date().toISOString(),
+      template: draftTemplate
+    };
+    setIsDraftPreviewModal(true);
+    setPreviewModalCert(draftCert);
+  };
 
   // Ref escondido para renderização assíncrona dos PDFs de lote
   const hiddenRenderContainerRef = useRef<HTMLDivElement>(null);
@@ -492,6 +540,17 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
       return true;
     });
   }, [issuedHistory, bankSearch, bankFilterType]);
+
+  useEffect(() => {
+    setBankPage(1);
+  }, [bankSearch, bankFilterType]);
+
+  const bankTotalPages = Math.max(1, Math.ceil(filteredHistory.length / BANK_PAGE_SIZE));
+  const safeBankPage = Math.min(bankPage, bankTotalPages);
+  const paginatedHistory = useMemo(() => {
+    const start = (safeBankPage - 1) * BANK_PAGE_SIZE;
+    return filteredHistory.slice(start, start + BANK_PAGE_SIZE);
+  }, [filteredHistory, safeBankPage]);
 
   // Seleção individual de certificado (Super Admin)
   const handleToggleSelectCert = (id: string) => {
@@ -1241,23 +1300,41 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                   />
                 </div>
 
-                {/* Conteúdo Programático Opcional */}
+                {/* Conteúdo Programático Opcional (Verso do Certificado) */}
                 <div className="md:col-span-2">
-                  <label className="font-bold text-neutral-700 dark:text-neutral-300 block mb-1">
-                    Conteúdo Programático / Módulos (Opcional para o Verso)
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-neutral-700 dark:text-neutral-300">
+                      Conteúdo Programático / Módulos (Verso do Certificado — Página 2)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setProgramContent((prev) =>
+                          prev.trim()
+                            ? prev
+                            : 'Fundamentos e Diretrizes Pedagógicas da Rede Municipal; Planejamento Bimestral alinhado à BNCC e Matriz SAEB; Metodologias Ativas e Avaliação Formativa; Estudo de Casos e Prática Supervisionada'
+                        )
+                      }
+                      className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                    >
+                      + Inserir modelo de ementa
+                    </button>
+                  </div>
                   <textarea
                     rows={3}
-                    placeholder="Módulo 1: Introdução à BNCC; Módulo 2: Matriz de Referência do SAEB..."
+                    placeholder="Separe os módulos por linha ou ponto e vírgula (;). Ex: Módulo 1: Introdução à BNCC; Módulo 2: Matriz do SAEB..."
                     value={programContent}
                     onChange={(e) => setProgramContent(e.target.value)}
                     className="w-full p-3 rounded-xl border border-neutral-300 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-white font-medium focus:border-amber-500 focus:outline-none resize-none"
                   />
+                  <p className="text-[11px] text-neutral-400 mt-1">
+                    Todo certificado emitido gera automaticamente Frente + Verso em PDF com QR Code de validação.
+                  </p>
                 </div>
               </div>
 
-              {/* Botões Voltar / Avançar */}
-              <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 flex justify-between">
+              {/* Botões Voltar / Prévia / Avançar */}
+              <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => setWizardStep(2)}
@@ -1265,15 +1342,25 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 >
                   <ChevronLeft className="w-4 h-4" /> Voltar
                 </button>
-                <button
-                  type="button"
-                  disabled={!courseTitle.trim() || !issuerName.trim()}
-                  onClick={() => setWizardStep(4)}
-                  className="px-6 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shadow hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition"
-                >
-                  <span>Revisar e Processar Lote</span>
-                  <ChevronRight className="w-4 h-4" />
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={openDraftPreview}
+                    className="px-4 py-2.5 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer transition"
+                  >
+                    <Eye className="w-4 h-4" />
+                    <span>Pré-visualizar (Frente e Verso)</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!courseTitle.trim() || !issuerName.trim()}
+                    onClick={() => setWizardStep(4)}
+                    className="px-6 py-2.5 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-2 cursor-pointer shadow hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  >
+                    <span>Revisar e Processar Lote</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1384,15 +1471,25 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setPreviewModalCert(cert)}
+                              onClick={() => {
+                                setIsDraftPreviewModal(false);
+                                setPreviewModalCert(cert);
+                              }}
                               className="p-1.5 rounded-lg text-neutral-500 hover:text-amber-500 transition cursor-pointer"
-                              title="Visualizar"
+                              title="Visualizar Frente e Verso"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
                             <button
                               type="button"
                               onClick={() => {
+                                const matchedBlob = generatedBatchResult.blobs.find((b) =>
+                                  b.filename.includes(cert.validation_hash)
+                                );
+                                if (matchedBlob) {
+                                  saveAs(matchedBlob.pdfBlob, matchedBlob.filename);
+                                  return;
+                                }
                                 const renderEl = document.getElementById(`certificate-render-${cert.id}`);
                                 if (renderEl) {
                                   downloadCertificatePdf(renderEl, `Certificado_${cert.recipient_name}.pdf`);
@@ -1596,7 +1693,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                  {filteredHistory.map((cert) => {
+                  {paginatedHistory.map((cert) => {
                     const isSecondIssue = (cert.download_count || 1) > 1;
                     const isSelected = selectedCertIds.includes(cert.id);
 
@@ -1681,9 +1778,12 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                             {/* Visualizar */}
                             <button
                               type="button"
-                              onClick={() => setPreviewModalCert(cert)}
+                              onClick={() => {
+                                setIsDraftPreviewModal(false);
+                                setPreviewModalCert(cert);
+                              }}
                               className="p-2 rounded-xl text-neutral-500 hover:text-sky-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition cursor-pointer"
-                              title="Visualizar Certificado"
+                              title="Visualizar Certificado (Frente e Verso)"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
@@ -1732,183 +1832,71 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* Modal de Prévia do Certificado */}
-      {previewModalCert && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 max-w-5xl w-full shadow-2xl relative space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-200 dark:border-neutral-800">
-              <div>
-                <h3 className="text-base font-bold text-neutral-900 dark:text-white">
-                  Visualização do Certificado Oficial
-                </h3>
-                <p className="text-xs text-neutral-500 font-mono">
-                  {previewModalCert.validation_hash} · {previewModalCert.recipient_name}
-                </p>
-              </div>
+            {filteredHistory.length > 0 && (
+              <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <span className="text-neutral-500 font-medium">
+                  Mostrando{' '}
+                  <strong className="text-neutral-800 dark:text-neutral-200">
+                    {(safeBankPage - 1) * BANK_PAGE_SIZE + 1}–{Math.min(safeBankPage * BANK_PAGE_SIZE, filteredHistory.length)}
+                  </strong>{' '}
+                  de <strong className="text-neutral-800 dark:text-neutral-200">{filteredHistory.length}</strong> certificados
+                </span>
 
-              <div className="flex items-center gap-2">
-                {isSuperAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCertToDelete(previewModalCert);
-                    }}
-                    className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-600 text-rose-600 hover:text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
-                    title="Excluir do Banco de Certificados"
-                  >
-                    <Trash2 className="w-4 h-4" /> Excluir
-                  </button>
+                {bankTotalPages > 1 && (
+                  <div className="inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={safeBankPage <= 1}
+                      onClick={() => setBankPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Anterior
+                    </button>
+                    <span className="px-3 py-1.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 font-black">
+                      {safeBankPage} / {bankTotalPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={safeBankPage >= bankTotalPages}
+                      onClick={() => setBankPage((p) => Math.min(bankTotalPages, p + 1))}
+                      className="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 font-bold inline-flex items-center gap-1 cursor-pointer disabled:opacity-40"
+                    >
+                      Próxima <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
-                <button
-                  type="button"
-                  onClick={() => handleDownloadSecondIssue(previewModalCert)}
-                  className="px-4 py-2 bg-neutral-900 dark:bg-white text-white dark:text-neutral-950 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-4 h-4" /> Baixar PDF
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewModalCert(null)}
-                  className="p-2 rounded-xl text-neutral-400 hover:text-white transition"
-                >
-                  ✕
-                </button>
               </div>
-            </div>
-
-            {/* Container do Certificado com Escala */}
-            <div className="overflow-x-auto flex justify-center p-2 bg-neutral-100 dark:bg-neutral-950 rounded-2xl border border-neutral-200 dark:border-neutral-800">
-              <div style={{ width: '840px', height: '595px', overflow: 'hidden' }} className="relative shadow-xl">
-                <CertificateDocumentPDF
-                  certificate={previewModalCert}
-                  template={previewModalCert.template || {
-                    id: previewModalCert.template_id,
-                    institution_id: previewModalCert.institution_id,
-                    title: 'Curso de Formação',
-                    event_type: 'curso',
-                    workload_hours: 40,
-                    event_date_start: previewModalCert.created_at.split('T')[0],
-                    issuer_name: 'Secretaria Municipal de Educação',
-                    issuer_role: 'Direção Geral',
-                    background_mode: 'preset',
-                    preset_theme: 'classico_azul'
-                  }}
-                  institution={currentInstitution}
-                  scale={0.75}
-                />
-              </div>
-            </div>
+            )}
           </div>
         </div>
       )}
 
-      {/* Modal de Confirmação de Exclusão Individual (Super Admin) */}
-      {certToDelete && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center mx-auto">
-              <Trash2 className="w-6 h-6" />
-            </div>
+      {/* Modal de Prévia do Certificado (Frente e Verso) */}
+      <CertificatePreviewModal
+        certificate={previewModalCert}
+        currentInstitution={currentInstitution}
+        isSuperAdmin={isSuperAdmin}
+        isDraftPreview={isDraftPreviewModal}
+        onClose={() => {
+          setPreviewModalCert(null);
+          setIsDraftPreviewModal(false);
+        }}
+        onDownloadPdf={handleDownloadSecondIssue}
+        onDelete={(cert) => setCertToDelete(cert)}
+      />
 
-            <div className="text-center space-y-1">
-              <h3 className="text-base font-bold text-neutral-900 dark:text-white">
-                Excluir Certificado Oficial?
-              </h3>
-              <p className="text-xs text-neutral-500">
-                Esta ação é definitiva e removerá o certificado do banco e do validador público de autenticidade (QR Code).
-              </p>
-            </div>
-
-            <div className="bg-neutral-50 dark:bg-neutral-950 p-3.5 rounded-2xl border border-neutral-200 dark:border-neutral-800 text-xs space-y-1">
-              <p className="font-bold text-neutral-800 dark:text-neutral-200">
-                {certToDelete.recipient_name}
-              </p>
-              <p className="text-[11px] font-mono text-neutral-500">
-                Doc: {certToDelete.recipient_document} · Chave: {certToDelete.validation_hash}
-              </p>
-              <p className="text-[11px] text-neutral-500">
-                Atividade: {certToDelete.template?.title || 'Curso'}
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setCertToDelete(null)}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 transition cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteSingle}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span>Confirmar Exclusão</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal de Confirmação de Exclusão em Lote (Super Admin) */}
-      {showBatchDeleteModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-
-            <div className="text-center space-y-1">
-              <h3 className="text-base font-bold text-neutral-900 dark:text-white">
-                Excluir {selectedCertIds.length} Certificados?
-              </h3>
-              <p className="text-xs text-neutral-500">
-                Você está prestes a excluir permanentemente {selectedCertIds.length} certificados selecionados do banco de dados. Essa ação não poderá ser desfeita.
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowBatchDeleteModal(false)}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400 font-bold text-xs hover:bg-neutral-50 dark:hover:bg-neutral-800 transition cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDeleteBatch}
-                disabled={isDeleting}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs transition flex items-center justify-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {isDeleting ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span>Excluir {selectedCertIds.length} Itens</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modais de Confirmação de Exclusão (Super Admin) */}
+      <CertificateDeleteModals
+        certToDelete={certToDelete}
+        showBatchDeleteModal={showBatchDeleteModal}
+        selectedCount={selectedCertIds.length}
+        isDeleting={isDeleting}
+        onCancelSingle={() => setCertToDelete(null)}
+        onConfirmSingle={handleConfirmDeleteSingle}
+        onCancelBatch={() => setShowBatchDeleteModal(false)}
+        onConfirmBatch={handleConfirmDeleteBatch}
+      />
 
       {/* Elemento Escondido no DOM para Renderização Assíncrona dos PDFs de Lote */}
       <div 

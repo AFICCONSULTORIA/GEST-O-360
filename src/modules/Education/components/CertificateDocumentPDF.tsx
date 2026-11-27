@@ -4,6 +4,7 @@ import jsPDF from 'jspdf';
 import { saveAs } from 'file-saver';
 import { CertificateTemplate, IssuedCertificate, getActivityTypeLabel } from '../types/certificates';
 import { Institution } from '../../../types';
+import { CertificateBackPage } from './CertificateBackPage';
 
 export interface CertificateDocumentPDFProps {
   certificate: IssuedCertificate;
@@ -11,6 +12,8 @@ export interface CertificateDocumentPDFProps {
   institution?: Institution | null;
   /** Se true, adiciona marcação de preview reduzido */
   scale?: number;
+  /** Permite exibir apenas frente, apenas verso ou ambos (padrão 'both' para gerar PDF completo) */
+  side?: 'front' | 'back' | 'both';
 }
 
 /**
@@ -147,7 +150,8 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
   certificate,
   template,
   institution,
-  scale = 1
+  scale = 1,
+  side = 'both'
 }, ref) => {
   const isSecondIssue = (certificate.download_count || 1) > 1;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(certificate.qr_code_url)}&color=0-0-0&bgcolor=255-255-255`;
@@ -199,6 +203,11 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
     template.secretariat_name?.trim() ||
     (template.issuer_role.toLowerCase().includes('secret') ? template.issuer_role : '') ||
     'Secretaria Municipal Organizadora';
+
+  const activityLabel = getActivityTypeLabel(template.event_type);
+  const titleAlreadyMentionsType = (template.title || '')
+    .toLowerCase()
+    .includes(activityLabel.toLowerCase());
 
   const todayExtenso = new Date().toLocaleDateString('pt-BR', {
     day: '2-digit',
@@ -387,12 +396,15 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
                   {certificate.recipient_name}
                 </strong>
                 , inscrito(a) no CPF sob o nº{' '}
-                <strong style={{ color: '#0f172a' }}>{certificate.recipient_document}</strong>,
-                participou da atividade na modalidade{' '}
-                <strong style={{ color: '#0f172a' }}>
-                  {getActivityTypeLabel(template.event_type).toUpperCase()}
-                </strong>{' '}
-                intitulada{' '}
+                <strong style={{ color: '#0f172a' }}>{certificate.recipient_document}</strong>,{' '}
+                {titleAlreadyMentionsType ? (
+                  <>participou da ação formativa intitulada </>
+                ) : (
+                  <>
+                    participou da atividade de{' '}
+                    <strong style={{ color: '#0f172a' }}>{activityLabel}</strong> intitulada{' '}
+                  </>
+                )}
                 <strong style={{ color: '#0f172a' }}>"{template.title}"</strong>,
                 promovida pela{' '}
                 <strong style={{ color: '#0f172a' }}>{organizingSecretariat}</strong>,{' '}
@@ -571,18 +583,23 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
       }}
       className="inline-block"
     >
-      {/* Folha A4 Paisagem exata: 297mm x 210mm (1122.5px x 793.7px a 96 DPI) */}
       <div
         ref={ref}
         id={`certificate-render-${certificate.id}`}
-        style={{
-          width: '1122px',
-          height: '794px',
-          backgroundColor: '#ffffff',
-          color: '#1f2937'
-        }}
-        className="relative overflow-hidden flex flex-col justify-between p-12 box-border font-sans select-none"
+        className="flex flex-col gap-6"
       >
+        {side !== 'back' && (
+          /* Folha A4 Paisagem exata (Frente): 297mm x 210mm (1122.5px x 793.7px a 96 DPI) */
+          <div
+            data-cert-page="front"
+            style={{
+              width: '1122px',
+              height: '794px',
+              backgroundColor: '#ffffff',
+              color: '#1f2937'
+            }}
+            className="relative overflow-hidden flex flex-col justify-between p-12 box-border font-sans select-none"
+          >
         {/* Fundo Customizado enviado pelo usuário OU Moldura Clássica */}
         {template.background_mode === 'custom_upload' && template.custom_background_url ? (
           <img
@@ -758,14 +775,18 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
 
             <p className="text-base leading-relaxed max-w-4xl mx-auto font-normal" style={{ color: '#374151' }}>
               {isDeclaration ? (
-                <>
-                  participou da atividade na modalidade{' '}
-                  <strong>{getActivityTypeLabel(template.event_type).toUpperCase()}</strong>:
-                </>
+                titleAlreadyMentionsType ? (
+                  <>participou da ação formativa intitulada</>
+                ) : (
+                  <>
+                    participou da atividade de <strong>{activityLabel}</strong> intitulada
+                  </>
+                )
+              ) : titleAlreadyMentionsType ? (
+                <>concluiu com aproveitamento a ação formativa intitulada</>
               ) : (
                 <>
-                  concluiu com aproveitamento a atividade formativa na modalidade{' '}
-                  <strong>{getActivityTypeLabel(template.event_type).toUpperCase()}</strong>:
+                  concluiu com aproveitamento a ação formativa de <strong>{activityLabel}</strong> intitulada
                 </>
               )}
             </p>
@@ -843,6 +864,20 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
             </div>
           </div>
         </div>
+          </div>
+        )}
+
+        {side !== 'front' && (
+          <CertificateBackPage
+            certificate={certificate}
+            template={template}
+            institution={institution}
+            logoSrc={logoSrc}
+            qrUrl={qrUrl}
+            dateRangeText={dateRangeText}
+            selectedTheme={selectedTheme}
+          />
+        )}
       </div>
     </div>
   );
@@ -863,50 +898,51 @@ export async function generateCertificatePdfBlob(element: HTMLElement): Promise<
   } as any;
 
   try {
-    const canvas = await html2canvas(element, {
-      scale: 2, // Resolução de alta definição (retina)
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      logging: false,
-      imageTimeout: 6000,
-      onclone: (clonedDoc, clonedElement) => {
-        // 1. Aplica o interceptor de estilo no iframe clonado também
-        if (clonedDoc.defaultView) {
-          const iframeOrig = clonedDoc.defaultView.getComputedStyle;
-          clonedDoc.defaultView.getComputedStyle = function(el: Element, pseudo?: string | null) {
-            const style = iframeOrig.call(clonedDoc.defaultView, el, pseudo);
-            return wrapStyleDeclaration(style);
-          } as any;
-        }
+    const pageNodes = Array.from(element.querySelectorAll('[data-cert-page]')) as HTMLElement[];
+    const targets = pageNodes.length > 0 ? pageNodes : [element];
 
-        // 2. Força documentElement e body do clone com cores sRGB explícitas
-        if (clonedDoc.documentElement) {
-          clonedDoc.documentElement.style.backgroundColor = '#ffffff';
-          clonedDoc.documentElement.style.color = '#1f2937';
-        }
-        if (clonedDoc.body) {
-          clonedDoc.body.style.backgroundColor = '#ffffff';
-          clonedDoc.body.style.color = '#1f2937';
-        }
-
-        // 3. Remove sombras, filtros e sanitiza inline styles de todos os elementos para eliminar tokens oklch
-        const allClonedNodes = [clonedElement, ...Array.from(clonedElement.getElementsByTagName('*'))];
-        allClonedNodes.forEach((node) => {
-          const el = node as HTMLElement;
-          el.style.boxShadow = 'none';
-          el.style.textShadow = 'none';
-          el.style.filter = 'none';
-          if (el.style.cssText && (el.style.cssText.includes('oklch') || el.style.cssText.includes('oklab') || el.style.cssText.includes('color-mix'))) {
-            el.style.cssText = convertCssColorToRgb(el.style.cssText);
+    const renderPageCanvas = (targetEl: HTMLElement) =>
+      html2canvas(targetEl, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        imageTimeout: 6000,
+        onclone: (clonedDoc, clonedElement) => {
+          if (clonedDoc.defaultView) {
+            const iframeOrig = clonedDoc.defaultView.getComputedStyle;
+            clonedDoc.defaultView.getComputedStyle = function(el: Element, pseudo?: string | null) {
+              const style = iframeOrig.call(clonedDoc.defaultView, el, pseudo);
+              return wrapStyleDeclaration(style);
+            } as any;
           }
-        });
-      }
-    });
 
-    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+          if (clonedDoc.documentElement) {
+            clonedDoc.documentElement.style.backgroundColor = '#ffffff';
+            clonedDoc.documentElement.style.color = '#1f2937';
+          }
+          if (clonedDoc.body) {
+            clonedDoc.body.style.backgroundColor = '#ffffff';
+            clonedDoc.body.style.color = '#1f2937';
+          }
+
+          const allClonedNodes = [clonedElement, ...Array.from(clonedElement.getElementsByTagName('*'))];
+          allClonedNodes.forEach((node) => {
+            const el = node as HTMLElement;
+            el.style.boxShadow = 'none';
+            el.style.textShadow = 'none';
+            el.style.filter = 'none';
+            if (el.style.cssText && (el.style.cssText.includes('oklch') || el.style.cssText.includes('oklab') || el.style.cssText.includes('color-mix'))) {
+              el.style.cssText = convertCssColorToRgb(el.style.cssText);
+            }
+          });
+        }
+      });
+
+    const firstTarget = targets[0];
     const isPortrait =
-      element.dataset?.orientation === 'portrait' || element.offsetHeight > element.offsetWidth;
+      firstTarget.dataset?.orientation === 'portrait' || firstTarget.offsetHeight > firstTarget.offsetWidth;
 
     const pdf = new jsPDF({
       orientation: isPortrait ? 'portrait' : 'landscape',
@@ -914,10 +950,20 @@ export async function generateCertificatePdfBlob(element: HTMLElement): Promise<
       format: 'a4'
     });
 
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
+    for (let i = 0; i < targets.length; i++) {
+      const targetEl = targets[i];
+      if (i > 0) {
+        const pagePortrait =
+          targetEl.dataset?.orientation === 'portrait' || targetEl.offsetHeight > targetEl.offsetWidth;
+        pdf.addPage('a4', pagePortrait ? 'portrait' : 'landscape');
+      }
+      const canvas = await renderPageCanvas(targetEl);
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+    }
 
-    pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
     return pdf.output('blob');
   } finally {
     // Restaura getComputedStyle original
