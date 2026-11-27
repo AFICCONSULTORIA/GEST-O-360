@@ -37,6 +37,7 @@ import { EducationBuscaAtivaPanel } from './components/EducationBuscaAtivaPanel'
 import { EducationEducacensoExport } from './components/EducationEducacensoExport';
 import { EducationCouncilsManager } from './components/EducationCouncilsManager';
 import { EducationEmployeesManager } from './components/EducationEmployeesManager';
+import { EducationStudentsManager } from './components/EducationStudentsManager';
 
 interface EducationModuleProps {
   currentInstitution?: { id: string; name?: string; subdomain?: string } | null;
@@ -46,6 +47,7 @@ interface EducationModuleProps {
 type EducationViewId =
   | 'home'
   | 'matriculas'
+  | 'alunos'
   | 'diario'
   | 'staff'
   | 'funcionarios'
@@ -89,6 +91,15 @@ const EDU_ITEMS: EduMenuItem[] = [
     group: 'gestao',
     accentBg: 'bg-indigo-50 dark:bg-indigo-500/15',
     accentText: 'text-indigo-600 dark:text-indigo-400'
+  },
+  {
+    id: 'alunos',
+    label: 'Alunos & Turmas',
+    shortDesc: 'Cadastro e importação de alunos (Nome, CPF, Nascimento e Turma)',
+    icon: GraduationCap,
+    group: 'gestao',
+    accentBg: 'bg-violet-50 dark:bg-violet-500/15',
+    accentText: 'text-violet-600 dark:text-violet-400'
   },
   {
     id: 'diario',
@@ -562,6 +573,21 @@ export const EducationModule: React.FC<EducationModuleProps> = ({
                   transition={{ duration: 0.18 }}
                 >
                   <EducationEnrollmentManager />
+                </motion.div>
+              )}
+
+              {educationView === 'alunos' && (
+                <motion.div
+                  key="alunos"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.18 }}
+                >
+                  <EducationStudentsManager
+                    institutionId={currentInstitution?.id || 'inst_1'}
+                    institutionName={currentInstitution?.name}
+                  />
                 </motion.div>
               )}
 
