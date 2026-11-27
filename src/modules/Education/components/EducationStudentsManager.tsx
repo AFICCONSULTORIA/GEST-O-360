@@ -219,26 +219,27 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
     persistLocal(next);
     setIsModalOpen(false);
 
-    try {
-      await supabase.from('education_students').upsert(
-        {
-          id: record.id,
-          institution_id: record.institution_id,
-          name: record.name,
-          cpf: record.cpf,
-          birth_date: record.birth_date,
-          class_name: record.class_name,
-          enrollment_code: record.enrollment_code,
-          updated_at: new Date().toISOString()
-        },
-        { onConflict: 'id' }
-      );
-    } catch {
-      // ok
+    const { error: dbError } = await supabase.from('education_students').upsert(
+      {
+        id: record.id,
+        institution_id: record.institution_id,
+        name: record.name,
+        cpf: record.cpf,
+        birth_date: record.birth_date,
+        class_name: record.class_name,
+        enrollment_code: record.enrollment_code,
+        updated_at: new Date().toISOString()
+      },
+      { onConflict: 'id' }
+    );
+
+    if (dbError) {
+      showToast(`Salvo apenas localmente (erro no banco: ${dbError.message}).`, 'warning');
+      return;
     }
 
     showToast(
-      editingStudent ? 'Aluno atualizado com sucesso!' : 'Aluno cadastrado com sucesso!',
+      editingStudent ? 'Aluno atualizado no banco com sucesso!' : 'Aluno cadastrado no banco com sucesso!',
       'success'
     );
   };
@@ -248,10 +249,14 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
     const next = students.filter((s) => s.id !== id);
     setStudents(next);
     persistLocal(next);
-    try {
-      await supabase.from('education_students').delete().eq('id', id).eq('institution_id', institutionId);
-    } catch {
-      // ok
+    const { error: dbError } = await supabase
+      .from('education_students')
+      .delete()
+      .eq('id', id)
+      .eq('institution_id', institutionId);
+    if (dbError) {
+      showToast(`Removido localmente, mas falhou no banco: ${dbError.message}`, 'warning');
+      return;
     }
     showToast('Aluno removido do cadastro.', 'info');
   };
@@ -284,25 +289,37 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
       setStudents(merged);
       persistLocal(merged);
 
-      try {
-        await supabase.from('education_students').upsert(
-          incoming.map((rec) => ({
-            id: rec.id,
-            institution_id: rec.institution_id,
-            name: rec.name,
-            cpf: rec.cpf,
-            birth_date: rec.birth_date,
-            class_name: rec.class_name,
-            enrollment_code: rec.enrollment_code,
-            updated_at: new Date().toISOString()
-          })),
-          { onConflict: 'id' }
-        );
-      } catch {
-        // ok
+      const payload = incoming.map((rec) => ({
+        id: rec.id,
+        institution_id: rec.institution_id,
+        name: rec.name,
+        cpf: rec.cpf,
+        birth_date: rec.birth_date,
+        class_name: rec.class_name,
+        enrollment_code: rec.enrollment_code,
+        updated_at: new Date().toISOString()
+      }));
+
+      let dbFailedMsg: string | null = null;
+      for (let i = 0; i < payload.length; i += 200) {
+        const chunk = payload.slice(i, i + 200);
+        const { error: dbError } = await supabase
+          .from('education_students')
+          .upsert(chunk, { onConflict: 'id' });
+        if (dbError) {
+          dbFailedMsg = dbError.message;
+          break;
+        }
       }
 
-      showToast(`${incoming.length} aluno(s) importado(s) com sucesso!`, 'success');
+      if (dbFailedMsg) {
+        showToast(
+          `${incoming.length} aluno(s) carregados localmente, mas falhou ao gravar no banco: ${dbFailedMsg}`,
+          'warning'
+        );
+      } else {
+        showToast(`${incoming.length} aluno(s) importado(s) e salvos no banco com sucesso!`, 'success');
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'arquivo inválido';
       showToast('Erro ao importar planilha: ' + msg, 'error');

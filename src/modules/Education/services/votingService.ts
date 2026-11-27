@@ -854,6 +854,32 @@ export class VotingService {
       return { name: localMatch.fullName, source: localMatch.roleLabel || 'Lista da Escola' };
     }
 
+    // 1A-2. Cache local do cadastro de alunos/funcionários (modo offline)
+    if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (!key || (!key.startsWith('gestao360_edu_students_') && !key.startsWith('gestao360_edu_employees_'))) {
+            continue;
+          }
+          const raw = localStorage.getItem(key);
+          if (!raw) continue;
+          const list = JSON.parse(raw) as Array<{ name?: string; full_name?: string; cpf?: string; class_name?: string; role_title?: string }>;
+          if (!Array.isArray(list)) continue;
+          const match = list.find((item) => String(item?.cpf || '').replace(/\D/g, '') === cleanCpf);
+          const matchName = match?.name || match?.full_name;
+          if (match && matchName) {
+            const label = key.startsWith('gestao360_edu_students_')
+              ? (match.class_name ? `Aluno(a) • ${match.class_name}` : 'Cadastro de Alunos')
+              : (match.role_title || 'Funcionário(a) da Educação');
+            return { name: String(matchName).trim(), source: label };
+          }
+        }
+      } catch {
+        // segue para consulta na nuvem
+      }
+    }
+
     // 1B. RPC segura na nuvem (para celulares/tablets em campo)
     try {
       const { data, error } = await supabase.rpc('lookup_voting_voter_by_cpf', { p_cpf: cleanCpf });

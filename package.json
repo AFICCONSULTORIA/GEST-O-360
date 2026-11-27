@@ -1,7 +1,7 @@
 {
   "name": "gestao-360",
   "private": true,
-  "version": "0.0.17.93",
+  "version": "0.0.17.97",
   "type": "module",
   "scripts": {
     "dev": "node scripts/bump-version.js && vite",
