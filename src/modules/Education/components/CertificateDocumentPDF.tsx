@@ -14,6 +14,8 @@ export interface CertificateDocumentPDFProps {
   scale?: number;
   /** Permite exibir apenas frente, apenas verso ou ambos (padrão 'both' para gerar PDF completo) */
   side?: 'front' | 'back' | 'both';
+  /** Evita colisão de DOM id quando usado em modais de pré-visualização */
+  disableRenderId?: boolean;
 }
 
 /**
@@ -151,7 +153,8 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
   template,
   institution,
   scale = 1,
-  side = 'both'
+  side = 'both',
+  disableRenderId = false
 }, ref) => {
   const isSecondIssue = (certificate.download_count || 1) > 1;
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(certificate.qr_code_url)}&color=0-0-0&bgcolor=255-255-255`;
@@ -227,7 +230,7 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
         {/* Folha A4 Retrato (Papel Timbrado Oficial da Prefeitura): 210mm x 297mm (794px x 1123px) */}
         <div
           ref={ref}
-          id={`certificate-render-${certificate.id}`}
+          id={disableRenderId ? undefined : `certificate-render-${certificate.id}`}
           data-orientation="portrait"
           style={{
             position: 'relative',
@@ -585,7 +588,7 @@ export const CertificateDocumentPDF = forwardRef<HTMLDivElement, CertificateDocu
     >
       <div
         ref={ref}
-        id={`certificate-render-${certificate.id}`}
+        id={disableRenderId ? undefined : `certificate-render-${certificate.id}`}
         className="flex flex-col gap-6"
       >
         {side !== 'back' && (
@@ -978,6 +981,20 @@ export async function downloadCertificatePdf(
   element: HTMLElement,
   filename: string = 'Certificado.pdf'
 ): Promise<void> {
+  const imgs = Array.from(element.querySelectorAll('img'));
+  await Promise.race([
+    Promise.all(
+      imgs.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              img.addEventListener('load', () => resolve(), { once: true });
+              img.addEventListener('error', () => resolve(), { once: true });
+            })
+      )
+    ),
+    new Promise<void>((resolve) => setTimeout(resolve, 1500))
+  ]);
   const blob = await generateCertificatePdfBlob(element);
   saveAs(blob, filename.endsWith('.pdf') ? filename : `${filename}.pdf`);
 }

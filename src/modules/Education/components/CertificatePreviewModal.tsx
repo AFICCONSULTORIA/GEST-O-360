@@ -133,6 +133,7 @@ export const CertificatePreviewModal: React.FC<CertificatePreviewModalProps> = (
               institution={currentInstitution}
               scale={0.75}
               side={isDeclaration ? 'front' : side}
+              disableRenderId
             />
           </div>
         </div>

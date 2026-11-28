@@ -1,36 +1,36 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { saveAs } from 'file-saver';
-import { 
-  FileBadge, Plus, Upload, Download, Search, CheckCircle2, 
-  AlertTriangle, Eye, Copy, RefreshCw, Sparkles, FileText, 
-  Calendar, Clock, User, ShieldCheck, ChevronRight, ChevronLeft, 
+import {
+  FileBadge, Plus, Upload, Download, Search, CheckCircle2,
+  AlertTriangle, Eye, Copy, RefreshCw, Sparkles, FileText,
+  Calendar, Clock, User, ShieldCheck, ChevronRight, ChevronLeft,
   FileSpreadsheet, Trash2, Check, Award, Layers, ExternalLink, Printer, X, QrCode, Gift
 } from 'lucide-react';
 import { DeclarationQrManager } from './DeclarationQrManager';
 import { EventRafflePanel } from './EventRafflePanel';
-import { 
-  CertificateTemplate, 
-  IssuedCertificate, 
-  ParsedRecipient, 
+import {
+  CertificateTemplate,
+  IssuedCertificate,
+  ParsedRecipient,
   CertificatePresetTheme,
   CertificateEventType,
   CertificateBackgroundMode,
   getActivityTypeLabel
 } from '../types/certificates';
-import { 
-  parseRecipientsSpreadsheet, 
-  generateBatchZip 
+import {
+  parseRecipientsSpreadsheet,
+  generateBatchZip
 } from '../../../utils/certificateBatchProcessor';
-import { 
-  CertificateDocumentPDF, 
-  generateCertificatePdfBlob, 
-  downloadCertificatePdf 
+import {
+  CertificateDocumentPDF,
+  generateCertificatePdfBlob,
+  downloadCertificatePdf
 } from './CertificateDocumentPDF';
 import { CertificatePreviewModal } from './CertificatePreviewModal';
 import { CertificateDeleteModals } from './CertificateDeleteModals';
-import { 
-  createBatchCertificates, 
-  fetchIssuedCertificates, 
+import {
+  createBatchCertificates,
+  fetchIssuedCertificates,
   registerCertificateDownload,
   deleteIssuedCertificate,
   deleteBatchIssuedCertificates
@@ -177,8 +177,8 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
   const BANK_PAGE_SIZE = 30;
 
   // Permissão de Super Admin para exclusão no Banco de Certificados
-  const isSuperAdmin = currentUser?.role === 'Super Admin' || 
-    (currentUser?.role as string)?.toLowerCase() === 'super admin' || 
+  const isSuperAdmin = currentUser?.role === 'Super Admin' ||
+    (currentUser?.role as string)?.toLowerCase() === 'super admin' ||
     (currentUser?.role as string)?.toLowerCase() === 'super_admin';
 
   // Estados de Exclusão (Super Admin)
@@ -509,10 +509,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
       if (renderEl) {
         const safeName = cert.recipient_name.replace(/[^a-zA-Z0-9]/g, '_');
         await downloadCertificatePdf(renderEl, `Certificado_2via_${safeName}_${cert.validation_hash}.pdf`);
-        showToast('Segunda via emitida com sucesso!', 'success');
+        showToast('Certificado (Frente e Verso) baixado com sucesso!', 'success');
         loadHistory();
       }
-    }, 200);
+    }, 220);
   };
 
   // Copiar link de conferência do QR Code
@@ -554,7 +554,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
 
   // Seleção individual de certificado (Super Admin)
   const handleToggleSelectCert = (id: string) => {
-    setSelectedCertIds(prev => 
+    setSelectedCertIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
@@ -627,44 +627,40 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
         <div className="flex flex-wrap items-center bg-neutral-100 dark:bg-neutral-800 p-1.5 rounded-2xl gap-1 w-full xl:w-auto shrink-0">
           <button
             onClick={() => setActiveTab('wizard')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-              activeTab === 'wizard'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${activeTab === 'wizard'
+              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+              : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
           >
             <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
             <span>Novo Lote de Certificados</span>
           </button>
           <button
             onClick={() => setActiveTab('declarations')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-              activeTab === 'declarations'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${activeTab === 'declarations'
+              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+              : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
           >
             <QrCode className="w-4 h-4 text-blue-500 shrink-0" />
             <span>Declarações via QR Code</span>
           </button>
           <button
             onClick={() => setActiveTab('raffle')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-              activeTab === 'raffle'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${activeTab === 'raffle'
+              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+              : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
           >
             <Gift className="w-4 h-4 text-violet-500 shrink-0" />
             <span>Sorteio em Eventos</span>
           </button>
           <button
             onClick={() => setActiveTab('bank')}
-            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-              activeTab === 'bank'
-                ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
-                : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
-            }`}
+            className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${activeTab === 'bank'
+              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm'
+              : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
+              }`}
           >
             <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0" />
             <span>Banco de Documentos ({issuedHistory.length})</span>
@@ -692,21 +688,19 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                   <button
                     key={item.step}
                     onClick={() => setWizardStep(item.step as any)}
-                    className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${
-                      isCurrent
-                        ? 'bg-amber-500/10 border-amber-500 text-neutral-900 dark:text-white font-bold'
-                        : isPassed
+                    className={`flex items-center gap-3 p-3 rounded-xl border text-left transition cursor-pointer ${isCurrent
+                      ? 'bg-amber-500/10 border-amber-500 text-neutral-900 dark:text-white font-bold'
+                      : isPassed
                         ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
                         : 'bg-neutral-50 dark:bg-neutral-950 border-neutral-200 dark:border-neutral-800 text-neutral-400'
-                    }`}
+                      }`}
                   >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
-                      isCurrent
-                        ? 'bg-amber-500 text-neutral-950 font-black'
-                        : isPassed
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isCurrent
+                      ? 'bg-amber-500 text-neutral-950 font-black'
+                      : isPassed
                         ? 'bg-emerald-500 text-white font-bold'
                         : 'bg-neutral-200 dark:bg-neutral-800 text-neutral-500'
-                    }`}>
+                      }`}>
                       {isPassed ? <Check className="w-4 h-4" /> : item.step}
                     </div>
                     <div className="min-w-0">
@@ -739,11 +733,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 <button
                   type="button"
                   onClick={() => setBackgroundMode('preset')}
-                  className={`flex-1 p-4 rounded-2xl border text-left transition cursor-pointer ${
-                    backgroundMode === 'preset'
-                      ? 'bg-amber-500/10 border-amber-500 text-neutral-900 dark:text-white'
-                      : 'border-neutral-200 dark:border-neutral-800 text-neutral-500'
-                  }`}
+                  className={`flex-1 p-4 rounded-2xl border text-left transition cursor-pointer ${backgroundMode === 'preset'
+                    ? 'bg-amber-500/10 border-amber-500 text-neutral-900 dark:text-white'
+                    : 'border-neutral-200 dark:border-neutral-800 text-neutral-500'
+                    }`}
                 >
                   <span className="text-xs font-bold block">Modelos Institucionais Pré-definidos</span>
                   <span className="text-[11px] text-neutral-400 block mt-0.5">Molduras nobres em A4 Paisagem com Brasão Oficial.</span>
@@ -752,11 +745,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                 <button
                   type="button"
                   onClick={() => setBackgroundMode('custom_upload')}
-                  className={`flex-1 p-4 rounded-2xl border text-left transition cursor-pointer ${
-                    backgroundMode === 'custom_upload'
-                      ? 'bg-amber-500/10 border-amber-500 text-neutral-900 dark:text-white'
-                      : 'border-neutral-200 dark:border-neutral-800 text-neutral-500'
-                  }`}
+                  className={`flex-1 p-4 rounded-2xl border text-left transition cursor-pointer ${backgroundMode === 'custom_upload'
+                    ? 'bg-amber-500/10 border-amber-500 text-neutral-900 dark:text-white'
+                    : 'border-neutral-200 dark:border-neutral-800 text-neutral-500'
+                    }`}
                 >
                   <span className="text-xs font-bold block">Enviar Meu Próprio Fundo / Arte (PNG/JPG)</span>
                   <span className="text-[11px] text-neutral-400 block mt-0.5">Suba a arte criada no Canva ou Designer.</span>
@@ -774,11 +766,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                     <div
                       key={theme.id}
                       onClick={() => setPresetTheme(theme.id as any)}
-                      className={`p-4 rounded-2xl border-2 transition cursor-pointer relative overflow-hidden ${
-                        presetTheme === theme.id
-                          ? 'border-amber-500 bg-amber-500/5 shadow-md'
-                          : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300'
-                      }`}
+                      className={`p-4 rounded-2xl border-2 transition cursor-pointer relative overflow-hidden ${presetTheme === theme.id
+                        ? 'border-amber-500 bg-amber-500/5 shadow-md'
+                        : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300'
+                        }`}
                     >
                       <div className="h-24 rounded-xl border border-neutral-200 dark:border-neutral-700 flex flex-col justify-between p-3 bg-neutral-50 dark:bg-neutral-950 mb-3">
                         <div className="flex justify-between items-center">
@@ -978,11 +969,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                                     prev.map((item, i) => (i === idx ? { ...item, role: nextRole } : item))
                                   );
                                 }}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border cursor-pointer ${
-                                  r.role === 'palestrante'
-                                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
-                                    : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
-                                }`}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border cursor-pointer ${r.role === 'palestrante'
+                                  ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+                                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                                  }`}
                               >
                                 <option value="participante">Participante</option>
                                 <option value="palestrante">Palestrante</option>
@@ -1743,11 +1733,10 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
                         </td>
 
                         <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border ${
-                            isSecondIssue
-                              ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
-                              : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border ${isSecondIssue
+                            ? 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30'
+                            : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                            }`}>
                             {cert.download_count} {cert.download_count === 1 ? 'via emitida' : 'vias (2ª Via)'}
                           </span>
                         </td>
@@ -1899,7 +1888,7 @@ export const EducationCertificatesManager: React.FC<EducationCertificatesManager
       />
 
       {/* Elemento Escondido no DOM para Renderização Assíncrona dos PDFs de Lote */}
-      <div 
+      <div
         ref={hiddenRenderContainerRef}
         style={{ position: 'fixed', left: '-9999px', top: '-9999px', pointerEvents: 'none' }}
       >
