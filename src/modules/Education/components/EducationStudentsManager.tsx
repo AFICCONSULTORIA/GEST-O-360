@@ -12,7 +12,8 @@ import {
   Users,
   Calendar,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CloudUpload
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { formatCPF, validateCPF } from '../../../lib/masks';
@@ -68,6 +69,9 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<EducationStudentRecord | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+  const [localOnlyCount, setLocalOnlyCount] = useState(0);
+  const [cloudErrorMsg, setCloudErrorMsg] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState({
@@ -79,14 +83,20 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
 
   const loadStudents = async () => {
     setIsLoading(true);
+    setCloudErrorMsg(null);
     let loaded: EducationStudentRecord[] = [];
+    let dbHadRows = false;
     try {
       const { data, error } = await supabase
         .from('education_students')
         .select('id, institution_id, name, cpf, birth_date, class_name, enrollment_code')
         .eq('institution_id', institutionId)
-        .order('name');
-      if (!error && Array.isArray(data)) {
+        .order('name')
+        .range(0, 4999);
+      if (error) {
+        setCloudErrorMsg(error.message);
+      } else if (Array.isArray(data) && data.length > 0) {
+        dbHadRows = true;
         loaded = data.map((row: {
           id?: string;
           institution_id?: string | null;
@@ -109,17 +119,58 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
       // fallback local
     }
 
-    if (loaded.length === 0) {
+    if (!dbHadRows) {
       try {
         const raw = localStorage.getItem(storageKey);
         loaded = raw ? JSON.parse(raw) : [];
+        setLocalOnlyCount(loaded.length);
       } catch {
         loaded = [];
+        setLocalOnlyCount(0);
       }
+    } else {
+      setLocalOnlyCount(0);
+      persistLocal(loaded);
     }
 
     setStudents(loaded);
     setIsLoading(false);
+  };
+
+  const handleSyncLocalToSupabase = async () => {
+    if (students.length === 0) return;
+    setIsSyncingCloud(true);
+    setCloudErrorMsg(null);
+    try {
+      const payload = students.map((rec) => ({
+        id: rec.id,
+        institution_id: institutionId,
+        name: rec.name,
+        cpf: rec.cpf || null,
+        birth_date: rec.birth_date || null,
+        class_name: rec.class_name || 'Sem Turma',
+        enrollment_code: rec.enrollment_code || null,
+        updated_at: new Date().toISOString()
+      }));
+
+      for (let i = 0; i < payload.length; i += 200) {
+        const chunk = payload.slice(i, i + 200);
+        const { error: dbError } = await supabase
+          .from('education_students')
+          .upsert(chunk, { onConflict: 'id' });
+        if (dbError) {
+          setCloudErrorMsg(dbError.message);
+          showToast(`Erro ao sincronizar com o banco: ${dbError.message}`, 'error');
+          return;
+        }
+      }
+
+      setLocalOnlyCount(0);
+      showToast(`${students.length} aluno(s) sincronizados com o banco de dados!`, 'success');
+      await loadStudents();
+    } finally {
+      setIsSyncingCloud(false);
+    }
   };
 
   useEffect(() => {
@@ -394,6 +445,35 @@ export const EducationStudentsManager: React.FC<EducationStudentsManagerProps> =
           </button>
         </div>
       </div>
+
+      {/* Aviso de dados apenas locais / erro de sincronização */}
+      {(localOnlyCount > 0 || cloudErrorMsg) && (
+        <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-0.5 text-amber-900 dark:text-amber-200">
+            <p className="font-black">
+              {localOnlyCount > 0
+                ? `${localOnlyCount} aluno(s) estão salvos apenas neste navegador (cache local)`
+                : 'Aviso ao consultar alunos no banco de dados'}
+            </p>
+            <p className="text-[11px] opacity-90">
+              {cloudErrorMsg
+                ? `Detalhe do banco: ${cloudErrorMsg}`
+                : 'Clique em Sincronizar com Nuvem para gravar todos no Supabase e liberar o acesso em outros computadores e na urna.'}
+            </p>
+          </div>
+          {localOnlyCount > 0 && (
+            <button
+              type="button"
+              disabled={isSyncingCloud}
+              onClick={() => void handleSyncLocalToSupabase()}
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <CloudUpload size={14} />
+              <span>{isSyncingCloud ? 'Sincronizando...' : 'Sincronizar com Nuvem'}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
